@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>random</title>
+<meta name="description" content="A hub of small ideas, each one a tiny page.">
+<style>
+  :root {
+    --bg: #faf9f7;
+    --card: #ffffff;
+    --ink: #1a1a1a;
+    --muted: #6b6b6b;
+    --line: #e5e2dc;
+    --accent: #b3542e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141414;
+      --card: #1e1e1e;
+      --ink: #eceae6;
+      --muted: #9a9a9a;
+      --line: #2c2c2c;
+      --accent: #e08554;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 3rem 1.25rem 5rem;
+  }
+  main { max-width: 52rem; margin: 0 auto; }
+  header { margin-bottom: 2.5rem; }
+  header h1 {
+    font-size: 1.6rem;
+    letter-spacing: -0.01em;
+  }
+  header p { color: var(--muted); margin-top: 0.35rem; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 1rem;
+  }
+  .card {
+    display: block;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    padding: 1.1rem 1.2rem 1.25rem;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 120ms ease, transform 120ms ease;
+  }
+  .card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.6rem;
+  }
+  .card-emoji { font-size: 1.3rem; }
+  .card time { color: var(--muted); font-size: 0.78rem; }
+  .card h2 { font-size: 1.05rem; letter-spacing: -0.01em; }
+  .card p { color: var(--muted); font-size: 0.88rem; margin-top: 0.4rem; }
+  .empty { color: var(--muted); }
+  footer {
+    margin-top: 3.5rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>random</h1>
+      <p>Small ideas, each one a tiny page.</p>
+    </header>
+    <div class="grid">
+      <a class="card" href="ideas/breathe/">
+        <div class="card-top">
+          <span class="card-emoji">🫧</span>
+          <time datetime="2026-08-13">2026-08-13</time>
+        </div>
+        <h2>Breathe</h2>
+        <p>A one-minute box-breathing circle.</p>
+      </a>
+    </div>
+    <footer>
+      <a href="https://github.com/rickymetz/random">source</a>
+    </footer>
+  </main>
+</body>
+</html>

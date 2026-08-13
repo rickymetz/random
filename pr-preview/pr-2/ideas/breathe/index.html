@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Breathe</title>
+<meta name="description" content="A one-minute box-breathing circle.">
+<style>
+  :root {
+    --bg: #0e1420;
+    --ink: #dce6f2;
+    --muted: #6f7f95;
+    --glow: #5aa9e6;
+  }
+  /* Registered so the sweep angle can be animated; browsers without
+     @property just skip the countdown overlay. */
+  @property --sweep {
+    syntax: "<angle>";
+    inherits: true;
+    initial-value: 0deg;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.5 ui-sans-serif, system-ui, sans-serif;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+  }
+  main { text-align: center; }
+  .circle {
+    position: relative;
+    width: 180px;
+    height: 180px;
+    margin: 0 auto 2rem;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #7cc0f0, var(--glow) 60%, #2b6ca8);
+    box-shadow: 0 0 60px rgba(90, 169, 230, 0.35);
+    transform: scale(0.6);
+  }
+  /* Countdown: a wedge that sweeps around the circle once per 4s phase */
+  .circle::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(rgba(255, 255, 255, 0.2) var(--sweep), transparent 0);
+  }
+  .phase { font-size: 1.3rem; letter-spacing: 0.04em; min-height: 1.6em; }
+  .hint { color: var(--muted); margin-top: 0.75rem; font-size: 0.85rem; }
+  a.back {
+    position: fixed;
+    top: 1rem; left: 1.25rem;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.85rem;
+  }
+  a.back:hover { color: var(--ink); }
+</style>
+</head>
+<body>
+<a class="back" href="../../">← random</a>
+<main>
+  <div class="circle" id="circle"></div>
+  <div class="phase" id="phase">Press anywhere to begin</div>
+  <div class="hint">Box breathing — 4s in, 4s hold, 4s out, 4s hold</div>
+</main>
+<script>
+  const circle = document.getElementById("circle");
+  const phaseEl = document.getElementById("phase");
+  const SECONDS = 4;
+  const phases = [
+    { label: "Breathe in", from: 0.6, to: 1.0 },
+    { label: "Hold",       from: 1.0, to: 1.0 },
+    { label: "Breathe out", from: 1.0, to: 0.6 },
+    { label: "Hold",       from: 0.6, to: 0.6 },
+  ];
+  let running = false;
+
+  function run(i) {
+    const p = phases[i % phases.length];
+    phaseEl.textContent = p.label;
+    // Linear, so the wedge doubles as a countdown; ::after inherits --sweep.
+    circle.animate(
+      [{ "--sweep": "0deg" }, { "--sweep": "360deg" }],
+      { duration: SECONDS * 1000, easing: "linear" }
+    );
+    circle.animate(
+      [{ transform: `scale(${p.from})` }, { transform: `scale(${p.to})` }],
+      { duration: SECONDS * 1000, fill: "forwards", easing: "ease-in-out" }
+    ).onfinish = () => run(i + 1);
+  }
+
+  document.body.addEventListener("pointerdown", () => {
+    if (running) return;
+    running = true;
+    run(0);
+  });
+</script>
+</body>
+</html>
