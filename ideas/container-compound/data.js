@@ -30,7 +30,7 @@ export const TYPES = [
     id: "kitchen", name: "Kitchen unit", len: 20, wid: 8, color: 0xc9ac7f,
     cost: 39000, variant: "tunnel", wet: true, hvac: "minisplit",
     desc: "Full galley run with range and sink, tall fridge, pantry and a small eat-at counter. Tunnel container: a pass-through galley with door-walls at both ends.",
-    va: "Plumbing, gas and electrical need trade permits even under 256 sq ft.",
+    va: "Plumbing, gas and electrical need trade permits even under 256 sq ft. Range hood exhausts through the floor.",
     furniture: [
       { x: 0, z: -2.55, w: 11.2, d: 2.0, h: 3.0, color: 0xdad2c4 },      // 24in counter run
       { x: -7.4, z: 2.15, w: 2.6, d: 2.7, h: 6.6, color: 0xb9b3a7 },     // fridge, clear of the door
@@ -40,21 +40,22 @@ export const TYPES = [
   },
   {
     id: "bathhouse", name: "Bathhouse unit", len: 20, wid: 8, color: 0x7e97a6,
-    cost: 37000, variant: "tunnel", wet: true, hvac: "panel",
-    desc: "Two shower stalls, a soaking tub and a changing bench. Tunnel container so steam vents straight through with both door-walls open.",
-    va: "Wet unit: plumbing permits and inspections apply; vented per VRC.",
+    cost: 38000, variant: "tunnel", wet: true, hvac: "panel",
+    desc: "Two shower stalls, a soaking tub, a changing bench and a linen tower. On-board tankless water heater — no long hot-water runs from the core.",
+    va: "Wet unit: plumbing permits and inspections apply; mechanical exhaust (R303.3) ducted through the floor.",
     furniture: [
       { x: -6.9, z: 1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower 1
       { x: 6.9, z: 1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },      // shower 2
       { x: 0, z: -2.3, w: 6.0, d: 2.5, h: 2.0, color: 0xe8e4da },        // soaking tub
-      { x: 0, z: 2.75, w: 5.0, d: 1.6, h: 1.5, color: 0xb08d63 },        // bench
+      { x: -0.5, z: 2.75, w: 4.0, d: 1.6, h: 1.5, color: 0xb08d63 },     // bench
+      { x: 2.6, z: 2.8, w: 1.6, d: 1.3, h: 6.0, color: 0x8a6f4f },       // linen tower
     ],
   },
   {
     id: "bath-laundry", name: "Bath + laundry unit", len: 20, wid: 8, color: 0xa092a8,
     cost: 35000, variant: "tunnel", wet: true, hvac: "panel",
     desc: "Full bath on one end, washer-dryer pair and folding counter on the other. Tunnel container with frosted door-walls at both ends.",
-    va: "Wet unit: plumbing and electrical permits apply. WC set 15in+ off the wall with 21in+ in front (VRC ch.27).",
+    va: "Wet unit: plumbing and electrical permits apply. WC set 15in+ off the wall with 21in+ in front (VRC ch.27); exhaust + dryer duct through the floor.",
     furniture: [
       { x: -7.2, z: 1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower
       { x: -4.9, z: -2.3, w: 1.6, d: 2.4, h: 1.4, color: 0xf2efe8 },     // WC (15.4in centerline, clear of the door)
@@ -62,6 +63,7 @@ export const TYPES = [
       { x: 2.6, z: 2.35, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },      // washer
       { x: 5.2, z: 2.35, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },      // dryer
       { x: 1.5, z: -2.75, w: 5.0, d: 1.6, h: 3.0, color: 0x9c7c58 },     // folding counter
+      { x: 1.5, z: -3.4, w: 5.0, d: 0.3, h: 6.5, color: 0xbdb8ae },      // hanging rod
     ],
   },
   {
@@ -82,11 +84,10 @@ export const TYPES = [
   {
     id: "living", name: "Living unit", len: 20, wid: 8, color: 0xa5a184,
     cost: 26000, variant: "openside", hvac: "minisplit",
-    desc: "Deep sofa, media wall and a small wood stove on a hearth pad behind an open-side glazed wall — the den.",
-    va: "Solid-fuel stove needs mechanical permit + listed shields/clearances (VRC ch. 10); flue uses the factory vent position, not a new roof cut.",
+    desc: "Deep sofa, media wall and an electric fireplace behind an open-side glazed wall — the den, with zero envelope penetrations.",
+    va: "All-electric heat (mini-split + fireplace): no flue, no roof cut, no solid-fuel clearances to defend.",
     furniture: [
-      { x: -7.9, z: -2.2, w: 3.2, d: 3.2, h: 0.2, color: 0x9a968e },     // hearth pad
-      { x: -7.9, z: -2.2, w: 1.8, d: 1.8, h: 4.0, color: 0x4a4a48 },     // wood stove (listed, shielded)
+      { x: -8.6, z: -1.2, w: 1.2, d: 3.2, h: 2.2, color: 0x4a4a48 },     // electric fireplace
       { x: 0, z: -2.05, w: 7.5, d: 3.0, h: 2.2, color: 0xd9cfc0 },       // sofa
       { x: 0, z: 1.5, w: 4.0, d: 1.8, h: 1.4, color: 0x9c7c58 },         // coffee table (14in gap)
       { x: 7.9, z: 1.7, w: 1.5, d: 3.0, h: 2.0, color: 0x8a6f4f },       // media, clear of the door
@@ -96,23 +97,25 @@ export const TYPES = [
     id: "bathroom", name: "Bathroom unit", len: 10, wid: 8, color: 0x8fa0ad,
     cost: 17000, variant: "standard", wet: true, hvac: "panel",
     desc: "Compact three-fixture bath in a mini: shower, toilet, vanity. Drains drop straight through the floor.",
-    va: "Wet unit: plumbing permits apply. WC set 15in+ off the wall with a clear doorway (VRC ch.27).",
+    va: "Wet unit: plumbing permits apply. WC set 15in+ off the wall with a clear doorway (VRC ch.27); exhaust fan ducted through the floor.",
     furniture: [
       { x: -2.6, z: 1.9, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },      // shower
       { x: -3.4, z: -2.3, w: 1.6, d: 2.4, h: 1.4, color: 0xf2efe8 },     // WC (15.4in centerline)
       { x: 0.7, z: 2.65, w: 3.0, d: 1.8, h: 3.0, color: 0xdad2c4 },      // vanity
+      { x: -1.4, z: -2.9, w: 1.6, d: 0.6, h: 4.5, color: 0xbdb8ae },     // shelf
     ],
   },
   {
     id: "laundry", name: "Laundry / utility unit", len: 10, wid: 8, color: 0xb0a08d,
     cost: 15000, variant: "standard", hvac: "panel", core: true,
     desc: "Washer, dryer, water heater and the compound's mechanical closet — the utility core. Wet units want to sit inside its ring.",
-    va: "Houses water heater + panel; trade permits apply.",
+    va: "Houses water heater + panel; trade permits apply. Panel keeps its 30\" x 36\" working clearance (NEC 110.26) at the east wall.",
     furniture: [
       { x: -3.1, z: -2.3, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },     // washer
       { x: -0.5, z: -2.3, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },     // dryer
       { x: -3.3, z: 2.5, w: 2.0, d: 2.0, h: 5.0, color: 0xbdb8ae },      // water heater
-      { x: 1.4, z: 2.85, w: 4.5, d: 1.4, h: 6.0, color: 0x8a6f4f },      // shelving
+      { x: 0.6, z: 2.85, w: 3.0, d: 1.4, h: 6.0, color: 0x8a6f4f },      // shelving (panel wall kept clear)
+      { x: -1.8, z: -3.4, w: 4.0, d: 0.25, h: 6.5, color: 0xbdb8ae },    // hanging rod
     ],
   },
   {
@@ -152,12 +155,12 @@ export const TYPES = [
 export const PLAN_LABELS = {
   sleeping: ["bed", "", "", "wardrobe", "bench"],
   kitchen: ["counter run", "fridge", "pantry", "island"],
-  bathhouse: ["shower", "shower", "soaking tub", "bench"],
-  "bath-laundry": ["shower", "WC", "vanity", "washer", "dryer", "counter"],
+  bathhouse: ["shower", "shower", "soaking tub", "bench", "linen"],
+  "bath-laundry": ["shower", "WC", "vanity", "washer", "dryer", "counter", "rod"],
   dining: ["table", "banquette", "", "", "", "", "sideboard"],
-  living: ["hearth", "stove", "sofa", "table", "media"],
-  bathroom: ["shower", "WC", "vanity"],
-  laundry: ["washer", "dryer", "WH", "shelving"],
+  living: ["fireplace", "sofa", "table", "media"],
+  bathroom: ["shower", "WC", "vanity", "shelf"],
+  laundry: ["washer", "dryer", "WH", "shelving", "rod"],
   office: ["desk", "", "bookshelves", "chair", "cab"],
   hobby: ["workbench", "shelving", "bins"],
 };
