@@ -677,37 +677,79 @@ const EXAMPLE = {
 
 // --------------------------------------------------------------------- UI
 
-const palette = document.getElementById("palette");
-for (const t of TYPES) {
-  const btn = document.createElement("button");
-  btn.className = "pal-btn";
-  const sub = t.deck
-    ? "8'×8' deck · ~$1.2k"
-    : `${t.len}' ${t.len === 10 ? "mini " : ""}HC · ${t.len * t.wid} sq ft · ~$${Math.round(t.cost / 1000)}k`;
-  btn.innerHTML = `<span class="pal-chip${t.len === 10 || t.deck ? " mini" : ""}" style="background:#${t.color.toString(16).padStart(6, "0")}"></span>
-    <span><div class="pal-name">${t.name}</div><div class="pal-sub">${sub}</div></span>`;
-  btn.addEventListener("click", () => {
-    pushUndo();
-    const spot = findSpot(t);
-    const item = addItem(t.id, spot.x, spot.z, 0);
-    select(item);
-  });
-  palette.appendChild(btn);
+const addList = document.getElementById("add-list");
+const openAdd = () => { select(null); document.body.classList.add("add-open"); };
+const closeAdd = () => document.body.classList.remove("add-open");
+document.getElementById("fab").addEventListener("click", openAdd);
+document.getElementById("add-close").addEventListener("click", closeAdd);
+document.getElementById("add-backdrop").addEventListener("click", closeAdd);
+
+const ADD_GROUPS = [
+  { label: "20′ high cubes — habitable", match: (t) => !t.deck && t.len === 20 },
+  { label: "10′ minis — non-habitable", match: (t) => !t.deck && t.len === 10 },
+  { label: "Site", match: (t) => t.deck },
+];
+const BADGES = { tunnel: "tunnel", openside: "open-side" };
+for (const group of ADD_GROUPS) {
+  const sec = document.createElement("div");
+  sec.className = "add-sec";
+  sec.textContent = group.label;
+  addList.appendChild(sec);
+  for (const t of TYPES.filter(group.match)) {
+    const row = document.createElement("button");
+    row.className = "add-row";
+    const meta = t.deck
+      ? `8' × 8' platform · 64 sq ft · ~$${(t.cost / 1000).toFixed(1)}k`
+      : `${t.len}' ${t.len === 10 ? "mini " : ""}high cube · ${t.len * t.wid} sq ft · ~$${Math.round(t.cost / 1000)}k`;
+    const badge = BADGES[t.variant] ? `<span class="badge">${BADGES[t.variant]}</span>` : "";
+    row.innerHTML = `<span class="add-chip${t.len === 10 || t.deck ? " mini" : ""}" style="background:#${t.color.toString(16).padStart(6, "0")}"></span>
+      <span>
+        <div class="add-name">${t.name}${badge}</div>
+        <div class="add-meta">${meta}</div>
+        <div class="add-desc">${t.desc}</div>
+      </span>`;
+    row.addEventListener("click", () => {
+      pushUndo();
+      const spot = findSpot(t);
+      const item = addItem(t.id, spot.x, spot.z, 0);
+      closeAdd();
+      select(item);
+    });
+    addList.appendChild(row);
+  }
 }
 
-// ---- undo ----
+// ---- undo / redo ----
 const undoStack = [];
+const redoStack = [];
+function updateHistoryButtons() {
+  document.getElementById("btn-undo").disabled = !undoStack.length;
+  document.getElementById("btn-redo").disabled = !redoStack.length;
+}
 function pushUndo() {
   undoStack.push(JSON.stringify(serialize()));
   if (undoStack.length > 60) undoStack.shift();
+  redoStack.length = 0; // a new action invalidates the redo branch
+  updateHistoryButtons();
 }
 function undo() {
   const prev = undoStack.pop();
   if (!prev) { toast("Nothing to undo"); return; }
+  redoStack.push(JSON.stringify(serialize()));
   loadFrom(JSON.parse(prev));
+  updateHistoryButtons();
   toast("Undone");
 }
+function redo() {
+  const next = redoStack.pop();
+  if (!next) { toast("Nothing to redo"); return; }
+  undoStack.push(JSON.stringify(serialize()));
+  loadFrom(JSON.parse(next));
+  updateHistoryButtons();
+  toast("Redone");
+}
 document.getElementById("btn-undo").addEventListener("click", undo);
+document.getElementById("btn-redo").addEventListener("click", redo);
 
 document.getElementById("btn-sun").addEventListener("click", () => {
   sunIdx = (sunIdx + 1) % SUNS.length;
@@ -763,6 +805,7 @@ function rotateSelected() {
   if (blockedPairs().length > preBlocked) {
     const snap = undoStack.pop();
     loadFrom(JSON.parse(snap));
+    updateHistoryButtons();
     toast("That blocks a door wall — keep apertures clear");
     return;
   }
@@ -773,13 +816,15 @@ function rotateSelected() {
 
 addEventListener("keydown", (e) => {
   if (e.target instanceof HTMLInputElement) return;
-  if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
+  if ((e.metaKey || e.ctrlKey) && (e.key === "y" || (e.shiftKey && (e.key === "z" || e.key === "Z")))) {
+    e.preventDefault(); redo();
+  } else if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
   else if (e.key === "r" || e.key === "R") rotateSelected();
   else if ((e.key === "Delete" || e.key === "Backspace") && selected) {
     e.preventDefault();
     pushUndo();
     removeItem(selected);
-  } else if (e.key === "Escape") select(null);
+  } else if (e.key === "Escape") { closeAdd(); select(null); }
 });
 
 function toast(msg) {
@@ -994,6 +1039,8 @@ renderer.domElement.addEventListener("pointermove", (e) => {
     moved = true;
     undoStack.push(dragSnapshot); // pre-drag state, one undo step per drag
     if (undoStack.length > 60) undoStack.shift();
+    redoStack.length = 0;
+    updateHistoryButtons();
   }
   if (!moved) return;
   const p = groundPoint(e.clientX, e.clientY);
@@ -1010,6 +1057,7 @@ renderer.domElement.addEventListener("pointerup", (e) => {
       if (blockedPairs().length > preBlocked) {
         const snap = undoStack.pop(); // the pre-drag snapshot
         loadFrom(JSON.parse(snap));
+        updateHistoryButtons();
         toast("That blocks a door wall — butt against solid sides only");
       } else {
         save();
@@ -1040,7 +1088,7 @@ addEventListener("resize", () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-setTimeout(() => toast("drag units to move · tap to peek inside · pinch to zoom"), 700);
+setTimeout(() => toast("+ adds units · drag to move · tap to peek inside"), 700);
 
 const clock = new THREE.Clock();
 const needle = document.getElementById("needle");

@@ -71,41 +71,111 @@
   }
   #topbar button:active { border-color: var(--accent); color: var(--accent); }
 
-  /* ---- bottom palette bar ---- */
-  #palette {
+  /* ---- add-unit FAB + bottom sheet ---- */
+  #fab {
+    position: fixed;
+    right: 0.9rem;
+    bottom: calc(0.9rem + var(--sab));
+    z-index: 5;
+    width: 3.5rem; height: 3.5rem;
+    border-radius: 50%;
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1.7rem;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 4px 18px rgba(30, 30, 25, 0.3);
+  }
+  #fab:active { filter: brightness(1.1); }
+  body.has-selection #fab { display: none; }
+  #add-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(30, 28, 24, 0.45);
+    display: none;
+    z-index: 7;
+  }
+  body.add-open #add-backdrop { display: block; }
+  #add-sheet {
     position: fixed;
     left: 0; right: 0; bottom: 0;
-    z-index: 5;
-    display: flex;
-    gap: 0.5rem;
-    overflow-x: auto;
-    padding: 0.6rem 0.75rem calc(0.6rem + var(--sab));
-    border-width: 1px 0 0 0;
-    scrollbar-width: none;
+    z-index: 8;
+    margin: 0 auto;
+    max-width: 30rem;
+    max-height: 80vh;
+    overflow-y: auto;
+    border-radius: 1rem 1rem 0 0;
+    border-width: 1px 1px 0 1px;
+    padding: 0.7rem 1rem calc(1.1rem + var(--sab));
+    transform: translateY(108%);
+    transition: transform 240ms ease;
   }
-  #palette::-webkit-scrollbar { display: none; }
-  .pal-btn {
-    flex: none;
+  body.add-open #add-sheet { transform: translateY(0); }
+  #add-sheet .handle {
+    width: 2.4rem; height: 0.28rem;
+    background: var(--line);
+    border-radius: 999px;
+    margin: 0 auto 0.6rem;
+  }
+  #add-sheet .head { display: flex; align-items: baseline; gap: 0.6rem; }
+  #add-sheet h3 { font-size: 1.05rem; flex: 1; }
+  #add-sheet .x {
+    border: 0; background: transparent;
+    color: var(--muted);
+    font-size: 1.15rem;
+    padding: 0.1rem 0.3rem;
+  }
+  .add-sec {
+    margin: 0.9rem 0 0.25rem;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .add-row {
     display: flex;
-    flex-direction: column;
+    gap: 0.75rem;
     align-items: flex-start;
-    gap: 0.28rem;
-    width: 8.6rem;
-    border: 1px solid var(--line);
-    background: #fff;
-    border-radius: 0.65rem;
-    padding: 0.55rem 0.65rem;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    border-radius: 0.6rem;
+    padding: 0.55rem 0.45rem;
     text-align: left;
   }
-  .pal-btn:active { border-color: var(--accent); }
-  .pal-chip {
-    width: 2.1rem; height: 1.2rem;
-    border-radius: 0.28rem;
+  .add-row:active { background: rgba(179, 84, 46, 0.1); }
+  .add-chip {
+    flex: none;
+    width: 2.7rem; height: 1.55rem;
+    margin-top: 0.15rem;
+    border-radius: 0.3rem;
     border: 1px solid rgba(0,0,0,0.15);
   }
-  .pal-chip.mini { width: 1.25rem; }
-  .pal-name { font-weight: 600; font-size: 0.78rem; line-height: 1.2; }
-  .pal-sub { color: var(--muted); font-size: 0.68rem; line-height: 1.25; }
+  .add-chip.mini { width: 1.6rem; }
+  .add-name { font-weight: 600; font-size: 0.88rem; }
+  .add-name .badge {
+    font-weight: 500;
+    font-size: 0.66rem;
+    color: var(--accent);
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    padding: 0.05rem 0.4rem;
+    margin-left: 0.35rem;
+    vertical-align: 0.1rem;
+    white-space: nowrap;
+  }
+  .add-meta { color: var(--muted); font-size: 0.74rem; margin-top: 0.05rem; }
+  .add-desc {
+    color: var(--muted);
+    font-size: 0.73rem;
+    margin-top: 0.15rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 
   /* ---- sub bar: undo, sun, compass ---- */
   #subbar {
@@ -118,7 +188,31 @@
     align-items: flex-start;
     pointer-events: none;
   }
-  #subbar .right { display: flex; gap: 0.4rem; align-items: center; }
+  #subbar .right { display: flex; gap: 0.4rem; align-items: center; margin-left: auto; }
+
+  /* ---- undo/redo along the left edge ---- */
+  #edge-tools {
+    position: fixed;
+    left: 0.75rem;
+    top: 46%;
+    transform: translateY(-50%);
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+  #edge-tools button {
+    width: 2.8rem; height: 2.8rem;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    font-size: 1.15rem;
+    display: grid;
+    place-items: center;
+  }
+  #edge-tools button:disabled { opacity: 0.35; }
+  #edge-tools button:not(:disabled):active { border-color: var(--accent); color: var(--accent); }
   .chip {
     pointer-events: auto;
     border: 1px solid var(--line);
@@ -137,7 +231,7 @@
   #stats-pill {
     position: fixed;
     left: 0.75rem;
-    bottom: calc(7.9rem + var(--sab));
+    bottom: calc(0.9rem + var(--sab));
     z-index: 4;
     border-radius: 999px;
     padding: 0.38rem 0.8rem;
@@ -147,7 +241,7 @@
   #stats-pop {
     position: fixed;
     left: 0.75rem;
-    bottom: calc(10.3rem + var(--sab));
+    bottom: calc(3.4rem + var(--sab));
     z-index: 4;
     width: 14rem;
     border-radius: 0.7rem;
@@ -288,13 +382,12 @@
 
   /* ---- larger screens: same layout, roomier ---- */
   @media (min-width: 900px) {
-    /* auto margins center the row when it fits, without clipping when it scrolls */
-    .pal-btn:first-child { margin-left: auto; }
-    .pal-btn:last-child { margin-right: auto; }
-    #stats-pill { left: 1rem; bottom: calc(8.6rem + var(--sab)); }
-    #stats-pop { left: 1rem; bottom: calc(11rem + var(--sab)); }
+    #stats-pill { left: 1rem; bottom: 1rem; }
+    #stats-pop { left: 1rem; bottom: 3.5rem; }
+    #fab { right: 1rem; bottom: 1rem; }
+    #add-sheet { border-radius: 1rem 1rem 0 0; }
     #info {
-      left: auto; right: 1rem; bottom: 8.6rem;
+      left: auto; right: 1rem; bottom: 5.6rem;
       max-width: 19rem;
       border-radius: 0.8rem;
       border-width: 1px;
@@ -320,11 +413,15 @@
 </header>
 
 <div id="subbar">
-  <button id="btn-undo" class="chip">↩ Undo</button>
   <div class="right">
     <button id="btn-sun" class="chip">☀ Midday</button>
     <div id="compass" class="chip" title="North"><span id="needle">↑</span><span class="n">N</span></div>
   </div>
+</div>
+
+<div id="edge-tools">
+  <button id="btn-redo" aria-label="Redo" disabled>↪</button>
+  <button id="btn-undo" aria-label="Undo" disabled>↩</button>
 </div>
 
 <button id="stats-pill" class="panel">0 units</button>
@@ -341,8 +438,16 @@
   <div class="fine">Ballpark, fully fitted-out. Site work, utilities &amp; delivery extra.</div>
 </div>
 
-<div id="palette" class="panel">
-  <!-- populated by main.js -->
+<button id="fab" aria-label="Add a unit">+</button>
+
+<div id="add-backdrop"></div>
+<div id="add-sheet" class="panel">
+  <div class="handle"></div>
+  <div class="head">
+    <h3>Add a unit</h3>
+    <button id="add-close" class="x" aria-label="Close">✕</button>
+  </div>
+  <div id="add-list"><!-- populated by main.js --></div>
 </div>
 
 <div id="info" class="panel">
