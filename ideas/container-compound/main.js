@@ -543,8 +543,8 @@ function select(item) {
   document.body.classList.toggle("has-selection", !!item);
   const info = document.getElementById("info");
   if (!item) {
-    info.classList.remove("open");
-    if (typeof updateSelDims === "function") updateSelDims();
+    document.body.classList.remove("sheet-open");
+    updateSelDims();
     return;
   }
   item.ring.visible = true;
@@ -598,9 +598,15 @@ function select(item) {
   sepEl.textContent = msgs.join(" ");
   sepEl.style.display = msgs.length ? "block" : "none";
   document.getElementById("btn-plan").style.display = t.deck ? "none" : "block";
-  info.classList.add("open");
+  document.getElementById("sel-name").textContent = t.name;
+  // compose: selection shows the tool strip; the sheet opens via the name chip.
+  // dollhouse: tap goes straight to the (view-only) sheet.
+  if (mode === "dollhouse") document.body.classList.add("sheet-open");
   updateSelDims();
 }
+document.getElementById("sel-chip").addEventListener("click", () =>
+  document.body.classList.add("sheet-open"));
+document.getElementById("sel-x").addEventListener("click", () => select(null));
 
 // find an open spot near the center for a newly added unit
 function findSpot(type) {
@@ -794,7 +800,10 @@ document.getElementById("btn-delete").addEventListener("click", () => {
   pushUndo();
   removeItem(selected);
 });
-document.getElementById("btn-close").addEventListener("click", () => select(null));
+document.getElementById("btn-close").addEventListener("click", () => {
+  document.body.classList.remove("sheet-open");
+  if (mode === "dollhouse") select(null);
+});
 document.getElementById("stats-pill").addEventListener("click", () =>
   document.getElementById("stats-pop").classList.toggle("open"));
 document.getElementById("btn-va").addEventListener("click", () =>

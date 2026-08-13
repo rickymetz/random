@@ -383,7 +383,76 @@
     transform: translateY(108%);
     transition: transform 220ms ease;
   }
-  body.has-selection #info { transform: translateY(0); }
+  body.sheet-open #info { transform: translateY(0); }
+
+  /* ---- selection tool strip (compose mode) ---- */
+  #toolstrip {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(0.9rem + var(--sab));
+    z-index: 6;
+    display: none;
+    gap: 0.2rem;
+    padding: 0.35rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+  body.has-selection[data-mode="compose"] #toolstrip { display: flex; }
+  #toolstrip button {
+    width: 2.9rem; height: 2.9rem;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    font-size: 1.3rem;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+    color: var(--ink);
+  }
+  #toolstrip button svg { width: 1.25rem; height: 1.25rem; }
+  #toolstrip button.active { background: rgba(179, 84, 46, 0.15); color: var(--accent); }
+  #toolstrip button:not(.active):active { color: var(--accent); }
+
+  #sel-chip {
+    position: fixed;
+    right: 0.9rem;
+    bottom: calc(4.7rem + var(--sab));
+    z-index: 6;
+    display: none;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    border-radius: 999px;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  #sel-chip .i {
+    color: var(--muted);
+    font-weight: 400;
+    font-size: 0.95rem;
+  }
+  body.has-selection[data-mode="compose"] #sel-chip { display: flex; }
+  #sel-x {
+    position: fixed;
+    right: 0.9rem;
+    bottom: calc(8.1rem + var(--sab));
+    z-index: 6;
+    display: none;
+    width: 2.5rem; height: 2.5rem;
+    border-radius: 50%;
+    border: 1.5px dashed var(--muted);
+    background: rgba(252, 251, 248, 0.6);
+    color: var(--muted);
+    font-size: 1rem;
+    place-items: center;
+  }
+  body.has-selection[data-mode="compose"] #sel-x { display: grid; }
   #info .handle {
     width: 2.4rem; height: 0.28rem;
     background: var(--line);
@@ -519,7 +588,7 @@
       opacity: 0;
       transition: opacity 160ms ease;
     }
-    body.has-selection #info { visibility: visible; opacity: 1; }
+    body.sheet-open #info { visibility: visible; opacity: 1; }
     #va-modal { place-items: center; }
     #va-modal .box { border-radius: 0.9rem; width: calc(100vw - 3rem); padding-bottom: 1.3rem; }
   }
@@ -606,12 +675,21 @@
   <div class="wet" id="info-wet"></div>
   <div class="sep" id="info-sep"></div>
   <button id="btn-plan" class="wide">Floor plan</button>
-  <div class="row">
-    <button id="btn-rotate">Rotate</button>
-    <button id="btn-dup">Duplicate</button>
-    <button id="btn-delete">Delete</button>
-  </div>
 </div>
+
+<div id="toolstrip" class="panel">
+  <button id="tool-move" class="active" aria-label="Move (drag the unit)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>
+  </button>
+  <button id="btn-rotate" aria-label="Rotate 90°">⟳</button>
+  <button id="btn-dup" aria-label="Duplicate">⧉</button>
+  <button id="btn-delete" aria-label="Delete">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v7M14 10v7"/></svg>
+  </button>
+</div>
+
+<button id="sel-chip"><span id="sel-name"></span><span class="i">ⓘ</span></button>
+<button id="sel-x" aria-label="Deselect">✕</button>
 
 <div id="va-modal">
   <div class="box">
