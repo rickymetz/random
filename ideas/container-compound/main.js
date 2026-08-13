@@ -542,7 +542,11 @@ function select(item) {
   selected = item;
   document.body.classList.toggle("has-selection", !!item);
   const info = document.getElementById("info");
-  if (!item) { info.classList.remove("open"); return; }
+  if (!item) {
+    info.classList.remove("open");
+    if (typeof updateSelDims === "function") updateSelDims();
+    return;
+  }
   item.ring.visible = true;
   const t = TYPE_BY_ID[item.typeId];
   document.getElementById("info-name").textContent = t.name;
@@ -593,7 +597,9 @@ function select(item) {
   }
   sepEl.textContent = msgs.join(" ");
   sepEl.style.display = msgs.length ? "block" : "none";
+  document.getElementById("btn-plan").style.display = t.deck ? "none" : "block";
   info.classList.add("open");
+  updateSelDims();
 }
 
 // find an open spot near the center for a newly added unit
@@ -677,6 +683,23 @@ const EXAMPLE = {
 
 // --------------------------------------------------------------------- UI
 
+// ---- modes: compose (edit) / dollhouse (inspect) / parts (list) ----
+let mode = "compose";
+document.body.dataset.mode = "compose";
+function setMode(m) {
+  if (mode === m) return;
+  mode = m;
+  document.body.dataset.mode = m;
+  for (const b of document.querySelectorAll("#tabbar button"))
+    b.classList.toggle("active", b.dataset.mode === m);
+  select(null);
+  closeAdd();
+  clearDragLabels();
+  if (m === "parts") renderParts();
+}
+for (const b of document.querySelectorAll("#tabbar button"))
+  b.addEventListener("click", () => setMode(b.dataset.mode));
+
 const addList = document.getElementById("add-list");
 const openAdd = () => { select(null); document.body.classList.add("add-open"); };
 const closeAdd = () => document.body.classList.remove("add-open");
@@ -757,7 +780,7 @@ document.getElementById("btn-sun").addEventListener("click", () => {
 });
 
 document.getElementById("btn-dup").addEventListener("click", () => {
-  if (!selected) return;
+  if (!selected || mode !== "compose") return;
   pushUndo();
   const t = TYPE_BY_ID[selected.typeId];
   const spot = findSpot(t);
@@ -767,7 +790,7 @@ document.getElementById("btn-dup").addEventListener("click", () => {
 
 document.getElementById("btn-rotate").addEventListener("click", rotateSelected);
 document.getElementById("btn-delete").addEventListener("click", () => {
-  if (!selected) return;
+  if (!selected || mode !== "compose") return;
   pushUndo();
   removeItem(selected);
 });
@@ -797,7 +820,7 @@ document.getElementById("btn-share").addEventListener("click", async () => {
 });
 
 function rotateSelected() {
-  if (!selected) return;
+  if (!selected || mode !== "compose") return;
   const preBlocked = blockedPairs().length;
   pushUndo();
   selected.rot = (selected.rot + 1) % 4;
@@ -820,7 +843,7 @@ addEventListener("keydown", (e) => {
     e.preventDefault(); redo();
   } else if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
   else if (e.key === "r" || e.key === "R") rotateSelected();
-  else if ((e.key === "Delete" || e.key === "Backspace") && selected) {
+  else if ((e.key === "Delete" || e.key === "Backspace") && selected && mode === "compose") {
     e.preventDefault();
     pushUndo();
     removeItem(selected);
@@ -980,6 +1003,80 @@ function updateStats() {
     (sepPairs.length ? ` · △${sepPairs.length}` : "");
 }
 
+// ------------------------------------------------- CAD-style dimension labels
+
+const labelCache = new Map();
+function dimSprite(text, danger) {
+  const key = text + (danger ? "!" : "");
+  let proto = labelCache.get(key);
+  if (!proto) {
+    const c = document.createElement("canvas");
+    const measure = c.getContext("2d");
+    measure.font = "600 34px ui-sans-serif, system-ui, sans-serif";
+    const w = Math.ceil(measure.measureText(text).width) + 30;
+    c.width = w;
+    c.height = 54;
+    const g = c.getContext("2d");
+    g.fillStyle = danger ? "rgba(192, 87, 74, 0.92)" : "rgba(43, 43, 40, 0.85)";
+    g.beginPath();
+    g.roundRect(0, 0, w, 54, 16);
+    g.fill();
+    g.font = "600 34px ui-sans-serif, system-ui, sans-serif";
+    g.fillStyle = "#fff";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(text, w / 2, 28);
+    const tex = new THREE.CanvasTexture(c);
+    proto = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
+    proto.scale.set(w / 15, 54 / 15, 1);
+    labelCache.set(key, proto);
+  }
+  return proto.clone(); // clones share the material/texture
+}
+
+const dragLabelGroup = new THREE.Group();
+const selDimGroup = new THREE.Group();
+scene.add(dragLabelGroup, selDimGroup);
+
+function clearDragLabels() {
+  for (const c of [...dragLabelGroup.children]) dragLabelGroup.remove(c);
+}
+// gap distances from the dragged unit to its nearest neighbors
+function updateDragLabels(it) {
+  clearDragLabels();
+  if (TYPE_BY_ID[it.typeId].deck) return;
+  const near = items
+    .filter((o) => o !== it && !TYPE_BY_ID[o.typeId].deck)
+    .map((o) => ({ o, gap: gapBetween(it, o) }))
+    .filter((e) => e.gap < 26)
+    .sort((a, b) => a.gap - b.gap)
+    .slice(0, 3);
+  for (const { o, gap } of near) {
+    const danger = gap > JOIN_EPS && gap < SEP_CLEAR;
+    const s = dimSprite(gap <= JOIN_EPS ? "butt" : `${Math.round(gap)}′`, danger);
+    s.position.set((it.x + o.x) / 2, 6, (it.z + o.z) / 2);
+    dragLabelGroup.add(s);
+  }
+}
+// footprint dimensions of the selected unit
+function updateSelDims() {
+  for (const c of [...selDimGroup.children]) selDimGroup.remove(c);
+  if (!selected || mode !== "compose") return;
+  const t = TYPE_BY_ID[selected.typeId];
+  if (t.deck) return;
+  const [hw, hd] = halfDims(selected);
+  const lenLabel = dimSprite(`${t.len}′`, false);
+  const widLabel = dimSprite(`${t.wid}′`, false);
+  if (selected.rot % 2 === 0) {
+    lenLabel.position.set(selected.x, 4, selected.z + hd + 2.6);
+    widLabel.position.set(selected.x + hw + 2.6, 4, selected.z);
+  } else {
+    lenLabel.position.set(selected.x + hw + 2.6, 4, selected.z);
+    widLabel.position.set(selected.x, 4, selected.z + hd + 2.6);
+  }
+  selDimGroup.add(lenLabel, widLabel);
+}
+
 // ------------------------------------------------------- picking & dragging
 
 const raycaster = new THREE.Raycaster();
@@ -1022,7 +1119,7 @@ renderer.domElement.addEventListener("pointerdown", (e) => {
   const it = itemAt(e.clientX, e.clientY);
   downPos = { x: e.clientX, y: e.clientY };
   moved = false;
-  if (it) {
+  if (it && mode === "compose") {
     dragging = it;
     dragSnapshot = JSON.stringify(serialize());
     preBlocked = blockedPairs().length;
@@ -1049,6 +1146,8 @@ renderer.domElement.addEventListener("pointermove", (e) => {
   dragging.z = Math.round(p.z + dragOffset.z);
   applyTransform(dragging);
   updateCompliance(); // live separation + trench feedback while dragging
+  updateDragLabels(dragging);
+  if (dragging === selected) updateSelDims();
 });
 
 renderer.domElement.addEventListener("pointerup", (e) => {
@@ -1065,15 +1164,146 @@ renderer.domElement.addEventListener("pointerup", (e) => {
         if (selected) select(selected); // refresh plumbing/separation hints
       }
     } else select(selected === dragging ? null : dragging);
+    clearDragLabels();
     dragging = null;
     controls.enabled = true;
   } else if (downPos && !moved) {
-    // clicked empty ground
+    // click without a drag: select in dollhouse, deselect on empty ground
     const it = itemAt(e.clientX, e.clientY);
-    if (!it) select(null);
+    if (mode === "dollhouse") select(it && !TYPE_BY_ID[it.typeId].deck ? it : null);
+    else if (!it) select(null);
   }
   downPos = null;
 });
+
+// ------------------------------------------------------------- parts list
+
+function renderParts() {
+  const qty = new Map();
+  for (const it of items) qty.set(it.typeId, (qty.get(it.typeId) || 0) + 1);
+
+  let unitsRows = "", unitsTotal = 0;
+  for (const t of TYPES) {
+    if (t.deck) continue;
+    const n = qty.get(t.id);
+    if (!n) continue;
+    unitsRows += `<tr><td>${t.name}</td><td>×${n}</td><td>$${t.cost.toLocaleString()}</td><td>$${(t.cost * n).toLocaleString()}</td></tr>`;
+    unitsTotal += t.cost * n;
+  }
+
+  const ORDER_LABEL = {
+    standard: "20′ high cube — standard",
+    tunnel: "20′ high cube — tunnel (doors both ends)",
+    openside: "20′ high cube — open-side",
+  };
+  const order = new Map();
+  for (const it of items) {
+    const t = TYPE_BY_ID[it.typeId];
+    if (t.deck) continue;
+    const key = t.len === 10 ? "10′ mini high cube — standard" : ORDER_LABEL[t.variant];
+    order.set(key, (order.get(key) || 0) + 1);
+  }
+  let orderRows = "";
+  for (const [k, n] of order) orderRows += `<tr><td>${k}</td><td>×${n}</td></tr>`;
+
+  const decks = qty.get("deck") || 0;
+  const deckCost = decks * TYPE_BY_ID.deck.cost;
+  const total = unitsTotal + deckCost + trenchCost;
+
+  document.getElementById("parts-list").innerHTML = `
+    <h4>Units</h4>
+    <table>${unitsRows || "<tr><td>No units yet</td></tr>"}</table>
+    <h4>Container order</h4>
+    <table>${orderRows || "<tr><td>—</td></tr>"}</table>
+    <h4>Site</h4>
+    <table>
+      <tr><td>Deck sections (8′ × 8′)</td><td>×${decks}</td><td></td><td>$${deckCost.toLocaleString()}</td></tr>
+      <tr><td>Utility trench</td><td>${trenchFt} ft</td><td>$${TRENCH_PER_FT}/ft</td><td>$${trenchCost.toLocaleString()}</td></tr>
+    </table>
+    <table class="grand"><tr><td>Total (rough)</td><td>$${total.toLocaleString()}</td></tr></table>
+    <div class="fine">Ballpark, fully fitted-out. Site work, utility hookups &amp; container delivery extra.</div>`;
+}
+
+// ------------------------------------------------------------- floor plans
+
+// index-aligned with each type's furniture array
+const PLAN_LABELS = {
+  sleeping: ["bed", "", "", "wardrobe", "bench"],
+  kitchen: ["counter run", "fridge", "pantry", "island"],
+  bathhouse: ["shower", "shower", "soaking tub", "bench"],
+  "bath-laundry": ["shower", "WC", "vanity", "washer", "dryer", "counter"],
+  dining: ["table", "", "", "", "", "", "", "sideboard"],
+  living: ["sofa", "table", "media", "stove"],
+  bathroom: ["shower", "WC", "vanity"],
+  laundry: ["washer", "dryer", "WH", "shelving"],
+  office: ["desk", "", "bookshelves", "chair", "cab"],
+  hobby: ["workbench", "shelving", "bins"],
+};
+
+function planSVG(t) {
+  const S = 22, M = 46; // px per foot, margin
+  const L = t.len, W = t.wid;
+  const width = L * S + M * 2, height = W * S + M * 2;
+  const X = (x) => M + (x + L / 2) * S;
+  const Y = (z) => M + (z + W / 2) * S;
+  let s = "";
+
+  // steel shell + finished interior (spray foam line)
+  s += `<rect x="${X(-L / 2)}" y="${Y(-W / 2)}" width="${L * S}" height="${W * S}" fill="#f7f5f1" stroke="#2b2b28" stroke-width="3"/>`;
+  s += `<rect x="${X(-L / 2 + 0.55)}" y="${Y(-W / 2 + 0.42)}" width="${(L - 1.1) * S}" height="${(W - 0.84) * S}" fill="none" stroke="#b8b2a6" stroke-width="1.5" stroke-dasharray="6 5"/>`;
+
+  // glazed apertures, entry door leaf + outswing, egress arrow
+  const ends = t.variant === "tunnel" ? [1, -1] : [1];
+  for (const e of ends) {
+    const gx = X(e * (L / 2 - 0.5));
+    s += `<line x1="${gx}" y1="${Y(-W / 2 + 0.5)}" x2="${gx}" y2="${Y(W / 2 - 0.5)}" stroke="#5aa9e6" stroke-width="4"/>`;
+    const hx = X(e * L / 2), hy = Y(-3.1), dw = 3 * S;
+    s += `<line x1="${hx}" y1="${hy}" x2="${hx + e * dw * 0.7}" y2="${hy - dw * 0.7}" stroke="#4f4a42" stroke-width="3" stroke-linecap="round"/>`;
+    s += `<path d="M ${hx + e * dw * 0.7} ${hy - dw * 0.7} A ${dw} ${dw} 0 0 ${e === 1 ? 1 : 0} ${hx} ${hy + (0 * dw)}" fill="none" stroke="#4f4a42" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.7"/>`;
+    s += `<line x1="${X(e * (L / 2 - 3.4))}" y1="${Y(-1.6)}" x2="${X(e * (L / 2 + 1.5))}" y2="${Y(-1.6)}" stroke="#c0574a" stroke-width="2" marker-end="url(#arr)"/>`;
+  }
+  if (t.variant === "openside") {
+    s += `<line x1="${X(-L / 2 + 0.9)}" y1="${Y(W / 2 - 0.35)}" x2="${X(L / 2 - 0.9)}" y2="${Y(W / 2 - 0.35)}" stroke="#5aa9e6" stroke-width="4"/>`;
+  }
+
+  // furniture with labels
+  const labels = PLAN_LABELS[t.id] || [];
+  t.furniture.forEach((f, i) => {
+    s += `<rect x="${X(f.x - f.w / 2)}" y="${Y(f.z - f.d / 2)}" width="${f.w * S}" height="${f.d * S}" rx="3" fill="#${f.color.toString(16).padStart(6, "0")}" stroke="rgba(0,0,0,0.28)"/>`;
+    if (labels[i] && f.w * S > 34) {
+      s += `<text x="${X(f.x)}" y="${Y(f.z) + 3.5}" text-anchor="middle" font-size="10.5" fill="#2b2b28" font-family="ui-sans-serif, system-ui">${labels[i]}</text>`;
+    }
+  });
+
+  // dimension lines
+  const tick = (x, y, dx, dy) => `<line x1="${x - dx}" y1="${y - dy}" x2="${x + dx}" y2="${y + dy}" stroke="#77746c" stroke-width="1.2"/>`;
+  const dyH = Y(W / 2) + 22;
+  s += `<line x1="${X(-L / 2)}" y1="${dyH}" x2="${X(L / 2)}" y2="${dyH}" stroke="#77746c" stroke-width="1.2"/>`;
+  s += tick(X(-L / 2), dyH, 0, 5) + tick(X(L / 2), dyH, 0, 5);
+  s += `<text x="${X(0)}" y="${dyH - 6}" text-anchor="middle" font-size="12" fill="#2b2b28" font-family="ui-sans-serif, system-ui">${L}′0″</text>`;
+  const dxV = X(L / 2) + 22;
+  s += `<line x1="${dxV}" y1="${Y(-W / 2)}" x2="${dxV}" y2="${Y(W / 2)}" stroke="#77746c" stroke-width="1.2"/>`;
+  s += tick(dxV, Y(-W / 2), 5, 0) + tick(dxV, Y(W / 2), 5, 0);
+  s += `<text x="${dxV + 6}" y="${Y(0)}" text-anchor="middle" font-size="12" fill="#2b2b28" font-family="ui-sans-serif, system-ui" transform="rotate(90 ${dxV + 6} ${Y(0)})">${W}′0″</text>`;
+  s += `<text x="${X(0)}" y="${Y(-W / 2) - 10}" text-anchor="middle" font-size="11" fill="#77746c" font-family="ui-sans-serif, system-ui">interior ≈ 7′2″ wide × ${t.len === 20 ? "18′8″" : "8′7″"} after spray foam</text>`;
+
+  return `<svg viewBox="0 0 ${width} ${height + 8}" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#c0574a"/></marker></defs>
+    ${s}</svg>`;
+}
+
+function openPlan(t) {
+  document.getElementById("plan-title").textContent = `${t.name} — floor plan`;
+  document.getElementById("plan-sub").textContent =
+    `${t.len}' ${t.len === 10 ? "mini " : ""}high cube · glazed apertures in blue · egress in red · dashed line is the finished interior`;
+  document.getElementById("plan-svg").innerHTML = planSVG(t);
+  document.getElementById("plan-modal").classList.add("open");
+}
+document.getElementById("btn-plan").addEventListener("click", () => {
+  if (selected) openPlan(TYPE_BY_ID[selected.typeId]);
+});
+document.getElementById("plan-close").addEventListener("click", () =>
+  document.getElementById("plan-modal").classList.remove("open"));
 
 // ------------------------------------------------------------------- boot
 
@@ -1101,9 +1331,9 @@ function animate() {
     needle.style.transform = `rotate(${az}rad)`;
     lastAzimuth = az;
   }
-  // peek: lift roof + fade walls on the selected unit
+  // peek: lift roof + fade walls on the selected unit (all units in dollhouse)
   for (const it of items) {
-    const target = it === selected ? 1 : 0;
+    const target = mode === "dollhouse" || it === selected ? 1 : 0;
     if (Math.abs(it.peek - target) > 0.001) {
       it.peek += (target - it.peek) * Math.min(1, dt * 7);
       const ud = it.group.userData;
