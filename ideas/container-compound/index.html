@@ -188,7 +188,31 @@
     align-items: flex-start;
     pointer-events: none;
   }
-  #subbar .right { display: flex; gap: 0.4rem; align-items: center; }
+  #subbar .right { display: flex; gap: 0.4rem; align-items: center; margin-left: auto; }
+
+  /* ---- undo/redo along the left edge ---- */
+  #edge-tools {
+    position: fixed;
+    left: 0.75rem;
+    top: 46%;
+    transform: translateY(-50%);
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+  #edge-tools button {
+    width: 2.8rem; height: 2.8rem;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    font-size: 1.15rem;
+    display: grid;
+    place-items: center;
+  }
+  #edge-tools button:disabled { opacity: 0.35; }
+  #edge-tools button:not(:disabled):active { border-color: var(--accent); color: var(--accent); }
   .chip {
     pointer-events: auto;
     border: 1px solid var(--line);
@@ -389,11 +413,15 @@
 </header>
 
 <div id="subbar">
-  <button id="btn-undo" class="chip">↩ Undo</button>
   <div class="right">
     <button id="btn-sun" class="chip">☀ Midday</button>
     <div id="compass" class="chip" title="North"><span id="needle">↑</span><span class="n">N</span></div>
   </div>
+</div>
+
+<div id="edge-tools">
+  <button id="btn-redo" aria-label="Redo" disabled>↪</button>
+  <button id="btn-undo" aria-label="Undo" disabled>↩</button>
 </div>
 
 <button id="stats-pill" class="panel">0 units</button>

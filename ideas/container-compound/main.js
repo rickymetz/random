@@ -719,19 +719,37 @@ for (const group of ADD_GROUPS) {
   }
 }
 
-// ---- undo ----
+// ---- undo / redo ----
 const undoStack = [];
+const redoStack = [];
+function updateHistoryButtons() {
+  document.getElementById("btn-undo").disabled = !undoStack.length;
+  document.getElementById("btn-redo").disabled = !redoStack.length;
+}
 function pushUndo() {
   undoStack.push(JSON.stringify(serialize()));
   if (undoStack.length > 60) undoStack.shift();
+  redoStack.length = 0; // a new action invalidates the redo branch
+  updateHistoryButtons();
 }
 function undo() {
   const prev = undoStack.pop();
   if (!prev) { toast("Nothing to undo"); return; }
+  redoStack.push(JSON.stringify(serialize()));
   loadFrom(JSON.parse(prev));
+  updateHistoryButtons();
   toast("Undone");
 }
+function redo() {
+  const next = redoStack.pop();
+  if (!next) { toast("Nothing to redo"); return; }
+  undoStack.push(JSON.stringify(serialize()));
+  loadFrom(JSON.parse(next));
+  updateHistoryButtons();
+  toast("Redone");
+}
 document.getElementById("btn-undo").addEventListener("click", undo);
+document.getElementById("btn-redo").addEventListener("click", redo);
 
 document.getElementById("btn-sun").addEventListener("click", () => {
   sunIdx = (sunIdx + 1) % SUNS.length;
@@ -787,6 +805,7 @@ function rotateSelected() {
   if (blockedPairs().length > preBlocked) {
     const snap = undoStack.pop();
     loadFrom(JSON.parse(snap));
+    updateHistoryButtons();
     toast("That blocks a door wall — keep apertures clear");
     return;
   }
@@ -797,7 +816,9 @@ function rotateSelected() {
 
 addEventListener("keydown", (e) => {
   if (e.target instanceof HTMLInputElement) return;
-  if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
+  if ((e.metaKey || e.ctrlKey) && (e.key === "y" || (e.shiftKey && (e.key === "z" || e.key === "Z")))) {
+    e.preventDefault(); redo();
+  } else if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
   else if (e.key === "r" || e.key === "R") rotateSelected();
   else if ((e.key === "Delete" || e.key === "Backspace") && selected) {
     e.preventDefault();
@@ -1018,6 +1039,8 @@ renderer.domElement.addEventListener("pointermove", (e) => {
     moved = true;
     undoStack.push(dragSnapshot); // pre-drag state, one undo step per drag
     if (undoStack.length > 60) undoStack.shift();
+    redoStack.length = 0;
+    updateHistoryButtons();
   }
   if (!moved) return;
   const p = groundPoint(e.clientX, e.clientY);
@@ -1034,6 +1057,7 @@ renderer.domElement.addEventListener("pointerup", (e) => {
       if (blockedPairs().length > preBlocked) {
         const snap = undoStack.pop(); // the pre-drag snapshot
         loadFrom(JSON.parse(snap));
+        updateHistoryButtons();
         toast("That blocks a door wall — butt against solid sides only");
       } else {
         save();
