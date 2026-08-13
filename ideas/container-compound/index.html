@@ -2,92 +2,171 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Container Compound</title>
 <meta name="description" content="Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.">
 <style>
   :root {
-    --panel: rgba(252, 251, 248, 0.92);
+    --panel: rgba(252, 251, 248, 0.94);
     --ink: #2b2b28;
     --muted: #77746c;
     --line: #e2ded6;
     --accent: #b3542e;
-    --shadow: 0 2px 16px rgba(30, 30, 25, 0.12);
+    --shadow: 0 2px 16px rgba(30, 30, 25, 0.14);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sat: env(safe-area-inset-top, 0px);
   }
-  * { box-sizing: border-box; margin: 0; }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; overflow: hidden; }
   body {
-    font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     color: var(--ink);
     background: #dde7ee;
+    user-select: none;
+    -webkit-user-select: none;
   }
-  canvas { display: block; }
+  canvas { display: block; touch-action: none; }
   .panel {
-    position: fixed;
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 0.7rem;
     box-shadow: var(--shadow);
-    backdrop-filter: blur(6px);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
+  button { font: inherit; color: inherit; cursor: pointer; }
 
-  #brand {
-    top: 0.9rem; left: 0.9rem;
-    padding: 0.5rem 0.8rem;
-  }
-  #brand a { color: var(--muted); text-decoration: none; font-size: 0.8rem; }
-  #brand a:hover { color: var(--ink); }
-  #brand h1 { font-size: 0.95rem; letter-spacing: -0.01em; }
-
-  #palette {
-    top: 5.4rem; left: 0.9rem;
-    width: 13.5rem;
-    max-height: calc(100vh - 19.5rem); /* stops above the stats panel */
-    overflow-y: auto;
-    padding: 0.6rem;
-  }
-  #palette h2, #info h2, #stats h2 {
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--muted);
-    padding: 0.2rem 0.35rem 0.45rem;
-  }
-  .pal-btn {
+  /* ---- top bar ---- */
+  #topbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 5;
     display: flex;
     align-items: center;
     gap: 0.55rem;
-    width: 100%;
-    border: 0;
-    background: transparent;
-    border-radius: 0.45rem;
-    padding: 0.42rem 0.35rem;
-    cursor: pointer;
-    text-align: left;
-    font: inherit;
-    color: inherit;
+    padding: calc(0.5rem + var(--sat)) 0.75rem 0.5rem;
+    border-width: 0 0 1px 0;
   }
-  .pal-btn:hover { background: rgba(179, 84, 46, 0.09); }
-  .pal-chip {
-    width: 1.9rem; height: 1.15rem;
-    border-radius: 0.25rem;
+  #topbar .back {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.95rem;
+    padding: 0.3rem 0.35rem;
+  }
+  #topbar h1 {
+    font-size: 0.95rem;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1;
+  }
+  #topbar button {
     flex: none;
+    font-size: 0.8rem;
+    padding: 0.42rem 0.65rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+  #topbar button:active { border-color: var(--accent); color: var(--accent); }
+
+  /* ---- bottom palette bar ---- */
+  #palette {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 5;
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding: 0.6rem 0.75rem calc(0.6rem + var(--sab));
+    border-width: 1px 0 0 0;
+    scrollbar-width: none;
+  }
+  #palette::-webkit-scrollbar { display: none; }
+  .pal-btn {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.28rem;
+    width: 8.6rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    border-radius: 0.65rem;
+    padding: 0.55rem 0.65rem;
+    text-align: left;
+  }
+  .pal-btn:active { border-color: var(--accent); }
+  .pal-chip {
+    width: 2.1rem; height: 1.2rem;
+    border-radius: 0.28rem;
     border: 1px solid rgba(0,0,0,0.15);
   }
-  .pal-chip.mini { width: 1.15rem; }
-  .pal-name { font-weight: 600; font-size: 0.83rem; }
-  .pal-sub { color: var(--muted); font-size: 0.72rem; }
+  .pal-chip.mini { width: 1.25rem; }
+  .pal-name { font-weight: 600; font-size: 0.78rem; line-height: 1.2; }
+  .pal-sub { color: var(--muted); font-size: 0.68rem; line-height: 1.25; }
 
-  #info {
-    top: 0.9rem; right: 0.9rem;
-    width: 16.5rem;
-    padding: 0.8rem 0.9rem;
+  /* ---- stats pill + popover ---- */
+  #stats-pill {
+    position: fixed;
+    left: 0.75rem;
+    bottom: calc(7.9rem + var(--sab));
+    z-index: 4;
+    border-radius: 999px;
+    padding: 0.38rem 0.8rem;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+  }
+  #stats-pop {
+    position: fixed;
+    left: 0.75rem;
+    bottom: calc(10.3rem + var(--sab));
+    z-index: 4;
+    width: 14rem;
+    border-radius: 0.7rem;
+    padding: 0.7rem 0.8rem;
     display: none;
   }
-  #info.open { display: block; }
-  #info h3 { font-size: 1rem; margin-bottom: 0.1rem; }
-  #info .sub { color: var(--muted); font-size: 0.78rem; margin-bottom: 0.55rem; }
-  #info p { font-size: 0.82rem; margin-bottom: 0.55rem; }
+  #stats-pop.open { display: block; }
+  #stats-pop table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  #stats-pop td { padding: 0.14rem 0; }
+  #stats-pop td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  #stats-pop .total td { border-top: 1px solid var(--line); padding-top: 0.3rem; font-weight: 600; }
+  #stats-pop .fine { color: var(--muted); font-size: 0.66rem; margin-top: 0.45rem; }
+
+  /* ---- selection bottom sheet ---- */
+  #info {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 6;
+    margin: 0 auto;
+    max-width: 30rem;
+    max-height: 62vh;
+    overflow-y: auto;
+    border-radius: 1rem 1rem 0 0;
+    border-width: 1px 1px 0 1px;
+    padding: 0.7rem 1rem calc(1rem + var(--sab));
+    transform: translateY(108%);
+    transition: transform 220ms ease;
+  }
+  body.has-selection #info { transform: translateY(0); }
+  #info .handle {
+    width: 2.4rem; height: 0.28rem;
+    background: var(--line);
+    border-radius: 999px;
+    margin: 0 auto 0.6rem;
+  }
+  #info .head { display: flex; align-items: baseline; gap: 0.6rem; }
+  #info h3 { font-size: 1.05rem; flex: 1; }
+  #info .x {
+    border: 0; background: transparent;
+    color: var(--muted);
+    font-size: 1.15rem;
+    padding: 0.1rem 0.3rem;
+  }
+  #info .sub { color: var(--muted); font-size: 0.76rem; margin: 0.15rem 0 0.55rem; }
+  #info p { font-size: 0.84rem; margin-bottom: 0.55rem; }
   #info .build {
     font-size: 0.72rem;
     color: var(--muted);
@@ -101,7 +180,7 @@
     color: var(--muted);
     border-left: 3px solid var(--accent);
     padding-left: 0.55rem;
-    margin-bottom: 0.65rem;
+    margin-bottom: 0.55rem;
   }
   #info .wet {
     display: none;
@@ -109,99 +188,63 @@
     color: var(--muted);
     border-left: 3px solid #7e97a6;
     padding-left: 0.55rem;
-    margin-bottom: 0.65rem;
+    margin-bottom: 0.55rem;
   }
-  #info .row { display: flex; gap: 0.45rem; }
-  #info button {
+  #info .row { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
+  #info .row button {
     flex: 1;
-    font: inherit;
-    font-size: 0.78rem;
-    padding: 0.38rem 0.5rem;
-    border-radius: 0.45rem;
+    font-size: 0.85rem;
+    padding: 0.6rem 0.5rem;
+    border-radius: 0.55rem;
     border: 1px solid var(--line);
     background: #fff;
-    cursor: pointer;
   }
-  #info button:hover { border-color: var(--accent); color: var(--accent); }
+  #info .row button:active { border-color: var(--accent); color: var(--accent); }
 
-  #stats {
-    bottom: 0.9rem; left: 0.9rem;
-    width: 13.5rem;
-    padding: 0.7rem 0.8rem;
-  }
-  #stats table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-  #stats td { padding: 0.12rem 0; }
-  #stats td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
-  #stats .total td { border-top: 1px solid var(--line); padding-top: 0.3rem; font-weight: 600; }
-  #stats .fine { color: var(--muted); font-size: 0.68rem; margin-top: 0.45rem; }
-
-  #actions {
-    top: 0.9rem; right: 0.9rem;
-    display: flex;
-    gap: 0.4rem;
-    padding: 0.4rem;
-  }
-  body.has-selection #actions { right: 18.4rem; }
-  #actions button {
-    font: inherit;
-    font-size: 0.78rem;
-    padding: 0.34rem 0.6rem;
-    border-radius: 0.45rem;
-    border: 1px solid var(--line);
-    background: #fff;
-    cursor: pointer;
-  }
-  #actions button:hover { border-color: var(--accent); color: var(--accent); }
-
-  #hint {
-    bottom: 0.9rem; left: 50%;
-    transform: translateX(-50%);
-    padding: 0.35rem 0.8rem;
-    color: var(--muted);
-    font-size: 0.75rem;
-    white-space: nowrap;
-  }
-
+  /* ---- VA modal ---- */
   #va-modal {
     position: fixed;
     inset: 0;
     background: rgba(30, 28, 24, 0.45);
     display: none;
-    place-items: center;
+    place-items: end center;
     z-index: 10;
   }
   #va-modal.open { display: grid; }
   #va-modal .box {
     background: var(--panel);
-    border-radius: 0.8rem;
+    border-radius: 1rem 1rem 0 0;
     max-width: 34rem;
-    width: calc(100vw - 3rem);
-    max-height: 80vh;
+    width: 100vw;
+    max-height: 82vh;
     overflow-y: auto;
-    padding: 1.4rem 1.6rem;
+    padding: 1.2rem 1.3rem calc(1.3rem + var(--sab));
     box-shadow: var(--shadow);
   }
-  #va-modal h2 { font-size: 1.05rem; margin-bottom: 0.7rem; }
-  #va-modal li { margin: 0 0 0.55rem 1.1rem; font-size: 0.85rem; }
-  #va-modal .fine { color: var(--muted); font-size: 0.75rem; margin-top: 0.8rem; }
+  #va-modal h2 { font-size: 1rem; margin-bottom: 0.7rem; }
+  #va-modal li { margin: 0 0 0.55rem 1.1rem; font-size: 0.83rem; }
+  #va-modal .fine { color: var(--muted); font-size: 0.72rem; margin-top: 0.8rem; }
   #va-modal button {
     margin-top: 1rem;
-    font: inherit;
-    padding: 0.4rem 0.9rem;
-    border-radius: 0.45rem;
+    width: 100%;
+    padding: 0.6rem 0.9rem;
+    border-radius: 0.55rem;
     border: 1px solid var(--line);
     background: #fff;
-    cursor: pointer;
   }
 
+  /* ---- toast ---- */
   #toast {
     position: fixed;
-    top: 4.2rem; right: 0.9rem;
+    top: calc(3.4rem + var(--sat));
+    left: 50%;
+    transform: translateX(-50%);
     background: var(--ink);
     color: #fff;
-    padding: 0.45rem 0.8rem;
-    border-radius: 0.45rem;
-    font-size: 0.78rem;
+    padding: 0.45rem 0.9rem;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    white-space: nowrap;
     opacity: 0;
     transition: opacity 200ms;
     pointer-events: none;
@@ -209,46 +252,41 @@
   }
   #toast.show { opacity: 1; }
 
-  @media (max-width: 760px) {
-    #palette { width: 11.5rem; }
-    #stats { display: none; }
-    #hint { display: none; }
+  /* ---- larger screens: same layout, roomier ---- */
+  @media (min-width: 900px) {
+    /* auto margins center the row when it fits, without clipping when it scrolls */
+    .pal-btn:first-child { margin-left: auto; }
+    .pal-btn:last-child { margin-right: auto; }
+    #stats-pill { left: 1rem; bottom: calc(8.6rem + var(--sab)); }
+    #stats-pop { left: 1rem; bottom: calc(11rem + var(--sab)); }
+    #info {
+      left: auto; right: 1rem; bottom: 8.6rem;
+      max-width: 19rem;
+      border-radius: 0.8rem;
+      border-width: 1px;
+      transform: none;
+      visibility: hidden;
+      opacity: 0;
+      transition: opacity 160ms ease;
+    }
+    body.has-selection #info { visibility: visible; opacity: 1; }
+    #va-modal { place-items: center; }
+    #va-modal .box { border-radius: 0.9rem; width: calc(100vw - 3rem); padding-bottom: 1.3rem; }
   }
 </style>
 </head>
 <body>
 
-<div id="brand" class="panel">
-  <a href="../../">← random</a>
+<header id="topbar" class="panel">
+  <a class="back" href="../../">←</a>
   <h1>Container Compound</h1>
-</div>
-
-<div id="palette" class="panel">
-  <h2>Add a unit</h2>
-  <!-- populated by main.js -->
-</div>
-
-<div id="actions" class="panel">
   <button id="btn-share">Share</button>
   <button id="btn-va">VA notes</button>
   <button id="btn-reset">Reset</button>
-</div>
+</header>
 
-<div id="info" class="panel">
-  <h3 id="info-name"></h3>
-  <div class="sub" id="info-sub"></div>
-  <p id="info-desc"></p>
-  <div class="build" id="info-build"></div>
-  <div class="va" id="info-va"></div>
-  <div class="wet" id="info-wet"></div>
-  <div class="row">
-    <button id="btn-rotate">Rotate (R)</button>
-    <button id="btn-delete">Delete (⌫)</button>
-  </div>
-</div>
-
-<div id="stats" class="panel">
-  <h2>Compound</h2>
+<button id="stats-pill" class="panel">0 units</button>
+<div id="stats-pop" class="panel">
   <table>
     <tr><td>Units</td><td id="st-units">0</td></tr>
     <tr><td>20&#8242; high cubes</td><td id="st-hc20">0</td></tr>
@@ -260,7 +298,26 @@
   <div class="fine">Ballpark, fully fitted-out. Site work, utilities &amp; delivery extra.</div>
 </div>
 
-<div id="hint" class="panel">drag to move · click to peek inside · R rotate · scroll to zoom</div>
+<div id="palette" class="panel">
+  <!-- populated by main.js -->
+</div>
+
+<div id="info" class="panel">
+  <div class="handle"></div>
+  <div class="head">
+    <h3 id="info-name"></h3>
+    <button id="btn-close" class="x" aria-label="Close">✕</button>
+  </div>
+  <div class="sub" id="info-sub"></div>
+  <p id="info-desc"></p>
+  <div class="build" id="info-build"></div>
+  <div class="va" id="info-va"></div>
+  <div class="wet" id="info-wet"></div>
+  <div class="row">
+    <button id="btn-rotate">Rotate</button>
+    <button id="btn-delete">Delete</button>
+  </div>
+</div>
 
 <div id="va-modal">
   <div class="box">

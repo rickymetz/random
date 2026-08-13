@@ -156,7 +156,9 @@ scene.background = new THREE.Color(0xdde7ee);
 scene.fog = new THREE.Fog(0xdde7ee, 320, 620);
 
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 1, 1200);
-camera.position.set(85, 70, 125);
+// portrait phones need to sit further back to frame the compound
+if (innerHeight > innerWidth) camera.position.set(115, 95, 170);
+else camera.position.set(85, 70, 125);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
@@ -642,6 +644,9 @@ for (const t of TYPES) {
 
 document.getElementById("btn-rotate").addEventListener("click", rotateSelected);
 document.getElementById("btn-delete").addEventListener("click", () => selected && removeItem(selected));
+document.getElementById("btn-close").addEventListener("click", () => select(null));
+document.getElementById("stats-pill").addEventListener("click", () =>
+  document.getElementById("stats-pop").classList.toggle("open"));
 document.getElementById("btn-va").addEventListener("click", () =>
   document.getElementById("va-modal").classList.add("open"));
 document.getElementById("btn-va-close").addEventListener("click", () =>
@@ -702,6 +707,8 @@ function updateStats() {
   document.getElementById("st-sqft").textContent = `${sqft.toLocaleString()} sq ft`;
   document.getElementById("st-deck").textContent = `${deckSqft.toLocaleString()} sq ft`;
   document.getElementById("st-cost").textContent = `$${cost.toLocaleString()}`;
+  document.getElementById("stats-pill").textContent =
+    `${hc20 + hc10} units · ${(sqft + deckSqft).toLocaleString()} ft² · ~$${Math.round(cost / 1000)}k`;
 }
 
 // ------------------------------------------------------- picking & dragging
@@ -792,6 +799,8 @@ addEventListener("resize", () => {
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
+
+setTimeout(() => toast("drag units to move · tap to peek inside · pinch to zoom"), 700);
 
 const clock = new THREE.Clock();
 function animate() {
