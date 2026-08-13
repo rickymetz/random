@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Container Compound</title>
+<meta name="description" content="Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.">
+<style>
+  :root {
+    --panel: rgba(252, 251, 248, 0.94);
+    --ink: #2b2b28;
+    --muted: #77746c;
+    --line: #e2ded6;
+    --accent: #b3542e;
+    --shadow: 0 2px 16px rgba(30, 30, 25, 0.14);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sat: env(safe-area-inset-top, 0px);
+  }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: #dde7ee;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  canvas { display: block; touch-action: none; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  /* ---- top bar ---- */
+  #topbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: calc(0.5rem + var(--sat)) 0.75rem 0.5rem;
+    border-width: 0 0 1px 0;
+  }
+  #topbar .back {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.95rem;
+    padding: 0.3rem 0.35rem;
+  }
+  #topbar h1 {
+    font-size: 0.95rem;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1;
+  }
+  #topbar button {
+    flex: none;
+    font-size: 0.8rem;
+    padding: 0.42rem 0.65rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+  #topbar button:active { border-color: var(--accent); color: var(--accent); }
+
+  /* ---- bottom palette bar ---- */
+  #palette {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 5;
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding: 0.6rem 0.75rem calc(0.6rem + var(--sab));
+    border-width: 1px 0 0 0;
+    scrollbar-width: none;
+  }
+  #palette::-webkit-scrollbar { display: none; }
+  .pal-btn {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.28rem;
+    width: 8.6rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    border-radius: 0.65rem;
+    padding: 0.55rem 0.65rem;
+    text-align: left;
+  }
+  .pal-btn:active { border-color: var(--accent); }
+  .pal-chip {
+    width: 2.1rem; height: 1.2rem;
+    border-radius: 0.28rem;
+    border: 1px solid rgba(0,0,0,0.15);
+  }
+  .pal-chip.mini { width: 1.25rem; }
+  .pal-name { font-weight: 600; font-size: 0.78rem; line-height: 1.2; }
+  .pal-sub { color: var(--muted); font-size: 0.68rem; line-height: 1.25; }
+
+  /* ---- sub bar: undo, sun, compass ---- */
+  #subbar {
+    position: fixed;
+    top: calc(3.2rem + var(--sat));
+    left: 0.75rem; right: 0.75rem;
+    z-index: 4;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    pointer-events: none;
+  }
+  #subbar .right { display: flex; gap: 0.4rem; align-items: center; }
+  .chip {
+    pointer-events: auto;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    border-radius: 999px;
+    padding: 0.34rem 0.7rem;
+    font-size: 0.76rem;
+  }
+  .chip:active { border-color: var(--accent); color: var(--accent); }
+  #compass { display: flex; align-items: center; gap: 0.22rem; }
+  #needle { display: inline-block; line-height: 1; }
+  #compass .n { font-size: 0.64rem; color: var(--muted); }
+
+  /* ---- stats pill + popover ---- */
+  #stats-pill {
+    position: fixed;
+    left: 0.75rem;
+    bottom: calc(7.9rem + var(--sab));
+    z-index: 4;
+    border-radius: 999px;
+    padding: 0.38rem 0.8rem;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+  }
+  #stats-pop {
+    position: fixed;
+    left: 0.75rem;
+    bottom: calc(10.3rem + var(--sab));
+    z-index: 4;
+    width: 14rem;
+    border-radius: 0.7rem;
+    padding: 0.7rem 0.8rem;
+    display: none;
+  }
+  #stats-pop.open { display: block; }
+  #stats-pop table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  #stats-pop td { padding: 0.14rem 0; }
+  #stats-pop td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  #stats-pop .total td { border-top: 1px solid var(--line); padding-top: 0.3rem; font-weight: 600; }
+  #stats-pop .fine { color: var(--muted); font-size: 0.66rem; margin-top: 0.45rem; }
+
+  /* ---- selection bottom sheet ---- */
+  #info {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 6;
+    margin: 0 auto;
+    max-width: 30rem;
+    max-height: 62vh;
+    overflow-y: auto;
+    border-radius: 1rem 1rem 0 0;
+    border-width: 1px 1px 0 1px;
+    padding: 0.7rem 1rem calc(1rem + var(--sab));
+    transform: translateY(108%);
+    transition: transform 220ms ease;
+  }
+  body.has-selection #info { transform: translateY(0); }
+  #info .handle {
+    width: 2.4rem; height: 0.28rem;
+    background: var(--line);
+    border-radius: 999px;
+    margin: 0 auto 0.6rem;
+  }
+  #info .head { display: flex; align-items: baseline; gap: 0.6rem; }
+  #info h3 { font-size: 1.05rem; flex: 1; }
+  #info .x {
+    border: 0; background: transparent;
+    color: var(--muted);
+    font-size: 1.15rem;
+    padding: 0.1rem 0.3rem;
+  }
+  #info .sub { color: var(--muted); font-size: 0.76rem; margin: 0.15rem 0 0.55rem; }
+  #info p { font-size: 0.84rem; margin-bottom: 0.55rem; }
+  #info .build {
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: rgba(0, 0, 0, 0.045);
+    border-radius: 0.4rem;
+    padding: 0.4rem 0.55rem;
+    margin-bottom: 0.55rem;
+  }
+  #info .va {
+    font-size: 0.75rem;
+    color: var(--muted);
+    border-left: 3px solid var(--accent);
+    padding-left: 0.55rem;
+    margin-bottom: 0.55rem;
+  }
+  #info .wet {
+    display: none;
+    font-size: 0.75rem;
+    color: var(--muted);
+    border-left: 3px solid #7e97a6;
+    padding-left: 0.55rem;
+    margin-bottom: 0.55rem;
+  }
+  #info .sep {
+    display: none;
+    font-size: 0.75rem;
+    color: #8c3b2e;
+    border-left: 3px solid #c0574a;
+    padding-left: 0.55rem;
+    margin-bottom: 0.55rem;
+  }
+  #info .row { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
+  #info .row button {
+    flex: 1;
+    font-size: 0.85rem;
+    padding: 0.6rem 0.5rem;
+    border-radius: 0.55rem;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+  #info .row button:active { border-color: var(--accent); color: var(--accent); }
+
+  /* ---- VA modal ---- */
+  #va-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(30, 28, 24, 0.45);
+    display: none;
+    place-items: end center;
+    z-index: 10;
+  }
+  #va-modal.open { display: grid; }
+  #va-modal .box {
+    background: var(--panel);
+    border-radius: 1rem 1rem 0 0;
+    max-width: 34rem;
+    width: 100vw;
+    max-height: 82vh;
+    overflow-y: auto;
+    padding: 1.2rem 1.3rem calc(1.3rem + var(--sab));
+    box-shadow: var(--shadow);
+  }
+  #va-modal h2 { font-size: 1rem; margin-bottom: 0.7rem; }
+  #va-modal li { margin: 0 0 0.55rem 1.1rem; font-size: 0.83rem; }
+  #va-modal .fine { color: var(--muted); font-size: 0.72rem; margin-top: 0.8rem; }
+  #va-modal button {
+    margin-top: 1rem;
+    width: 100%;
+    padding: 0.6rem 0.9rem;
+    border-radius: 0.55rem;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+
+  /* ---- toast ---- */
+  #toast {
+    position: fixed;
+    top: calc(5.9rem + var(--sat));
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--ink);
+    color: #fff;
+    padding: 0.45rem 0.9rem;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 200ms;
+    pointer-events: none;
+    z-index: 11;
+  }
+  #toast.show { opacity: 1; }
+
+  /* ---- larger screens: same layout, roomier ---- */
+  @media (min-width: 900px) {
+    /* auto margins center the row when it fits, without clipping when it scrolls */
+    .pal-btn:first-child { margin-left: auto; }
+    .pal-btn:last-child { margin-right: auto; }
+    #stats-pill { left: 1rem; bottom: calc(8.6rem + var(--sab)); }
+    #stats-pop { left: 1rem; bottom: calc(11rem + var(--sab)); }
+    #info {
+      left: auto; right: 1rem; bottom: 8.6rem;
+      max-width: 19rem;
+      border-radius: 0.8rem;
+      border-width: 1px;
+      transform: none;
+      visibility: hidden;
+      opacity: 0;
+      transition: opacity 160ms ease;
+    }
+    body.has-selection #info { visibility: visible; opacity: 1; }
+    #va-modal { place-items: center; }
+    #va-modal .box { border-radius: 0.9rem; width: calc(100vw - 3rem); padding-bottom: 1.3rem; }
+  }
+</style>
+</head>
+<body>
+
+<header id="topbar" class="panel">
+  <a class="back" href="../../">←</a>
+  <h1>Container Compound</h1>
+  <button id="btn-share">Share</button>
+  <button id="btn-va">VA notes</button>
+  <button id="btn-reset">Reset</button>
+</header>
+
+<div id="subbar">
+  <button id="btn-undo" class="chip">↩ Undo</button>
+  <div class="right">
+    <button id="btn-sun" class="chip">☀ Midday</button>
+    <div id="compass" class="chip" title="North"><span id="needle">↑</span><span class="n">N</span></div>
+  </div>
+</div>
+
+<button id="stats-pill" class="panel">0 units</button>
+<div id="stats-pop" class="panel">
+  <table>
+    <tr><td>Units</td><td id="st-units">0</td></tr>
+    <tr><td>20&#8242; high cubes</td><td id="st-hc20">0</td></tr>
+    <tr><td>10&#8242; mini high cubes</td><td id="st-hc10">0</td></tr>
+    <tr><td>Enclosed area</td><td id="st-sqft">0 sq ft</td></tr>
+    <tr><td>Deck area</td><td id="st-deck">0 sq ft</td></tr>
+    <tr><td>Utility trenches</td><td id="st-trench">—</td></tr>
+    <tr class="total"><td>Rough cost</td><td id="st-cost">$0</td></tr>
+  </table>
+  <div class="fine">Ballpark, fully fitted-out. Site work, utilities &amp; delivery extra.</div>
+</div>
+
+<div id="palette" class="panel">
+  <!-- populated by main.js -->
+</div>
+
+<div id="info" class="panel">
+  <div class="handle"></div>
+  <div class="head">
+    <h3 id="info-name"></h3>
+    <button id="btn-close" class="x" aria-label="Close">✕</button>
+  </div>
+  <div class="sub" id="info-sub"></div>
+  <p id="info-desc"></p>
+  <div class="build" id="info-build"></div>
+  <div class="va" id="info-va"></div>
+  <div class="wet" id="info-wet"></div>
+  <div class="sep" id="info-sep"></div>
+  <div class="row">
+    <button id="btn-rotate">Rotate</button>
+    <button id="btn-dup">Duplicate</button>
+    <button id="btn-delete">Delete</button>
+  </div>
+</div>
+
+<div id="va-modal">
+  <div class="box">
+    <h2>Designed within Virginia limits</h2>
+    <ul>
+      <li>Every unit is a <strong>one-story detached structure of 160 sq ft or less</strong> — under Virginia's 256 sq ft accessory-structure threshold (VCC 108.2 / VRC R105.2), below which a building permit is generally not required.</li>
+      <li>Plumbed and electrified units (kitchen, baths, laundry) still need <strong>trade permits and inspections</strong>, and any unit used for sleeping or dwelling can trigger full residential code compliance — talk to your county building department early.</li>
+      <li><strong>High cube (9&#8242;6&#8243;) containers</strong> leave roughly an 8&#8242; finished ceiling after closed-cell spray foam — comfortably above the 7&#8242;0&#8243; habitable-space minimum (VRC R305).</li>
+      <li><strong>Habitable rooms need 70 sq ft and a 7&#8242; minimum dimension</strong> (VRC R304). So every habitable unit — sleeping, kitchen, dining, living, office — rides a 20&#8242; box (~131 sq ft interior), and wall build-up is capped at 3&#189;&#8243; per side to land interior width near 7&#8242;2&#8243;, clear of the minimum. The 10&#8242; minis are reserved for non-habitable roles: bath, laundry, hobby/storage.</li>
+      <li>The sleeping unit is a <strong>tunnel container: two independent glazed egress doors</strong> in the factory apertures (VRC R310) — no cut openings.</li>
+      <li>Containers sit on <strong>pier foundations with footings below frost depth</strong> (18–24&#8243; across most of Virginia).</li>
+      <li>Zoning, setbacks, and well/septic rules vary by county and are <strong>not modeled here</strong>.</li>
+    </ul>
+    <h2 style="margin-top:1.1rem">Fabrication rules</h2>
+    <ul>
+      <li><strong>No field cuts to walls or roof.</strong> Every opening is a factory aperture: container door ends, or the factory side doors of an open-side box. This skips most cutting and welding and keeps the box's structure and warranty-grade weather envelope intact.</li>
+      <li>The original cargo doors stay on their hinges as <strong>operable storm/security shutters</strong>, parked open against the walls; an insulated glazed wall with an outswing entry door sits just inside each aperture.</li>
+      <li><strong>Utilities enter through the wood floor</strong> (already non-structural to drill): supply, drains, and electrical all rise from below. The one wall exception is a single ~3&#8243; lineset sleeve per mini-split.</li>
+      <li>Variants by role: <strong>tunnel</strong> (doors both ends) for sleeping and bathhouse, <strong>open-side</strong> for dining and living, <strong>standard</strong> everywhere else.</li>
+      <li>Wet units want to sit inside the <strong>utility core's 30&#8242; ring</strong> (shown on the ground) to keep plumbing trenches short.</li>
+    </ul>
+    <div class="fine">This is a visualization for exploring ideas — not construction documents or code advice.</div>
+    <button id="btn-va-close">Close</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+<script type="module" src="main.js"></script>
+</body>
+</html>
