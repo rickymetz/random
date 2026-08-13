@@ -28,14 +28,14 @@ export const TYPES = [
   },
   {
     id: "kitchen", name: "Kitchen unit", len: 20, wid: 8, color: 0xc9ac7f,
-    cost: 38000, variant: "standard", wet: true, hvac: "minisplit",
-    desc: "Full galley run with range and sink, tall fridge, pantry and a small eat-at counter. Supply and drains rise through the floor.",
+    cost: 39000, variant: "tunnel", wet: true, hvac: "minisplit",
+    desc: "Full galley run with range and sink, tall fridge, pantry and a small eat-at counter. Tunnel container: a pass-through galley with door-walls at both ends.",
     va: "Plumbing, gas and electrical need trade permits even under 256 sq ft.",
     furniture: [
-      { x: -0.4, z: -2.55, w: 12.0, d: 2.0, h: 3.0, color: 0xdad2c4 },   // 24in counter run
-      { x: -8.0, z: -2.15, w: 2.6, d: 2.7, h: 6.6, color: 0xb9b3a7 },    // fridge, solid end
-      { x: -8.0, z: 2.2, w: 2.6, d: 2.6, h: 6.6, color: 0x8a6f4f },      // pantry
-      { x: -0.4, z: 2.65, w: 6.0, d: 1.8, h: 3.1, color: 0x9c7c58 },     // island / eat-at (40in aisle)
+      { x: 0, z: -2.55, w: 11.2, d: 2.0, h: 3.0, color: 0xdad2c4 },      // 24in counter run
+      { x: -7.4, z: 2.15, w: 2.6, d: 2.7, h: 6.6, color: 0xb9b3a7 },     // fridge, clear of the door
+      { x: -4.8, z: 2.2, w: 2.6, d: 2.6, h: 6.6, color: 0x8a6f4f },      // pantry
+      { x: 0.8, z: 2.65, w: 6.0, d: 1.8, h: 3.1, color: 0x9c7c58 },      // island / eat-at (40in aisle)
     ],
   },
   {
@@ -52,15 +52,15 @@ export const TYPES = [
   },
   {
     id: "bath-laundry", name: "Bath + laundry unit", len: 20, wid: 8, color: 0xa092a8,
-    cost: 34000, variant: "standard", wet: true, hvac: "panel",
-    desc: "Full bath on one end, washer-dryer pair and folding counter on the other. All water through the floor.",
+    cost: 35000, variant: "tunnel", wet: true, hvac: "panel",
+    desc: "Full bath on one end, washer-dryer pair and folding counter on the other. Tunnel container with frosted door-walls at both ends.",
     va: "Wet unit: plumbing and electrical permits apply. WC set 15in+ off the wall with 21in+ in front (VRC ch.27).",
     furniture: [
-      { x: -7.6, z: 1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower
-      { x: -8.5, z: -2.3, w: 1.6, d: 2.4, h: 1.4, color: 0xf2efe8 },     // WC (15.4in centerline)
-      { x: -4.4, z: -2.65, w: 3.0, d: 1.8, h: 3.0, color: 0xdad2c4 },    // vanity (21in+ off WC)
+      { x: -7.2, z: 1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower
+      { x: -4.9, z: -2.3, w: 1.6, d: 2.4, h: 1.4, color: 0xf2efe8 },     // WC (15.4in centerline, clear of the door)
+      { x: -3.9, z: 2.65, w: 3.0, d: 1.8, h: 3.0, color: 0xdad2c4 },     // vanity
       { x: 2.6, z: 2.35, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },      // washer
-      { x: 5.2, z: 2.35, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },      // dryer, clear of the door
+      { x: 5.2, z: 2.35, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },      // dryer
       { x: 1.5, z: -2.75, w: 5.0, d: 1.6, h: 3.0, color: 0x9c7c58 },     // folding counter
     ],
   },
@@ -117,8 +117,8 @@ export const TYPES = [
   },
   {
     id: "office", name: "Office / studio unit", len: 20, wid: 8, color: 0x8fa695,
-    cost: 24000, variant: "standard", hvac: "minisplit",
-    desc: "Desk facing the glazed door-wall, a bookshelf wall and a reading corner. Sized up to a 20' box to clear the habitable-room minimum.",
+    cost: 26000, variant: "openside", hvac: "minisplit",
+    desc: "Desk against the open-side glazed wall, a bookshelf wall and a reading corner. Sized up to a 20' box to clear the habitable-room minimum.",
     va: "Habitable space: ~131 sq ft interior clears VRC R304.1's 70 sq ft minimum.",
     furniture: [
       { x: 6.3, z: 1.55, w: 2.5, d: 4.0, h: 2.5, color: 0x9c7c58 },      // desk facing the glazed end

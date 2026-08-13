@@ -536,8 +536,8 @@ function decodeShare(s) {
 }
 
 // Spaced to demo the rules: freestanding gaps are all >=10 ft (no rated
-// walls), and the utility core butts the bath+laundry unit — legal joining,
-// 240 sq ft combined, still under the 256 sq ft permit exemption.
+// walls), and the utility core butts the bathhouse's solid side — legal
+// joining, 240 sq ft combined, still under the 256 sq ft permit exemption.
 const EXAMPLE = {
   v: 1,
   items: [
@@ -550,7 +550,7 @@ const EXAMPLE = {
     ["deck", 4, -1, 0],
     ["office", -41, -1, 1],
     ["bath-laundry", 41, -1, 3],
-    ["laundry", 41, -16, 1],
+    ["laundry", 16, -24, 0],
   ],
 };
 
