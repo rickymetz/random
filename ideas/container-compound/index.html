@@ -216,18 +216,14 @@
   body[data-mode="site"] #subbar { display: none; }
   body[data-mode="dollhouse"] #info .row { display: none; }
 
-  /* ---- site plan panel ---- */
+  /* ---- site plan view: full-bleed, swaps in for the 3D scene ---- */
   #site-panel {
     position: fixed;
-    top: calc(6.4rem + var(--sat));
-    left: 0.75rem; right: 0.75rem;
-    bottom: calc(0.9rem + var(--sab));
+    inset: 0;
     z-index: 4;
-    margin: 0 auto;
-    max-width: 40rem;
     overflow: auto;
-    border-radius: 0.8rem;
-    padding: 0.8rem;
+    background: #f7f5f1;
+    padding: calc(6.8rem + var(--sat)) 0 calc(1rem + var(--sab));
     display: none;
   }
   body[data-mode="site"] #site-panel { display: block; }
@@ -654,7 +650,7 @@
   <button data-mode="site">Site plan</button>
 </div>
 
-<div id="site-panel" class="panel">
+<div id="site-panel">
   <div id="site-svg"><!-- populated by main.js --></div>
 </div>
 
