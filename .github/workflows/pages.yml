@@ -1,4 +1,9 @@
-name: Deploy to GitHub Pages
+name: Regenerate hub homepage
+
+# Pages serves the main branch directly (Settings -> Pages -> Deploy from a
+# branch). This workflow keeps the generated homepage committed at the repo
+# root: on each push it rebuilds index.html from the ideas/ folder and
+# commits it back only when it changed, so the loop terminates immediately.
 
 on:
   push:
@@ -6,16 +11,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  homepage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,18 +28,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Build site
+      - name: Build site (writes index.html to the repo root)
         run: node scripts/build.js
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Commit regenerated homepage if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html .nojekyll
+          if git diff --cached --quiet; then
+            echo "Homepage unchanged"
+          else
+            git commit -m "Regenerate hub homepage"
+            git push
+          fi
