@@ -116,15 +116,27 @@ const TYPES = [
     ],
   },
   {
-    id: "office", name: "Office / studio unit", len: 10, wid: 8, color: 0x8fa695,
-    cost: 18000, variant: "standard", hvac: "minisplit",
-    desc: "Desk facing the glazed door-wall, bookshelves, room for a reading chair.",
-    va: "Unplumbed work space — simple permit path.",
+    id: "office", name: "Office / studio unit", len: 20, wid: 8, color: 0x8fa695,
+    cost: 24000, variant: "standard", hvac: "minisplit",
+    desc: "Desk facing the glazed door-wall, a bookshelf wall and a reading corner. Sized up to a 20' box to clear the habitable-room minimum.",
+    va: "Habitable space: ~131 sq ft interior clears VRC R304.1's 70 sq ft minimum.",
     furniture: [
-      { x: -1.0, z: -2.5, w: 5.5, d: 2.4, h: 2.5, color: 0x9c7c58 },     // desk
-      { x: -1.0, z: -0.4, w: 1.7, d: 1.7, h: 1.6, color: 0x6b6b66 },     // chair
-      { x: 3.9, z: 0.6, w: 1.4, d: 5.5, h: 6.6, color: 0x8a6f4f },       // bookshelf
-      { x: -3.4, z: 2.5, w: 2.6, d: 2.6, h: 2.0, color: 0xd9cfc0 },      // reading chair
+      { x: 6.2, z: 0, w: 2.5, d: 5.5, h: 2.5, color: 0x9c7c58 },         // desk facing the glazed end
+      { x: 3.8, z: 0, w: 1.7, d: 1.7, h: 1.6, color: 0x6b6b66 },         // chair
+      { x: -2.0, z: -2.9, w: 9.0, d: 1.3, h: 6.6, color: 0x8a6f4f },     // bookshelf wall
+      { x: -6.5, z: 2.3, w: 2.6, d: 2.6, h: 2.0, color: 0xd9cfc0 },      // reading chair
+      { x: -8.8, z: -1.0, w: 1.6, d: 2.2, h: 3.0, color: 0x9c7c58 },     // cabinet
+    ],
+  },
+  {
+    id: "hobby", name: "Hobby / storage unit", len: 10, wid: 8, color: 0x8d919c,
+    cost: 12000, variant: "standard", hvac: "none",
+    desc: "Workbench, deep shelving and gear storage in a mini — deliberately non-habitable, so the small interior is fine by code.",
+    va: "Not habitable space, so VRC R304's 70 sq ft / 7 ft minimums don't apply.",
+    furniture: [
+      { x: -2.6, z: -2.6, w: 3.6, d: 2.2, h: 3.0, color: 0x9c7c58 },     // workbench
+      { x: 2.6, z: -2.7, w: 3.4, d: 1.4, h: 6.0, color: 0x8a6f4f },      // shelving
+      { x: 0.6, z: 2.6, w: 5.5, d: 1.6, h: 2.2, color: 0xbdb8ae },       // bins
     ],
   },
   {
@@ -509,8 +521,10 @@ function select(item) {
   };
   document.getElementById("info-build").textContent = t.deck
     ? "Ground-screw framing · no permit under 30\" (VRC R105.2)"
-    : `${VARIANT_LABEL[t.variant]} · spray-foam interior (~7'0" wide) · ${
-        t.hvac === "minisplit" ? "mini-split (one lineset sleeve)" : "panel heater + exhaust"
+    : `${VARIANT_LABEL[t.variant]} · spray-foam interior (~7'2" wide) · ${
+        t.hvac === "minisplit" ? "mini-split (one lineset sleeve)"
+        : t.hvac === "none" ? "unconditioned"
+        : "panel heater + exhaust"
       } · no wall or roof cuts`;
   document.getElementById("info-va").textContent = t.va;
   const wetEl = document.getElementById("info-wet");
