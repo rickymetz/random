@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Container Compound</title>
+<meta name="description" content="Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.">
+<style>
+  :root {
+    --panel: rgba(252, 251, 248, 0.92);
+    --ink: #2b2b28;
+    --muted: #77746c;
+    --line: #e2ded6;
+    --accent: #b3542e;
+    --shadow: 0 2px 16px rgba(30, 30, 25, 0.12);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: #dde7ee;
+  }
+  canvas { display: block; }
+  .panel {
+    position: fixed;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 0.7rem;
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(6px);
+  }
+
+  #brand {
+    top: 0.9rem; left: 0.9rem;
+    padding: 0.5rem 0.8rem;
+  }
+  #brand a { color: var(--muted); text-decoration: none; font-size: 0.8rem; }
+  #brand a:hover { color: var(--ink); }
+  #brand h1 { font-size: 0.95rem; letter-spacing: -0.01em; }
+
+  #palette {
+    top: 5.4rem; left: 0.9rem;
+    width: 13.5rem;
+    max-height: calc(100vh - 19.5rem); /* stops above the stats panel */
+    overflow-y: auto;
+    padding: 0.6rem;
+  }
+  #palette h2, #info h2, #stats h2 {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    padding: 0.2rem 0.35rem 0.45rem;
+  }
+  .pal-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    border-radius: 0.45rem;
+    padding: 0.42rem 0.35rem;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+  }
+  .pal-btn:hover { background: rgba(179, 84, 46, 0.09); }
+  .pal-chip {
+    width: 1.9rem; height: 1.15rem;
+    border-radius: 0.25rem;
+    flex: none;
+    border: 1px solid rgba(0,0,0,0.15);
+  }
+  .pal-chip.mini { width: 1.15rem; }
+  .pal-name { font-weight: 600; font-size: 0.83rem; }
+  .pal-sub { color: var(--muted); font-size: 0.72rem; }
+
+  #info {
+    top: 0.9rem; right: 0.9rem;
+    width: 16.5rem;
+    padding: 0.8rem 0.9rem;
+    display: none;
+  }
+  #info.open { display: block; }
+  #info h3 { font-size: 1rem; margin-bottom: 0.1rem; }
+  #info .sub { color: var(--muted); font-size: 0.78rem; margin-bottom: 0.55rem; }
+  #info p { font-size: 0.82rem; margin-bottom: 0.55rem; }
+  #info .va {
+    font-size: 0.75rem;
+    color: var(--muted);
+    border-left: 3px solid var(--accent);
+    padding-left: 0.55rem;
+    margin-bottom: 0.65rem;
+  }
+  #info .row { display: flex; gap: 0.45rem; }
+  #info button {
+    flex: 1;
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.38rem 0.5rem;
+    border-radius: 0.45rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    cursor: pointer;
+  }
+  #info button:hover { border-color: var(--accent); color: var(--accent); }
+
+  #stats {
+    bottom: 0.9rem; left: 0.9rem;
+    width: 13.5rem;
+    padding: 0.7rem 0.8rem;
+  }
+  #stats table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  #stats td { padding: 0.12rem 0; }
+  #stats td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  #stats .total td { border-top: 1px solid var(--line); padding-top: 0.3rem; font-weight: 600; }
+  #stats .fine { color: var(--muted); font-size: 0.68rem; margin-top: 0.45rem; }
+
+  #actions {
+    top: 0.9rem; right: 0.9rem;
+    display: flex;
+    gap: 0.4rem;
+    padding: 0.4rem;
+  }
+  body.has-selection #actions { right: 18.4rem; }
+  #actions button {
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.34rem 0.6rem;
+    border-radius: 0.45rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    cursor: pointer;
+  }
+  #actions button:hover { border-color: var(--accent); color: var(--accent); }
+
+  #hint {
+    bottom: 0.9rem; left: 50%;
+    transform: translateX(-50%);
+    padding: 0.35rem 0.8rem;
+    color: var(--muted);
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  #va-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(30, 28, 24, 0.45);
+    display: none;
+    place-items: center;
+    z-index: 10;
+  }
+  #va-modal.open { display: grid; }
+  #va-modal .box {
+    background: var(--panel);
+    border-radius: 0.8rem;
+    max-width: 34rem;
+    width: calc(100vw - 3rem);
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: 1.4rem 1.6rem;
+    box-shadow: var(--shadow);
+  }
+  #va-modal h2 { font-size: 1.05rem; margin-bottom: 0.7rem; }
+  #va-modal li { margin: 0 0 0.55rem 1.1rem; font-size: 0.85rem; }
+  #va-modal .fine { color: var(--muted); font-size: 0.75rem; margin-top: 0.8rem; }
+  #va-modal button {
+    margin-top: 1rem;
+    font: inherit;
+    padding: 0.4rem 0.9rem;
+    border-radius: 0.45rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    cursor: pointer;
+  }
+
+  #toast {
+    position: fixed;
+    top: 4.2rem; right: 0.9rem;
+    background: var(--ink);
+    color: #fff;
+    padding: 0.45rem 0.8rem;
+    border-radius: 0.45rem;
+    font-size: 0.78rem;
+    opacity: 0;
+    transition: opacity 200ms;
+    pointer-events: none;
+    z-index: 11;
+  }
+  #toast.show { opacity: 1; }
+
+  @media (max-width: 760px) {
+    #palette { width: 11.5rem; }
+    #stats { display: none; }
+    #hint { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="brand" class="panel">
+  <a href="../../">← random</a>
+  <h1>Container Compound</h1>
+</div>
+
+<div id="palette" class="panel">
+  <h2>Add a unit</h2>
+  <!-- populated by main.js -->
+</div>
+
+<div id="actions" class="panel">
+  <button id="btn-share">Share</button>
+  <button id="btn-va">VA notes</button>
+  <button id="btn-reset">Reset</button>
+</div>
+
+<div id="info" class="panel">
+  <h3 id="info-name"></h3>
+  <div class="sub" id="info-sub"></div>
+  <p id="info-desc"></p>
+  <div class="va" id="info-va"></div>
+  <div class="row">
+    <button id="btn-rotate">Rotate (R)</button>
+    <button id="btn-delete">Delete (⌫)</button>
+  </div>
+</div>
+
+<div id="stats" class="panel">
+  <h2>Compound</h2>
+  <table>
+    <tr><td>Units</td><td id="st-units">0</td></tr>
+    <tr><td>20&#8242; high cubes</td><td id="st-hc20">0</td></tr>
+    <tr><td>10&#8242; mini high cubes</td><td id="st-hc10">0</td></tr>
+    <tr><td>Enclosed area</td><td id="st-sqft">0 sq ft</td></tr>
+    <tr><td>Deck area</td><td id="st-deck">0 sq ft</td></tr>
+    <tr class="total"><td>Rough cost</td><td id="st-cost">$0</td></tr>
+  </table>
+  <div class="fine">Ballpark, fully fitted-out. Site work, utilities &amp; delivery extra.</div>
+</div>
+
+<div id="hint" class="panel">drag to move · click to peek inside · R rotate · scroll to zoom</div>
+
+<div id="va-modal">
+  <div class="box">
+    <h2>Designed within Virginia limits</h2>
+    <ul>
+      <li>Every unit is a <strong>one-story detached structure of 160 sq ft or less</strong> — under Virginia's 256 sq ft accessory-structure threshold (VCC 108.2 / VRC R105.2), below which a building permit is generally not required.</li>
+      <li>Plumbed and electrified units (kitchen, baths, laundry) still need <strong>trade permits and inspections</strong>, and any unit used for sleeping or dwelling can trigger full residential code compliance — talk to your county building department early.</li>
+      <li><strong>High cube (9&#8242;6&#8243;) containers</strong> leave roughly an 8&#8242; finished ceiling after insulation — comfortably above the 7&#8242;0&#8243; habitable-space minimum (VRC R305).</li>
+      <li>The sleeping unit carries an <strong>egress-sized window</strong> (VRC R310 emergency escape and rescue).</li>
+      <li>Containers sit on <strong>pier foundations with footings below frost depth</strong> (18–24&#8243; across most of Virginia).</li>
+      <li>Zoning, setbacks, and well/septic rules vary by county and are <strong>not modeled here</strong>.</li>
+    </ul>
+    <div class="fine">This is a visualization for exploring ideas — not construction documents or code advice.</div>
+    <button id="btn-va-close">Close</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+<script type="module" src="main.js"></script>
+</body>
+</html>
