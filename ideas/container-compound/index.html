@@ -216,19 +216,26 @@
   body[data-mode="site"] #subbar { display: none; }
   body[data-mode="dollhouse"] #info .row { display: none; }
 
-  /* ---- site plan view: full-bleed, swaps in for the 3D scene ---- */
+  /* ---- site plan: full-bleed pan/zoom workspace, swaps in for the 3D scene ---- */
   #site-panel {
     position: fixed;
     inset: 0;
     z-index: 4;
-    overflow: auto;
-    background: #f7f5f1;
-    padding: calc(6.8rem + var(--sat)) 0 calc(1rem + var(--sab));
+    overflow: hidden;
+    background: #e8e5dd; /* workspace behind the paper sheet */
     display: none;
+    touch-action: none;
+    cursor: grab;
   }
+  #site-panel:active { cursor: grabbing; }
   body[data-mode="site"] #site-panel { display: block; }
-  /* keep the drawing legible on phones: scroll rather than shrink */
-  #site-svg svg { width: 100%; min-width: 640px; height: auto; display: block; }
+  #site-svg {
+    position: absolute;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+  #site-svg svg { display: block; }
 
   /* ---- parts list modal ---- */
   #parts-modal {

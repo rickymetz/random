@@ -273,11 +273,12 @@ function tree(x, z, s) {
   g.position.set(x, 0, z);
   scene.add(g);
 }
-[
+const TREES = [
   [-88, -78, 1.5], [-70, -92, 1.1], [-95, -30, 1.2], [-84, 30, 1.6], [-92, 72, 1.0],
   [-60, 88, 1.3], [-10, 94, 1.1], [24, 90, 1.5], [88, 84, 1.2], [94, 40, 1.0],
   [92, -32, 1.4], [80, -80, 1.6], [40, -92, 1.0], [-30, -95, 1.3], [8, -88, 0.9],
-].forEach(([x, z, s]) => tree(x, z, s));
+];
+TREES.forEach(([x, z, s]) => tree(x, z, s));
 
 // ------------------------------------------------------------ unit meshes
 
@@ -1250,36 +1251,89 @@ const SHORT_NAME = {
   deck: "",
 };
 
+const SP_S = 8; // px per foot
+const FONT = "ui-sans-serif, system-ui";
+
+// one unit (or deck) drawn architecturally in local coords, rotated into place
+function unitPlanGroup(it) {
+  const t = TYPE_BY_ID[it.typeId];
+  const S = SP_S;
+  const hw = (t.len / 2) * S, hd = (t.wid / 2) * S;
+  let g = "";
+
+  if (t.deck) {
+    g += `<rect x="${-hw}" y="${-hd}" width="${hw * 2}" height="${hd * 2}" fill="#ecd9b8" stroke="#a8814f" stroke-width="1.4"/>`;
+    for (let i = 1; i < 4; i++) {
+      const y = -hd + (hd * 2 / 4) * i;
+      g += `<line x1="${-hw + 2}" y1="${y}" x2="${hw - 2}" y2="${y}" stroke="#c8a878" stroke-width="0.8"/>`;
+    }
+  } else {
+    // wall poché: dark outer line, white interior, faint tint wash
+    g += `<rect x="${-hw}" y="${-hd}" width="${hw * 2}" height="${hd * 2}" fill="#ffffff" stroke="#23231f" stroke-width="2.6"/>`;
+    g += `<rect x="${-hw + 3}" y="${-hd + 3}" width="${hw * 2 - 6}" height="${hd * 2 - 6}" fill="#${t.color.toString(16).padStart(6, "0")}" fill-opacity="0.16" stroke="#55524c" stroke-width="0.8"/>`;
+
+    // furniture outlines
+    for (const f of t.furniture) {
+      g += `<rect x="${(f.x - f.w / 2) * S}" y="${(f.z - f.d / 2) * S}" width="${f.w * S}" height="${f.d * S}" rx="1.5" fill="#f2efe9" stroke="#55524c" stroke-width="0.9"/>`;
+    }
+
+    // glazed apertures + door swings
+    const ends = t.variant === "tunnel" ? [1, -1] : [1];
+    for (const e of ends) {
+      g += `<line x1="${e * (hw - 2)}" y1="${-hd + 4}" x2="${e * (hw - 2)}" y2="${hd - 4}" stroke="#4a90c2" stroke-width="2.2"/>`;
+      const hy = -3.1 * S, r = 3 * S;
+      g += `<line x1="${e * hw}" y1="${hy}" x2="${e * (hw + r * 0.6)}" y2="${hy + r * 0.6}" stroke="#55524c" stroke-width="1.4"/>`;
+      g += `<path d="M ${e * (hw + r * 0.6)} ${hy + r * 0.6} A ${r} ${r} 0 0 ${e === 1 ? 0 : 1} ${e * hw} ${hy + r}" fill="none" stroke="#55524c" stroke-width="0.8" stroke-dasharray="3 3"/>`;
+    }
+    if (t.variant === "openside") {
+      g += `<line x1="${-hw + 5}" y1="${hd - 2}" x2="${hw - 5}" y2="${hd - 2}" stroke="#4a90c2" stroke-width="2.2"/>`;
+    }
+  }
+  return g;
+}
+
 function renderSitePlan() {
   updateCompliance();
-  const S = 8, M = 90; // px per foot, margin for dims/annotations
-  // bounds of everything placed (plus utility rings)
-  let minX = -40, maxX = 40, minZ = -30, maxZ = 30;
-  for (const it of items) {
-    const [hw, hd] = halfDims(it);
-    const r = TYPE_BY_ID[it.typeId].core ? WET_RADIUS : 0;
-    minX = Math.min(minX, it.x - Math.max(hw, r) - 6);
-    maxX = Math.max(maxX, it.x + Math.max(hw, r) + 6);
-    minZ = Math.min(minZ, it.z - Math.max(hd, r) - 6);
-    maxZ = Math.max(maxZ, it.z + Math.max(hd, r) + 6);
-  }
+  const S = SP_S, M = 60;
+  const HALF = 104.5; // one acre, ~209 ft square
+  const minX = -HALF - 8, maxX = HALF + 8, minZ = -HALF - 8, maxZ = HALF + 8;
   const X = (x) => M + (x - minX) * S;
   const Y = (z) => M + (z - minZ) * S;
   const width = (maxX - minX) * S + M * 2;
   const height = (maxZ - minZ) * S + M * 2;
   let s = "";
 
-  // paper + light 10 ft grid
-  s += `<rect x="0" y="0" width="${width}" height="${height}" fill="#f7f5f1"/>`;
-  for (let gx = Math.ceil(minX / 10) * 10; gx <= maxX; gx += 10)
-    s += `<line x1="${X(gx)}" y1="${Y(minZ)}" x2="${X(gx)}" y2="${Y(maxZ)}" stroke="#e7e3da" stroke-width="1"/>`;
-  for (let gz = Math.ceil(minZ / 10) * 10; gz <= maxZ; gz += 10)
-    s += `<line x1="${X(minX)}" y1="${Y(gz)}" x2="${X(maxX)}" y2="${Y(gz)}" stroke="#e7e3da" stroke-width="1"/>`;
+  // paper sheet with a soft shadow, sitting on the workspace
+  s += `<rect x="10" y="12" width="${width - 14}" height="${height - 14}" fill="#22201c" opacity="0.10"/>`;
+  s += `<rect x="4" y="4" width="${width - 14}" height="${height - 14}" fill="#fbfaf6" stroke="#c9c4b8" stroke-width="1.5"/>`;
 
-  // utility core rings + trenches
+  // fine 10 ft grid, heavier every 50 ft
+  for (let gx = Math.ceil(minX / 10) * 10; gx <= maxX; gx += 10) {
+    const major = gx % 50 === 0;
+    s += `<line x1="${X(gx)}" y1="${Y(minZ)}" x2="${X(gx)}" y2="${Y(maxZ)}" stroke="${major ? "#ddd8cc" : "#eceae1"}" stroke-width="1"/>`;
+  }
+  for (let gz = Math.ceil(minZ / 10) * 10; gz <= maxZ; gz += 10) {
+    const major = gz % 50 === 0;
+    s += `<line x1="${X(minX)}" y1="${Y(gz)}" x2="${X(maxX)}" y2="${Y(gz)}" stroke="${major ? "#ddd8cc" : "#eceae1"}" stroke-width="1"/>`;
+  }
+
+  // property line (dash-dot) — the one-acre parcel
+  s += `<rect x="${X(-HALF)}" y="${Y(-HALF)}" width="${HALF * 2 * S}" height="${HALF * 2 * S}" fill="none" stroke="#8a867c" stroke-width="1.6" stroke-dasharray="16 6 3 6"/>`;
+
+  // gravel drive
+  s += `<rect x="${X(45)}" y="${Y(8)}" width="${14 * S}" height="${96 * S}" fill="#e7e2d6" stroke="#cfc9ba" stroke-width="1"/>`;
+  s += `<circle cx="${X(52)}" cy="${Y(10)}" r="${16 * S}" fill="#e7e2d6" stroke="#cfc9ba" stroke-width="1"/>`;
+
+  // tree canopies
+  for (const [tx, tz, ts] of TREES) {
+    s += `<circle cx="${X(tx)}" cy="${Y(tz)}" r="${6 * ts * S}" fill="#7c9464" fill-opacity="0.14" stroke="#7c9464" stroke-width="1"/>`;
+    s += `<circle cx="${X(tx)}" cy="${Y(tz)}" r="2" fill="#5f7350"/>`;
+  }
+
+  // utility core rings + trench runs
   for (const it of items) {
     if (!TYPE_BY_ID[it.typeId].core) continue;
-    s += `<circle cx="${X(it.x)}" cy="${Y(it.z)}" r="${WET_RADIUS * S}" fill="none" stroke="#7e97a6" stroke-width="1.5" stroke-dasharray="7 6" opacity="0.55"/>`;
+    s += `<circle cx="${X(it.x)}" cy="${Y(it.z)}" r="${WET_RADIUS * S}" fill="none" stroke="#7e97a6" stroke-width="1.4" stroke-dasharray="8 6" opacity="0.6"/>`;
   }
   const cores = items.filter((i) => TYPE_BY_ID[i.typeId].core);
   if (cores.length) {
@@ -1289,41 +1343,33 @@ function renderSitePlan() {
         const d = Math.hypot(c.x - w.x, c.z - w.z);
         if (d < bd) { bd = d; best = c; }
       }
-      s += `<line x1="${X(w.x)}" y1="${Y(w.z)}" x2="${X(best.x)}" y2="${Y(best.z)}" stroke="#5f7a8a" stroke-width="1.5" stroke-dasharray="5 5" opacity="0.7"/>`;
+      s += `<line x1="${X(w.x)}" y1="${Y(w.z)}" x2="${X(best.x)}" y2="${Y(best.z)}" stroke="#5f7a8a" stroke-width="1.4" stroke-dasharray="5 5" opacity="0.7"/>`;
     }
   }
 
-  // decks first (under units), then units with aperture markings + labels
-  for (const it of items.filter((i) => TYPE_BY_ID[i.typeId].deck)) {
-    const [hw, hd] = halfDims(it);
-    s += `<rect x="${X(it.x - hw)}" y="${Y(it.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="#d9b586" stroke="#b78e5f" stroke-width="1.5"/>`;
+  // units: decks underneath, then containers, world rotation -> screen rotation
+  const drawOrder = [...items].sort((a, b) =>
+    (TYPE_BY_ID[a.typeId].deck ? 0 : 1) - (TYPE_BY_ID[b.typeId].deck ? 0 : 1));
+  for (const it of drawOrder) {
+    s += `<g transform="translate(${X(it.x)} ${Y(it.z)}) rotate(${-it.rot * 90})">${unitPlanGroup(it)}</g>`;
   }
-  for (const it of items.filter((i) => !TYPE_BY_ID[i.typeId].deck)) {
+  // labels drawn unrotated, above everything
+  for (const it of items) {
     const t = TYPE_BY_ID[it.typeId];
-    const [hw, hd] = halfDims(it);
-    const x0 = X(it.x - hw), y0 = Y(it.z - hd), rw = hw * 2 * S, rh = hd * 2 * S;
-    s += `<rect x="${x0}" y="${y0}" width="${rw}" height="${rh}" fill="#${t.color.toString(16).padStart(6, "0")}" fill-opacity="0.85" stroke="#2b2b28" stroke-width="2"/>`;
-    // glazed aperture faces in blue
-    for (const [dx, dz] of apertureFaces(it)) {
-      if (dx === 1) s += `<line x1="${x0 + rw}" y1="${y0 + 3}" x2="${x0 + rw}" y2="${y0 + rh - 3}" stroke="#5aa9e6" stroke-width="4"/>`;
-      if (dx === -1) s += `<line x1="${x0}" y1="${y0 + 3}" x2="${x0}" y2="${y0 + rh - 3}" stroke="#5aa9e6" stroke-width="4"/>`;
-      if (dz === 1) s += `<line x1="${x0 + 3}" y1="${y0 + rh}" x2="${x0 + rw - 3}" y2="${y0 + rh}" stroke="#5aa9e6" stroke-width="4"/>`;
-      if (dz === -1) s += `<line x1="${x0 + 3}" y1="${y0}" x2="${x0 + rw - 3}" y2="${y0}" stroke="#5aa9e6" stroke-width="4"/>`;
-    }
+    if (t.deck) continue;
     const label = SHORT_NAME[it.typeId] || t.name;
-    const cx = X(it.x), cy = Y(it.z);
-    const rot = it.rot % 2 ? ` transform="rotate(-90 ${cx} ${cy})"` : "";
-    s += `<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-size="12" font-weight="600" fill="#2b2b28" font-family="ui-sans-serif, system-ui"${rot}>${label}</text>`;
+    s += `<text x="${X(it.x)}" y="${Y(it.z) - 2}" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="1.1" fill="#23231f" font-family="${FONT}">${label.toUpperCase()}</text>`;
+    s += `<text x="${X(it.x)}" y="${Y(it.z) + 10}" text-anchor="middle" font-size="8.5" fill="#77746c" font-family="${FONT}">${t.len * t.wid} SF</text>`;
   }
 
-  // fire-separation conflicts with gap callouts
+  // fire-separation conflicts
   for (const p of sepPairs) {
     const mx = (X(p.a.x) + X(p.b.x)) / 2, my = (Y(p.a.z) + Y(p.b.z)) / 2;
     s += `<line x1="${X(p.a.x)}" y1="${Y(p.a.z)}" x2="${X(p.b.x)}" y2="${Y(p.b.z)}" stroke="#c0574a" stroke-width="1.5"/>`;
-    s += `<text x="${mx}" y="${my - 5}" text-anchor="middle" font-size="11" font-weight="600" fill="#c0574a" font-family="ui-sans-serif, system-ui">${Math.max(1, Math.round(p.gap))}′ △</text>`;
+    s += `<text x="${mx}" y="${my - 5}" text-anchor="middle" font-size="11" font-weight="700" fill="#c0574a" font-family="${FONT}">${Math.max(1, Math.round(p.gap))}′ △</text>`;
   }
 
-  // overall extent dimension strings
+  // compound extent dimension strings
   let uMinX = Infinity, uMaxX = -Infinity, uMinZ = Infinity, uMaxZ = -Infinity;
   for (const it of items) {
     const [hw, hd] = halfDims(it);
@@ -1331,32 +1377,109 @@ function renderSitePlan() {
     uMinZ = Math.min(uMinZ, it.z - hd); uMaxZ = Math.max(uMaxZ, it.z + hd);
   }
   if (items.length) {
-    const tick = (x, y, dx, dy) => `<line x1="${x - dx}" y1="${y - dy}" x2="${x + dx}" y2="${y + dy}" stroke="#77746c" stroke-width="1.2"/>`;
-    const dy = Y(maxZ) + 26;
-    s += `<line x1="${X(uMinX)}" y1="${dy}" x2="${X(uMaxX)}" y2="${dy}" stroke="#77746c" stroke-width="1.2"/>`;
+    const tick = (x, y, dx, dy) => `<line x1="${x - dx}" y1="${y - dy}" x2="${x + dx}" y2="${y + dy}" stroke="#77746c" stroke-width="1.1"/>`;
+    const dy = Y(uMaxZ) + 30;
+    s += `<line x1="${X(uMinX)}" y1="${dy}" x2="${X(uMaxX)}" y2="${dy}" stroke="#77746c" stroke-width="1.1"/>`;
     s += tick(X(uMinX), dy, 0, 5) + tick(X(uMaxX), dy, 0, 5);
-    s += `<text x="${(X(uMinX) + X(uMaxX)) / 2}" y="${dy - 6}" text-anchor="middle" font-size="13" fill="#2b2b28" font-family="ui-sans-serif, system-ui">${Math.round(uMaxX - uMinX)}′</text>`;
-    const dx2 = X(maxX) + 26;
-    s += `<line x1="${dx2}" y1="${Y(uMinZ)}" x2="${dx2}" y2="${Y(uMaxZ)}" stroke="#77746c" stroke-width="1.2"/>`;
+    s += `<line x1="${X(uMinX)}" y1="${Y(uMaxZ) + 6}" x2="${X(uMinX)}" y2="${dy + 4}" stroke="#b8b2a6" stroke-width="0.8"/>`;
+    s += `<line x1="${X(uMaxX)}" y1="${Y(uMaxZ) + 6}" x2="${X(uMaxX)}" y2="${dy + 4}" stroke="#b8b2a6" stroke-width="0.8"/>`;
+    s += `<text x="${(X(uMinX) + X(uMaxX)) / 2}" y="${dy - 6}" text-anchor="middle" font-size="13" fill="#23231f" font-family="${FONT}">${Math.round(uMaxX - uMinX)}′-0″</text>`;
+    const dx2 = X(uMaxX) + 30;
+    s += `<line x1="${dx2}" y1="${Y(uMinZ)}" x2="${dx2}" y2="${Y(uMaxZ)}" stroke="#77746c" stroke-width="1.1"/>`;
     s += tick(dx2, Y(uMinZ), 5, 0) + tick(dx2, Y(uMaxZ), 5, 0);
-    s += `<text x="${dx2 + 8}" y="${(Y(uMinZ) + Y(uMaxZ)) / 2}" text-anchor="middle" font-size="13" fill="#2b2b28" font-family="ui-sans-serif, system-ui" transform="rotate(90 ${dx2 + 8} ${(Y(uMinZ) + Y(uMaxZ)) / 2})">${Math.round(uMaxZ - uMinZ)}′</text>`;
+    s += `<text x="${dx2 + 9}" y="${(Y(uMinZ) + Y(uMaxZ)) / 2}" text-anchor="middle" font-size="13" fill="#23231f" font-family="${FONT}" transform="rotate(90 ${dx2 + 9} ${(Y(uMinZ) + Y(uMaxZ)) / 2})">${Math.round(uMaxZ - uMinZ)}′-0″</text>`;
   }
 
-  // title, north arrow (north = -z = up), scale bar
-  s += `<text x="${M * 0.4}" y="34" font-size="17" font-weight="700" fill="#2b2b28" font-family="ui-sans-serif, system-ui">Container Compound — site plan</text>`;
-  s += `<text x="${M * 0.4}" y="54" font-size="11" fill="#77746c" font-family="ui-sans-serif, system-ui">blue = glazed apertures · dashed = utility runs &amp; core ring · red = fire-separation conflicts</text>`;
-  const nx = width - 44, ny = 46;
-  s += `<circle cx="${nx}" cy="${ny}" r="20" fill="none" stroke="#77746c" stroke-width="1.5"/>`;
-  s += `<path d="M ${nx} ${ny - 14} L ${nx - 6} ${ny + 8} L ${nx} ${ny + 2} L ${nx + 6} ${ny + 8} Z" fill="#2b2b28"/>`;
-  s += `<text x="${nx}" y="${ny + 34}" text-anchor="middle" font-size="12" font-weight="600" fill="#2b2b28" font-family="ui-sans-serif, system-ui">N</text>`;
-  const sbx = M * 0.4, sby = height - 24;
-  s += `<line x1="${sbx}" y1="${sby}" x2="${sbx + 20 * S}" y2="${sby}" stroke="#2b2b28" stroke-width="3"/>`;
-  s += `<line x1="${sbx + 10 * S}" y1="${sby - 4}" x2="${sbx + 10 * S}" y2="${sby + 4}" stroke="#2b2b28" stroke-width="1.5"/>`;
-  s += `<text x="${sbx + 10 * S}" y="${sby - 8}" text-anchor="middle" font-size="11" fill="#77746c" font-family="ui-sans-serif, system-ui">20 ft</text>`;
+  // north arrow (north = up)
+  const nx = X(maxX) - 34, ny = Y(minZ) + 36;
+  s += `<circle cx="${nx}" cy="${ny}" r="22" fill="#fbfaf6" stroke="#55524c" stroke-width="1.4"/>`;
+  s += `<path d="M ${nx} ${ny - 15} L ${nx - 7} ${ny + 9} L ${nx} ${ny + 3} L ${nx + 7} ${ny + 9} Z" fill="#23231f"/>`;
+  s += `<text x="${nx}" y="${ny + 38}" text-anchor="middle" font-size="12" font-weight="700" fill="#23231f" font-family="${FONT}">N</text>`;
 
+  // title block, bottom-right of the sheet
+  let hc20 = 0, hc10 = 0, sqft = 0, deckSf = 0;
+  for (const it of items) {
+    const t = TYPE_BY_ID[it.typeId];
+    if (t.deck) { deckSf += 64; continue; }
+    if (t.len === 20) hc20++; else hc10++;
+    sqft += t.len * t.wid;
+  }
+  const tbw = 300, tbh = 118;
+  const tbx = width - tbw - 40, tby = height - tbh - 42;
+  s += `<rect x="${tbx}" y="${tby}" width="${tbw}" height="${tbh}" fill="#ffffff" stroke="#23231f" stroke-width="1.6"/>`;
+  s += `<line x1="${tbx}" y1="${tby + 36}" x2="${tbx + tbw}" y2="${tby + 36}" stroke="#23231f" stroke-width="1"/>`;
+  s += `<text x="${tbx + 14}" y="${tby + 24}" font-size="14" font-weight="700" letter-spacing="2" fill="#23231f" font-family="${FONT}">CONTAINER COMPOUND</text>`;
+  s += `<text x="${tbx + 14}" y="${tby + 54}" font-size="10" letter-spacing="1" fill="#55524c" font-family="${FONT}">SITE PLAN · VIRGINIA · 1.0 AC PARCEL</text>`;
+  s += `<text x="${tbx + 14}" y="${tby + 70}" font-size="10" fill="#55524c" font-family="${FONT}">${hc20 + hc10} UNITS (${hc20}× 20′ HC, ${hc10}× 10′ MINI) · ${sqft.toLocaleString()} SF ENCLOSED · ${deckSf} SF DECK</text>`;
+  s += `<text x="${tbx + 14}" y="${tby + 86}" font-size="8.5" fill="#8a867c" font-family="${FONT}">BLUE = GLAZED APERTURE · DASHED = UTILITY RUN / CORE RING · RED = R302.1 CONFLICT</text>`;
+  s += `<line x1="${tbx + 14}" y1="${tby + 103}" x2="${tbx + 14 + 20 * S}" y2="${tby + 103}" stroke="#23231f" stroke-width="3"/>`;
+  s += `<line x1="${tbx + 14 + 10 * S}" y1="${tby + 99}" x2="${tbx + 14 + 10 * S}" y2="${tby + 107}" stroke="#23231f" stroke-width="1.2"/>`;
+  s += `<text x="${tbx + 22 + 20 * S}" y="${tby + 107}" font-size="9" fill="#55524c" font-family="${FONT}">20 FT</text>`;
+
+  const svgW = Math.round(width), svgH = Math.round(height);
   document.getElementById("site-svg").innerHTML =
-    `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${s}</svg>`;
+    `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">${s}</svg>`;
+
+  // initial view: fit the compound (fall back to the whole sheet) under the chrome
+  const vw = innerWidth, vh = innerHeight;
+  const topPad = 118, pad = 34;
+  let bx0 = 0, by0 = 0, bx1 = svgW, by1 = svgH;
+  if (items.length) {
+    bx0 = X(uMinX) - 60; bx1 = X(uMaxX) + 70;
+    by0 = Y(uMinZ) - 60; by1 = Y(uMaxZ) + 70;
+  }
+  const k = Math.min((vw - pad * 2) / (bx1 - bx0), (vh - topPad - pad) / (by1 - by0), 2.5);
+  sview.k = k;
+  sview.x = (vw - k * (bx0 + bx1)) / 2;
+  sview.y = topPad + ((vh - topPad - pad) - k * (by1 - by0)) / 2 - k * by0;
+  siteApply();
 }
+
+// ---- figma-style pan/zoom for the site plan ----
+const sitePanelEl = document.getElementById("site-panel");
+const siteSvgEl = document.getElementById("site-svg");
+const sview = { x: 0, y: 0, k: 1 };
+const sitePtrs = new Map();
+function siteApply() {
+  siteSvgEl.style.transform = `translate(${sview.x}px, ${sview.y}px) scale(${sview.k})`;
+}
+function siteZoomAt(px, py, f) {
+  const k2 = Math.min(6, Math.max(0.1, sview.k * f));
+  f = k2 / sview.k;
+  sview.x = px - f * (px - sview.x);
+  sview.y = py - f * (py - sview.y);
+  sview.k = k2;
+  siteApply();
+}
+sitePanelEl.addEventListener("pointerdown", (e) => {
+  sitePanelEl.setPointerCapture(e.pointerId);
+  sitePtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+});
+sitePanelEl.addEventListener("pointermove", (e) => {
+  if (!sitePtrs.has(e.pointerId)) return;
+  const prev = sitePtrs.get(e.pointerId);
+  const cur = { x: e.clientX, y: e.clientY };
+  if (sitePtrs.size === 1) {
+    sview.x += cur.x - prev.x;
+    sview.y += cur.y - prev.y;
+    siteApply();
+  } else if (sitePtrs.size === 2) {
+    const other = [...sitePtrs.entries()].find(([id]) => id !== e.pointerId)?.[1];
+    if (other) {
+      const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
+      const d1 = Math.hypot(cur.x - other.x, cur.y - other.y);
+      if (d0 > 0) siteZoomAt((cur.x + other.x) / 2, (cur.y + other.y) / 2, d1 / d0);
+    }
+  }
+  sitePtrs.set(e.pointerId, cur);
+});
+const sitePtrEnd = (e) => sitePtrs.delete(e.pointerId);
+sitePanelEl.addEventListener("pointerup", sitePtrEnd);
+sitePanelEl.addEventListener("pointercancel", sitePtrEnd);
+sitePanelEl.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  siteZoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0018));
+}, { passive: false });
 
 // ------------------------------------------------------------- floor plans
 
