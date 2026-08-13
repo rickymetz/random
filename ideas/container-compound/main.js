@@ -9,6 +9,9 @@ import { OrbitControls } from "./vendor/OrbitControls.js";
 const WALL_T = 0.35; // container wall thickness for rendering
 const H = 9.5; // high cube exterior height
 const WET_RADIUS = 30; // advisory short-plumbing-run radius around the utility core, ft
+const SEP_CLEAR = 10; // gap giving both units >=5 ft to the imaginary line (VRC R302.1)
+const JOIN_EPS = 0.75; // gaps at or under this read as butted/joined
+const TRENCH_PER_FT = 40; // ballpark $/ft for a utility trench with supply + drain
 
 // Furniture pieces are boxes in unit-local feet, centered at the unit origin,
 // x along the container length, z across the 8' width. y is the base height.
@@ -176,8 +179,14 @@ controls.maxDistance = 420;
 controls.target.set(0, 4, 0);
 
 scene.add(new THREE.HemisphereLight(0xe8f0f8, 0x8a9a74, 0.85));
+// north is -z; the sun arcs east (+x) -> south (+z) -> west (-x)
+const SUNS = [
+  { name: "Morning", pos: [150, 55, 45], color: 0xffe4bd, intensity: 1.8 },
+  { name: "Midday", pos: [25, 170, 95], color: 0xfff3e0, intensity: 2.1 },
+  { name: "Evening", pos: [-150, 50, 45], color: 0xffd2a4, intensity: 1.6 },
+];
+let sunIdx = 1;
 const sun = new THREE.DirectionalLight(0xfff3e0, 2.0);
-sun.position.set(-90, 140, 60);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.left = -160;
@@ -187,6 +196,15 @@ sun.shadow.camera.bottom = -160;
 sun.shadow.camera.far = 420;
 sun.shadow.bias = -0.0004;
 scene.add(sun);
+
+function applySun() {
+  const s = SUNS[sunIdx];
+  sun.position.set(...s.pos);
+  sun.color.set(s.color);
+  sun.intensity = s.intensity;
+  document.getElementById("btn-sun").textContent = `☀ ${s.name}`;
+}
+applySun();
 
 // The acre: ~209' square of grass, gravel drive, scattered trees.
 const ACRE = 209;
@@ -456,6 +474,13 @@ function buildUnit(type) {
 const ringMat = new THREE.MeshBasicMaterial({
   color: 0xb3542e, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
 });
+const sepRingMat = new THREE.MeshBasicMaterial({
+  color: 0xc0574a, transparent: true, opacity: 0.3, side: THREE.DoubleSide,
+});
+const sepLineMat = new THREE.LineBasicMaterial({ color: 0xc0574a });
+const trenchMat = new THREE.LineDashedMaterial({
+  color: 0x5f7a8a, dashSize: 1.6, gapSize: 1.1,
+});
 
 // ------------------------------------------------------------------ state
 
@@ -478,7 +503,16 @@ function addItem(typeId, x, z, rot, opts = {}) {
   ring.position.y = 0.07;
   ring.visible = false;
   group.add(ring);
-  const item = { id: nextId++, typeId, x, z, rot, group, ring, peek: 0 };
+  let sepRing = null;
+  if (!type.deck) {
+    sepRing = new THREE.Mesh(
+      new THREE.PlaneGeometry(type.len + 4, type.wid + 4), sepRingMat);
+    sepRing.rotation.x = -Math.PI / 2;
+    sepRing.position.y = 0.055;
+    sepRing.visible = false;
+    group.add(sepRing);
+  }
+  const item = { id: nextId++, typeId, x, z, rot, group, ring, sepRing, peek: 0 };
   applyTransform(item);
   unitRoot.add(group);
   items.push(item);
@@ -544,6 +578,21 @@ function select(item) {
   } else {
     wetEl.style.display = "none";
   }
+  const sepEl = document.getElementById("info-sep");
+  const msgs = [];
+  if (!t.deck) {
+    for (const p of sepPairs) {
+      if (p.a !== item && p.b !== item) continue;
+      const other = p.a === item ? p.b : p.a;
+      msgs.push(`△ ${Math.max(1, Math.round(p.gap))} ft to the ${TYPE_BY_ID[other.typeId].name.toLowerCase()} — 1–9 ft gaps need rated walls and limit glazing (VRC R302.1). Butt them together or open to 10 ft.`);
+    }
+    const j = joined.get(item.id);
+    if (j && j.sqft > 256) {
+      msgs.push(`△ Butted with ${j.count - 1} other unit${j.count > 2 ? "s" : ""}: ${j.sqft} sq ft as one structure — over the 256 sq ft permit exemption.`);
+    }
+  }
+  sepEl.textContent = msgs.join(" ");
+  sepEl.style.display = msgs.length ? "block" : "none";
   info.classList.add("open");
 }
 
@@ -607,19 +656,22 @@ function decodeShare(s) {
   } catch { return null; }
 }
 
+// Spaced to demo the rules: freestanding gaps are all >=10 ft (no rated
+// walls), and the utility core butts the bath+laundry unit — legal joining,
+// 240 sq ft combined, still under the 256 sq ft permit exemption.
 const EXAMPLE = {
   v: 1,
   items: [
-    ["kitchen", -14, 12, 0],
-    ["dining", 14, 12, 0],
-    ["deck", 0, 12, 0],
-    ["sleeping", -14, -14, 0],
-    ["bathhouse", 14, -14, 0],
+    ["dining", -16, 14, 0],
+    ["kitchen", 16, 14, 0],
+    ["deck", 0, 14, 0],
+    ["sleeping", -16, -16, 0],
+    ["bathhouse", 16, -16, 0],
     ["deck", -4, -1, 0],
     ["deck", 4, -1, 0],
-    ["bath-laundry", 34, -1, 1],
-    ["office", -32, -1, 1],
-    ["laundry", 32, -18, 1],
+    ["office", -41, -1, 1],
+    ["bath-laundry", 41, -1, 1],
+    ["laundry", 41, -16, 1],
   ],
 };
 
@@ -635,6 +687,7 @@ for (const t of TYPES) {
   btn.innerHTML = `<span class="pal-chip${t.len === 10 || t.deck ? " mini" : ""}" style="background:#${t.color.toString(16).padStart(6, "0")}"></span>
     <span><div class="pal-name">${t.name}</div><div class="pal-sub">${sub}</div></span>`;
   btn.addEventListener("click", () => {
+    pushUndo();
     const spot = findSpot(t);
     const item = addItem(t.id, spot.x, spot.z, 0);
     select(item);
@@ -642,8 +695,40 @@ for (const t of TYPES) {
   palette.appendChild(btn);
 }
 
+// ---- undo ----
+const undoStack = [];
+function pushUndo() {
+  undoStack.push(JSON.stringify(serialize()));
+  if (undoStack.length > 60) undoStack.shift();
+}
+function undo() {
+  const prev = undoStack.pop();
+  if (!prev) { toast("Nothing to undo"); return; }
+  loadFrom(JSON.parse(prev));
+  toast("Undone");
+}
+document.getElementById("btn-undo").addEventListener("click", undo);
+
+document.getElementById("btn-sun").addEventListener("click", () => {
+  sunIdx = (sunIdx + 1) % SUNS.length;
+  applySun();
+});
+
+document.getElementById("btn-dup").addEventListener("click", () => {
+  if (!selected) return;
+  pushUndo();
+  const t = TYPE_BY_ID[selected.typeId];
+  const spot = findSpot(t);
+  const item = addItem(selected.typeId, spot.x, spot.z, selected.rot);
+  select(item);
+});
+
 document.getElementById("btn-rotate").addEventListener("click", rotateSelected);
-document.getElementById("btn-delete").addEventListener("click", () => selected && removeItem(selected));
+document.getElementById("btn-delete").addEventListener("click", () => {
+  if (!selected) return;
+  pushUndo();
+  removeItem(selected);
+});
 document.getElementById("btn-close").addEventListener("click", () => select(null));
 document.getElementById("stats-pill").addEventListener("click", () =>
   document.getElementById("stats-pop").classList.toggle("open"));
@@ -653,6 +738,7 @@ document.getElementById("btn-va-close").addEventListener("click", () =>
   document.getElementById("va-modal").classList.remove("open"));
 document.getElementById("btn-reset").addEventListener("click", () => {
   if (confirm("Reset to the example compound?")) {
+    pushUndo();
     history.replaceState(null, "", location.pathname);
     loadFrom(EXAMPLE);
   }
@@ -670,16 +756,21 @@ document.getElementById("btn-share").addEventListener("click", async () => {
 
 function rotateSelected() {
   if (!selected) return;
+  pushUndo();
   selected.rot = (selected.rot + 1) % 4;
   applyTransform(selected);
   save();
+  updateStats();
+  select(selected); // refresh separation/plumbing hints
 }
 
 addEventListener("keydown", (e) => {
   if (e.target instanceof HTMLInputElement) return;
-  if (e.key === "r" || e.key === "R") rotateSelected();
+  if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
+  else if (e.key === "r" || e.key === "R") rotateSelected();
   else if ((e.key === "Delete" || e.key === "Backspace") && selected) {
     e.preventDefault();
+    pushUndo();
     removeItem(selected);
   } else if (e.key === "Escape") select(null);
 });
@@ -692,8 +783,98 @@ function toast(msg) {
   toast._t = setTimeout(() => el.classList.remove("show"), 2200);
 }
 
+// ---------------------------------------------------- compliance checks
+
+const overlayGroup = new THREE.Group(); // separation + trench lines
+scene.add(overlayGroup);
+let sepPairs = []; // [{a, b, gap}] freestanding pairs in the 1-9 ft zone
+let joined = new Map(); // item.id -> { count, sqft } for butted clusters
+let trenchFt = 0, trenchCost = 0;
+
+function halfDims(it) {
+  const t = TYPE_BY_ID[it.typeId];
+  return it.rot % 2 ? [t.wid / 2, t.len / 2] : [t.len / 2, t.wid / 2];
+}
+// gap between two axis-aligned footprints (0 = touching/overlapping)
+function gapBetween(a, b) {
+  const [aw, ad] = halfDims(a), [bw, bd] = halfDims(b);
+  const gx = Math.abs(a.x - b.x) - (aw + bw);
+  const gz = Math.abs(a.z - b.z) - (ad + bd);
+  if (gx <= 0 && gz <= 0) return 0;
+  if (gx <= 0) return gz;
+  if (gz <= 0) return gx;
+  return Math.hypot(gx, gz);
+}
+
+function groundLine(ax, az, bx, bz, mat, dashed) {
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(ax, 0.15, az),
+    new THREE.Vector3(bx, 0.15, bz),
+  ]);
+  const line = new THREE.Line(geo, mat);
+  if (dashed) line.computeLineDistances();
+  overlayGroup.add(line);
+}
+
+function updateCompliance() {
+  for (const child of [...overlayGroup.children]) {
+    child.geometry.dispose();
+    overlayGroup.remove(child);
+  }
+  const units = items.filter((i) => !TYPE_BY_ID[i.typeId].deck);
+
+  // fire-separation conflicts + butted clusters (union-find)
+  sepPairs = [];
+  const parent = new Map(units.map((u) => [u.id, u.id]));
+  const find = (i) => (parent.get(i) === i ? i : (parent.set(i, find(parent.get(i))), parent.get(i)));
+  for (let i = 0; i < units.length; i++) {
+    for (let j = i + 1; j < units.length; j++) {
+      const gap = gapBetween(units[i], units[j]);
+      if (gap <= JOIN_EPS) {
+        parent.set(find(units[i].id), find(units[j].id));
+      } else if (gap < SEP_CLEAR) {
+        sepPairs.push({ a: units[i], b: units[j], gap });
+        groundLine(units[i].x, units[i].z, units[j].x, units[j].z, sepLineMat);
+      }
+    }
+  }
+  const conflicted = new Set(sepPairs.flatMap((p) => [p.a.id, p.b.id]));
+  for (const it of units) if (it.sepRing) it.sepRing.visible = conflicted.has(it.id);
+
+  joined = new Map();
+  const clusters = new Map();
+  for (const u of units) {
+    const root = find(u.id);
+    if (!clusters.has(root)) clusters.set(root, []);
+    clusters.get(root).push(u);
+  }
+  for (const members of clusters.values()) {
+    if (members.length < 2) continue;
+    const sqft = members.reduce((s, m) => s + TYPE_BY_ID[m.typeId].len * TYPE_BY_ID[m.typeId].wid, 0);
+    for (const m of members) joined.set(m.id, { count: members.length, sqft });
+  }
+
+  // utility trenches: each wet unit to its nearest core
+  trenchFt = 0;
+  const cores = units.filter((u) => TYPE_BY_ID[u.typeId].core);
+  if (cores.length) {
+    for (const w of units.filter((u) => TYPE_BY_ID[u.typeId].wet)) {
+      let best = null, bestD = Infinity;
+      for (const c of cores) {
+        const d = Math.hypot(c.x - w.x, c.z - w.z);
+        if (d < bestD) { bestD = d; best = c; }
+      }
+      trenchFt += bestD;
+      groundLine(w.x, w.z, best.x, best.z, trenchMat, true);
+    }
+  }
+  trenchFt = Math.round(trenchFt);
+  trenchCost = trenchFt * TRENCH_PER_FT;
+}
+
 function updateStats() {
-  let hc20 = 0, hc10 = 0, sqft = 0, deckSqft = 0, cost = 0;
+  updateCompliance();
+  let hc20 = 0, hc10 = 0, sqft = 0, deckSqft = 0, cost = trenchCost;
   for (const it of items) {
     const t = TYPE_BY_ID[it.typeId];
     cost += t.cost;
@@ -706,9 +887,12 @@ function updateStats() {
   document.getElementById("st-hc10").textContent = hc10;
   document.getElementById("st-sqft").textContent = `${sqft.toLocaleString()} sq ft`;
   document.getElementById("st-deck").textContent = `${deckSqft.toLocaleString()} sq ft`;
+  document.getElementById("st-trench").textContent = trenchFt
+    ? `${trenchFt} ft · $${trenchCost.toLocaleString()}` : "—";
   document.getElementById("st-cost").textContent = `$${cost.toLocaleString()}`;
   document.getElementById("stats-pill").textContent =
-    `${hc20 + hc10} units · ${(sqft + deckSqft).toLocaleString()} ft² · ~$${Math.round(cost / 1000)}k`;
+    `${hc20 + hc10} units · ${(sqft + deckSqft).toLocaleString()} ft² · ~$${Math.round(cost / 1000)}k` +
+    (sepPairs.length ? ` · △${sepPairs.length}` : "");
 }
 
 // ------------------------------------------------------- picking & dragging
@@ -720,6 +904,7 @@ let dragging = null;
 let dragOffset = new THREE.Vector3();
 let downPos = null;
 let moved = false;
+let dragSnapshot = null;
 
 function itemAt(clientX, clientY) {
   pointer.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
@@ -753,6 +938,7 @@ renderer.domElement.addEventListener("pointerdown", (e) => {
   moved = false;
   if (it) {
     dragging = it;
+    dragSnapshot = JSON.stringify(serialize());
     controls.enabled = false;
     const p = groundPoint(e.clientX, e.clientY);
     if (p) dragOffset.set(it.x - p.x, 0, it.z - p.z);
@@ -762,20 +948,26 @@ renderer.domElement.addEventListener("pointerdown", (e) => {
 
 renderer.domElement.addEventListener("pointermove", (e) => {
   if (!dragging || !downPos) return;
-  if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 4) moved = true;
+  if (!moved && Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 4) {
+    moved = true;
+    undoStack.push(dragSnapshot); // pre-drag state, one undo step per drag
+    if (undoStack.length > 60) undoStack.shift();
+  }
   if (!moved) return;
   const p = groundPoint(e.clientX, e.clientY);
   if (!p) return;
   dragging.x = Math.round(p.x + dragOffset.x);
   dragging.z = Math.round(p.z + dragOffset.z);
   applyTransform(dragging);
+  updateCompliance(); // live separation + trench feedback while dragging
 });
 
 renderer.domElement.addEventListener("pointerup", (e) => {
   if (dragging) {
     if (moved) {
       save();
-      if (selected) select(selected); // refresh plumbing-distance hint
+      updateStats();
+      if (selected) select(selected); // refresh plumbing/separation hints
     } else select(selected === dragging ? null : dragging);
     dragging = null;
     controls.enabled = true;
@@ -803,9 +995,16 @@ addEventListener("resize", () => {
 setTimeout(() => toast("drag units to move · tap to peek inside · pinch to zoom"), 700);
 
 const clock = new THREE.Clock();
+const needle = document.getElementById("needle");
+let lastAzimuth = null;
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
+  const az = controls.getAzimuthalAngle();
+  if (az !== lastAzimuth) {
+    needle.style.transform = `rotate(${az}rad)`;
+    lastAzimuth = az;
+  }
   // peek: lift roof + fade walls on the selected unit
   for (const it of items) {
     const target = it === selected ? 1 : 0;

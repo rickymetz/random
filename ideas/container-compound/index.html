@@ -107,6 +107,32 @@
   .pal-name { font-weight: 600; font-size: 0.78rem; line-height: 1.2; }
   .pal-sub { color: var(--muted); font-size: 0.68rem; line-height: 1.25; }
 
+  /* ---- sub bar: undo, sun, compass ---- */
+  #subbar {
+    position: fixed;
+    top: calc(3.2rem + var(--sat));
+    left: 0.75rem; right: 0.75rem;
+    z-index: 4;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    pointer-events: none;
+  }
+  #subbar .right { display: flex; gap: 0.4rem; align-items: center; }
+  .chip {
+    pointer-events: auto;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    border-radius: 999px;
+    padding: 0.34rem 0.7rem;
+    font-size: 0.76rem;
+  }
+  .chip:active { border-color: var(--accent); color: var(--accent); }
+  #compass { display: flex; align-items: center; gap: 0.22rem; }
+  #needle { display: inline-block; line-height: 1; }
+  #compass .n { font-size: 0.64rem; color: var(--muted); }
+
   /* ---- stats pill + popover ---- */
   #stats-pill {
     position: fixed;
@@ -190,6 +216,14 @@
     padding-left: 0.55rem;
     margin-bottom: 0.55rem;
   }
+  #info .sep {
+    display: none;
+    font-size: 0.75rem;
+    color: #8c3b2e;
+    border-left: 3px solid #c0574a;
+    padding-left: 0.55rem;
+    margin-bottom: 0.55rem;
+  }
   #info .row { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
   #info .row button {
     flex: 1;
@@ -236,7 +270,7 @@
   /* ---- toast ---- */
   #toast {
     position: fixed;
-    top: calc(3.4rem + var(--sat));
+    top: calc(5.9rem + var(--sat));
     left: 50%;
     transform: translateX(-50%);
     background: var(--ink);
@@ -285,6 +319,14 @@
   <button id="btn-reset">Reset</button>
 </header>
 
+<div id="subbar">
+  <button id="btn-undo" class="chip">↩ Undo</button>
+  <div class="right">
+    <button id="btn-sun" class="chip">☀ Midday</button>
+    <div id="compass" class="chip" title="North"><span id="needle">↑</span><span class="n">N</span></div>
+  </div>
+</div>
+
 <button id="stats-pill" class="panel">0 units</button>
 <div id="stats-pop" class="panel">
   <table>
@@ -293,6 +335,7 @@
     <tr><td>10&#8242; mini high cubes</td><td id="st-hc10">0</td></tr>
     <tr><td>Enclosed area</td><td id="st-sqft">0 sq ft</td></tr>
     <tr><td>Deck area</td><td id="st-deck">0 sq ft</td></tr>
+    <tr><td>Utility trenches</td><td id="st-trench">—</td></tr>
     <tr class="total"><td>Rough cost</td><td id="st-cost">$0</td></tr>
   </table>
   <div class="fine">Ballpark, fully fitted-out. Site work, utilities &amp; delivery extra.</div>
@@ -313,8 +356,10 @@
   <div class="build" id="info-build"></div>
   <div class="va" id="info-va"></div>
   <div class="wet" id="info-wet"></div>
+  <div class="sep" id="info-sep"></div>
   <div class="row">
     <button id="btn-rotate">Rotate</button>
+    <button id="btn-dup">Duplicate</button>
     <button id="btn-delete">Delete</button>
   </div>
 </div>
