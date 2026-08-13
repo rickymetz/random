@@ -273,11 +273,12 @@ function tree(x, z, s) {
   g.position.set(x, 0, z);
   scene.add(g);
 }
-[
+const TREES = [
   [-88, -78, 1.5], [-70, -92, 1.1], [-95, -30, 1.2], [-84, 30, 1.6], [-92, 72, 1.0],
   [-60, 88, 1.3], [-10, 94, 1.1], [24, 90, 1.5], [88, 84, 1.2], [94, 40, 1.0],
   [92, -32, 1.4], [80, -80, 1.6], [40, -92, 1.0], [-30, -95, 1.3], [8, -88, 0.9],
-].forEach(([x, z, s]) => tree(x, z, s));
+];
+TREES.forEach(([x, z, s]) => tree(x, z, s));
 
 // ------------------------------------------------------------ unit meshes
 
@@ -542,7 +543,11 @@ function select(item) {
   selected = item;
   document.body.classList.toggle("has-selection", !!item);
   const info = document.getElementById("info");
-  if (!item) { info.classList.remove("open"); return; }
+  if (!item) {
+    document.body.classList.remove("sheet-open");
+    updateSelDims();
+    return;
+  }
   item.ring.visible = true;
   const t = TYPE_BY_ID[item.typeId];
   document.getElementById("info-name").textContent = t.name;
@@ -593,8 +598,16 @@ function select(item) {
   }
   sepEl.textContent = msgs.join(" ");
   sepEl.style.display = msgs.length ? "block" : "none";
-  info.classList.add("open");
+  document.getElementById("btn-plan").style.display = t.deck ? "none" : "block";
+  document.getElementById("sel-name").textContent = t.name;
+  // compose: selection shows the tool strip; the sheet opens via the name chip.
+  // dollhouse: tap goes straight to the (view-only) sheet.
+  if (mode === "dollhouse") document.body.classList.add("sheet-open");
+  updateSelDims();
 }
+document.getElementById("sel-chip").addEventListener("click", () =>
+  document.body.classList.add("sheet-open"));
+document.getElementById("sel-x").addEventListener("click", () => select(null));
 
 // find an open spot near the center for a newly added unit
 function findSpot(type) {
@@ -677,6 +690,23 @@ const EXAMPLE = {
 
 // --------------------------------------------------------------------- UI
 
+// ---- modes: compose (edit) / dollhouse (inspect) / parts (list) ----
+let mode = "compose";
+document.body.dataset.mode = "compose";
+function setMode(m) {
+  if (mode === m) return;
+  mode = m;
+  document.body.dataset.mode = m;
+  for (const b of document.querySelectorAll("#tabbar button"))
+    b.classList.toggle("active", b.dataset.mode === m);
+  select(null);
+  closeAdd();
+  clearDragLabels();
+  if (m === "site") renderSitePlan();
+}
+for (const b of document.querySelectorAll("#tabbar button"))
+  b.addEventListener("click", () => setMode(b.dataset.mode));
+
 const addList = document.getElementById("add-list");
 const openAdd = () => { select(null); document.body.classList.add("add-open"); };
 const closeAdd = () => document.body.classList.remove("add-open");
@@ -757,7 +787,7 @@ document.getElementById("btn-sun").addEventListener("click", () => {
 });
 
 document.getElementById("btn-dup").addEventListener("click", () => {
-  if (!selected) return;
+  if (!selected || mode !== "compose") return;
   pushUndo();
   const t = TYPE_BY_ID[selected.typeId];
   const spot = findSpot(t);
@@ -767,11 +797,14 @@ document.getElementById("btn-dup").addEventListener("click", () => {
 
 document.getElementById("btn-rotate").addEventListener("click", rotateSelected);
 document.getElementById("btn-delete").addEventListener("click", () => {
-  if (!selected) return;
+  if (!selected || mode !== "compose") return;
   pushUndo();
   removeItem(selected);
 });
-document.getElementById("btn-close").addEventListener("click", () => select(null));
+document.getElementById("btn-close").addEventListener("click", () => {
+  document.body.classList.remove("sheet-open");
+  if (mode === "dollhouse") select(null);
+});
 document.getElementById("stats-pill").addEventListener("click", () =>
   document.getElementById("stats-pop").classList.toggle("open"));
 document.getElementById("btn-va").addEventListener("click", () =>
@@ -797,7 +830,7 @@ document.getElementById("btn-share").addEventListener("click", async () => {
 });
 
 function rotateSelected() {
-  if (!selected) return;
+  if (!selected || mode !== "compose") return;
   const preBlocked = blockedPairs().length;
   pushUndo();
   selected.rot = (selected.rot + 1) % 4;
@@ -820,7 +853,7 @@ addEventListener("keydown", (e) => {
     e.preventDefault(); redo();
   } else if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
   else if (e.key === "r" || e.key === "R") rotateSelected();
-  else if ((e.key === "Delete" || e.key === "Backspace") && selected) {
+  else if ((e.key === "Delete" || e.key === "Backspace") && selected && mode === "compose") {
     e.preventDefault();
     pushUndo();
     removeItem(selected);
@@ -980,6 +1013,80 @@ function updateStats() {
     (sepPairs.length ? ` · △${sepPairs.length}` : "");
 }
 
+// ------------------------------------------------- CAD-style dimension labels
+
+const labelCache = new Map();
+function dimSprite(text, danger) {
+  const key = text + (danger ? "!" : "");
+  let proto = labelCache.get(key);
+  if (!proto) {
+    const c = document.createElement("canvas");
+    const measure = c.getContext("2d");
+    measure.font = "600 34px ui-sans-serif, system-ui, sans-serif";
+    const w = Math.ceil(measure.measureText(text).width) + 30;
+    c.width = w;
+    c.height = 54;
+    const g = c.getContext("2d");
+    g.fillStyle = danger ? "rgba(192, 87, 74, 0.92)" : "rgba(43, 43, 40, 0.85)";
+    g.beginPath();
+    g.roundRect(0, 0, w, 54, 16);
+    g.fill();
+    g.font = "600 34px ui-sans-serif, system-ui, sans-serif";
+    g.fillStyle = "#fff";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(text, w / 2, 28);
+    const tex = new THREE.CanvasTexture(c);
+    proto = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
+    proto.scale.set(w / 15, 54 / 15, 1);
+    labelCache.set(key, proto);
+  }
+  return proto.clone(); // clones share the material/texture
+}
+
+const dragLabelGroup = new THREE.Group();
+const selDimGroup = new THREE.Group();
+scene.add(dragLabelGroup, selDimGroup);
+
+function clearDragLabels() {
+  for (const c of [...dragLabelGroup.children]) dragLabelGroup.remove(c);
+}
+// gap distances from the dragged unit to its nearest neighbors
+function updateDragLabels(it) {
+  clearDragLabels();
+  if (TYPE_BY_ID[it.typeId].deck) return;
+  const near = items
+    .filter((o) => o !== it && !TYPE_BY_ID[o.typeId].deck)
+    .map((o) => ({ o, gap: gapBetween(it, o) }))
+    .filter((e) => e.gap < 26)
+    .sort((a, b) => a.gap - b.gap)
+    .slice(0, 3);
+  for (const { o, gap } of near) {
+    const danger = gap > JOIN_EPS && gap < SEP_CLEAR;
+    const s = dimSprite(gap <= JOIN_EPS ? "butt" : `${Math.round(gap)}′`, danger);
+    s.position.set((it.x + o.x) / 2, 6, (it.z + o.z) / 2);
+    dragLabelGroup.add(s);
+  }
+}
+// footprint dimensions of the selected unit
+function updateSelDims() {
+  for (const c of [...selDimGroup.children]) selDimGroup.remove(c);
+  if (!selected || mode !== "compose") return;
+  const t = TYPE_BY_ID[selected.typeId];
+  if (t.deck) return;
+  const [hw, hd] = halfDims(selected);
+  const lenLabel = dimSprite(`${t.len}′`, false);
+  const widLabel = dimSprite(`${t.wid}′`, false);
+  if (selected.rot % 2 === 0) {
+    lenLabel.position.set(selected.x, 4, selected.z + hd + 2.6);
+    widLabel.position.set(selected.x + hw + 2.6, 4, selected.z);
+  } else {
+    lenLabel.position.set(selected.x + hw + 2.6, 4, selected.z);
+    widLabel.position.set(selected.x, 4, selected.z + hd + 2.6);
+  }
+  selDimGroup.add(lenLabel, widLabel);
+}
+
 // ------------------------------------------------------- picking & dragging
 
 const raycaster = new THREE.Raycaster();
@@ -1022,7 +1129,7 @@ renderer.domElement.addEventListener("pointerdown", (e) => {
   const it = itemAt(e.clientX, e.clientY);
   downPos = { x: e.clientX, y: e.clientY };
   moved = false;
-  if (it) {
+  if (it && mode === "compose") {
     dragging = it;
     dragSnapshot = JSON.stringify(serialize());
     preBlocked = blockedPairs().length;
@@ -1049,6 +1156,8 @@ renderer.domElement.addEventListener("pointermove", (e) => {
   dragging.z = Math.round(p.z + dragOffset.z);
   applyTransform(dragging);
   updateCompliance(); // live separation + trench feedback while dragging
+  updateDragLabels(dragging);
+  if (dragging === selected) updateSelDims();
 });
 
 renderer.domElement.addEventListener("pointerup", (e) => {
@@ -1065,15 +1174,393 @@ renderer.domElement.addEventListener("pointerup", (e) => {
         if (selected) select(selected); // refresh plumbing/separation hints
       }
     } else select(selected === dragging ? null : dragging);
+    clearDragLabels();
     dragging = null;
     controls.enabled = true;
   } else if (downPos && !moved) {
-    // clicked empty ground
+    // click without a drag: select in dollhouse, deselect on empty ground
     const it = itemAt(e.clientX, e.clientY);
-    if (!it) select(null);
+    if (mode === "dollhouse") select(it && !TYPE_BY_ID[it.typeId].deck ? it : null);
+    else if (!it) select(null);
   }
   downPos = null;
 });
+
+// ------------------------------------------------------------- parts list
+
+function renderParts() {
+  const qty = new Map();
+  for (const it of items) qty.set(it.typeId, (qty.get(it.typeId) || 0) + 1);
+
+  let unitsRows = "", unitsTotal = 0;
+  for (const t of TYPES) {
+    if (t.deck) continue;
+    const n = qty.get(t.id);
+    if (!n) continue;
+    unitsRows += `<tr><td>${t.name}</td><td>×${n}</td><td>$${t.cost.toLocaleString()}</td><td>$${(t.cost * n).toLocaleString()}</td></tr>`;
+    unitsTotal += t.cost * n;
+  }
+
+  const ORDER_LABEL = {
+    standard: "20′ high cube — standard",
+    tunnel: "20′ high cube — tunnel (doors both ends)",
+    openside: "20′ high cube — open-side",
+  };
+  const order = new Map();
+  for (const it of items) {
+    const t = TYPE_BY_ID[it.typeId];
+    if (t.deck) continue;
+    const key = t.len === 10 ? "10′ mini high cube — standard" : ORDER_LABEL[t.variant];
+    order.set(key, (order.get(key) || 0) + 1);
+  }
+  let orderRows = "";
+  for (const [k, n] of order) orderRows += `<tr><td>${k}</td><td>×${n}</td></tr>`;
+
+  const decks = qty.get("deck") || 0;
+  const deckCost = decks * TYPE_BY_ID.deck.cost;
+  const total = unitsTotal + deckCost + trenchCost;
+
+  document.getElementById("parts-list").innerHTML = `
+    <h4>Units</h4>
+    <table>${unitsRows || "<tr><td>No units yet</td></tr>"}</table>
+    <h4>Container order</h4>
+    <table>${orderRows || "<tr><td>—</td></tr>"}</table>
+    <h4>Site</h4>
+    <table>
+      <tr><td>Deck sections (8′ × 8′)</td><td>×${decks}</td><td></td><td>$${deckCost.toLocaleString()}</td></tr>
+      <tr><td>Utility trench</td><td>${trenchFt} ft</td><td>$${TRENCH_PER_FT}/ft</td><td>$${trenchCost.toLocaleString()}</td></tr>
+    </table>
+    <table class="grand"><tr><td>Total (rough)</td><td>$${total.toLocaleString()}</td></tr></table>
+    <div class="fine">Ballpark, fully fitted-out. Site work, utility hookups &amp; container delivery extra.</div>`;
+}
+
+document.getElementById("btn-parts").addEventListener("click", () => {
+  renderParts();
+  document.getElementById("stats-pop").classList.remove("open");
+  document.getElementById("parts-modal").classList.add("open");
+});
+document.getElementById("parts-close").addEventListener("click", () =>
+  document.getElementById("parts-modal").classList.remove("open"));
+
+// ------------------------------------------------------------- site plan
+
+const SHORT_NAME = {
+  sleeping: "Sleeping", kitchen: "Kitchen", bathhouse: "Bathhouse",
+  "bath-laundry": "Bath + laundry", dining: "Dining", living: "Living",
+  bathroom: "Bath", laundry: "Utility", office: "Office", hobby: "Hobby",
+  deck: "",
+};
+
+const SP_S = 8; // px per foot
+const FONT = "ui-sans-serif, system-ui";
+
+// one unit (or deck) drawn architecturally in local coords, rotated into place
+function unitPlanGroup(it) {
+  const t = TYPE_BY_ID[it.typeId];
+  const S = SP_S;
+  const hw = (t.len / 2) * S, hd = (t.wid / 2) * S;
+  let g = "";
+
+  if (t.deck) {
+    g += `<rect x="${-hw}" y="${-hd}" width="${hw * 2}" height="${hd * 2}" fill="#ecd9b8" stroke="#a8814f" stroke-width="1.4"/>`;
+    for (let i = 1; i < 4; i++) {
+      const y = -hd + (hd * 2 / 4) * i;
+      g += `<line x1="${-hw + 2}" y1="${y}" x2="${hw - 2}" y2="${y}" stroke="#c8a878" stroke-width="0.8"/>`;
+    }
+  } else {
+    // wall poché: dark outer line, white interior, faint tint wash
+    g += `<rect x="${-hw}" y="${-hd}" width="${hw * 2}" height="${hd * 2}" fill="#ffffff" stroke="#23231f" stroke-width="2.6"/>`;
+    g += `<rect x="${-hw + 3}" y="${-hd + 3}" width="${hw * 2 - 6}" height="${hd * 2 - 6}" fill="#${t.color.toString(16).padStart(6, "0")}" fill-opacity="0.16" stroke="#55524c" stroke-width="0.8"/>`;
+
+    // furniture outlines
+    for (const f of t.furniture) {
+      g += `<rect x="${(f.x - f.w / 2) * S}" y="${(f.z - f.d / 2) * S}" width="${f.w * S}" height="${f.d * S}" rx="1.5" fill="#f2efe9" stroke="#55524c" stroke-width="0.9"/>`;
+    }
+
+    // glazed apertures + door swings
+    const ends = t.variant === "tunnel" ? [1, -1] : [1];
+    for (const e of ends) {
+      g += `<line x1="${e * (hw - 2)}" y1="${-hd + 4}" x2="${e * (hw - 2)}" y2="${hd - 4}" stroke="#4a90c2" stroke-width="2.2"/>`;
+      const hy = -3.1 * S, r = 3 * S;
+      g += `<line x1="${e * hw}" y1="${hy}" x2="${e * (hw + r * 0.6)}" y2="${hy + r * 0.6}" stroke="#55524c" stroke-width="1.4"/>`;
+      g += `<path d="M ${e * (hw + r * 0.6)} ${hy + r * 0.6} A ${r} ${r} 0 0 ${e === 1 ? 0 : 1} ${e * hw} ${hy + r}" fill="none" stroke="#55524c" stroke-width="0.8" stroke-dasharray="3 3"/>`;
+    }
+    if (t.variant === "openside") {
+      g += `<line x1="${-hw + 5}" y1="${hd - 2}" x2="${hw - 5}" y2="${hd - 2}" stroke="#4a90c2" stroke-width="2.2"/>`;
+    }
+  }
+  return g;
+}
+
+function renderSitePlan() {
+  updateCompliance();
+  const S = SP_S, M = 60;
+  const HALF = 104.5; // one acre, ~209 ft square
+  const minX = -HALF - 8, maxX = HALF + 8, minZ = -HALF - 8, maxZ = HALF + 8;
+  const X = (x) => M + (x - minX) * S;
+  const Y = (z) => M + (z - minZ) * S;
+  const width = (maxX - minX) * S + M * 2;
+  const height = (maxZ - minZ) * S + M * 2;
+  let s = "";
+
+  // paper sheet with a soft shadow, sitting on the workspace
+  s += `<rect x="10" y="12" width="${width - 14}" height="${height - 14}" fill="#22201c" opacity="0.10"/>`;
+  s += `<rect x="4" y="4" width="${width - 14}" height="${height - 14}" fill="#fbfaf6" stroke="#c9c4b8" stroke-width="1.5"/>`;
+
+  // fine 10 ft grid, heavier every 50 ft
+  for (let gx = Math.ceil(minX / 10) * 10; gx <= maxX; gx += 10) {
+    const major = gx % 50 === 0;
+    s += `<line x1="${X(gx)}" y1="${Y(minZ)}" x2="${X(gx)}" y2="${Y(maxZ)}" stroke="${major ? "#ddd8cc" : "#eceae1"}" stroke-width="1"/>`;
+  }
+  for (let gz = Math.ceil(minZ / 10) * 10; gz <= maxZ; gz += 10) {
+    const major = gz % 50 === 0;
+    s += `<line x1="${X(minX)}" y1="${Y(gz)}" x2="${X(maxX)}" y2="${Y(gz)}" stroke="${major ? "#ddd8cc" : "#eceae1"}" stroke-width="1"/>`;
+  }
+
+  // property line (dash-dot) — the one-acre parcel
+  s += `<rect x="${X(-HALF)}" y="${Y(-HALF)}" width="${HALF * 2 * S}" height="${HALF * 2 * S}" fill="none" stroke="#8a867c" stroke-width="1.6" stroke-dasharray="16 6 3 6"/>`;
+
+  // gravel drive
+  s += `<rect x="${X(45)}" y="${Y(8)}" width="${14 * S}" height="${96 * S}" fill="#e7e2d6" stroke="#cfc9ba" stroke-width="1"/>`;
+  s += `<circle cx="${X(52)}" cy="${Y(10)}" r="${16 * S}" fill="#e7e2d6" stroke="#cfc9ba" stroke-width="1"/>`;
+
+  // tree canopies
+  for (const [tx, tz, ts] of TREES) {
+    s += `<circle cx="${X(tx)}" cy="${Y(tz)}" r="${6 * ts * S}" fill="#7c9464" fill-opacity="0.14" stroke="#7c9464" stroke-width="1"/>`;
+    s += `<circle cx="${X(tx)}" cy="${Y(tz)}" r="2" fill="#5f7350"/>`;
+  }
+
+  // utility core rings + trench runs
+  for (const it of items) {
+    if (!TYPE_BY_ID[it.typeId].core) continue;
+    s += `<circle cx="${X(it.x)}" cy="${Y(it.z)}" r="${WET_RADIUS * S}" fill="none" stroke="#7e97a6" stroke-width="1.4" stroke-dasharray="8 6" opacity="0.6"/>`;
+  }
+  const cores = items.filter((i) => TYPE_BY_ID[i.typeId].core);
+  if (cores.length) {
+    for (const w of items.filter((i) => TYPE_BY_ID[i.typeId].wet)) {
+      let best = cores[0], bd = Infinity;
+      for (const c of cores) {
+        const d = Math.hypot(c.x - w.x, c.z - w.z);
+        if (d < bd) { bd = d; best = c; }
+      }
+      s += `<line x1="${X(w.x)}" y1="${Y(w.z)}" x2="${X(best.x)}" y2="${Y(best.z)}" stroke="#5f7a8a" stroke-width="1.4" stroke-dasharray="5 5" opacity="0.7"/>`;
+    }
+  }
+
+  // units: decks underneath, then containers, world rotation -> screen rotation
+  const drawOrder = [...items].sort((a, b) =>
+    (TYPE_BY_ID[a.typeId].deck ? 0 : 1) - (TYPE_BY_ID[b.typeId].deck ? 0 : 1));
+  for (const it of drawOrder) {
+    s += `<g transform="translate(${X(it.x)} ${Y(it.z)}) rotate(${-it.rot * 90})">${unitPlanGroup(it)}</g>`;
+  }
+  // labels drawn unrotated, above everything
+  for (const it of items) {
+    const t = TYPE_BY_ID[it.typeId];
+    if (t.deck) continue;
+    const label = SHORT_NAME[it.typeId] || t.name;
+    s += `<text x="${X(it.x)}" y="${Y(it.z) - 2}" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="1.1" fill="#23231f" font-family="${FONT}">${label.toUpperCase()}</text>`;
+    s += `<text x="${X(it.x)}" y="${Y(it.z) + 10}" text-anchor="middle" font-size="8.5" fill="#77746c" font-family="${FONT}">${t.len * t.wid} SF</text>`;
+  }
+
+  // fire-separation conflicts
+  for (const p of sepPairs) {
+    const mx = (X(p.a.x) + X(p.b.x)) / 2, my = (Y(p.a.z) + Y(p.b.z)) / 2;
+    s += `<line x1="${X(p.a.x)}" y1="${Y(p.a.z)}" x2="${X(p.b.x)}" y2="${Y(p.b.z)}" stroke="#c0574a" stroke-width="1.5"/>`;
+    s += `<text x="${mx}" y="${my - 5}" text-anchor="middle" font-size="11" font-weight="700" fill="#c0574a" font-family="${FONT}">${Math.max(1, Math.round(p.gap))}′ △</text>`;
+  }
+
+  // compound extent dimension strings
+  let uMinX = Infinity, uMaxX = -Infinity, uMinZ = Infinity, uMaxZ = -Infinity;
+  for (const it of items) {
+    const [hw, hd] = halfDims(it);
+    uMinX = Math.min(uMinX, it.x - hw); uMaxX = Math.max(uMaxX, it.x + hw);
+    uMinZ = Math.min(uMinZ, it.z - hd); uMaxZ = Math.max(uMaxZ, it.z + hd);
+  }
+  if (items.length) {
+    const tick = (x, y, dx, dy) => `<line x1="${x - dx}" y1="${y - dy}" x2="${x + dx}" y2="${y + dy}" stroke="#77746c" stroke-width="1.1"/>`;
+    const dy = Y(uMaxZ) + 30;
+    s += `<line x1="${X(uMinX)}" y1="${dy}" x2="${X(uMaxX)}" y2="${dy}" stroke="#77746c" stroke-width="1.1"/>`;
+    s += tick(X(uMinX), dy, 0, 5) + tick(X(uMaxX), dy, 0, 5);
+    s += `<line x1="${X(uMinX)}" y1="${Y(uMaxZ) + 6}" x2="${X(uMinX)}" y2="${dy + 4}" stroke="#b8b2a6" stroke-width="0.8"/>`;
+    s += `<line x1="${X(uMaxX)}" y1="${Y(uMaxZ) + 6}" x2="${X(uMaxX)}" y2="${dy + 4}" stroke="#b8b2a6" stroke-width="0.8"/>`;
+    s += `<text x="${(X(uMinX) + X(uMaxX)) / 2}" y="${dy - 6}" text-anchor="middle" font-size="13" fill="#23231f" font-family="${FONT}">${Math.round(uMaxX - uMinX)}′-0″</text>`;
+    const dx2 = X(uMaxX) + 30;
+    s += `<line x1="${dx2}" y1="${Y(uMinZ)}" x2="${dx2}" y2="${Y(uMaxZ)}" stroke="#77746c" stroke-width="1.1"/>`;
+    s += tick(dx2, Y(uMinZ), 5, 0) + tick(dx2, Y(uMaxZ), 5, 0);
+    s += `<text x="${dx2 + 9}" y="${(Y(uMinZ) + Y(uMaxZ)) / 2}" text-anchor="middle" font-size="13" fill="#23231f" font-family="${FONT}" transform="rotate(90 ${dx2 + 9} ${(Y(uMinZ) + Y(uMaxZ)) / 2})">${Math.round(uMaxZ - uMinZ)}′-0″</text>`;
+  }
+
+  // north arrow (north = up)
+  const nx = X(maxX) - 34, ny = Y(minZ) + 36;
+  s += `<circle cx="${nx}" cy="${ny}" r="22" fill="#fbfaf6" stroke="#55524c" stroke-width="1.4"/>`;
+  s += `<path d="M ${nx} ${ny - 15} L ${nx - 7} ${ny + 9} L ${nx} ${ny + 3} L ${nx + 7} ${ny + 9} Z" fill="#23231f"/>`;
+  s += `<text x="${nx}" y="${ny + 38}" text-anchor="middle" font-size="12" font-weight="700" fill="#23231f" font-family="${FONT}">N</text>`;
+
+  // title block, bottom-right of the sheet
+  let hc20 = 0, hc10 = 0, sqft = 0, deckSf = 0;
+  for (const it of items) {
+    const t = TYPE_BY_ID[it.typeId];
+    if (t.deck) { deckSf += 64; continue; }
+    if (t.len === 20) hc20++; else hc10++;
+    sqft += t.len * t.wid;
+  }
+  const tbw = 300, tbh = 118;
+  const tbx = width - tbw - 40, tby = height - tbh - 42;
+  s += `<rect x="${tbx}" y="${tby}" width="${tbw}" height="${tbh}" fill="#ffffff" stroke="#23231f" stroke-width="1.6"/>`;
+  s += `<line x1="${tbx}" y1="${tby + 36}" x2="${tbx + tbw}" y2="${tby + 36}" stroke="#23231f" stroke-width="1"/>`;
+  s += `<text x="${tbx + 14}" y="${tby + 24}" font-size="14" font-weight="700" letter-spacing="2" fill="#23231f" font-family="${FONT}">CONTAINER COMPOUND</text>`;
+  s += `<text x="${tbx + 14}" y="${tby + 54}" font-size="10" letter-spacing="1" fill="#55524c" font-family="${FONT}">SITE PLAN · VIRGINIA · 1.0 AC PARCEL</text>`;
+  s += `<text x="${tbx + 14}" y="${tby + 70}" font-size="10" fill="#55524c" font-family="${FONT}">${hc20 + hc10} UNITS (${hc20}× 20′ HC, ${hc10}× 10′ MINI) · ${sqft.toLocaleString()} SF ENCLOSED · ${deckSf} SF DECK</text>`;
+  s += `<text x="${tbx + 14}" y="${tby + 86}" font-size="8.5" fill="#8a867c" font-family="${FONT}">BLUE = GLAZED APERTURE · DASHED = UTILITY RUN / CORE RING · RED = R302.1 CONFLICT</text>`;
+  s += `<line x1="${tbx + 14}" y1="${tby + 103}" x2="${tbx + 14 + 20 * S}" y2="${tby + 103}" stroke="#23231f" stroke-width="3"/>`;
+  s += `<line x1="${tbx + 14 + 10 * S}" y1="${tby + 99}" x2="${tbx + 14 + 10 * S}" y2="${tby + 107}" stroke="#23231f" stroke-width="1.2"/>`;
+  s += `<text x="${tbx + 22 + 20 * S}" y="${tby + 107}" font-size="9" fill="#55524c" font-family="${FONT}">20 FT</text>`;
+
+  const svgW = Math.round(width), svgH = Math.round(height);
+  document.getElementById("site-svg").innerHTML =
+    `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">${s}</svg>`;
+
+  // initial view: fit the compound (fall back to the whole sheet) under the chrome
+  const vw = innerWidth, vh = innerHeight;
+  const topPad = 118, pad = 34;
+  let bx0 = 0, by0 = 0, bx1 = svgW, by1 = svgH;
+  if (items.length) {
+    bx0 = X(uMinX) - 60; bx1 = X(uMaxX) + 70;
+    by0 = Y(uMinZ) - 60; by1 = Y(uMaxZ) + 70;
+  }
+  const k = Math.min((vw - pad * 2) / (bx1 - bx0), (vh - topPad - pad) / (by1 - by0), 2.5);
+  sview.k = k;
+  sview.x = (vw - k * (bx0 + bx1)) / 2;
+  sview.y = topPad + ((vh - topPad - pad) - k * (by1 - by0)) / 2 - k * by0;
+  siteApply();
+}
+
+// ---- figma-style pan/zoom for the site plan ----
+const sitePanelEl = document.getElementById("site-panel");
+const siteSvgEl = document.getElementById("site-svg");
+const sview = { x: 0, y: 0, k: 1 };
+const sitePtrs = new Map();
+function siteApply() {
+  siteSvgEl.style.transform = `translate(${sview.x}px, ${sview.y}px) scale(${sview.k})`;
+}
+function siteZoomAt(px, py, f) {
+  const k2 = Math.min(6, Math.max(0.1, sview.k * f));
+  f = k2 / sview.k;
+  sview.x = px - f * (px - sview.x);
+  sview.y = py - f * (py - sview.y);
+  sview.k = k2;
+  siteApply();
+}
+sitePanelEl.addEventListener("pointerdown", (e) => {
+  sitePanelEl.setPointerCapture(e.pointerId);
+  sitePtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+});
+sitePanelEl.addEventListener("pointermove", (e) => {
+  if (!sitePtrs.has(e.pointerId)) return;
+  const prev = sitePtrs.get(e.pointerId);
+  const cur = { x: e.clientX, y: e.clientY };
+  if (sitePtrs.size === 1) {
+    sview.x += cur.x - prev.x;
+    sview.y += cur.y - prev.y;
+    siteApply();
+  } else if (sitePtrs.size === 2) {
+    const other = [...sitePtrs.entries()].find(([id]) => id !== e.pointerId)?.[1];
+    if (other) {
+      const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
+      const d1 = Math.hypot(cur.x - other.x, cur.y - other.y);
+      if (d0 > 0) siteZoomAt((cur.x + other.x) / 2, (cur.y + other.y) / 2, d1 / d0);
+    }
+  }
+  sitePtrs.set(e.pointerId, cur);
+});
+const sitePtrEnd = (e) => sitePtrs.delete(e.pointerId);
+sitePanelEl.addEventListener("pointerup", sitePtrEnd);
+sitePanelEl.addEventListener("pointercancel", sitePtrEnd);
+sitePanelEl.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  siteZoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0018));
+}, { passive: false });
+
+// ------------------------------------------------------------- floor plans
+
+// index-aligned with each type's furniture array
+const PLAN_LABELS = {
+  sleeping: ["bed", "", "", "wardrobe", "bench"],
+  kitchen: ["counter run", "fridge", "pantry", "island"],
+  bathhouse: ["shower", "shower", "soaking tub", "bench"],
+  "bath-laundry": ["shower", "WC", "vanity", "washer", "dryer", "counter"],
+  dining: ["table", "", "", "", "", "", "", "sideboard"],
+  living: ["sofa", "table", "media", "stove"],
+  bathroom: ["shower", "WC", "vanity"],
+  laundry: ["washer", "dryer", "WH", "shelving"],
+  office: ["desk", "", "bookshelves", "chair", "cab"],
+  hobby: ["workbench", "shelving", "bins"],
+};
+
+function planSVG(t) {
+  const S = 22, M = 46; // px per foot, margin
+  const L = t.len, W = t.wid;
+  const width = L * S + M * 2, height = W * S + M * 2;
+  const X = (x) => M + (x + L / 2) * S;
+  const Y = (z) => M + (z + W / 2) * S;
+  let s = "";
+
+  // steel shell + finished interior (spray foam line)
+  s += `<rect x="${X(-L / 2)}" y="${Y(-W / 2)}" width="${L * S}" height="${W * S}" fill="#f7f5f1" stroke="#2b2b28" stroke-width="3"/>`;
+  s += `<rect x="${X(-L / 2 + 0.55)}" y="${Y(-W / 2 + 0.42)}" width="${(L - 1.1) * S}" height="${(W - 0.84) * S}" fill="none" stroke="#b8b2a6" stroke-width="1.5" stroke-dasharray="6 5"/>`;
+
+  // glazed apertures, entry door leaf + outswing, egress arrow
+  const ends = t.variant === "tunnel" ? [1, -1] : [1];
+  for (const e of ends) {
+    const gx = X(e * (L / 2 - 0.5));
+    s += `<line x1="${gx}" y1="${Y(-W / 2 + 0.5)}" x2="${gx}" y2="${Y(W / 2 - 0.5)}" stroke="#5aa9e6" stroke-width="4"/>`;
+    const hx = X(e * L / 2), hy = Y(-3.1), dw = 3 * S;
+    s += `<line x1="${hx}" y1="${hy}" x2="${hx + e * dw * 0.7}" y2="${hy - dw * 0.7}" stroke="#4f4a42" stroke-width="3" stroke-linecap="round"/>`;
+    s += `<path d="M ${hx + e * dw * 0.7} ${hy - dw * 0.7} A ${dw} ${dw} 0 0 ${e === 1 ? 1 : 0} ${hx} ${hy + (0 * dw)}" fill="none" stroke="#4f4a42" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.7"/>`;
+    s += `<line x1="${X(e * (L / 2 - 3.4))}" y1="${Y(-1.6)}" x2="${X(e * (L / 2 + 1.5))}" y2="${Y(-1.6)}" stroke="#c0574a" stroke-width="2" marker-end="url(#arr)"/>`;
+  }
+  if (t.variant === "openside") {
+    s += `<line x1="${X(-L / 2 + 0.9)}" y1="${Y(W / 2 - 0.35)}" x2="${X(L / 2 - 0.9)}" y2="${Y(W / 2 - 0.35)}" stroke="#5aa9e6" stroke-width="4"/>`;
+  }
+
+  // furniture with labels
+  const labels = PLAN_LABELS[t.id] || [];
+  t.furniture.forEach((f, i) => {
+    s += `<rect x="${X(f.x - f.w / 2)}" y="${Y(f.z - f.d / 2)}" width="${f.w * S}" height="${f.d * S}" rx="3" fill="#${f.color.toString(16).padStart(6, "0")}" stroke="rgba(0,0,0,0.28)"/>`;
+    if (labels[i] && f.w * S > 34) {
+      s += `<text x="${X(f.x)}" y="${Y(f.z) + 3.5}" text-anchor="middle" font-size="10.5" fill="#2b2b28" font-family="ui-sans-serif, system-ui">${labels[i]}</text>`;
+    }
+  });
+
+  // dimension lines
+  const tick = (x, y, dx, dy) => `<line x1="${x - dx}" y1="${y - dy}" x2="${x + dx}" y2="${y + dy}" stroke="#77746c" stroke-width="1.2"/>`;
+  const dyH = Y(W / 2) + 22;
+  s += `<line x1="${X(-L / 2)}" y1="${dyH}" x2="${X(L / 2)}" y2="${dyH}" stroke="#77746c" stroke-width="1.2"/>`;
+  s += tick(X(-L / 2), dyH, 0, 5) + tick(X(L / 2), dyH, 0, 5);
+  s += `<text x="${X(0)}" y="${dyH - 6}" text-anchor="middle" font-size="12" fill="#2b2b28" font-family="ui-sans-serif, system-ui">${L}′0″</text>`;
+  const dxV = X(L / 2) + 22;
+  s += `<line x1="${dxV}" y1="${Y(-W / 2)}" x2="${dxV}" y2="${Y(W / 2)}" stroke="#77746c" stroke-width="1.2"/>`;
+  s += tick(dxV, Y(-W / 2), 5, 0) + tick(dxV, Y(W / 2), 5, 0);
+  s += `<text x="${dxV + 6}" y="${Y(0)}" text-anchor="middle" font-size="12" fill="#2b2b28" font-family="ui-sans-serif, system-ui" transform="rotate(90 ${dxV + 6} ${Y(0)})">${W}′0″</text>`;
+  s += `<text x="${X(0)}" y="${Y(-W / 2) - 10}" text-anchor="middle" font-size="11" fill="#77746c" font-family="ui-sans-serif, system-ui">interior ≈ 7′2″ wide × ${t.len === 20 ? "18′8″" : "8′7″"} after spray foam</text>`;
+
+  return `<svg viewBox="0 0 ${width} ${height + 8}" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#c0574a"/></marker></defs>
+    ${s}</svg>`;
+}
+
+function openPlan(t) {
+  document.getElementById("plan-title").textContent = `${t.name} — floor plan`;
+  document.getElementById("plan-sub").textContent =
+    `${t.len}' ${t.len === 10 ? "mini " : ""}high cube · glazed apertures in blue · egress in red · dashed line is the finished interior`;
+  document.getElementById("plan-svg").innerHTML = planSVG(t);
+  document.getElementById("plan-modal").classList.add("open");
+}
+document.getElementById("btn-plan").addEventListener("click", () => {
+  if (selected) openPlan(TYPE_BY_ID[selected.typeId]);
+});
+document.getElementById("plan-close").addEventListener("click", () =>
+  document.getElementById("plan-modal").classList.remove("open"));
 
 // ------------------------------------------------------------------- boot
 
@@ -1101,9 +1588,9 @@ function animate() {
     needle.style.transform = `rotate(${az}rad)`;
     lastAzimuth = az;
   }
-  // peek: lift roof + fade walls on the selected unit
+  // peek: lift roof + fade walls on the selected unit (all units in dollhouse)
   for (const it of items) {
-    const target = it === selected ? 1 : 0;
+    const target = mode === "dollhouse" || it === selected ? 1 : 0;
     if (Math.abs(it.peek - target) > 0.001) {
       it.peek += (target - it.peek) * Math.min(1, dt * 7);
       const ud = it.group.userData;

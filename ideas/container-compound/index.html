@@ -177,10 +177,170 @@
     overflow: hidden;
   }
 
+  /* ---- mode tab bar ---- */
+  #tabbar {
+    position: fixed;
+    top: calc(3.6rem + var(--sat));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    display: flex;
+    gap: 0.15rem;
+    padding: 0.22rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+  #tabbar button {
+    border: 0;
+    background: transparent;
+    border-radius: 999px;
+    padding: 0.34rem 0.85rem;
+    font-size: 0.78rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  #tabbar button.active {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* mode visibility */
+  body[data-mode="dollhouse"] #fab,
+  body[data-mode="dollhouse"] #edge-tools,
+  body[data-mode="site"] #fab,
+  body[data-mode="site"] #edge-tools,
+  body[data-mode="site"] #stats-pill,
+  body[data-mode="site"] #stats-pop,
+  body[data-mode="site"] #subbar { display: none; }
+  body[data-mode="dollhouse"] #info .row { display: none; }
+
+  /* ---- site plan: full-bleed pan/zoom workspace, swaps in for the 3D scene ---- */
+  #site-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 4;
+    overflow: hidden;
+    background: #e8e5dd; /* workspace behind the paper sheet */
+    display: none;
+    touch-action: none;
+    cursor: grab;
+  }
+  #site-panel:active { cursor: grabbing; }
+  body[data-mode="site"] #site-panel { display: block; }
+  #site-svg {
+    position: absolute;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+  #site-svg svg { display: block; }
+
+  /* ---- parts list modal ---- */
+  #parts-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(30, 28, 24, 0.45);
+    display: none;
+    place-items: center;
+    z-index: 11;
+  }
+  #parts-modal.open { display: grid; }
+  #parts-modal .box {
+    background: var(--panel);
+    border-radius: 0.9rem;
+    width: calc(100vw - 2rem);
+    max-width: 30rem;
+    max-height: 84vh;
+    overflow-y: auto;
+    padding: 1.1rem 1.2rem;
+    box-shadow: var(--shadow);
+  }
+  #parts-modal h2 { font-size: 1.05rem; margin-bottom: 0.2rem; }
+  #parts-modal h4 {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0.9rem 0 0.3rem;
+  }
+  #parts-modal table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  #parts-modal td { padding: 0.18rem 0; vertical-align: top; }
+  #parts-modal td:nth-child(2) { color: var(--muted); white-space: nowrap; padding-left: 0.5rem; }
+  #parts-modal td:nth-child(3), #parts-modal td:nth-child(4) {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    padding-left: 0.5rem;
+  }
+  #parts-modal table.grand td {
+    border-top: 1px solid var(--line);
+    padding-top: 0.4rem;
+    font-weight: 600;
+  }
+  #parts-modal table.grand td:last-child { text-align: right; }
+  #parts-modal .fine { color: var(--muted); font-size: 0.68rem; margin-top: 0.6rem; }
+  #parts-modal button {
+    margin-top: 0.9rem;
+    width: 100%;
+    font: inherit;
+    padding: 0.55rem 0.9rem;
+    border-radius: 0.55rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    cursor: pointer;
+  }
+  #stats-pop .parts-btn {
+    width: 100%;
+    margin-top: 0.55rem;
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.42rem 0.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    cursor: pointer;
+  }
+
+  /* ---- floor plan modal ---- */
+  #plan-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(30, 28, 24, 0.45);
+    display: none;
+    place-items: center;
+    z-index: 11;
+  }
+  #plan-modal.open { display: grid; }
+  #plan-modal .box {
+    background: var(--panel);
+    border-radius: 0.9rem;
+    width: calc(100vw - 2rem);
+    max-width: 34rem;
+    max-height: 86vh;
+    overflow-y: auto;
+    padding: 1.1rem 1.2rem;
+    box-shadow: var(--shadow);
+  }
+  #plan-modal h2 { font-size: 1rem; }
+  #plan-modal .sub { color: var(--muted); font-size: 0.75rem; margin: 0.15rem 0 0.7rem; }
+  #plan-svg svg { width: 100%; height: auto; display: block; }
+  #plan-modal button {
+    margin-top: 0.9rem;
+    width: 100%;
+    font: inherit;
+    padding: 0.55rem 0.9rem;
+    border-radius: 0.55rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    cursor: pointer;
+  }
+
   /* ---- sub bar: undo, sun, compass ---- */
   #subbar {
     position: fixed;
-    top: calc(3.2rem + var(--sat));
+    top: calc(6.4rem + var(--sat));
     left: 0.75rem; right: 0.75rem;
     z-index: 4;
     display: flex;
@@ -270,7 +430,76 @@
     transform: translateY(108%);
     transition: transform 220ms ease;
   }
-  body.has-selection #info { transform: translateY(0); }
+  body.sheet-open #info { transform: translateY(0); }
+
+  /* ---- selection tool strip (compose mode) ---- */
+  #toolstrip {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(0.9rem + var(--sab));
+    z-index: 6;
+    display: none;
+    gap: 0.2rem;
+    padding: 0.35rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+  body.has-selection[data-mode="compose"] #toolstrip { display: flex; }
+  #toolstrip button {
+    width: 2.9rem; height: 2.9rem;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    font-size: 1.3rem;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+    color: var(--ink);
+  }
+  #toolstrip button svg { width: 1.25rem; height: 1.25rem; }
+  #toolstrip button.active { background: rgba(179, 84, 46, 0.15); color: var(--accent); }
+  #toolstrip button:not(.active):active { color: var(--accent); }
+
+  #sel-chip {
+    position: fixed;
+    right: 0.9rem;
+    bottom: calc(4.7rem + var(--sab));
+    z-index: 6;
+    display: none;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    border-radius: 999px;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  #sel-chip .i {
+    color: var(--muted);
+    font-weight: 400;
+    font-size: 0.95rem;
+  }
+  body.has-selection[data-mode="compose"] #sel-chip { display: flex; }
+  #sel-x {
+    position: fixed;
+    right: 0.9rem;
+    bottom: calc(8.1rem + var(--sab));
+    z-index: 6;
+    display: none;
+    width: 2.5rem; height: 2.5rem;
+    border-radius: 50%;
+    border: 1.5px dashed var(--muted);
+    background: rgba(252, 251, 248, 0.6);
+    color: var(--muted);
+    font-size: 1rem;
+    place-items: center;
+  }
+  body.has-selection[data-mode="compose"] #sel-x { display: grid; }
   #info .handle {
     width: 2.4rem; height: 0.28rem;
     background: var(--line);
@@ -318,6 +547,16 @@
     padding-left: 0.55rem;
     margin-bottom: 0.55rem;
   }
+  #info .wide {
+    width: 100%;
+    font-size: 0.85rem;
+    padding: 0.55rem 0.5rem;
+    border-radius: 0.55rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    margin-bottom: 0.5rem;
+  }
+  #info .wide:active { border-color: var(--accent); color: var(--accent); }
   #info .row { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
   #info .row button {
     flex: 1;
@@ -364,7 +603,7 @@
   /* ---- toast ---- */
   #toast {
     position: fixed;
-    top: calc(5.9rem + var(--sat));
+    top: calc(8.6rem + var(--sat));
     left: 50%;
     transform: translateX(-50%);
     background: var(--ink);
@@ -396,7 +635,7 @@
       opacity: 0;
       transition: opacity 160ms ease;
     }
-    body.has-selection #info { visibility: visible; opacity: 1; }
+    body.sheet-open #info { visibility: visible; opacity: 1; }
     #va-modal { place-items: center; }
     #va-modal .box { border-radius: 0.9rem; width: calc(100vw - 3rem); padding-bottom: 1.3rem; }
   }
@@ -411,6 +650,33 @@
   <button id="btn-va">VA notes</button>
   <button id="btn-reset">Reset</button>
 </header>
+
+<div id="tabbar">
+  <button data-mode="compose" class="active">Compose</button>
+  <button data-mode="dollhouse">Dollhouse</button>
+  <button data-mode="site">Site plan</button>
+</div>
+
+<div id="site-panel">
+  <div id="site-svg"><!-- populated by main.js --></div>
+</div>
+
+<div id="parts-modal">
+  <div class="box">
+    <h2>Parts list</h2>
+    <div id="parts-list"><!-- populated by main.js --></div>
+    <button id="parts-close">Close</button>
+  </div>
+</div>
+
+<div id="plan-modal">
+  <div class="box">
+    <h2 id="plan-title"></h2>
+    <div class="sub" id="plan-sub"></div>
+    <div id="plan-svg"></div>
+    <button id="plan-close">Close</button>
+  </div>
+</div>
 
 <div id="subbar">
   <div class="right">
@@ -436,6 +702,7 @@
     <tr class="total"><td>Rough cost</td><td id="st-cost">$0</td></tr>
   </table>
   <div class="fine">Ballpark, fully fitted-out. Site work, utilities &amp; delivery extra.</div>
+  <button class="parts-btn" id="btn-parts">Full parts list →</button>
 </div>
 
 <button id="fab" aria-label="Add a unit">+</button>
@@ -462,12 +729,22 @@
   <div class="va" id="info-va"></div>
   <div class="wet" id="info-wet"></div>
   <div class="sep" id="info-sep"></div>
-  <div class="row">
-    <button id="btn-rotate">Rotate</button>
-    <button id="btn-dup">Duplicate</button>
-    <button id="btn-delete">Delete</button>
-  </div>
+  <button id="btn-plan" class="wide">Floor plan</button>
 </div>
+
+<div id="toolstrip" class="panel">
+  <button id="tool-move" class="active" aria-label="Move (drag the unit)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>
+  </button>
+  <button id="btn-rotate" aria-label="Rotate 90°">⟳</button>
+  <button id="btn-dup" aria-label="Duplicate">⧉</button>
+  <button id="btn-delete" aria-label="Delete">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v7M14 10v7"/></svg>
+  </button>
+</div>
+
+<button id="sel-chip"><span id="sel-name"></span><span class="i">ⓘ</span></button>
+<button id="sel-x" aria-label="Deselect">✕</button>
 
 <div id="va-modal">
   <div class="box">
