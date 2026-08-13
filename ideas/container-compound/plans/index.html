@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Unit Plan Studio</title>
+<meta name="description" content="Inspect, redesign, and hone the floor plan of each container unit.">
+<style>
+  :root {
+    --panel: rgba(252, 251, 248, 0.94);
+    --ink: #2b2b28;
+    --muted: #77746c;
+    --line: #e2ded6;
+    --accent: #b3542e;
+    --shadow: 0 2px 16px rgba(30, 30, 25, 0.14);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sat: env(safe-area-inset-top, 0px);
+  }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: #e8e5dd;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  #topbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: calc(0.5rem + var(--sat)) 0.75rem 0.5rem;
+    border-width: 0 0 1px 0;
+  }
+  #topbar .back { color: var(--muted); text-decoration: none; font-size: 0.95rem; padding: 0.3rem 0.35rem; }
+  #topbar h1 { font-size: 0.95rem; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  #topbar button {
+    flex: none;
+    font-size: 0.8rem;
+    padding: 0.42rem 0.65rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+  #topbar button:active { border-color: var(--accent); color: var(--accent); }
+
+  #units {
+    position: fixed;
+    top: calc(3.2rem + var(--sat));
+    left: 0; right: 0;
+    z-index: 5;
+    display: flex;
+    gap: 0.4rem;
+    overflow-x: auto;
+    padding: 0.5rem 0.75rem;
+    scrollbar-width: none;
+  }
+  #units::-webkit-scrollbar { display: none; }
+  #units button {
+    flex: none;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    border-radius: 999px;
+    padding: 0.34rem 0.75rem;
+    font-size: 0.78rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  #units button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #units button .dot { color: var(--accent); }
+  #units button.active .dot { color: #fff; }
+
+  #vp {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    touch-action: none;
+    cursor: grab;
+  }
+  #vp:active { cursor: grabbing; }
+  #cv { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
+  #cv svg { display: block; }
+
+  #edge-tools {
+    position: fixed;
+    left: 0.75rem;
+    top: 48%;
+    transform: translateY(-50%);
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+  #edge-tools button {
+    width: 2.8rem; height: 2.8rem;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    font-size: 1.15rem;
+    display: grid;
+    place-items: center;
+  }
+  #edge-tools button:disabled { opacity: 0.35; }
+
+  #fab {
+    position: fixed;
+    right: 0.9rem;
+    bottom: calc(0.9rem + var(--sab));
+    z-index: 5;
+    width: 3.3rem; height: 3.3rem;
+    border-radius: 50%;
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1.6rem;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 4px 18px rgba(30, 30, 25, 0.3);
+  }
+  body.has-sel #fab { display: none; }
+
+  #sheet {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 6;
+    margin: 0 auto;
+    max-width: 30rem;
+    border-radius: 1rem 1rem 0 0;
+    border-width: 1px 1px 0 1px;
+    padding: 0.8rem 1rem calc(1rem + var(--sab));
+    transform: translateY(108%);
+    transition: transform 200ms ease;
+  }
+  body.has-sel #sheet { transform: translateY(0); }
+  #sheet .row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.65rem; }
+  #sheet input[type="text"] {
+    flex: 1;
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: inherit;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .stepper { display: flex; align-items: center; gap: 0.15rem; }
+  .stepper span.lab { font-size: 0.7rem; color: var(--muted); width: 1rem; text-align: center; }
+  .stepper button {
+    width: 1.9rem; height: 1.9rem;
+    border-radius: 0.45rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    font-size: 0.95rem;
+  }
+  .stepper .val { font-size: 0.78rem; min-width: 2.6rem; text-align: center; font-variant-numeric: tabular-nums; }
+  #swatches { display: flex; gap: 0.35rem; flex-wrap: wrap; flex: 1; }
+  #swatches button {
+    width: 1.55rem; height: 1.55rem;
+    border-radius: 50%;
+    border: 2px solid rgba(0,0,0,0.15);
+  }
+  #swatches button.active { border-color: var(--accent); }
+  #sheet .actions { display: flex; gap: 0.5rem; }
+  #sheet .actions button {
+    flex: 1;
+    font-size: 0.8rem;
+    padding: 0.5rem 0.4rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+  #sheet .actions button:active { border-color: var(--accent); color: var(--accent); }
+
+  #export-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(30, 28, 24, 0.45);
+    display: none;
+    place-items: center;
+    z-index: 10;
+  }
+  #export-modal.open { display: grid; }
+  #export-modal .box {
+    background: var(--panel);
+    border-radius: 0.9rem;
+    width: calc(100vw - 2rem);
+    max-width: 34rem;
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: 1.1rem 1.2rem;
+    box-shadow: var(--shadow);
+  }
+  #export-modal h2 { font-size: 1rem; margin-bottom: 0.4rem; }
+  #export-modal p { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.6rem; }
+  #export-json {
+    width: 100%;
+    height: 11rem;
+    font: 11px/1.4 ui-monospace, monospace;
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    padding: 0.5rem;
+    background: #fff;
+    color: inherit;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  #export-modal button {
+    margin-top: 0.7rem;
+    width: 100%;
+    padding: 0.55rem 0.9rem;
+    border-radius: 0.55rem;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+
+  #toast {
+    position: fixed;
+    top: calc(6.6rem + var(--sat));
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--ink);
+    color: #fff;
+    padding: 0.45rem 0.9rem;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 200ms;
+    pointer-events: none;
+    z-index: 11;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="vp"><div id="cv"><!-- svg --></div></div>
+
+<header id="topbar" class="panel">
+  <a class="back" href="../">←</a>
+  <h1>Unit plan studio</h1>
+  <button id="btn-export">Export</button>
+  <button id="btn-reset">Reset unit</button>
+</header>
+
+<div id="units"><!-- unit chips --></div>
+
+<div id="edge-tools">
+  <button id="btn-redo" aria-label="Redo" disabled>↪</button>
+  <button id="btn-undo" aria-label="Undo" disabled>↩</button>
+</div>
+
+<button id="fab" aria-label="Add piece">+</button>
+
+<div id="sheet" class="panel">
+  <div class="row">
+    <input type="text" id="p-label" placeholder="label" autocomplete="off">
+  </div>
+  <div class="row">
+    <div class="stepper"><span class="lab">W</span><button data-f="w" data-d="-1">−</button><span class="val" id="v-w"></span><button data-f="w" data-d="1">+</button></div>
+    <div class="stepper"><span class="lab">D</span><button data-f="d" data-d="-1">−</button><span class="val" id="v-d"></span><button data-f="d" data-d="1">+</button></div>
+    <div class="stepper"><span class="lab">H</span><button data-f="h" data-d="-1">−</button><span class="val" id="v-h"></span><button data-f="h" data-d="1">+</button></div>
+  </div>
+  <div class="row"><div id="swatches"></div></div>
+  <div class="actions">
+    <button id="p-rotate">Rotate</button>
+    <button id="p-dup">Duplicate</button>
+    <button id="p-del">Delete</button>
+    <button id="p-done">Done</button>
+  </div>
+</div>
+
+<div id="export-modal">
+  <div class="box">
+    <h2>Export drafts</h2>
+    <p>Hand this JSON back to Claude to bake the settled plans into the composer and site plan.</p>
+    <textarea id="export-json" readonly></textarea>
+    <button id="export-copy">Copy to clipboard</button>
+    <button id="export-close">Close</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script type="module">
+import { TYPES, PLAN_LABELS } from "../data.js";
+
+const UNITS = TYPES.filter((t) => !t.deck);
+const LS_KEY = "cc-plan-drafts-v1";
+const S = 30, M = 80; // px per foot, sheet margin
+const SNAP = 0.25;
+const PALETTE = [
+  0xd9cfc0, 0x9c7c58, 0x8a6f4f, 0xb08d63, 0xcfd8dc, 0xe8e6e0,
+  0xf2efe8, 0xbdb8ae, 0x6b6b66, 0x4a4a48, 0xe8e4da, 0xdad2c4,
+];
+const FONT = "ui-sans-serif, system-ui";
+const hex = (c) => `#${c.toString(16).padStart(6, "0")}`;
+
+let drafts = {};
+try { drafts = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); } catch {}
+
+let cur = UNITS[0].id;
+let pieces = [];
+let sel = -1;
+const undoStack = [], redoStack = [];
+
+function defaults(typeId) {
+  const t = UNITS.find((u) => u.id === typeId);
+  const labels = PLAN_LABELS[typeId] || [];
+  return t.furniture.map((f, i) => ({ ...f, label: labels[i] || "" }));
+}
+function loadUnit(typeId) {
+  cur = typeId;
+  pieces = (drafts[typeId] || defaults(typeId)).map((p) => ({ ...p }));
+  sel = -1;
+  undoStack.length = 0;
+  redoStack.length = 0;
+  updateHistory();
+  document.body.classList.remove("has-sel");
+  for (const b of document.querySelectorAll("#units button"))
+    b.classList.toggle("active", b.dataset.id === typeId);
+  render();
+  fit();
+}
+function save() {
+  drafts[cur] = pieces.map((p) => ({ ...p }));
+  try { localStorage.setItem(LS_KEY, JSON.stringify(drafts)); } catch {}
+  const chip = document.querySelector(`#units button[data-id="${cur}"]`);
+  if (chip && !chip.querySelector(".dot")) chip.innerHTML += ` <span class="dot">●</span>`;
+}
+
+// ---- undo/redo ----
+function updateHistory() {
+  document.getElementById("btn-undo").disabled = !undoStack.length;
+  document.getElementById("btn-redo").disabled = !redoStack.length;
+}
+function pushUndo() {
+  undoStack.push(JSON.stringify(pieces));
+  if (undoStack.length > 60) undoStack.shift();
+  redoStack.length = 0;
+  updateHistory();
+}
+function undo() {
+  const prev = undoStack.pop();
+  if (!prev) return;
+  redoStack.push(JSON.stringify(pieces));
+  pieces = JSON.parse(prev);
+  sel = Math.min(sel, pieces.length - 1);
+  save(); render(); syncSheet(); updateHistory();
+}
+function redo() {
+  const next = redoStack.pop();
+  if (!next) return;
+  undoStack.push(JSON.stringify(pieces));
+  pieces = JSON.parse(next);
+  sel = Math.min(sel, pieces.length - 1);
+  save(); render(); syncSheet(); updateHistory();
+}
+document.getElementById("btn-undo").addEventListener("click", undo);
+document.getElementById("btn-redo").addEventListener("click", redo);
+
+// ---- rendering ----
+function render() {
+  const t = UNITS.find((u) => u.id === cur);
+  const L = t.len, W = t.wid;
+  const width = L * S + M * 2, height = W * S + M * 2 + 30;
+  const X = (x) => M + (x + L / 2) * S;
+  const Y = (z) => M + (z + W / 2) * S;
+  let s = "";
+
+  s += `<rect x="8" y="10" width="${width - 12}" height="${height - 14}" fill="#22201c" opacity="0.10"/>`;
+  s += `<rect x="2" y="2" width="${width - 12}" height="${height - 14}" fill="#fbfaf6" stroke="#c9c4b8" stroke-width="1.5"/>`;
+
+  // 1 ft grid inside the box
+  for (let gx = -L / 2 + 1; gx < L / 2; gx++)
+    s += `<line x1="${X(gx)}" y1="${Y(-W / 2)}" x2="${X(gx)}" y2="${Y(W / 2)}" stroke="#f0ede5" stroke-width="1"/>`;
+  for (let gz = -W / 2 + 1; gz < W / 2; gz++)
+    s += `<line x1="${X(-L / 2)}" y1="${Y(gz)}" x2="${X(L / 2)}" y2="${Y(gz)}" stroke="#f0ede5" stroke-width="1"/>`;
+
+  // shell + finished interior
+  s += `<rect x="${X(-L / 2)}" y="${Y(-W / 2)}" width="${L * S}" height="${W * S}" fill="none" stroke="#23231f" stroke-width="4"/>`;
+  s += `<rect x="${X(-L / 2 + 0.55)}" y="${Y(-W / 2 + 0.42)}" width="${(L - 1.1) * S}" height="${(W - 0.84) * S}" fill="none" stroke="#b8b2a6" stroke-width="1.5" stroke-dasharray="7 6"/>`;
+
+  // apertures + door swings
+  const ends = t.variant === "tunnel" ? [1, -1] : [1];
+  for (const e of ends) {
+    s += `<line x1="${X(e * (L / 2 - 0.5))}" y1="${Y(-W / 2 + 0.5)}" x2="${X(e * (L / 2 - 0.5))}" y2="${Y(W / 2 - 0.5)}" stroke="#4a90c2" stroke-width="4"/>`;
+    const hx = X(e * L / 2), hy = Y(-3.1), r = 3 * S;
+    s += `<line x1="${hx}" y1="${hy}" x2="${hx + e * r * 0.6}" y2="${hy + r * 0.6}" stroke="#55524c" stroke-width="2"/>`;
+    s += `<path d="M ${hx + e * r * 0.6} ${hy + r * 0.6} A ${r} ${r} 0 0 ${e === 1 ? 0 : 1} ${hx} ${hy + r}" fill="none" stroke="#55524c" stroke-width="1" stroke-dasharray="4 4"/>`;
+  }
+  if (t.variant === "openside")
+    s += `<line x1="${X(-L / 2 + 0.9)}" y1="${Y(W / 2 - 0.35)}" x2="${X(L / 2 - 0.9)}" y2="${Y(W / 2 - 0.35)}" stroke="#4a90c2" stroke-width="4"/>`;
+
+  // furniture
+  pieces.forEach((f, i) => {
+    const seld = i === sel;
+    s += `<rect data-i="${i}" x="${X(f.x - f.w / 2)}" y="${Y(f.z - f.d / 2)}" width="${f.w * S}" height="${f.d * S}" rx="3" fill="${hex(f.color)}" stroke="${seld ? "#b3542e" : "rgba(0,0,0,0.3)"}" stroke-width="${seld ? 3 : 1.2}"/>`;
+    if (f.label) s += `<text data-i="${i}" x="${X(f.x)}" y="${Y(f.z) + 4}" text-anchor="middle" font-size="11" fill="#2b2b28" font-family="${FONT}">${f.label}</text>`;
+    if (seld) s += `<text x="${X(f.x)}" y="${Y(f.z - f.d / 2) - 6}" text-anchor="middle" font-size="11" font-weight="600" fill="#b3542e" font-family="${FONT}">${f.w}′ × ${f.d}′ × ${f.h}′</text>`;
+  });
+
+  // dimensions + title
+  const dy = Y(W / 2) + 22;
+  s += `<line x1="${X(-L / 2)}" y1="${dy}" x2="${X(L / 2)}" y2="${dy}" stroke="#77746c" stroke-width="1.2"/>`;
+  s += `<text x="${X(0)}" y="${dy - 6}" text-anchor="middle" font-size="12" fill="#2b2b28" font-family="${FONT}">${L}′0″</text>`;
+  s += `<text x="${X(0)}" y="${Y(-W / 2) - 12}" text-anchor="middle" font-size="13" font-weight="700" letter-spacing="1.5" fill="#23231f" font-family="${FONT}">${t.name.toUpperCase()}</text>`;
+  s += `<text x="${X(0)}" y="${Y(-W / 2) + 14}" text-anchor="middle" font-size="9" fill="#8a867c" font-family="${FONT}">interior ≈ 7′2″ wide after spray foam · drag pieces · tap to edit</text>`;
+
+  document.getElementById("cv").innerHTML =
+    `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${s}</svg>`;
+}
+
+// ---- pan/zoom + drag ----
+const vp = document.getElementById("vp");
+const cv = document.getElementById("cv");
+const view = { x: 0, y: 0, k: 1 };
+const ptrs = new Map();
+let dragIdx = -1, dragOff = { x: 0, z: 0 }, dragMoved = false, dragSnap = null;
+
+function apply() { cv.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`; }
+function fit() {
+  const t = UNITS.find((u) => u.id === cur);
+  const width = t.len * S + M * 2, height = t.wid * S + M * 2 + 30;
+  const topPad = 120, pad = 20;
+  const k = Math.min((innerWidth - pad * 2) / width, (innerHeight - topPad - 180) / height, 1.6);
+  view.k = k;
+  view.x = (innerWidth - k * width) / 2;
+  view.y = topPad + ((innerHeight - topPad - 160) - k * height) / 2;
+  apply();
+}
+function planCoords(cx, cy) {
+  const t = UNITS.find((u) => u.id === cur);
+  const px = (cx - view.x) / view.k, py = (cy - view.y) / view.k;
+  return { x: (px - M) / S - t.len / 2, z: (py - M) / S - t.wid / 2 };
+}
+function zoomAt(px, py, f) {
+  const k2 = Math.min(6, Math.max(0.3, view.k * f));
+  f = k2 / view.k;
+  view.x = px - f * (px - view.x);
+  view.y = py - f * (py - view.y);
+  view.k = k2;
+  apply();
+}
+
+vp.addEventListener("pointerdown", (e) => {
+  vp.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const hit = e.target.closest?.("[data-i]");
+  if (hit && ptrs.size === 1) {
+    dragIdx = +hit.dataset.i;
+    dragMoved = false;
+    dragSnap = JSON.stringify(pieces);
+    const p = planCoords(e.clientX, e.clientY);
+    dragOff = { x: pieces[dragIdx].x - p.x, z: pieces[dragIdx].z - p.z };
+    if (sel !== dragIdx) { sel = dragIdx; document.body.classList.add("has-sel"); syncSheet(); render(); }
+  }
+});
+vp.addEventListener("pointermove", (e) => {
+  if (!ptrs.has(e.pointerId)) return;
+  const prev = ptrs.get(e.pointerId);
+  const curp = { x: e.clientX, y: e.clientY };
+  if (dragIdx >= 0 && ptrs.size === 1) {
+    const t = UNITS.find((u) => u.id === cur);
+    const f = pieces[dragIdx];
+    const p = planCoords(curp.x, curp.y);
+    const nx = Math.round((p.x + dragOff.x) / SNAP) * SNAP;
+    const nz = Math.round((p.z + dragOff.z) / SNAP) * SNAP;
+    const bx = t.len / 2 - 0.35 - f.w / 2, bz = t.wid / 2 - 0.35 - f.d / 2;
+    const cx2 = Math.max(-bx, Math.min(bx, nx));
+    const cz2 = Math.max(-bz, Math.min(bz, nz));
+    if (cx2 !== f.x || cz2 !== f.z) {
+      if (!dragMoved) {
+        dragMoved = true;
+        undoStack.push(dragSnap);
+        if (undoStack.length > 60) undoStack.shift();
+        redoStack.length = 0;
+        updateHistory();
+      }
+      f.x = Math.round(cx2 * 100) / 100;
+      f.z = Math.round(cz2 * 100) / 100;
+      render();
+    }
+  } else if (ptrs.size === 1 && dragIdx < 0) {
+    view.x += curp.x - prev.x;
+    view.y += curp.y - prev.y;
+    apply();
+  } else if (ptrs.size === 2) {
+    const other = [...ptrs.entries()].find(([id]) => id !== e.pointerId)?.[1];
+    if (other) {
+      const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
+      const d1 = Math.hypot(curp.x - other.x, curp.y - other.y);
+      if (d0 > 0) zoomAt((curp.x + other.x) / 2, (curp.y + other.y) / 2, d1 / d0);
+    }
+  }
+  ptrs.set(e.pointerId, curp);
+});
+function ptrEnd(e) {
+  if (dragIdx >= 0 && ptrs.has(e.pointerId)) {
+    if (dragMoved) save();
+    else if (e.target.closest?.("[data-i]") === null && !dragMoved) { /* noop */ }
+    dragIdx = -1;
+  } else if (ptrs.has(e.pointerId) && ptrs.size === 1) {
+    // tap on empty paper deselects
+    const prev = ptrs.get(e.pointerId);
+    if (Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < 4 && !e.target.closest?.("[data-i]")) {
+      sel = -1;
+      document.body.classList.remove("has-sel");
+      render();
+    }
+  }
+  ptrs.delete(e.pointerId);
+}
+vp.addEventListener("pointerup", ptrEnd);
+vp.addEventListener("pointercancel", (e) => { ptrs.delete(e.pointerId); dragIdx = -1; });
+vp.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0018));
+}, { passive: false });
+
+// ---- piece sheet ----
+function syncSheet() {
+  const f = pieces[sel];
+  if (!f) { document.body.classList.remove("has-sel"); return; }
+  document.getElementById("p-label").value = f.label || "";
+  document.getElementById("v-w").textContent = `${f.w}′`;
+  document.getElementById("v-d").textContent = `${f.d}′`;
+  document.getElementById("v-h").textContent = `${f.h}′`;
+  for (const b of document.querySelectorAll("#swatches button"))
+    b.classList.toggle("active", +b.dataset.c === f.color);
+}
+document.getElementById("p-label").addEventListener("input", (e) => {
+  if (sel < 0) return;
+  pieces[sel].label = e.target.value;
+  save(); render();
+});
+for (const b of document.querySelectorAll(".stepper button")) {
+  b.addEventListener("click", () => {
+    if (sel < 0) return;
+    const f = pieces[sel];
+    const field = b.dataset.f, dir = +b.dataset.d;
+    pushUndo();
+    f[field] = Math.max(0.5, Math.round((f[field] + dir * SNAP) * 100) / 100);
+    save(); render(); syncSheet();
+  });
+}
+const sw = document.getElementById("swatches");
+for (const c of PALETTE) {
+  const b = document.createElement("button");
+  b.dataset.c = c;
+  b.style.background = hex(c);
+  b.addEventListener("click", () => {
+    if (sel < 0) return;
+    pushUndo();
+    pieces[sel].color = c;
+    save(); render(); syncSheet();
+  });
+  sw.appendChild(b);
+}
+document.getElementById("p-rotate").addEventListener("click", () => {
+  if (sel < 0) return;
+  pushUndo();
+  const f = pieces[sel];
+  [f.w, f.d] = [f.d, f.w];
+  save(); render(); syncSheet();
+});
+document.getElementById("p-dup").addEventListener("click", () => {
+  if (sel < 0) return;
+  pushUndo();
+  const c = { ...pieces[sel], x: pieces[sel].x + 1, z: pieces[sel].z + 1 };
+  pieces.push(c);
+  sel = pieces.length - 1;
+  save(); render(); syncSheet();
+});
+document.getElementById("p-del").addEventListener("click", () => {
+  if (sel < 0) return;
+  pushUndo();
+  pieces.splice(sel, 1);
+  sel = -1;
+  document.body.classList.remove("has-sel");
+  save(); render();
+});
+document.getElementById("p-done").addEventListener("click", () => {
+  sel = -1;
+  document.body.classList.remove("has-sel");
+  render();
+});
+document.getElementById("fab").addEventListener("click", () => {
+  pushUndo();
+  pieces.push({ x: 0, z: 0, w: 2, d: 2, h: 2.5, color: PALETTE[0], label: "new piece" });
+  sel = pieces.length - 1;
+  document.body.classList.add("has-sel");
+  save(); render(); syncSheet();
+});
+
+// ---- top bar ----
+document.getElementById("btn-reset").addEventListener("click", () => {
+  if (!confirm("Reset this unit to the shipped layout?")) return;
+  delete drafts[cur];
+  try { localStorage.setItem(LS_KEY, JSON.stringify(drafts)); } catch {}
+  const chip = document.querySelector(`#units button[data-id="${cur}"] .dot`);
+  if (chip) chip.remove();
+  loadUnit(cur);
+  toast("Reset");
+});
+document.getElementById("btn-export").addEventListener("click", () => {
+  const out = {};
+  for (const [id, arr] of Object.entries(drafts)) out[id] = arr;
+  document.getElementById("export-json").value =
+    JSON.stringify(out, null, 1) || "{}";
+  document.getElementById("export-modal").classList.add("open");
+});
+document.getElementById("export-copy").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(document.getElementById("export-json").value);
+    toast("Copied");
+  } catch { toast("Select and copy manually"); }
+});
+document.getElementById("export-close").addEventListener("click", () =>
+  document.getElementById("export-modal").classList.remove("open"));
+
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove("show"), 2000);
+}
+
+// ---- unit chips ----
+const unitsEl = document.getElementById("units");
+for (const t of UNITS) {
+  const b = document.createElement("button");
+  b.dataset.id = t.id;
+  b.textContent = t.name.replace(" unit", "");
+  if (drafts[t.id]) b.innerHTML += ` <span class="dot">●</span>`;
+  b.addEventListener("click", () => loadUnit(t.id));
+  unitsEl.appendChild(b);
+}
+
+addEventListener("resize", fit);
+loadUnit(cur);
+</script>
+</body>
+</html>
