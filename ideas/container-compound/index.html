@@ -86,15 +86,38 @@
     padding: 0.3rem;
   }
   body.menu-open #menu { display: flex; }
-  #menu button {
+  #menu button, #menu a {
+    display: block;
     text-align: left;
+    text-decoration: none;
+    color: inherit;
     border: 0;
     background: transparent;
     border-radius: 0.45rem;
     padding: 0.6rem 0.8rem;
     font-size: 0.85rem;
   }
-  #menu button:active { background: rgba(179, 84, 46, 0.1); color: var(--accent); }
+  #menu button:active, #menu a:active { background: rgba(179, 84, 46, 0.1); color: var(--accent); }
+
+  /* site plan actions: fit + export */
+  #site-actions {
+    position: fixed;
+    right: 0.75rem;
+    bottom: calc(0.75rem + var(--sab));
+    z-index: 5;
+    display: none;
+    gap: 0.4rem;
+  }
+  body[data-mode="site"] #site-actions { display: flex; }
+  #site-actions button {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    border-radius: 999px;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.78rem;
+  }
+  #site-actions button:active { border-color: var(--accent); color: var(--accent); }
 
   /* ---- add-unit FAB + bottom sheet ---- */
   #fab {
@@ -647,6 +670,7 @@
 <div id="menu" class="panel">
   <button id="btn-share">Share layout</button>
   <button id="btn-va">VA notes</button>
+  <a id="menu-studio" href="plans/">Unit plan studio</a>
   <button id="btn-reset">Reset compound</button>
 </div>
 
@@ -685,6 +709,13 @@
 <div id="view-tools">
   <button id="btn-sun" aria-label="Cycle sun" title="Midday">☀</button>
   <div id="compass" title="North"><span id="needle">↑</span><span class="n">N</span></div>
+  <button id="btn-fit" aria-label="Recenter view">⌖</button>
+</div>
+
+<div id="site-actions">
+  <button id="site-fit">⌖ Fit</button>
+  <button id="site-png">↓ PNG</button>
+  <button id="site-svg-dl">↓ SVG</button>
 </div>
 
 <button id="stats-pill" class="panel">0 units</button>

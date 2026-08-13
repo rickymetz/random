@@ -653,6 +653,13 @@ document.getElementById("btn-sun").addEventListener("click", () => {
   toast(`${SUNS[sunIdx].name} light`);
 });
 
+// recenter the 3D camera
+document.getElementById("btn-fit").addEventListener("click", () => {
+  const p = innerHeight > innerWidth ? [115, 95, 170] : [85, 70, 125];
+  camera.position.set(...p);
+  controls.target.set(0, 4, 0);
+});
+
 // overflow menu
 document.getElementById("btn-menu").addEventListener("click", (e) => {
   e.stopPropagation();
@@ -679,6 +686,7 @@ document.getElementById("btn-delete").addEventListener("click", () => {
   if (!selected || mode !== "compose") return;
   pushUndo();
   removeItem(selected);
+  toast("Deleted — ↩ to undo");
 });
 document.getElementById("btn-close").addEventListener("click", () => {
   document.body.classList.remove("sheet-open");
@@ -736,6 +744,7 @@ addEventListener("keydown", (e) => {
     e.preventDefault();
     pushUndo();
     removeItem(selected);
+    toast("Deleted — ↩ to undo");
   } else if (e.key === "Escape") { closeAdd(); select(null); }
 });
 
@@ -1299,20 +1308,60 @@ function renderSitePlan() {
   document.getElementById("site-svg").innerHTML =
     `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">${s}</svg>`;
 
-  // initial view: fit the compound (fall back to the whole sheet) under the chrome
+  // fit the compound (fall back to the whole sheet) under the chrome
+  siteFitBox = items.length
+    ? { x0: X(uMinX) - 60, x1: X(uMaxX) + 70, y0: Y(uMinZ) - 60, y1: Y(uMaxZ) + 70 }
+    : { x0: 0, x1: svgW, y0: 0, y1: svgH };
+  siteFitView();
+}
+
+let siteFitBox = null;
+function siteFitView() {
+  if (!siteFitBox) return;
+  const { x0, x1, y0, y1 } = siteFitBox;
   const vw = innerWidth, vh = innerHeight;
   const topPad = 118, pad = 34;
-  let bx0 = 0, by0 = 0, bx1 = svgW, by1 = svgH;
-  if (items.length) {
-    bx0 = X(uMinX) - 60; bx1 = X(uMaxX) + 70;
-    by0 = Y(uMinZ) - 60; by1 = Y(uMaxZ) + 70;
-  }
-  const k = Math.min((vw - pad * 2) / (bx1 - bx0), (vh - topPad - pad) / (by1 - by0), 2.5);
+  const k = Math.min((vw - pad * 2) / (x1 - x0), (vh - topPad - pad) / (y1 - y0), 2.5);
   sview.k = k;
-  sview.x = (vw - k * (bx0 + bx1)) / 2;
-  sview.y = topPad + ((vh - topPad - pad) - k * (by1 - by0)) / 2 - k * by0;
+  sview.x = (vw - k * (x0 + x1)) / 2;
+  sview.y = topPad + ((vh - topPad - pad) - k * (y1 - y0)) / 2 - k * y0;
   siteApply();
 }
+document.getElementById("site-fit").addEventListener("click", siteFitView);
+
+function downloadBlob(name, blob) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+document.getElementById("site-svg-dl").addEventListener("click", () => {
+  const svg = document.querySelector("#site-svg svg");
+  if (!svg) return;
+  downloadBlob("container-compound-site-plan.svg",
+    new Blob([svg.outerHTML], { type: "image/svg+xml" }));
+});
+document.getElementById("site-png").addEventListener("click", () => {
+  const svg = document.querySelector("#site-svg svg");
+  if (!svg) return;
+  const w = +svg.getAttribute("width"), h = +svg.getAttribute("height");
+  const url = URL.createObjectURL(new Blob([svg.outerHTML], { type: "image/svg+xml" }));
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement("canvas");
+    c.width = w * 2;
+    c.height = h * 2;
+    const g = c.getContext("2d");
+    g.fillStyle = "#e8e5dd";
+    g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    c.toBlob((b) => b && downloadBlob("container-compound-site-plan.png", b), "image/png");
+  };
+  img.src = url;
+  toast("Rendering PNG…");
+});
 
 // ---- figma-style pan/zoom for the site plan ----
 const sitePanelEl = document.getElementById("site-panel");
