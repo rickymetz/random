@@ -12,6 +12,13 @@
     --muted: #6f7f95;
     --glow: #5aa9e6;
   }
+  /* Registered so the sweep angle can be animated; browsers without
+     @property just skip the countdown overlay. */
+  @property --sweep {
+    syntax: "<angle>";
+    inherits: true;
+    initial-value: 0deg;
+  }
   * { box-sizing: border-box; margin: 0; }
   body {
     background: var(--bg);
@@ -23,6 +30,7 @@
   }
   main { text-align: center; }
   .circle {
+    position: relative;
     width: 180px;
     height: 180px;
     margin: 0 auto 2rem;
@@ -30,6 +38,14 @@
     background: radial-gradient(circle at 35% 35%, #7cc0f0, var(--glow) 60%, #2b6ca8);
     box-shadow: 0 0 60px rgba(90, 169, 230, 0.35);
     transform: scale(0.6);
+  }
+  /* Countdown: a wedge that sweeps around the circle once per 4s phase */
+  .circle::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(rgba(255, 255, 255, 0.3) var(--sweep), transparent 0);
   }
   .phase { font-size: 1.3rem; letter-spacing: 0.04em; min-height: 1.6em; }
   .hint { color: var(--muted); margin-top: 0.75rem; font-size: 0.85rem; }
@@ -65,6 +81,11 @@
   function run(i) {
     const p = phases[i % phases.length];
     phaseEl.textContent = p.label;
+    // Linear, so the wedge doubles as a countdown; ::after inherits --sweep.
+    circle.animate(
+      [{ "--sweep": "0deg" }, { "--sweep": "360deg" }],
+      { duration: SECONDS * 1000, easing: "linear" }
+    );
     circle.animate(
       [{ transform: `scale(${p.from})` }, { transform: `scale(${p.to})` }],
       { duration: SECONDS * 1000, fill: "forwards", easing: "ease-in-out" }
