@@ -48,17 +48,12 @@ that touched their folder.
 
 - `scripts/build.js` (plain Node, zero dependencies) copies each
   `ideas/<slug>/` folder into `_site/` and generates the homepage.
-- `.github/workflows/pages.yml` builds and pushes `_site/` to the
-  `gh-pages` branch on every push to `main`; GitHub Pages serves that
-  branch.
-- `.github/workflows/pr-preview.yml` builds every pull request into
-  `pr-preview/pr-<number>/` on the same branch and comments the live
-  preview URL on the PR. The preview is deleted when the PR closes.
+- `.github/workflows/pages.yml` runs the build and deploys `_site/` to
+  GitHub Pages on every push to `main`.
 - Preview locally with `node scripts/build.js && npx serve _site` (or just
   open an idea's `index.html` directly in a browser).
 
 ## One-time setup
 
-In the repo settings on GitHub: **Settings → Pages → Source → Deploy from
-a branch**, branch `gh-pages`, folder `/ (root)`. After that, every push
-to `main` deploys the site and every PR gets a live preview.
+In the repo settings on GitHub: **Settings → Pages → Source → GitHub
+Actions**. After that, every push to `main` deploys.

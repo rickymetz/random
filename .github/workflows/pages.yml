@@ -6,15 +6,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
-# Shared with the PR preview workflow — both push to the gh-pages branch
 concurrency:
-  group: gh-pages
-  cancel-in-progress: false
+  group: pages
+  cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,10 +27,16 @@ jobs:
           node-version: 22
       - name: Build site
         run: node scripts/build.js
-      - uses: JamesIves/github-pages-deploy-action@v4
+      - uses: actions/upload-pages-artifact@v3
         with:
-          folder: _site
-          branch: gh-pages
-          # Don't wipe PR previews when the main site redeploys
-          clean-exclude: pr-preview/
-          force: false
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
