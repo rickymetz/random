@@ -209,52 +209,96 @@
   /* mode visibility */
   body[data-mode="dollhouse"] #fab,
   body[data-mode="dollhouse"] #edge-tools,
-  body[data-mode="parts"] #fab,
-  body[data-mode="parts"] #edge-tools,
-  body[data-mode="parts"] #stats-pill,
-  body[data-mode="parts"] #stats-pop,
-  body[data-mode="parts"] #subbar { display: none; }
+  body[data-mode="site"] #fab,
+  body[data-mode="site"] #edge-tools,
+  body[data-mode="site"] #stats-pill,
+  body[data-mode="site"] #stats-pop,
+  body[data-mode="site"] #subbar { display: none; }
   body[data-mode="dollhouse"] #info .row { display: none; }
 
-  /* ---- parts list panel ---- */
-  #parts-panel {
+  /* ---- site plan panel ---- */
+  #site-panel {
     position: fixed;
     top: calc(6.4rem + var(--sat));
     left: 0.75rem; right: 0.75rem;
     bottom: calc(0.9rem + var(--sab));
     z-index: 4;
     margin: 0 auto;
-    max-width: 30rem;
-    overflow-y: auto;
+    max-width: 40rem;
+    overflow: auto;
     border-radius: 0.8rem;
-    padding: 1rem 1.1rem 1.2rem;
+    padding: 0.8rem;
     display: none;
   }
-  body[data-mode="parts"] #parts-panel { display: block; }
-  #parts-panel h3 { font-size: 1.05rem; margin-bottom: 0.2rem; }
-  #parts-panel h4 {
+  body[data-mode="site"] #site-panel { display: block; }
+  /* keep the drawing legible on phones: scroll rather than shrink */
+  #site-svg svg { width: 100%; min-width: 640px; height: auto; display: block; }
+
+  /* ---- parts list modal ---- */
+  #parts-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(30, 28, 24, 0.45);
+    display: none;
+    place-items: center;
+    z-index: 11;
+  }
+  #parts-modal.open { display: grid; }
+  #parts-modal .box {
+    background: var(--panel);
+    border-radius: 0.9rem;
+    width: calc(100vw - 2rem);
+    max-width: 30rem;
+    max-height: 84vh;
+    overflow-y: auto;
+    padding: 1.1rem 1.2rem;
+    box-shadow: var(--shadow);
+  }
+  #parts-modal h2 { font-size: 1.05rem; margin-bottom: 0.2rem; }
+  #parts-modal h4 {
     font-size: 0.68rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--muted);
     margin: 0.9rem 0 0.3rem;
   }
-  #parts-panel table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-  #parts-panel td { padding: 0.18rem 0; vertical-align: top; }
-  #parts-panel td:nth-child(2) { color: var(--muted); white-space: nowrap; padding-left: 0.5rem; }
-  #parts-panel td:nth-child(3), #parts-panel td:nth-child(4) {
+  #parts-modal table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  #parts-modal td { padding: 0.18rem 0; vertical-align: top; }
+  #parts-modal td:nth-child(2) { color: var(--muted); white-space: nowrap; padding-left: 0.5rem; }
+  #parts-modal td:nth-child(3), #parts-modal td:nth-child(4) {
     text-align: right;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
     padding-left: 0.5rem;
   }
-  #parts-panel table.grand td {
+  #parts-modal table.grand td {
     border-top: 1px solid var(--line);
     padding-top: 0.4rem;
     font-weight: 600;
   }
-  #parts-panel table.grand td:last-child { text-align: right; }
-  #parts-panel .fine { color: var(--muted); font-size: 0.68rem; margin-top: 0.6rem; }
+  #parts-modal table.grand td:last-child { text-align: right; }
+  #parts-modal .fine { color: var(--muted); font-size: 0.68rem; margin-top: 0.6rem; }
+  #parts-modal button {
+    margin-top: 0.9rem;
+    width: 100%;
+    font: inherit;
+    padding: 0.55rem 0.9rem;
+    border-radius: 0.55rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    cursor: pointer;
+  }
+  #stats-pop .parts-btn {
+    width: 100%;
+    margin-top: 0.55rem;
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.42rem 0.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--line);
+    background: #fff;
+    cursor: pointer;
+  }
 
   /* ---- floor plan modal ---- */
   #plan-modal {
@@ -607,12 +651,19 @@
 <div id="tabbar">
   <button data-mode="compose" class="active">Compose</button>
   <button data-mode="dollhouse">Dollhouse</button>
-  <button data-mode="parts">Parts list</button>
+  <button data-mode="site">Site plan</button>
 </div>
 
-<div id="parts-panel" class="panel">
-  <h3>Parts list</h3>
-  <div id="parts-list"><!-- populated by main.js --></div>
+<div id="site-panel" class="panel">
+  <div id="site-svg"><!-- populated by main.js --></div>
+</div>
+
+<div id="parts-modal">
+  <div class="box">
+    <h2>Parts list</h2>
+    <div id="parts-list"><!-- populated by main.js --></div>
+    <button id="parts-close">Close</button>
+  </div>
 </div>
 
 <div id="plan-modal">
@@ -648,6 +699,7 @@
     <tr class="total"><td>Rough cost</td><td id="st-cost">$0</td></tr>
   </table>
   <div class="fine">Ballpark, fully fitted-out. Site work, utilities &amp; delivery extra.</div>
+  <button class="parts-btn" id="btn-parts">Full parts list →</button>
 </div>
 
 <button id="fab" aria-label="Add a unit">+</button>

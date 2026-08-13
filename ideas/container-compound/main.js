@@ -701,7 +701,7 @@ function setMode(m) {
   select(null);
   closeAdd();
   clearDragLabels();
-  if (m === "parts") renderParts();
+  if (m === "site") renderSitePlan();
 }
 for (const b of document.querySelectorAll("#tabbar button"))
   b.addEventListener("click", () => setMode(b.dataset.mode));
@@ -1231,6 +1231,131 @@ function renderParts() {
     </table>
     <table class="grand"><tr><td>Total (rough)</td><td>$${total.toLocaleString()}</td></tr></table>
     <div class="fine">Ballpark, fully fitted-out. Site work, utility hookups &amp; container delivery extra.</div>`;
+}
+
+document.getElementById("btn-parts").addEventListener("click", () => {
+  renderParts();
+  document.getElementById("stats-pop").classList.remove("open");
+  document.getElementById("parts-modal").classList.add("open");
+});
+document.getElementById("parts-close").addEventListener("click", () =>
+  document.getElementById("parts-modal").classList.remove("open"));
+
+// ------------------------------------------------------------- site plan
+
+const SHORT_NAME = {
+  sleeping: "Sleeping", kitchen: "Kitchen", bathhouse: "Bathhouse",
+  "bath-laundry": "Bath + laundry", dining: "Dining", living: "Living",
+  bathroom: "Bath", laundry: "Utility", office: "Office", hobby: "Hobby",
+  deck: "",
+};
+
+function renderSitePlan() {
+  updateCompliance();
+  const S = 8, M = 90; // px per foot, margin for dims/annotations
+  // bounds of everything placed (plus utility rings)
+  let minX = -40, maxX = 40, minZ = -30, maxZ = 30;
+  for (const it of items) {
+    const [hw, hd] = halfDims(it);
+    const r = TYPE_BY_ID[it.typeId].core ? WET_RADIUS : 0;
+    minX = Math.min(minX, it.x - Math.max(hw, r) - 6);
+    maxX = Math.max(maxX, it.x + Math.max(hw, r) + 6);
+    minZ = Math.min(minZ, it.z - Math.max(hd, r) - 6);
+    maxZ = Math.max(maxZ, it.z + Math.max(hd, r) + 6);
+  }
+  const X = (x) => M + (x - minX) * S;
+  const Y = (z) => M + (z - minZ) * S;
+  const width = (maxX - minX) * S + M * 2;
+  const height = (maxZ - minZ) * S + M * 2;
+  let s = "";
+
+  // paper + light 10 ft grid
+  s += `<rect x="0" y="0" width="${width}" height="${height}" fill="#f7f5f1"/>`;
+  for (let gx = Math.ceil(minX / 10) * 10; gx <= maxX; gx += 10)
+    s += `<line x1="${X(gx)}" y1="${Y(minZ)}" x2="${X(gx)}" y2="${Y(maxZ)}" stroke="#e7e3da" stroke-width="1"/>`;
+  for (let gz = Math.ceil(minZ / 10) * 10; gz <= maxZ; gz += 10)
+    s += `<line x1="${X(minX)}" y1="${Y(gz)}" x2="${X(maxX)}" y2="${Y(gz)}" stroke="#e7e3da" stroke-width="1"/>`;
+
+  // utility core rings + trenches
+  for (const it of items) {
+    if (!TYPE_BY_ID[it.typeId].core) continue;
+    s += `<circle cx="${X(it.x)}" cy="${Y(it.z)}" r="${WET_RADIUS * S}" fill="none" stroke="#7e97a6" stroke-width="1.5" stroke-dasharray="7 6" opacity="0.55"/>`;
+  }
+  const cores = items.filter((i) => TYPE_BY_ID[i.typeId].core);
+  if (cores.length) {
+    for (const w of items.filter((i) => TYPE_BY_ID[i.typeId].wet)) {
+      let best = cores[0], bd = Infinity;
+      for (const c of cores) {
+        const d = Math.hypot(c.x - w.x, c.z - w.z);
+        if (d < bd) { bd = d; best = c; }
+      }
+      s += `<line x1="${X(w.x)}" y1="${Y(w.z)}" x2="${X(best.x)}" y2="${Y(best.z)}" stroke="#5f7a8a" stroke-width="1.5" stroke-dasharray="5 5" opacity="0.7"/>`;
+    }
+  }
+
+  // decks first (under units), then units with aperture markings + labels
+  for (const it of items.filter((i) => TYPE_BY_ID[i.typeId].deck)) {
+    const [hw, hd] = halfDims(it);
+    s += `<rect x="${X(it.x - hw)}" y="${Y(it.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="#d9b586" stroke="#b78e5f" stroke-width="1.5"/>`;
+  }
+  for (const it of items.filter((i) => !TYPE_BY_ID[i.typeId].deck)) {
+    const t = TYPE_BY_ID[it.typeId];
+    const [hw, hd] = halfDims(it);
+    const x0 = X(it.x - hw), y0 = Y(it.z - hd), rw = hw * 2 * S, rh = hd * 2 * S;
+    s += `<rect x="${x0}" y="${y0}" width="${rw}" height="${rh}" fill="#${t.color.toString(16).padStart(6, "0")}" fill-opacity="0.85" stroke="#2b2b28" stroke-width="2"/>`;
+    // glazed aperture faces in blue
+    for (const [dx, dz] of apertureFaces(it)) {
+      if (dx === 1) s += `<line x1="${x0 + rw}" y1="${y0 + 3}" x2="${x0 + rw}" y2="${y0 + rh - 3}" stroke="#5aa9e6" stroke-width="4"/>`;
+      if (dx === -1) s += `<line x1="${x0}" y1="${y0 + 3}" x2="${x0}" y2="${y0 + rh - 3}" stroke="#5aa9e6" stroke-width="4"/>`;
+      if (dz === 1) s += `<line x1="${x0 + 3}" y1="${y0 + rh}" x2="${x0 + rw - 3}" y2="${y0 + rh}" stroke="#5aa9e6" stroke-width="4"/>`;
+      if (dz === -1) s += `<line x1="${x0 + 3}" y1="${y0}" x2="${x0 + rw - 3}" y2="${y0}" stroke="#5aa9e6" stroke-width="4"/>`;
+    }
+    const label = SHORT_NAME[it.typeId] || t.name;
+    const cx = X(it.x), cy = Y(it.z);
+    const rot = it.rot % 2 ? ` transform="rotate(-90 ${cx} ${cy})"` : "";
+    s += `<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-size="12" font-weight="600" fill="#2b2b28" font-family="ui-sans-serif, system-ui"${rot}>${label}</text>`;
+  }
+
+  // fire-separation conflicts with gap callouts
+  for (const p of sepPairs) {
+    const mx = (X(p.a.x) + X(p.b.x)) / 2, my = (Y(p.a.z) + Y(p.b.z)) / 2;
+    s += `<line x1="${X(p.a.x)}" y1="${Y(p.a.z)}" x2="${X(p.b.x)}" y2="${Y(p.b.z)}" stroke="#c0574a" stroke-width="1.5"/>`;
+    s += `<text x="${mx}" y="${my - 5}" text-anchor="middle" font-size="11" font-weight="600" fill="#c0574a" font-family="ui-sans-serif, system-ui">${Math.max(1, Math.round(p.gap))}′ △</text>`;
+  }
+
+  // overall extent dimension strings
+  let uMinX = Infinity, uMaxX = -Infinity, uMinZ = Infinity, uMaxZ = -Infinity;
+  for (const it of items) {
+    const [hw, hd] = halfDims(it);
+    uMinX = Math.min(uMinX, it.x - hw); uMaxX = Math.max(uMaxX, it.x + hw);
+    uMinZ = Math.min(uMinZ, it.z - hd); uMaxZ = Math.max(uMaxZ, it.z + hd);
+  }
+  if (items.length) {
+    const tick = (x, y, dx, dy) => `<line x1="${x - dx}" y1="${y - dy}" x2="${x + dx}" y2="${y + dy}" stroke="#77746c" stroke-width="1.2"/>`;
+    const dy = Y(maxZ) + 26;
+    s += `<line x1="${X(uMinX)}" y1="${dy}" x2="${X(uMaxX)}" y2="${dy}" stroke="#77746c" stroke-width="1.2"/>`;
+    s += tick(X(uMinX), dy, 0, 5) + tick(X(uMaxX), dy, 0, 5);
+    s += `<text x="${(X(uMinX) + X(uMaxX)) / 2}" y="${dy - 6}" text-anchor="middle" font-size="13" fill="#2b2b28" font-family="ui-sans-serif, system-ui">${Math.round(uMaxX - uMinX)}′</text>`;
+    const dx2 = X(maxX) + 26;
+    s += `<line x1="${dx2}" y1="${Y(uMinZ)}" x2="${dx2}" y2="${Y(uMaxZ)}" stroke="#77746c" stroke-width="1.2"/>`;
+    s += tick(dx2, Y(uMinZ), 5, 0) + tick(dx2, Y(uMaxZ), 5, 0);
+    s += `<text x="${dx2 + 8}" y="${(Y(uMinZ) + Y(uMaxZ)) / 2}" text-anchor="middle" font-size="13" fill="#2b2b28" font-family="ui-sans-serif, system-ui" transform="rotate(90 ${dx2 + 8} ${(Y(uMinZ) + Y(uMaxZ)) / 2})">${Math.round(uMaxZ - uMinZ)}′</text>`;
+  }
+
+  // title, north arrow (north = -z = up), scale bar
+  s += `<text x="${M * 0.4}" y="34" font-size="17" font-weight="700" fill="#2b2b28" font-family="ui-sans-serif, system-ui">Container Compound — site plan</text>`;
+  s += `<text x="${M * 0.4}" y="54" font-size="11" fill="#77746c" font-family="ui-sans-serif, system-ui">blue = glazed apertures · dashed = utility runs &amp; core ring · red = fire-separation conflicts</text>`;
+  const nx = width - 44, ny = 46;
+  s += `<circle cx="${nx}" cy="${ny}" r="20" fill="none" stroke="#77746c" stroke-width="1.5"/>`;
+  s += `<path d="M ${nx} ${ny - 14} L ${nx - 6} ${ny + 8} L ${nx} ${ny + 2} L ${nx + 6} ${ny + 8} Z" fill="#2b2b28"/>`;
+  s += `<text x="${nx}" y="${ny + 34}" text-anchor="middle" font-size="12" font-weight="600" fill="#2b2b28" font-family="ui-sans-serif, system-ui">N</text>`;
+  const sbx = M * 0.4, sby = height - 24;
+  s += `<line x1="${sbx}" y1="${sby}" x2="${sbx + 20 * S}" y2="${sby}" stroke="#2b2b28" stroke-width="3"/>`;
+  s += `<line x1="${sbx + 10 * S}" y1="${sby - 4}" x2="${sbx + 10 * S}" y2="${sby + 4}" stroke="#2b2b28" stroke-width="1.5"/>`;
+  s += `<text x="${sbx + 10 * S}" y="${sby - 8}" text-anchor="middle" font-size="11" fill="#77746c" font-family="ui-sans-serif, system-ui">20 ft</text>`;
+
+  document.getElementById("site-svg").innerHTML =
+    `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${s}</svg>`;
 }
 
 // ------------------------------------------------------------- floor plans
