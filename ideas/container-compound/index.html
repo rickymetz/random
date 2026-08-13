@@ -88,10 +88,26 @@
   #info h3 { font-size: 1rem; margin-bottom: 0.1rem; }
   #info .sub { color: var(--muted); font-size: 0.78rem; margin-bottom: 0.55rem; }
   #info p { font-size: 0.82rem; margin-bottom: 0.55rem; }
+  #info .build {
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: rgba(0, 0, 0, 0.045);
+    border-radius: 0.4rem;
+    padding: 0.4rem 0.55rem;
+    margin-bottom: 0.55rem;
+  }
   #info .va {
     font-size: 0.75rem;
     color: var(--muted);
     border-left: 3px solid var(--accent);
+    padding-left: 0.55rem;
+    margin-bottom: 0.65rem;
+  }
+  #info .wet {
+    display: none;
+    font-size: 0.75rem;
+    color: var(--muted);
+    border-left: 3px solid #7e97a6;
     padding-left: 0.55rem;
     margin-bottom: 0.65rem;
   }
@@ -222,7 +238,9 @@
   <h3 id="info-name"></h3>
   <div class="sub" id="info-sub"></div>
   <p id="info-desc"></p>
+  <div class="build" id="info-build"></div>
   <div class="va" id="info-va"></div>
+  <div class="wet" id="info-wet"></div>
   <div class="row">
     <button id="btn-rotate">Rotate (R)</button>
     <button id="btn-delete">Delete (⌫)</button>
@@ -250,10 +268,18 @@
     <ul>
       <li>Every unit is a <strong>one-story detached structure of 160 sq ft or less</strong> — under Virginia's 256 sq ft accessory-structure threshold (VCC 108.2 / VRC R105.2), below which a building permit is generally not required.</li>
       <li>Plumbed and electrified units (kitchen, baths, laundry) still need <strong>trade permits and inspections</strong>, and any unit used for sleeping or dwelling can trigger full residential code compliance — talk to your county building department early.</li>
-      <li><strong>High cube (9&#8242;6&#8243;) containers</strong> leave roughly an 8&#8242; finished ceiling after insulation — comfortably above the 7&#8242;0&#8243; habitable-space minimum (VRC R305).</li>
-      <li>The sleeping unit carries an <strong>egress-sized window</strong> (VRC R310 emergency escape and rescue).</li>
+      <li><strong>High cube (9&#8242;6&#8243;) containers</strong> leave roughly an 8&#8242; finished ceiling after closed-cell spray foam — comfortably above the 7&#8242;0&#8243; habitable-space minimum (VRC R305). Interior width lands around 7&#8242;0&#8243;.</li>
+      <li>The sleeping unit is a <strong>tunnel container: two independent glazed egress doors</strong> in the factory apertures (VRC R310) — no cut openings.</li>
       <li>Containers sit on <strong>pier foundations with footings below frost depth</strong> (18–24&#8243; across most of Virginia).</li>
       <li>Zoning, setbacks, and well/septic rules vary by county and are <strong>not modeled here</strong>.</li>
+    </ul>
+    <h2 style="margin-top:1.1rem">Fabrication rules</h2>
+    <ul>
+      <li><strong>No field cuts to walls or roof.</strong> Every opening is a factory aperture: container door ends, or the factory side doors of an open-side box. This skips most cutting and welding and keeps the box's structure and warranty-grade weather envelope intact.</li>
+      <li>The original cargo doors stay on their hinges as <strong>operable storm/security shutters</strong>, parked open against the walls; an insulated glazed wall with an outswing entry door sits just inside each aperture.</li>
+      <li><strong>Utilities enter through the wood floor</strong> (already non-structural to drill): supply, drains, and electrical all rise from below. The one wall exception is a single ~3&#8243; lineset sleeve per mini-split.</li>
+      <li>Variants by role: <strong>tunnel</strong> (doors both ends) for sleeping and bathhouse, <strong>open-side</strong> for dining and living, <strong>standard</strong> everywhere else.</li>
+      <li>Wet units want to sit inside the <strong>utility core's 30&#8242; ring</strong> (shown on the ground) to keep plumbing trenches short.</li>
     </ul>
     <div class="fine">This is a visualization for exploring ideas — not construction documents or code advice.</div>
     <button id="btn-va-close">Close</button>

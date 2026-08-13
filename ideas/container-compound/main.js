@@ -8,15 +8,16 @@ import { OrbitControls } from "./vendor/OrbitControls.js";
 
 const WALL_T = 0.35; // container wall thickness for rendering
 const H = 9.5; // high cube exterior height
+const WET_RADIUS = 30; // advisory short-plumbing-run radius around the utility core, ft
 
 // Furniture pieces are boxes in unit-local feet, centered at the unit origin,
 // x along the container length, z across the 8' width. y is the base height.
 const TYPES = [
   {
     id: "sleeping", name: "Sleeping unit", len: 20, wid: 8, color: 0x96a48e,
-    cost: 28000,
-    desc: "Queen bed, wardrobe, reading bench and a mini-split. The private core of the compound.",
-    va: "Egress-sized awning window at the bed (VRC R310). 160 sq ft, one story.",
+    cost: 29000, variant: "tunnel", hvac: "minisplit",
+    desc: "Queen bed, wardrobe and a reading bench. Tunnel container: glazed door-walls at both ends give two exits and cross-ventilation.",
+    va: "Both egress paths are outswing glazed doors inside factory apertures (VRC R310) — zero cuts.",
     furniture: [
       { x: -5.8, z: 0, w: 6.6, d: 5.2, h: 2.0, color: 0xd9cfc0 },        // bed
       { x: -9.2, z: -3.0, w: 1.4, d: 1.6, h: 2.0, color: 0x9c7c58 },     // nightstand
@@ -27,8 +28,8 @@ const TYPES = [
   },
   {
     id: "kitchen", name: "Kitchen unit", len: 20, wid: 8, color: 0xc9ac7f,
-    cost: 38000,
-    desc: "Full galley run with range and sink, tall fridge, pantry and a small eat-at counter.",
+    cost: 38000, variant: "standard", wet: true, hvac: "minisplit",
+    desc: "Full galley run with range and sink, tall fridge, pantry and a small eat-at counter. Supply and drains rise through the floor.",
     va: "Plumbing, gas and electrical need trade permits even under 256 sq ft.",
     furniture: [
       { x: -1.5, z: -2.9, w: 15.0, d: 2.2, h: 3.0, color: 0xdad2c4 },    // counter run
@@ -39,8 +40,8 @@ const TYPES = [
   },
   {
     id: "bathhouse", name: "Bathhouse unit", len: 20, wid: 8, color: 0x7e97a6,
-    cost: 36000,
-    desc: "Two shower stalls, a soaking tub and a changing bench — the shared spa of the compound.",
+    cost: 37000, variant: "tunnel", wet: true, hvac: "panel",
+    desc: "Two shower stalls, a soaking tub and a changing bench. Tunnel container so steam vents straight through with both door-walls open.",
     va: "Wet unit: plumbing permits and inspections apply; vented per VRC.",
     furniture: [
       { x: -8.2, z: -2.2, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower 1
@@ -51,8 +52,8 @@ const TYPES = [
   },
   {
     id: "bath-laundry", name: "Bath + laundry unit", len: 20, wid: 8, color: 0xa092a8,
-    cost: 34000,
-    desc: "Full bath on one end, stacked washer-dryer pair and folding counter on the other.",
+    cost: 34000, variant: "standard", wet: true, hvac: "panel",
+    desc: "Full bath on one end, washer-dryer pair and folding counter on the other. All water through the floor.",
     va: "Wet unit: plumbing and electrical permits apply.",
     furniture: [
       { x: -8.2, z: -2.2, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower
@@ -65,8 +66,8 @@ const TYPES = [
   },
   {
     id: "dining", name: "Dining unit", len: 20, wid: 8, color: 0xb78d7b,
-    cost: 22000,
-    desc: "A table for eight and a sideboard, with wide openings meant to spill onto a deck.",
+    cost: 24000, variant: "openside", hvac: "minisplit",
+    desc: "A table for eight and a sideboard. Open-side container: the factory side doors become a full glazed wall that spills onto a deck.",
     va: "Unplumbed gathering space — simplest permit path of the set.",
     furniture: [
       { x: 0, z: 0, w: 9.0, d: 3.4, h: 2.5, color: 0x9c7c58 },           // table
@@ -81,9 +82,9 @@ const TYPES = [
   },
   {
     id: "living", name: "Living unit", len: 20, wid: 8, color: 0xa5a184,
-    cost: 24000,
-    desc: "Deep sofa, media wall and a small wood stove — the den.",
-    va: "Solid-fuel stove needs mechanical permit + clearances (VRC ch. 10).",
+    cost: 26000, variant: "openside", hvac: "minisplit",
+    desc: "Deep sofa, media wall and a small wood stove behind an open-side glazed wall — the den.",
+    va: "Solid-fuel stove needs mechanical permit + clearances (VRC ch. 10); flue uses the factory vent position, not a new roof cut.",
     furniture: [
       { x: -3.0, z: -2.3, w: 7.5, d: 3.0, h: 2.2, color: 0xd9cfc0 },     // sofa
       { x: -3.0, z: 1.6, w: 4.0, d: 2.0, h: 1.4, color: 0x9c7c58 },      // coffee table
@@ -93,8 +94,8 @@ const TYPES = [
   },
   {
     id: "bathroom", name: "Bathroom unit", len: 10, wid: 8, color: 0x8fa0ad,
-    cost: 17000,
-    desc: "Compact three-fixture bath in a mini: shower, toilet, vanity.",
+    cost: 17000, variant: "standard", wet: true, hvac: "panel",
+    desc: "Compact three-fixture bath in a mini: shower, toilet, vanity. Drains drop straight through the floor.",
     va: "Wet unit: plumbing permits apply. 80 sq ft, one story.",
     furniture: [
       { x: -3.0, z: -1.9, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower
@@ -104,8 +105,8 @@ const TYPES = [
   },
   {
     id: "laundry", name: "Laundry / utility unit", len: 10, wid: 8, color: 0xb0a08d,
-    cost: 15000,
-    desc: "Washer, dryer, water heater and the compound's mechanical closet.",
+    cost: 15000, variant: "standard", hvac: "panel", core: true,
+    desc: "Washer, dryer, water heater and the compound's mechanical closet — the utility core. Wet units want to sit inside its ring.",
     va: "Houses water heater + panel; trade permits apply.",
     furniture: [
       { x: -3.2, z: -2.5, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },     // washer
@@ -116,8 +117,8 @@ const TYPES = [
   },
   {
     id: "office", name: "Office / studio unit", len: 10, wid: 8, color: 0x8fa695,
-    cost: 18000,
-    desc: "Desk under a picture window, bookshelves, room for a reading chair.",
+    cost: 18000, variant: "standard", hvac: "minisplit",
+    desc: "Desk facing the glazed door-wall, bookshelves, room for a reading chair.",
     va: "Unplumbed work space — simple permit path.",
     furniture: [
       { x: -1.0, z: -2.5, w: 5.5, d: 2.4, h: 2.5, color: 0x9c7c58 },     // desk
@@ -251,7 +252,10 @@ function tree(x, z, s) {
 const roofMat = new THREE.MeshLambertMaterial({ color: 0xf5f3ee });
 const floorMat = new THREE.MeshLambertMaterial({ color: 0xd8cdbb });
 const doorMat = new THREE.MeshLambertMaterial({ color: 0x4f4a42 });
-const glassMat = new THREE.MeshLambertMaterial({ color: 0xbcd6e2 });
+const glassWallMat = new THREE.MeshLambertMaterial({
+  color: 0xbcd6e2, transparent: true, opacity: 0.55,
+});
+const condMat = new THREE.MeshLambertMaterial({ color: 0xd9d9d4 });
 const deckMat = new THREE.MeshLambertMaterial({ color: 0xb78e5f });
 
 function buildUnit(type) {
@@ -283,7 +287,11 @@ function buildUnit(type) {
   }
 
   const wallMat = new THREE.MeshLambertMaterial({ color: type.color, transparent: true });
-  g.userData.wallMats = [wallMat];
+  const leafMat = new THREE.MeshLambertMaterial({
+    color: new THREE.Color(type.color).multiplyScalar(0.86),
+    transparent: true,
+  });
+  g.userData.wallMats = [wallMat, leafMat];
 
   // floor slab on low piers
   const slab = new THREE.Mesh(new THREE.BoxGeometry(L, 0.8, W), floorMat);
@@ -301,7 +309,10 @@ function buildUnit(type) {
     }
   }
 
-  // walls (roof lifts away, so model them as four slabs)
+  // Walls, per the fabrication rules: no cut openings anywhere. Glazing and
+  // entries live only in factory apertures (container door ends, or the
+  // factory side doors of an open-side box), with the original cargo doors
+  // kept as operable shutters swung flat against the adjacent walls.
   const base = 1.3, wallH = H - 1.3 - 0.6;
   const mkWall = (w, d, x, z) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, wallH, d), wallMat);
@@ -310,35 +321,93 @@ function buildUnit(type) {
     g.add(m);
     return m;
   };
-  mkWall(L, WALL_T, 0, -W / 2 + WALL_T / 2);
-  mkWall(L, WALL_T, 0, W / 2 - WALL_T / 2);
-  mkWall(WALL_T, W - WALL_T * 2, -L / 2 + WALL_T / 2, 0);
-  mkWall(WALL_T, W - WALL_T * 2, L / 2 - WALL_T / 2, 0);
 
-  // corrugation hint: vertical ribs on the long faces
+  const apertureEnds = type.variant === "tunnel" ? [1, -1] : [1];
+  const openSide = type.variant === "openside";
+
+  // long walls: back is always solid steel; front is glazed on open-side units
+  mkWall(L, WALL_T, 0, -W / 2 + WALL_T / 2);
+  if (openSide) {
+    const glass = new THREE.Mesh(
+      new THREE.BoxGeometry(L - 1.6, wallH - 0.6, 0.14), glassWallMat);
+    glass.position.set(0, base + (wallH - 0.6) / 2, W / 2 - 0.14);
+    g.add(glass);
+    const span = L - 1.6, bays = Math.max(2, Math.round(span / 4.5));
+    for (let i = 1; i < bays; i++) {
+      const mull = new THREE.Mesh(new THREE.BoxGeometry(0.16, wallH - 0.6, 0.2), doorMat);
+      mull.position.set(-span / 2 + (span / bays) * i, base + (wallH - 0.6) / 2, W / 2 - 0.14);
+      g.add(mull);
+    }
+    for (const xs of [-1, 1]) mkWall(0.8, WALL_T, xs * (L / 2 - 0.4), W / 2 - WALL_T / 2);
+    const fascia = new THREE.Mesh(new THREE.BoxGeometry(L, 0.6, WALL_T), wallMat);
+    fascia.position.set(0, base + wallH - 0.3, W / 2 - WALL_T / 2);
+    g.add(fascia);
+  } else {
+    mkWall(L, WALL_T, 0, W / 2 - WALL_T / 2);
+  }
+
+  // container ends: solid steel, or a factory door aperture with an inset
+  // glazed wall + entry door, shutter leaves parked against the long walls
+  for (const s of [1, -1]) {
+    if (!apertureEnds.includes(s)) {
+      mkWall(WALL_T, W - WALL_T * 2, s * (L / 2 - WALL_T / 2), 0);
+      continue;
+    }
+    const glass = new THREE.Mesh(
+      new THREE.BoxGeometry(0.14, wallH - 0.7, W - 1.2), glassWallMat);
+    glass.position.set(s * (L / 2 - 1.0), base + (wallH - 0.7) / 2, 0);
+    g.add(glass);
+    const doorFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, wallH - 1.0, 3.0), doorMat);
+    doorFrame.position.set(s * (L / 2 - 0.95), base + (wallH - 1.0) / 2, -1.6);
+    g.add(doorFrame);
+    const header = new THREE.Mesh(
+      new THREE.BoxGeometry(WALL_T, 0.7, W - WALL_T * 2), wallMat);
+    header.position.set(s * (L / 2 - WALL_T / 2), base + wallH - 0.35, 0);
+    g.add(header);
+    for (const zs of [-1, 1]) {
+      if (openSide && zs === 1) continue; // no shutter over the glazed side
+      const leaf = new THREE.Mesh(
+        new THREE.BoxGeometry(3.8, wallH - 0.3, 0.16), leafMat);
+      leaf.position.set(s * (L / 2 - 1.95), base + (wallH - 0.3) / 2, zs * (W / 2 + 0.18));
+      leaf.castShadow = true;
+      g.add(leaf);
+    }
+  }
+
+  // corrugation hint: vertical ribs on the solid steel faces only
   const ribMat = new THREE.MeshLambertMaterial({ color: type.color, transparent: true });
   g.userData.wallMats.push(ribMat);
   const ribs = Math.floor(L / 2);
   for (let i = 0; i <= ribs; i++) {
     const x = -L / 2 + (L / ribs) * i;
-    for (const zs of [-1, 1]) {
+    for (const zs of openSide ? [-1] : [-1, 1]) {
       const rib = new THREE.Mesh(new THREE.BoxGeometry(0.28, wallH - 0.4, 0.14), ribMat);
       rib.position.set(x * 0.96, base + wallH / 2, zs * (W / 2 + 0.02));
       g.add(rib);
     }
   }
 
-  // door + windows on the front (south, +z) face
-  const door = new THREE.Mesh(new THREE.BoxGeometry(3, 6.8, 0.12), doorMat);
-  door.position.set(-L / 2 + 2.6, base + 3.4, W / 2 + 0.1);
-  g.add(door);
-  const winW = type.id === "sleeping" ? 5.2 : 4.2; // egress-sized for sleeping
-  const win = new THREE.Mesh(new THREE.BoxGeometry(winW, 3.4, 0.12), glassMat);
-  win.position.set(L / 4 - 0.5, base + 4.4, W / 2 + 0.1);
-  g.add(win);
-  const win2 = new THREE.Mesh(new THREE.BoxGeometry(3, 2.6, 0.12), glassMat);
-  win2.position.set(0, base + 4.6, -W / 2 - 0.1);
-  g.add(win2);
+  // mini-split condenser on the solid back side (one lineset sleeve)
+  if (type.hvac === "minisplit") {
+    const cond = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.7, 1.0), condMat);
+    cond.position.set(-L / 2 + 2.4, 0.85, -(W / 2 + 1.8));
+    cond.castShadow = true;
+    g.add(cond);
+  }
+
+  // utility core: soft advisory ring showing the short-plumbing-run radius
+  if (type.core) {
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(WET_RADIUS - 0.6, WET_RADIUS, 64),
+      new THREE.MeshBasicMaterial({
+        color: 0x7e97a6, transparent: true, opacity: 0.3, side: THREE.DoubleSide,
+      })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.08;
+    g.add(ring);
+  }
 
   // roof group — lifts on peek
   const roofG = new THREE.Group();
@@ -433,7 +502,32 @@ function select(item) {
     ? `8' × 8' platform · 64 sq ft deck · ~$${t.cost.toLocaleString()}`
     : `${t.len}' ${t.len === 10 ? "mini " : ""}high cube · ${t.len}' × 8' × 9'6" · ${t.len * t.wid} sq ft · ~$${t.cost.toLocaleString()}`;
   document.getElementById("info-desc").textContent = t.desc;
+  const VARIANT_LABEL = {
+    standard: "Standard container · shutters one end",
+    tunnel: "Tunnel container · shutters both ends",
+    openside: "Open-side container · glazed side wall",
+  };
+  document.getElementById("info-build").textContent = t.deck
+    ? "Ground-screw framing · no permit under 30\" (VRC R105.2)"
+    : `${VARIANT_LABEL[t.variant]} · spray-foam interior (~7'0" wide) · ${
+        t.hvac === "minisplit" ? "mini-split (one lineset sleeve)" : "panel heater + exhaust"
+      } · no wall or roof cuts`;
   document.getElementById("info-va").textContent = t.va;
+  const wetEl = document.getElementById("info-wet");
+  if (t.wet) {
+    const cores = items.filter((i) => i.typeId === "laundry");
+    if (!cores.length) {
+      wetEl.textContent = "No utility core on site — add a laundry / utility unit to serve water and drains.";
+    } else {
+      const d = Math.min(...cores.map((c) => Math.hypot(c.x - item.x, c.z - item.z)));
+      wetEl.textContent = d <= WET_RADIUS
+        ? `✓ ${Math.round(d)} ft to the utility core — short plumbing runs.`
+        : `△ ${Math.round(d)} ft to the utility core — expect a long trench.`;
+    }
+    wetEl.style.display = "block";
+  } else {
+    wetEl.style.display = "none";
+  }
   info.classList.add("open");
 }
 
@@ -509,6 +603,7 @@ const EXAMPLE = {
     ["deck", 4, -1, 0],
     ["bath-laundry", 34, -1, 1],
     ["office", -32, -1, 1],
+    ["laundry", 32, -18, 1],
   ],
 };
 
@@ -657,8 +752,10 @@ renderer.domElement.addEventListener("pointermove", (e) => {
 
 renderer.domElement.addEventListener("pointerup", (e) => {
   if (dragging) {
-    if (moved) save();
-    else select(selected === dragging ? null : dragging);
+    if (moved) {
+      save();
+      if (selected) select(selected); // refresh plumbing-distance hint
+    } else select(selected === dragging ? null : dragging);
     dragging = null;
     controls.enabled = true;
   } else if (downPos && !moved) {
