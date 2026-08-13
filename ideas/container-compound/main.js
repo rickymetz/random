@@ -68,7 +68,7 @@ function applySun() {
   sun.position.set(...s.pos);
   sun.color.set(s.color);
   sun.intensity = s.intensity;
-  document.getElementById("btn-sun").textContent = `☀ ${s.name}`;
+  document.getElementById("btn-sun").title = s.name;
 }
 applySun();
 
@@ -471,9 +471,9 @@ function select(item) {
   if (mode === "dollhouse") document.body.classList.add("sheet-open");
   updateSelDims();
 }
-document.getElementById("sel-chip").addEventListener("click", () =>
+document.getElementById("btn-info").addEventListener("click", () =>
   document.body.classList.add("sheet-open"));
-document.getElementById("sel-x").addEventListener("click", () => select(null));
+document.getElementById("btn-desel").addEventListener("click", () => select(null));
 
 // find an open spot near the center for a newly added unit
 function findSpot(type) {
@@ -650,7 +650,20 @@ document.getElementById("btn-redo").addEventListener("click", redo);
 document.getElementById("btn-sun").addEventListener("click", () => {
   sunIdx = (sunIdx + 1) % SUNS.length;
   applySun();
+  toast(`${SUNS[sunIdx].name} light`);
 });
+
+// overflow menu
+document.getElementById("btn-menu").addEventListener("click", (e) => {
+  e.stopPropagation();
+  document.body.classList.toggle("menu-open");
+});
+addEventListener("pointerdown", (e) => {
+  if (!e.target.closest("#menu, #btn-menu")) document.body.classList.remove("menu-open");
+});
+for (const id of ["btn-share", "btn-va", "btn-reset"])
+  document.getElementById(id).addEventListener("click", () =>
+    document.body.classList.remove("menu-open"));
 
 document.getElementById("btn-dup").addEventListener("click", () => {
   if (!selected || mode !== "compose") return;
