@@ -670,7 +670,7 @@ const EXAMPLE = {
     ["deck", -4, -1, 0],
     ["deck", 4, -1, 0],
     ["office", -41, -1, 1],
-    ["bath-laundry", 41, -1, 1],
+    ["bath-laundry", 41, -1, 3],
     ["laundry", 41, -16, 1],
   ],
 };
@@ -756,9 +756,16 @@ document.getElementById("btn-share").addEventListener("click", async () => {
 
 function rotateSelected() {
   if (!selected) return;
+  const preBlocked = blockedPairs().length;
   pushUndo();
   selected.rot = (selected.rot + 1) % 4;
   applyTransform(selected);
+  if (blockedPairs().length > preBlocked) {
+    const snap = undoStack.pop();
+    loadFrom(JSON.parse(snap));
+    toast("That blocks a door wall — keep apertures clear");
+    return;
+  }
   save();
   updateStats();
   select(selected); // refresh separation/plumbing hints
@@ -804,6 +811,39 @@ function gapBetween(a, b) {
   if (gx <= 0) return gz;
   if (gz <= 0) return gx;
   return Math.hypot(gx, gz);
+}
+
+// local +x rotated into world by rot steps (rotation.y = rot * PI/2)
+const DIRS = [[1, 0], [0, -1], [-1, 0], [0, 1]];
+// world-axis directions of a unit's aperture (door/glazed) faces
+function apertureFaces(it) {
+  const t = TYPE_BY_ID[it.typeId];
+  if (t.deck) return [];
+  const px = DIRS[it.rot % 4]; // door end at local +x on every variant
+  const faces = [px];
+  if (t.variant === "tunnel") faces.push([-px[0], -px[1]]);
+  if (t.variant === "openside") faces.push(DIRS[(it.rot + 3) % 4]); // glazed local +z side
+  return faces;
+}
+// pairs of units butted against an aperture face — entry/egress blocked
+function blockedPairs() {
+  const units = items.filter((i) => !TYPE_BY_ID[i.typeId].deck);
+  const out = [];
+  for (let i = 0; i < units.length; i++) {
+    for (let j = i + 1; j < units.length; j++) {
+      const a = units[i], b = units[j];
+      const [aw, ad] = halfDims(a), [bw, bd] = halfDims(b);
+      const gx = Math.abs(a.x - b.x) - (aw + bw);
+      const gz = Math.abs(a.z - b.z) - (ad + bd);
+      if (gx > JOIN_EPS || gz > JOIN_EPS) continue; // not touching
+      const axis = gx >= gz ? "x" : "z";
+      const s = axis === "x" ? Math.sign(b.x - a.x) || 1 : Math.sign(b.z - a.z) || 1;
+      const faceA = axis === "x" ? [s, 0] : [0, s]; // A's face toward B
+      const hit = (it, f) => apertureFaces(it).some((d) => d[0] === f[0] && d[1] === f[1]);
+      if (hit(a, faceA) || hit(b, [-faceA[0], -faceA[1]])) out.push([a, b]);
+    }
+  }
+  return out;
 }
 
 function groundLine(ax, az, bx, bz, mat, dashed) {
@@ -905,6 +945,7 @@ let dragOffset = new THREE.Vector3();
 let downPos = null;
 let moved = false;
 let dragSnapshot = null;
+let preBlocked = 0;
 
 function itemAt(clientX, clientY) {
   pointer.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
@@ -939,6 +980,7 @@ renderer.domElement.addEventListener("pointerdown", (e) => {
   if (it) {
     dragging = it;
     dragSnapshot = JSON.stringify(serialize());
+    preBlocked = blockedPairs().length;
     controls.enabled = false;
     const p = groundPoint(e.clientX, e.clientY);
     if (p) dragOffset.set(it.x - p.x, 0, it.z - p.z);
@@ -965,9 +1007,15 @@ renderer.domElement.addEventListener("pointermove", (e) => {
 renderer.domElement.addEventListener("pointerup", (e) => {
   if (dragging) {
     if (moved) {
-      save();
-      updateStats();
-      if (selected) select(selected); // refresh plumbing/separation hints
+      if (blockedPairs().length > preBlocked) {
+        const snap = undoStack.pop(); // the pre-drag snapshot
+        loadFrom(JSON.parse(snap));
+        toast("That blocks a door wall — butt against solid sides only");
+      } else {
+        save();
+        updateStats();
+        if (selected) select(selected); // refresh plumbing/separation hints
+      }
     } else select(selected === dragging ? null : dragging);
     dragging = null;
     controls.enabled = true;
