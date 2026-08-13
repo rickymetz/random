@@ -48,13 +48,40 @@
   #topbar h1 { font-size: 0.95rem; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   #topbar button {
     flex: none;
-    font-size: 0.8rem;
-    padding: 0.42rem 0.65rem;
-    border-radius: 0.5rem;
+    width: 2.3rem; height: 2.3rem;
+    font-size: 1.15rem;
+    line-height: 1;
+    border-radius: 50%;
     border: 1px solid var(--line);
     background: #fff;
+    display: grid;
+    place-items: center;
   }
   #topbar button:active { border-color: var(--accent); color: var(--accent); }
+
+  #menu {
+    position: fixed;
+    top: calc(3.3rem + var(--sat));
+    right: 0.75rem;
+    z-index: 9;
+    display: none;
+    flex-direction: column;
+    min-width: 11rem;
+    border-radius: 0.7rem;
+    padding: 0.3rem;
+  }
+  body.menu-open #menu { display: flex; }
+  #menu button {
+    width: auto; height: auto;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    border-radius: 0.45rem;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.85rem;
+    display: block;
+  }
+  #menu button:active { background: rgba(179, 84, 46, 0.1); color: var(--accent); }
 
   #units {
     position: fixed;
@@ -115,6 +142,7 @@
     place-items: center;
   }
   #edge-tools button:disabled { opacity: 0.35; }
+  #edge-tools button:not(:disabled):active { border-color: var(--accent); color: var(--accent); }
 
   #fab {
     position: fixed;
@@ -255,15 +283,20 @@
 <header id="topbar" class="panel">
   <a class="back" href="../">←</a>
   <h1>Unit plan studio</h1>
-  <button id="btn-export">Export</button>
-  <button id="btn-reset">Reset unit</button>
+  <button id="btn-menu" aria-label="Menu">⋯</button>
 </header>
+
+<div id="menu" class="panel">
+  <button id="btn-export">Export drafts</button>
+  <button id="btn-reset">Reset this unit</button>
+</div>
 
 <div id="units"><!-- unit chips --></div>
 
 <div id="edge-tools">
   <button id="btn-redo" aria-label="Redo" disabled>↪</button>
   <button id="btn-undo" aria-label="Undo" disabled>↩</button>
+  <button id="btn-fit" aria-label="Fit view">⌖</button>
 </div>
 
 <button id="fab" aria-label="Add piece">+</button>
@@ -595,6 +628,7 @@ document.getElementById("p-del").addEventListener("click", () => {
   sel = -1;
   document.body.classList.remove("has-sel");
   save(); render();
+  toast("Deleted — ↩ to undo");
 });
 document.getElementById("p-done").addEventListener("click", () => {
   sel = -1;
@@ -609,7 +643,19 @@ document.getElementById("fab").addEventListener("click", () => {
   save(); render(); syncSheet();
 });
 
-// ---- top bar ----
+// ---- top bar + menu ----
+document.getElementById("btn-menu").addEventListener("click", (e) => {
+  e.stopPropagation();
+  document.body.classList.toggle("menu-open");
+});
+addEventListener("pointerdown", (e) => {
+  if (!e.target.closest("#menu, #btn-menu")) document.body.classList.remove("menu-open");
+});
+for (const id of ["btn-export", "btn-reset"])
+  document.getElementById(id).addEventListener("click", () =>
+    document.body.classList.remove("menu-open"));
+document.getElementById("btn-fit").addEventListener("click", fit);
+
 document.getElementById("btn-reset").addEventListener("click", () => {
   if (!confirm("Reset this unit to the shipped layout?")) return;
   delete drafts[cur];
