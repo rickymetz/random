@@ -46,14 +46,14 @@ that touched their folder.
 
 ## How it works
 
-- `scripts/build.js` (plain Node, zero dependencies) copies each
-  `ideas/<slug>/` folder into `_site/` and generates the homepage.
-- `.github/workflows/pages.yml` runs the build and deploys `_site/` to
-  GitHub Pages on every push to `main`.
+- GitHub Pages serves the `main` branch directly (Settings → Pages →
+  Deploy from a branch, `main` `/ (root)`); `.nojekyll` makes it serve
+  files verbatim.
+- `scripts/build.js` (plain Node, zero dependencies) generates the
+  homepage at the repo root by scanning `ideas/`, and mirrors everything
+  into `_site/` as a local preview.
+- `.github/workflows/pages.yml` reruns the build on every push to `main`
+  and commits the regenerated `index.html` when it changed — so the
+  homepage stays current with zero manual upkeep.
 - Preview locally with `node scripts/build.js && npx serve _site` (or just
   open an idea's `index.html` directly in a browser).
-
-## One-time setup
-
-In the repo settings on GitHub: **Settings → Pages → Source → GitHub
-Actions**. After that, every push to `main` deploys.

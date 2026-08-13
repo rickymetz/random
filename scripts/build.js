@@ -198,17 +198,23 @@ ${ideas.length ? cards : empty}
 }
 
 // --- build ---
+// GitHub Pages serves the main branch directly, so the homepage lives at the
+// repo root (committed by CI when it changes). _site/ is kept as a local
+// preview of exactly what Pages serves.
+const ideas = collectIdeas();
+const home = renderHome(ideas);
+fs.writeFileSync(path.join(root, "index.html"), home);
+fs.writeFileSync(path.join(root, ".nojekyll"), "");
+
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
-
-const ideas = collectIdeas();
 for (const idea of ideas) {
   fs.cpSync(path.join(ideasDir, idea.slug), path.join(outDir, "ideas", idea.slug), {
     recursive: true,
   });
 }
-fs.writeFileSync(path.join(outDir, "index.html"), renderHome(ideas));
+fs.writeFileSync(path.join(outDir, "index.html"), home);
 fs.writeFileSync(path.join(outDir, ".nojekyll"), "");
 
-console.log(`built ${ideas.length} idea(s) -> _site/`);
+console.log(`built ${ideas.length} idea(s) -> index.html + _site/`);
 for (const i of ideas) console.log(`  - ideas/${i.slug}/  (${i.title})`);
