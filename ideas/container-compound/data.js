@@ -84,6 +84,20 @@ export const TYPES = [
     ],
   },
   {
+    id: "restroom", name: "Restroom unit", len: 20, wid: 8, color: 0x7fa397,
+    cost: 39000, variant: "tunnel", ends: ["door", "window"], wet: true, hvac: "panel",
+    desc: "Three WC stalls, two showers and a double wash basin — a locker room minus the lockers, for hosting crowds. Entry door at one end, frosted window wall at the other.",
+    va: "Wet unit: gang plumbing through the floor; each stall keeps 15in+ WC centerlines and interior front clearance (VRC ch.27); mechanical exhaust (R303.3).",
+    furniture: [
+      { x: -7.2, z: 1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower, window end
+      { x: -7.2, z: -1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },    // shower, window end
+      { x: -3.1, z: 1.25, w: 3.0, d: 4.6, h: 6.5, color: 0xe8e6e0 },     // WC stall
+      { x: -0.1, z: 1.25, w: 3.0, d: 4.6, h: 6.5, color: 0xe8e6e0 },     // WC stall
+      { x: 2.9, z: 1.25, w: 3.0, d: 4.6, h: 6.5, color: 0xe8e6e0 },      // WC stall
+      { x: 6.9, z: 2.55, w: 3.4, d: 1.9, h: 3.0, color: 0xdad2c4 },      // double basin, by the door
+    ],
+  },
+  {
     id: "dining", name: "Dining unit", len: 20, wid: 8, color: 0xb78d7b,
     cost: 24000, variant: "openside", hvac: "minisplit",
     desc: "A table for eight with a banquette on the closed wall and chairs on the open side, spilling onto a deck. Sideboard at the quiet end.",
@@ -175,6 +189,7 @@ export const PLAN_LABELS = {
   kitchen: ["counter run", "fridge", "pantry", "island"],
   bathhouse: ["shower", "shower", "soaking tub", "bench", "linen"],
   "bath-laundry": ["shower", "WC", "vanity", "washer", "dryer", "counter", "rod"],
+  restroom: ["shower", "shower", "stall", "stall", "stall", "basins"],
   dining: ["table", "banquette", "", "", "", "", "sideboard"],
   living: ["fireplace", "sofa", "table", "media"],
   bathroom: ["shower", "WC", "vanity", "shelf"],

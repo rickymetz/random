@@ -1146,6 +1146,7 @@ document.getElementById("parts-close").addEventListener("click", () =>
 
 const SHORT_NAME = {
   sleeping: "Sleeping", suite: "Suite", kitchen: "Kitchen", bathhouse: "Bathhouse",
+  restroom: "Restroom",
   "bath-laundry": "Bath + laundry", dining: "Dining", living: "Living",
   bathroom: "Bath", laundry: "Utility", office: "Office", hobby: "Hobby",
   deck: "",
