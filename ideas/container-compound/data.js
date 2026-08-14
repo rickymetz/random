@@ -6,7 +6,9 @@
 // - Finished interior after spray foam: 7'2" wide -> walls at z = ±3.55.
 // - 20' units: usable x in [-9.3, +8.8] (tunnels: ±8.8). Minis: [-4.3, +3.7].
 // - Entry-door approach (z -3.1..-0.1, ~3 ft deep) stays clear at every
-//   aperture end.
+//   DOOR end. Tunnel units may fill one aperture with a glazed window wall
+//   instead of a door (ends: ["door"|"window" at +x, same at -x]) — a
+//   window end needs no approach, freeing the layout against that wall.
 // - Water closets: centerline >= 15" from any side wall, 21" clear in front
 //   (VRC ch.27 / IRC R307). Showers >= 30"x30".
 // - Kitchen aisle >= 36", bed gets one >= 23" side aisle, sofa-to-table
@@ -28,12 +30,12 @@ export const TYPES = [
   },
   {
     id: "suite", name: "Suite unit", len: 20, wid: 8, color: 0xb08f96,
-    cost: 42000, variant: "tunnel", wet: true, hvac: "minisplit",
-    desc: "A private suite: queen bed with an en-suite shower, WC and vanity behind a full-height partition with a pocket door at the aisle. Tunnel container — glazed door-wall at the bed end, frosted at the bath end.",
-    va: "Habitable + wet: two egress door-walls (VRC R310), WC 15in+ off the wall with 21in+ in front (VRC ch.27), exhaust through the floor. Interior partition is framing, not steel — no envelope cuts.",
+    cost: 42000, variant: "tunnel", ends: ["door", "window"], wet: true, hvac: "minisplit",
+    desc: "A private suite: queen bed with an en-suite shower, WC and vanity behind a full-height partition with a pocket door at the aisle. Entry door at the bed end; the bath end is a frosted operable window wall.",
+    va: "Habitable + wet: the bed-end glazed door is the egress opening (a door satisfies VRC R310); WC 15in+ off the wall with 21in+ in front (VRC ch.27), exhaust through the floor. Interior partition is framing, not steel — no envelope cuts.",
     furniture: [
-      { x: -7.0, z: 1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower
-      { x: -4.9, z: -2.3, w: 1.6, d: 2.4, h: 1.4, color: 0xf2efe8 },     // WC (15.4in centerline, clear of the door)
+      { x: -7.2, z: 1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower
+      { x: -8.0, z: -2.3, w: 1.6, d: 2.4, h: 1.4, color: 0xf2efe8 },     // WC at the window wall (15.4in centerline)
       { x: -3.25, z: 2.65, w: 2.8, d: 1.8, h: 3.0, color: 0xdad2c4 },    // vanity
       { x: -1.7, z: 1.0, w: 0.35, d: 5.1, h: 8.0, color: 0xe6e1d8 },     // partition (2ft pocket-door opening at the aisle)
       { x: 1.9, z: 0.95, w: 6.6, d: 5.2, h: 2.0, color: 0xd9cfc0 },      // queen bed (23in aisle)
@@ -68,12 +70,12 @@ export const TYPES = [
   },
   {
     id: "bath-laundry", name: "Bath + laundry unit", len: 20, wid: 8, color: 0xa092a8,
-    cost: 35000, variant: "tunnel", wet: true, hvac: "panel",
-    desc: "Full bath on one end, washer-dryer pair and folding counter on the other. Tunnel container with frosted door-walls at both ends.",
+    cost: 35000, variant: "tunnel", ends: ["door", "window"], wet: true, hvac: "panel",
+    desc: "Full bath on one end, washer-dryer pair and folding counter on the other. Entry door at the laundry end; a frosted window wall lights the bath.",
     va: "Wet unit: plumbing and electrical permits apply. WC set 15in+ off the wall with 21in+ in front (VRC ch.27); exhaust + dryer duct through the floor.",
     furniture: [
       { x: -7.2, z: 1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower
-      { x: -4.9, z: -2.3, w: 1.6, d: 2.4, h: 1.4, color: 0xf2efe8 },     // WC (15.4in centerline, clear of the door)
+      { x: -8.0, z: -2.3, w: 1.6, d: 2.4, h: 1.4, color: 0xf2efe8 },     // WC at the window wall (15.4in centerline)
       { x: -3.9, z: 2.65, w: 3.0, d: 1.8, h: 3.0, color: 0xdad2c4 },     // vanity
       { x: 2.6, z: 2.35, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },      // washer
       { x: 5.2, z: 2.35, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },      // dryer
