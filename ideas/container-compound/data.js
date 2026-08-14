@@ -86,15 +86,14 @@ export const TYPES = [
   {
     id: "restroom", name: "Restroom unit", len: 20, wid: 8, color: 0x7fa397,
     cost: 39000, variant: "tunnel", ends: ["door", "window"], wet: true, hvac: "panel",
-    desc: "Two showers with a changing vestibule and bench at the window end, a bank of three WC stalls, and a double basin by the door — a locker room minus the lockers.",
+    desc: "Two showers with a generous changing vestibule and bench at the window end, two roomy WC stalls, and a double basin by the door — a locker room minus the lockers.",
     va: "Wet unit: gang plumbing through the floor; each stall keeps 15in+ WC centerlines and interior front clearance (VRC ch.27); mechanical exhaust (R303.3).",
     furniture: [
       { x: -7.2, z: 1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower, window end
       { x: -7.2, z: -1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },    // shower, window end
-      { x: -4.4, z: 2.65, w: 2.2, d: 1.6, h: 1.5, color: 0xb08d63 },     // changing bench in the drying vestibule
-      { x: -1.7, z: 1.25, w: 3.0, d: 4.6, h: 6.5, color: 0xe8e6e0 },     // WC stall
-      { x: 1.3, z: 1.25, w: 3.0, d: 4.6, h: 6.5, color: 0xe8e6e0 },      // WC stall
-      { x: 4.3, z: 1.25, w: 3.0, d: 4.6, h: 6.5, color: 0xe8e6e0 },      // WC stall
+      { x: -3.3, z: 2.65, w: 3.0, d: 1.6, h: 1.5, color: 0xb08d63 },     // changing bench in the drying vestibule
+      { x: 0.7, z: 1.25, w: 3.4, d: 4.6, h: 6.5, color: 0xe8e6e0 },      // WC stall (41in wide)
+      { x: 4.1, z: 1.25, w: 3.4, d: 4.6, h: 6.5, color: 0xe8e6e0 },      // WC stall (41in wide)
       { x: 6.9, z: 2.55, w: 3.4, d: 1.9, h: 3.0, color: 0xdad2c4 },      // double basin, by the door
     ],
   },
@@ -190,7 +189,7 @@ export const PLAN_LABELS = {
   kitchen: ["counter run", "fridge", "pantry", "island"],
   bathhouse: ["shower", "shower", "soaking tub", "bench", "linen"],
   "bath-laundry": ["shower", "WC", "vanity", "washer", "dryer", "counter", "rod"],
-  restroom: ["shower", "shower", "bench", "stall", "stall", "stall", "basins"],
+  restroom: ["shower", "shower", "bench", "stall", "stall", "basins"],
   dining: ["table", "banquette", "", "", "", "", "sideboard"],
   living: ["fireplace", "sofa", "table", "media"],
   bathroom: ["shower", "WC", "vanity", "shelf"],
