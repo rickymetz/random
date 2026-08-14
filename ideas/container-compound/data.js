@@ -29,12 +29,13 @@ export const TYPES = [
   {
     id: "suite", name: "Suite unit", len: 20, wid: 8, color: 0xb08f96,
     cost: 42000, variant: "tunnel", wet: true, hvac: "minisplit",
-    desc: "A private suite: queen bed with an en-suite shower, WC and vanity. Tunnel container — glazed door-wall at the bed end, frosted at the bath end.",
-    va: "Habitable + wet: two egress door-walls (VRC R310), WC 15in+ off the wall with 21in+ in front (VRC ch.27), exhaust through the floor.",
+    desc: "A private suite: queen bed with an en-suite shower, WC and vanity behind a full-height partition with a pocket door at the aisle. Tunnel container — glazed door-wall at the bed end, frosted at the bath end.",
+    va: "Habitable + wet: two egress door-walls (VRC R310), WC 15in+ off the wall with 21in+ in front (VRC ch.27), exhaust through the floor. Interior partition is framing, not steel — no envelope cuts.",
     furniture: [
       { x: -7.0, z: 1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower
       { x: -4.9, z: -2.3, w: 1.6, d: 2.4, h: 1.4, color: 0xf2efe8 },     // WC (15.4in centerline, clear of the door)
-      { x: -3.2, z: 2.65, w: 3.0, d: 1.8, h: 3.0, color: 0xdad2c4 },     // vanity
+      { x: -3.25, z: 2.65, w: 2.8, d: 1.8, h: 3.0, color: 0xdad2c4 },    // vanity
+      { x: -1.7, z: 1.0, w: 0.35, d: 5.1, h: 8.0, color: 0xe6e1d8 },     // partition (2ft pocket-door opening at the aisle)
       { x: 1.9, z: 0.95, w: 6.6, d: 5.2, h: 2.0, color: 0xd9cfc0 },      // queen bed (23in aisle)
       { x: 6.0, z: 2.75, w: 1.4, d: 1.6, h: 2.0, color: 0x9c7c58 },      // nightstand
       { x: 7.7, z: 2.45, w: 2.0, d: 2.2, h: 6.6, color: 0x8a6f4f },      // wardrobe, clear of the door
@@ -168,7 +169,7 @@ export const TYPES = [
 // index-aligned with each type's furniture array
 export const PLAN_LABELS = {
   sleeping: ["bed", "", "", "wardrobe", "bench"],
-  suite: ["shower", "WC", "vanity", "bed", "", "wardrobe"],
+  suite: ["shower", "WC", "vanity", "", "bed", "", "wardrobe"],
   kitchen: ["counter run", "fridge", "pantry", "island"],
   bathhouse: ["shower", "shower", "soaking tub", "bench", "linen"],
   "bath-laundry": ["shower", "WC", "vanity", "washer", "dryer", "counter", "rod"],
