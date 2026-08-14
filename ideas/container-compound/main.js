@@ -148,6 +148,10 @@ TREES.forEach(([x, z, s]) => tree(x, z, s));
 
 // ------------------------------------------------------------ unit meshes
 
+// what fills a given aperture end: +x -> ends[0], -x -> ends[1]
+const endKind = (t, s) =>
+  (t.variant === "tunnel" ? t.ends || ["door", "door"] : ["door"])[s === 1 ? 0 : 1] || "door";
+
 const roofMat = new THREE.MeshLambertMaterial({ color: 0xf5f3ee });
 const floorMat = new THREE.MeshLambertMaterial({ color: 0xd8cdbb });
 const doorMat = new THREE.MeshLambertMaterial({ color: 0x4f4a42 });
@@ -256,10 +260,18 @@ function buildUnit(type) {
       new THREE.BoxGeometry(0.14, wallH - 0.7, W - 1.2), glassWallMat);
     glass.position.set(s * (L / 2 - 1.0), base + (wallH - 0.7) / 2, 0);
     g.add(glass);
-    const doorFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, wallH - 1.0, 3.0), doorMat);
-    doorFrame.position.set(s * (L / 2 - 0.95), base + (wallH - 1.0) / 2, -1.6);
-    g.add(doorFrame);
+    if (endKind(type, s) === "door") {
+      const doorFrame = new THREE.Mesh(
+        new THREE.BoxGeometry(0.2, wallH - 1.0, 3.0), doorMat);
+      doorFrame.position.set(s * (L / 2 - 0.95), base + (wallH - 1.0) / 2, -1.6);
+      g.add(doorFrame);
+    } else {
+      // window wall: a horizontal transom bar instead of a door frame
+      const sill = new THREE.Mesh(
+        new THREE.BoxGeometry(0.2, 0.25, W - 1.4), doorMat);
+      sill.position.set(s * (L / 2 - 0.95), base + 3.4, 0);
+      g.add(sill);
+    }
     const header = new THREE.Mesh(
       new THREE.BoxGeometry(WALL_T, 0.7, W - WALL_T * 2), wallMat);
     header.position.set(s * (L / 2 - WALL_T / 2), base + wallH - 0.35, 0);
@@ -1133,7 +1145,8 @@ document.getElementById("parts-close").addEventListener("click", () =>
 // ------------------------------------------------------------- site plan
 
 const SHORT_NAME = {
-  sleeping: "Sleeping", kitchen: "Kitchen", bathhouse: "Bathhouse",
+  sleeping: "Sleeping", suite: "Suite", kitchen: "Kitchen", bathhouse: "Bathhouse",
+  restroom: "Restroom",
   "bath-laundry": "Bath + laundry", dining: "Dining", living: "Living",
   bathroom: "Bath", laundry: "Utility", office: "Office", hobby: "Hobby",
   deck: "",
@@ -1169,9 +1182,11 @@ function unitPlanGroup(it) {
     const ends = t.variant === "tunnel" ? [1, -1] : [1];
     for (const e of ends) {
       g += `<line x1="${e * (hw - 2)}" y1="${-hd + 4}" x2="${e * (hw - 2)}" y2="${hd - 4}" stroke="#4a90c2" stroke-width="2.2"/>`;
-      const hy = -3.1 * S, r = 3 * S;
-      g += `<line x1="${e * hw}" y1="${hy}" x2="${e * (hw + r * 0.6)}" y2="${hy + r * 0.6}" stroke="#55524c" stroke-width="1.4"/>`;
-      g += `<path d="M ${e * (hw + r * 0.6)} ${hy + r * 0.6} A ${r} ${r} 0 0 ${e === 1 ? 0 : 1} ${e * hw} ${hy + r}" fill="none" stroke="#55524c" stroke-width="0.8" stroke-dasharray="3 3"/>`;
+      if (endKind(t, e) === "door") {
+        const hy = -3.1 * S, r = 3 * S;
+        g += `<line x1="${e * hw}" y1="${hy}" x2="${e * (hw + r * 0.6)}" y2="${hy + r * 0.6}" stroke="#55524c" stroke-width="1.4"/>`;
+        g += `<path d="M ${e * (hw + r * 0.6)} ${hy + r * 0.6} A ${r} ${r} 0 0 ${e === 1 ? 0 : 1} ${e * hw} ${hy + r}" fill="none" stroke="#55524c" stroke-width="0.8" stroke-dasharray="3 3"/>`;
+      }
     }
     if (t.variant === "openside") {
       g += `<line x1="${-hw + 5}" y1="${hd - 2}" x2="${hw - 5}" y2="${hd - 2}" stroke="#4a90c2" stroke-width="2.2"/>`;
@@ -1429,10 +1444,16 @@ function planSVG(t) {
   for (const e of ends) {
     const gx = X(e * (L / 2 - 0.5));
     s += `<line x1="${gx}" y1="${Y(-W / 2 + 0.5)}" x2="${gx}" y2="${Y(W / 2 - 0.5)}" stroke="#5aa9e6" stroke-width="4"/>`;
-    const hx = X(e * L / 2), hy = Y(-3.1), dw = 3 * S;
-    s += `<line x1="${hx}" y1="${hy}" x2="${hx + e * dw * 0.7}" y2="${hy - dw * 0.7}" stroke="#4f4a42" stroke-width="3" stroke-linecap="round"/>`;
-    s += `<path d="M ${hx + e * dw * 0.7} ${hy - dw * 0.7} A ${dw} ${dw} 0 0 ${e === 1 ? 1 : 0} ${hx} ${hy + (0 * dw)}" fill="none" stroke="#4f4a42" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.7"/>`;
-    s += `<line x1="${X(e * (L / 2 - 3.4))}" y1="${Y(-1.6)}" x2="${X(e * (L / 2 + 1.5))}" y2="${Y(-1.6)}" stroke="#c0574a" stroke-width="2" marker-end="url(#arr)"/>`;
+    if (endKind(t, e) === "door") {
+      const hx = X(e * L / 2), hy = Y(-3.1), dw = 3 * S;
+      s += `<line x1="${hx}" y1="${hy}" x2="${hx + e * dw * 0.7}" y2="${hy - dw * 0.7}" stroke="#4f4a42" stroke-width="3" stroke-linecap="round"/>`;
+      s += `<path d="M ${hx + e * dw * 0.7} ${hy - dw * 0.7} A ${dw} ${dw} 0 0 ${e === 1 ? 1 : 0} ${hx} ${hy + (0 * dw)}" fill="none" stroke="#4f4a42" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.7"/>`;
+      s += `<line x1="${X(e * (L / 2 - 3.4))}" y1="${Y(-1.6)}" x2="${X(e * (L / 2 + 1.5))}" y2="${Y(-1.6)}" stroke="#c0574a" stroke-width="2" marker-end="url(#arr)"/>`;
+    } else {
+      // window wall: parallel inner glazing line, no swing or egress arrow
+      const gx2 = X(e * (L / 2 - 0.85));
+      s += `<line x1="${gx2}" y1="${Y(-W / 2 + 0.7)}" x2="${gx2}" y2="${Y(W / 2 - 0.7)}" stroke="#5aa9e6" stroke-width="1.5"/>`;
+    }
   }
   if (t.variant === "openside") {
     s += `<line x1="${X(-L / 2 + 0.9)}" y1="${Y(W / 2 - 0.35)}" x2="${X(L / 2 - 0.9)}" y2="${Y(W / 2 - 0.35)}" stroke="#5aa9e6" stroke-width="4"/>`;
