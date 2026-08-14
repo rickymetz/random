@@ -1133,7 +1133,7 @@ document.getElementById("parts-close").addEventListener("click", () =>
 // ------------------------------------------------------------- site plan
 
 const SHORT_NAME = {
-  sleeping: "Sleeping", kitchen: "Kitchen", bathhouse: "Bathhouse",
+  sleeping: "Sleeping", suite: "Suite", kitchen: "Kitchen", bathhouse: "Bathhouse",
   "bath-laundry": "Bath + laundry", dining: "Dining", living: "Living",
   bathroom: "Bath", laundry: "Utility", office: "Office", hobby: "Hobby",
   deck: "",
