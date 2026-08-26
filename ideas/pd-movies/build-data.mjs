@@ -50,8 +50,30 @@ function decodeEntities(s) {
     .trim();
 }
 
+// Compare titles on their letters alone: case, spacing, punctuation and a
+// trailing parenthetical all vary between the catalogue and the databases.
+function norm(s) {
+  return String(s).toLowerCase()
+    .replace(/[\u2018\u2019\u201c\u201d]/g, "'")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// Short stable id for a set of qids, so cache files key by content.
+function batchKey(ids) {
+  let h = 2166136261;
+  for (const c of ids.join("|")) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  return h.toString(36);
+}
+
 // "A Bucket of Blood" sorts under B — matches Plex and the source's own order.
 const sortTitle = (t) => t.replace(/^(a|an|the)\s+/i, "").toLowerCase();
+
+// The catalogue is public domain film; its newest genuine entries are cheap
+// late-80s pictures. A title matching something newer means the real film
+// simply isn't in the database and we've landed on a modern namesake — drop
+// it rather than show a confidently wrong year and poster.
+const MAX_YEAR = 1990;
 
 const GENRES = ["action", "animation", "comedy", "drama", "exploitation", "family", "horror", "martialarts", "musicals", "mystery", "scifi", "serial", "war", "westerns"];
 
@@ -114,12 +136,25 @@ async function enrich(movies) {
   for (const mv of movies) {
     i++;
     if (i % 50 === 0) console.log(`  wikidata search ${i}/${movies.length}`);
-    const url = `${WD}?action=wbsearchentities&format=json&language=en&type=item&limit=5&search=${encodeURIComponent(mv.title)}`;
+    const url = `${WD}?action=wbsearchentities&format=json&language=en&type=item&limit=20&search=${encodeURIComponent(mv.title)}`;
     const body = await get(url, `wd-s-${mv.id}.json`, 500);
     if (!body) { misses.push(`${mv.id}\t${mv.title}\tsearch failed`); continue; }
-    let ids = [];
-    try { ids = (JSON.parse(body).search || []).map((x) => x.id); } catch {}
-    if (!ids.length) { misses.push(`${mv.id}\t${mv.title}\tno entity`); continue; }
+    let hits = [];
+    try { hits = JSON.parse(body).search || []; } catch {}
+    if (!hits.length) { misses.push(`${mv.id}\t${mv.title}\tno entity`); continue; }
+    // wbsearchentities is fuzzy/prefix: without an exact-title gate a film
+    // with no Wikidata entry silently matches some *other* old film, and the
+    // old-bias sort then promotes it. Demand the name actually match.
+    const want = norm(mv.title);
+    const exact = hits.filter((h) => {
+      const names = [h.label, h.match?.text, ...(h.aliases || [])].filter(Boolean);
+      return names.some((n) => norm(n) === want);
+    });
+    if (!exact.length) {
+      misses.push(`${mv.id}\t${mv.title}\tno exact-title entity (best: ${hits[0].label || "?"})`);
+      continue;
+    }
+    const ids = exact.map((x) => x.id);
     mv._cands = ids;
     for (const q of ids) {
       if (!candidates.has(q)) candidates.set(q, []);
@@ -134,7 +169,9 @@ async function enrich(movies) {
     const batch = qids.slice(s, s + 50);
     console.log(`  wikidata entities ${s}/${qids.length}`);
     const url = `${WD}?action=wbgetentities&format=json&props=claims&ids=${batch.join("|")}`;
-    const body = await get(url, `wd-e-${s}.json`, 500);
+    // Keyed by batch contents — an offset key would go stale and map to the
+    // wrong ids as soon as a re-run shifted the candidate set.
+    const body = await get(url, `wd-e-${batchKey(batch)}.json`, 500);
     if (!body) continue;
     try { Object.assign(ents, JSON.parse(body).entities || {}); } catch {}
   }
@@ -143,7 +180,7 @@ async function enrich(movies) {
 
   for (const mv of movies) {
     if (!mv._cands) continue;
-    const films = [];
+    const films = [], tooNew = [];
     for (const q of mv._cands) {
       const c = ents[q]?.claims;
       if (!c) continue;
@@ -158,15 +195,16 @@ async function enrich(movies) {
         if (t) { year = parseInt(t.slice(1, 5), 10); break; }
       }
       const art = claimVal(c, "P3383") || claimVal(c, "P18") || null;
+      if (year && year > MAX_YEAR) { tooNew.push(`${year}`); continue; }
       films.push({ q, year, art, imdb: claimVal(c, "P345") || null, tmdb: claimVal(c, "P4947") || null });
     }
-    if (!films.length) { misses.push(`${mv.id}\t${mv.title}\tno film among candidates`); continue; }
+    if (!films.length) {
+      misses.push(`${mv.id}\t${mv.title}\t${tooNew.length ? `only modern namesakes (${tooNew.join(", ")})` : "no film among candidates"}`);
+      continue;
+    }
     // This catalog is old public domain film. Prefer a plausibly-old match,
     // then the earliest, then one that actually has art.
-    films.sort((a, b) => {
-      const old = (f) => (f.year && f.year <= 1985 ? 0 : 1);
-      return old(a) - old(b) || (a.year ?? 9999) - (b.year ?? 9999) || (b.art ? 1 : 0) - (a.art ? 1 : 0);
-    });
+    films.sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999) || (b.art ? 1 : 0) - (a.art ? 1 : 0));
     const best = films[0];
     mv.year = best.year ?? undefined;
     mv.wd = best.q;
@@ -174,7 +212,7 @@ async function enrich(movies) {
     if (best.tmdb) mv.tmdb = best.tmdb;
     if (best.art) mv.wdArt = best.art;
     if (films.length > 1) misses.push(`${mv.id}\t${mv.title}\tambiguous -> ${best.q} (${best.year}) of ${films.length}`);
-    if (best.year && best.year > 1985) misses.push(`${mv.id}\t${mv.title}\tsuspicious year ${best.year} (${best.q})`);
+
   }
 
   fs.writeFileSync(logFile, misses.join("\n") + "\n");
@@ -276,13 +314,16 @@ async function posters(movies) {
       try {
         const results = JSON.parse(body).data || [];
         // Same old-film bias as the Wikidata matcher.
+        const want = norm(mv.title);
         const scored = results
           .filter((r) => r.image_url)
+          .filter((r) => {
+            const names = [r.name, r.title, ...Object.values(r.translations || {})].filter(Boolean);
+            return names.some((n) => norm(n) === want);
+          })
           .map((r) => ({ r, year: parseInt(r.year, 10) || null }))
-          .sort((a, b) => {
-            const old = (x) => (x.year && x.year <= 1985 ? 0 : 1);
-            return old(a) - old(b) || (a.year ?? 9999) - (b.year ?? 9999);
-          });
+          .filter((x) => !(x.year && x.year > MAX_YEAR))
+          .sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999));
         if (!scored.length) continue;
         mv.art = scored[0].r.image_url;
         mv.artSrc = "tvdb";
