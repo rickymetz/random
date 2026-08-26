@@ -748,6 +748,24 @@
   .d-stars { color: var(--accent); font-variant-numeric: tabular-nums; }
   .d-of { color: var(--dim); font-size: 11px; }
   .stars.site, .lrating.site, .d-stars.site { color: var(--muted); letter-spacing: 1px; }
+  /* The summary is Wikipedia's writing, so the credit travels with it rather
+     than sitting in a footer somewhere. */
+  .d-desc {
+    margin: 14px 0 0;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--muted);
+    text-wrap: pretty;
+  }
+  .d-src {
+    font-size: 11px;
+    font-family: var(--mono);
+    white-space: nowrap;
+    text-decoration: none;
+    opacity: .85;
+  }
+  .d-src:hover { text-decoration: underline; }
+
   .d-table {
     margin: 18px 0 0;
     display: grid;
@@ -1385,6 +1403,14 @@
             ? ` · <span class="d-stars">${fmtScore(m.score)}</span><span class="d-of">/10</span>`
             : m.rating ? ` · <span class="d-stars site">${stars(m.rating)}</span>` : "") +
         `</div>` +
+        (m.desc
+          ? `<p class="d-desc">${esc(m.desc)}` +
+            (m.wiki
+              ? ` <a class="d-src" href="https://en.wikipedia.org/wiki/${encodeURIComponent(m.wiki.replace(/ /g, "_"))}" ` +
+                `target="_blank" rel="noopener noreferrer">Wikipedia</a>`
+              : "") +
+            `</p>`
+          : "") +
         `<dl class="d-table">` +
           `<dt>Genre</dt><dd>${m.genres.length
             ? m.genres.map((g) => `<button class="tag" data-g="${esc(g)}">${esc(GENRE_LABELS[g] || g)}</button>`).join("")
