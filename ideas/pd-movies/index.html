@@ -1164,6 +1164,13 @@
   const drawer = $("drawer"), scrim = $("scrim");
   let lastFocus = null, lockedAt = 0;
 
+  function stopPlayer() {
+    const frame = drawer.querySelector("iframe");
+    if (frame) frame.remove();
+    const hero = drawer.querySelector(".d-hero");
+    if (hero) delete hero.dataset.playing;
+  }
+
   // Fixing the body is the one reliable way to stop iOS scrolling the page
   // under an open panel; remember where we were so closing puts it back.
   function lockScroll() {
@@ -1182,6 +1189,7 @@
   }
 
   function openDrawer(m, { push = true } = {}) {
+    stopPlayer();
     const reopening = Boolean(currentFilm);
     currentFilm = m;
     if (!reopening) lastFocus = document.activeElement;
@@ -1292,6 +1300,10 @@
   }
 
   function closeDrawer({ back = false } = {}) {
+    // Hiding the drawer does not stop the player: the iframe stays in the DOM
+    // and keeps playing out of sight. Tear it down before anything else, so
+    // the sound stops the moment the panel is dismissed.
+    stopPlayer();
     if (back && currentFilm) { currentFilm = null; history.back(); return; }
     currentFilm = null;
     writeUrl(false);
