@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Public Domain Movies</title>
 <meta name="description" content="A Plex-style browser for the ~980 public domain films at publicdomaintorrents.info — search, filter by genre, decade, format and rating, sort any way you like.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316181d'/%3E%3Crect x='9' y='5' width='14' height='22' rx='1.5' fill='%23e5a00d'/%3E%3Cg fill='%2316181d'%3E%3Crect x='10.5' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3C/g%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="random">
+<meta property="og:title" content="Public Domain Movies">
+<meta property="og:description" content="Browse ~980 public domain films. Search, filter by genre, decade, format and rating, and sort any way you like.">
+<meta property="og:url" content="https://rickymetz.github.io/random/ideas/pd-movies/">
+<meta property="og:image" content="https://rickymetz.github.io/random/ideas/pd-movies/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Public Domain Movies — a grid of vintage film posters">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Public Domain Movies">
+<meta name="twitter:description" content="Browse ~980 public domain films. Search, filter, sort.">
+<meta name="twitter:image" content="https://rickymetz.github.io/random/ideas/pd-movies/og.png">
 <style>
   :root {
     --bg: #16181d;
@@ -191,6 +205,21 @@
     cursor: pointer;
   }
   select:focus { outline: none; border-color: var(--accent); }
+
+  .icon-btn {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 30px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .icon-btn:hover { color: var(--ink); border-color: var(--dim); }
+  .icon-btn:active { background: var(--line-2); }
+  .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   .check {
     display: flex;
@@ -634,6 +663,7 @@
     .reset { grid-column: 1; justify-self: start; padding: 9px 10px; }
     .view-toggle { grid-column: 2; justify-self: end; margin-left: 0; }
     .view-toggle button { width: 40px; height: 38px; }
+    .icon-btn { width: 44px; height: 38px; justify-self: start; }
 
     .grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 18px 12px; }
   }
@@ -710,8 +740,17 @@
         <option value="-year">Year, newest</option>
         <option value="-rating">Rating, best</option>
         <option value="genre">Genre</option>
+        <option value="random">Random</option>
       </select>
     </div>
+    <button class="icon-btn" id="shuffle" title="Open a random film" aria-label="Open a random film">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/>
+        <circle cx="5.8" cy="5.8" r="1.05" fill="currentColor" stroke="none"/>
+        <circle cx="8" cy="8" r="1.05" fill="currentColor" stroke="none"/>
+        <circle cx="10.2" cy="10.2" r="1.05" fill="currentColor" stroke="none"/>
+      </svg>
+    </button>
     <button class="reset" id="reset" hidden>Clear filters</button>
     <div class="view-toggle">
       <button id="viewGrid" aria-pressed="true" aria-label="Grid view" title="Grid view">
@@ -761,8 +800,9 @@
   let ALL = [];
   const state = {
     q: "", genres: new Set(), decade: "", format: "", rating: "", hasArt: false,
-    sort: "title", view: "grid",
+    sort: "title", view: "grid", seed: 1,
   };
+  let currentFilm = null;   // film shown in the drawer, for arrow-key paging
 
   // Stable hue per title so a film's generated poster never changes colour.
   function hash(s) {
@@ -845,7 +885,17 @@
     "-year": (a, b) => (b.year ?? -1) - (a.year ?? -1) || a.sort.localeCompare(b.sort),
     "-rating": (a, b) => (b.rating ?? -1) - (a.rating ?? -1) || a.sort.localeCompare(b.sort),
     genre: (a, b) => (a.genres[0] || "~").localeCompare(b.genres[0] || "~") || a.sort.localeCompare(b.sort),
+    // Seeded, so the order is stable across re-renders and reproduces from a
+    // shared link rather than reshuffling under the reader.
+    random: (a, b) => rank(a.id) - rank(b.id),
   };
+
+  function rank(id) {
+    let h = (2166136261 ^ state.seed) >>> 0;
+    const t = String(id);
+    for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    return h / 4294967296;
+  }
 
   // Render in chunks — ~1000 posters at once janks the first paint.
   let shown = [], drawn = 0;
@@ -872,6 +922,91 @@
 
   const isFiltered = () =>
     state.q || state.genres.size || state.decade || state.format || state.rating || state.hasArt;
+
+  // --------------------------------------------------- URL and preferences
+  // The URL is the source of truth so a filtered view can be shared or
+  // reloaded; localStorage only supplies defaults on a bare first visit.
+  const PREFS = "pd-movies:prefs";
+
+  function writeUrl(push) {
+    const p = new URLSearchParams();
+    if (state.q) p.set("q", state.q);
+    if (state.genres.size) p.set("g", [...state.genres].join(","));
+    if (state.decade) p.set("d", state.decade);
+    if (state.format) p.set("f", state.format);
+    if (state.rating) p.set("r", state.rating);
+    if (state.hasArt) p.set("art", "1");
+    if (state.sort !== "title") p.set("sort", state.sort);
+    if (state.view !== "grid") p.set("v", state.view);
+    if (state.sort === "random") p.set("s", String(state.seed));
+    if (currentFilm) p.set("film", currentFilm.id);
+    const hash = p.toString();
+    const url = location.pathname + (hash ? "#" + hash : "");
+    if (push && url !== location.pathname + location.hash) history.pushState(null, "", url);
+    else history.replaceState(null, "", url);
+  }
+
+  function readUrl() {
+    const p = new URLSearchParams(location.hash.replace(/^#/, ""));
+    if (!p.toString()) return false;
+    state.q = p.get("q") || "";
+    state.genres = new Set((p.get("g") || "").split(",").filter(Boolean));
+    state.decade = p.get("d") || "";
+    state.format = p.get("f") || "";
+    state.rating = p.get("r") || "";
+    state.hasArt = p.get("art") === "1";
+    state.sort = SORTS[p.get("sort")] ? p.get("sort") : "title";
+    state.view = p.get("v") === "list" ? "list" : "grid";
+    state.seed = Number(p.get("s")) || state.seed;
+    return true;
+  }
+
+  // Storage throws in some private modes — a lost preference is not worth an
+  // exception, so every access is guarded.
+  function savePrefs() {
+    try {
+      localStorage.setItem(PREFS, JSON.stringify({
+        view: state.view, sort: state.sort,
+        genres: [...state.genres], decade: state.decade,
+        format: state.format, rating: state.rating, hasArt: state.hasArt,
+      }));
+    } catch {}
+  }
+
+  function loadPrefs() {
+    try {
+      const v = JSON.parse(localStorage.getItem(PREFS) || "null");
+      if (!v) return;
+      state.view = v.view === "list" ? "list" : "grid";
+      if (SORTS[v.sort]) state.sort = v.sort;
+      state.genres = new Set(Array.isArray(v.genres) ? v.genres : []);
+      state.decade = v.decade || "";
+      state.format = v.format || "";
+      state.rating = v.rating || "";
+      state.hasArt = Boolean(v.hasArt);
+    } catch {}
+  }
+
+  // Push the state back onto the controls, after a popstate or on load.
+  function syncControls() {
+    $("q").value = state.q;
+    $("searchWrap").classList.toggle("has-value", Boolean(state.q));
+    $("decade").value = state.decade;
+    $("format").value = state.format;
+    $("minRating").value = state.rating;
+    $("hasArt").checked = state.hasArt;
+    $("sort").value = state.sort;
+    $("viewGrid").setAttribute("aria-pressed", String(state.view === "grid"));
+    $("viewList").setAttribute("aria-pressed", String(state.view === "list"));
+    syncChips();
+  }
+
+  // One place to record a change: URL, preferences, then repaint.
+  function apply(push = false) {
+    writeUrl(push);
+    savePrefs();
+    render();
+  }
 
   // Chip counts reflect every filter *except* genre, so they read as
   // "what would this chip add", not "what is already selected".
@@ -909,8 +1044,10 @@
     window.scrollTo(0, lockedAt);
   }
 
-  function openDrawer(m) {
-    lastFocus = document.activeElement;
+  function openDrawer(m, { push = true } = {}) {
+    const reopening = Boolean(currentFilm);
+    currentFilm = m;
+    if (!reopening) lastFocus = document.activeElement;
     const fmt = (m.formats || []);
     drawer.innerHTML =
       `<button class="drawer-close" id="dClose" aria-label="Close">` +
@@ -940,25 +1077,29 @@
         `<p class="d-note">Downloads, synopsis and user comments live on the source site — this page is only a browser over its catalogue.</p>` +
       `</div>`;
 
-    lockScroll();
+    if (!reopening) lockScroll();
+    writeUrl(push && !reopening);
     drawer.classList.add("open");
     drawer.setAttribute("aria-hidden", "false");
     scrim.classList.add("open");
     $("dClose").focus();
 
-    $("dClose").onclick = closeDrawer;
+    $("dClose").onclick = () => closeDrawer({ back: true });
     for (const t of drawer.querySelectorAll(".tag[data-g]")) {
       t.onclick = () => {
         state.genres = new Set([t.dataset.g]);
         syncChips();
         closeDrawer();
-        render();
+        apply(true);
         window.scrollTo({ top: 0, behavior: "smooth" });
       };
     }
   }
 
-  function closeDrawer() {
+  function closeDrawer({ back = false } = {}) {
+    if (back && currentFilm) { currentFilm = null; history.back(); return; }
+    currentFilm = null;
+    writeUrl(false);
     drawer.classList.remove("open");
     drawer.setAttribute("aria-hidden", "true");
     scrim.classList.remove("open");
@@ -966,9 +1107,18 @@
     lastFocus?.focus();
   }
 
-  scrim.onclick = closeDrawer;
+  scrim.onclick = () => closeDrawer({ back: true });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && drawer.classList.contains("open")) closeDrawer();
+    if (e.key === "Escape" && drawer.classList.contains("open")) return closeDrawer({ back: true });
+    // Left/right page through the filtered list without closing the panel.
+    if (drawer.classList.contains("open") && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      const i = shown.findIndex((x) => x.id === currentFilm?.id);
+      if (i === -1) return;
+      const next = shown[i + (e.key === "ArrowRight" ? 1 : -1)];
+      if (next) openDrawer(next, { push: false });
+      return;
+    }
     // "/" focuses search, the way every media browser does it.
     if (e.key === "/" && document.activeElement !== $("q")) {
       e.preventDefault();
@@ -1008,7 +1158,7 @@
       const g = chip.dataset.g;
       state.genres.has(g) ? state.genres.delete(g) : state.genres.add(g);
       syncChips();
-      render();
+      apply(true);
     };
   }
 
@@ -1016,30 +1166,32 @@
   $("q").addEventListener("input", (e) => {
     $("searchWrap").classList.toggle("has-value", Boolean(e.target.value));
     clearTimeout(debounce);
-    debounce = setTimeout(() => { state.q = e.target.value.trim(); render(); }, 120);
+    // Typing replaces rather than pushes, so back does not walk keystrokes.
+    debounce = setTimeout(() => { state.q = e.target.value.trim(); apply(false); }, 120);
   });
   $("clearQ").onclick = () => {
     $("q").value = "";
     $("searchWrap").classList.remove("has-value");
     state.q = "";
-    render();
+    apply(false);
     $("q").focus();
   };
 
   for (const [id, key] of [["decade", "decade"], ["format", "format"], ["sort", "sort"]]) {
-    $(id).addEventListener("change", (e) => { state[key] = e.target.value; render(); });
+    $(id).addEventListener("change", (e) => {
+      state[key] = e.target.value;
+      // A fresh shuffle each time Random is chosen, else it repeats.
+      if (key === "sort" && e.target.value === "random") state.seed = (Math.random() * 1e9) | 0;
+      apply(true);
+    });
   }
-  $("minRating").addEventListener("change", (e) => { state.rating = e.target.value; render(); });
-  $("hasArt").addEventListener("change", (e) => { state.hasArt = e.target.checked; render(); });
+  $("minRating").addEventListener("change", (e) => { state.rating = e.target.value; apply(true); });
+  $("hasArt").addEventListener("change", (e) => { state.hasArt = e.target.checked; apply(true); });
 
   function resetAll() {
     Object.assign(state, { q: "", genres: new Set(), decade: "", format: "", rating: "", hasArt: false });
-    $("q").value = "";
-    $("searchWrap").classList.remove("has-value");
-    $("decade").value = ""; $("format").value = ""; $("minRating").value = "";
-    $("hasArt").checked = false;
-    syncChips();
-    render();
+    syncControls();
+    apply(true);
   }
   $("reset").onclick = resetAll;
   $("emptyReset").onclick = resetAll;
@@ -1048,10 +1200,27 @@
     state.view = v;
     $("viewGrid").setAttribute("aria-pressed", String(v === "grid"));
     $("viewList").setAttribute("aria-pressed", String(v === "list"));
-    render();
+    apply(true);
   }
   $("viewGrid").onclick = () => setView("grid");
   $("viewList").onclick = () => setView("list");
+
+  $("shuffle").addEventListener("click", () => {
+    if (!shown.length) return;
+    openDrawer(shown[(Math.random() * shown.length) | 0]);
+  });
+
+  // Back/forward, and hand-edited URLs, both land here.
+  window.addEventListener("popstate", () => {
+    const p = new URLSearchParams(location.hash.replace(/^#/, ""));
+    readUrl();
+    syncControls();
+    render();
+    const id = p.get("film");
+    const film = id && ALL.find((m) => m.id === id);
+    if (film) openDrawer(film, { push: false });
+    else if (drawer.classList.contains("open")) closeDrawer();
+  });
 
   new IntersectionObserver((entries) => {
     if (entries[0].isIntersecting) drawMore();
@@ -1075,6 +1244,9 @@
         if (m.year) decades.add(m.year < 1930 ? 1900 : Math.floor(m.year / 10) * 10);
       }
       buildChips(counts);
+      // URL first so a shared link always wins; saved preferences only fill in
+      // a bare visit.
+      if (!readUrl()) loadPrefs();
 
       $("decade").insertAdjacentHTML("beforeend",
         [...decades].sort((a, b) => a - b)
@@ -1100,7 +1272,13 @@
         `<a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>; ` +
         `the rest get a drawn poster. Titles are matched by name alone, so a few posters and years will belong to the wrong film.`;
 
+      syncControls();
       render();
+      writeUrl(false);
+
+      const startId = new URLSearchParams(location.hash.replace(/^#/, "")).get("film");
+      const startFilm = startId && ALL.find((m) => m.id === startId);
+      if (startFilm) openDrawer(startFilm, { push: false });
     })
     .catch((err) => {
       grid.innerHTML = "";
