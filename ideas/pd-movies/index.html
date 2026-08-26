@@ -817,6 +817,65 @@
     font-weight: 500;
   }
   .btn.ghost:hover { color: var(--ink); border-color: var(--dim); filter: none; }
+  /* Suggestions sit after the actions: decide about this film first, then see
+     where to go next. */
+  .related {
+    margin-top: 26px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+  }
+  .rel-h {
+    margin: 0 0 10px;
+    font: 11px var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+    font-weight: 500;
+  }
+  .rel-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .rel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0;
+    background: none;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .rel-art { display: block; }
+  .rel .poster {
+    aspect-ratio: 2 / 3;
+    height: auto;
+    width: 100%;
+    border-radius: 4px;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    transition: outline-color .12s;
+  }
+  .rel .poster img { object-fit: cover; }
+  .rel:hover .poster, .rel:focus-visible .poster { outline-color: var(--accent); }
+  .rel:focus-visible { outline: none; }
+  /* The badges are unreadable at this size and just add noise. */
+  .rel .badge, .rel .stars, .rel .playable, .rel .gen .initial { display: none; }
+  .rel .gen .t { font-size: 10px; -webkit-line-clamp: 3; }
+  .rel-t {
+    font-size: 11.5px;
+    line-height: 1.3;
+    color: var(--muted);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
   .d-note {
     margin-top: 16px;
     font-size: 11px;
@@ -1359,6 +1418,61 @@
     }
   }
 
+  // Somewhere to go next. A shared director is the strongest link this data
+  // supports, so those come first; after that, the same genre from the same era,
+  // best rated first. Films that play are preferred within each group, since a
+  // suggestion you can watch beats one you cannot.
+  const RELATED_MAX = 6;
+
+  function relatedTo(m) {
+    const seen = new Set([m.id]);
+    const rank = (a, b) => (b.ia ? 1 : 0) - (a.ia ? 1 : 0)
+                        || (b.score ?? b.rating ?? 0) - (a.score ?? a.rating ?? 0);
+
+    const byDirector = m.director?.length
+      ? ALL.filter((x) => !seen.has(x.id) && (x.director || []).some((d) => m.director.includes(d)))
+           .sort(rank)
+      : [];
+    byDirector.forEach((x) => seen.add(x.id));
+
+    const genres = new Set(m.genres || []);
+    const era = m.year ? Math.floor(m.year / 10) * 10 : null;
+    const byGenre = genres.size
+      ? ALL.filter((x) => !seen.has(x.id)
+            && (x.genres || []).some((g) => genres.has(g))
+            && (era === null || (x.year && Math.abs(x.year - m.year) <= 12)))
+           .sort(rank)
+      : [];
+
+    const dir = byDirector.slice(0, RELATED_MAX);
+    return {
+      director: dir,
+      directorName: dir.length ? m.director[0] : null,
+      genre: byGenre.slice(0, RELATED_MAX - Math.min(dir.length, 3)),
+      genreLabel: genres.size ? (GENRE_LABELS[[...genres][0]] || [...genres][0]) : null,
+      era,
+    };
+  }
+
+  function relatedHTML(m) {
+    const r = relatedTo(m);
+    const strip = (films) => `<div class="rel-row">` + films.map((f) =>
+      `<button class="rel" data-rel="${esc(f.id)}" title="${esc(f.title)}">` +
+        `<span class="rel-art">${posterHTML(f)}</span>` +
+        `<span class="rel-t">${esc(f.title)}</span>` +
+      `</button>`).join("") + `</div>`;
+
+    let out = "";
+    if (r.director.length) {
+      out += `<h3 class="rel-h">More by ${esc(r.directorName)}</h3>` + strip(r.director.slice(0, 3));
+    }
+    if (r.genre.length) {
+      const era = r.era ? ` from the ${r.era}s` : "";
+      out += `<h3 class="rel-h">More ${esc((r.genreLabel || "").toLowerCase())}${era}</h3>` + strip(r.genre.slice(0, 3));
+    }
+    return out ? `<div class="related">${out}</div>` : "";
+  }
+
   // ---------------------------------------------------------------- drawer
   const drawer = $("drawer"), scrim = $("scrim");
   let lastFocus = null, lockedAt = 0;
@@ -1459,6 +1573,7 @@
             ? ""
             : `<a class="btn ghost" href="https://archive.org/search?query=${encodeURIComponent(m.title)}" target="_blank" rel="noopener noreferrer">Look for it on Internet Archive</a>`) +
         `</div>` +
+        relatedHTML(m) +
         `<p class="d-note">${m.ia
             ? "Plays here from the Internet Archive; nothing is hosted on this page. "
             : ""}Downloads, synopsis and user comments live on Public Domain Torrents.</p>` +
@@ -1483,6 +1598,12 @@
         `title="${esc(m.title)}" allow="fullscreen" allowfullscreen frameborder="0" ` +
         `referrerpolicy="no-referrer"></iframe>`;
     };
+    for (const t of drawer.querySelectorAll(".rel[data-rel]")) {
+      t.onclick = () => {
+        const next = ALL.find((x) => x.id === t.dataset.rel);
+        if (next) { drawer.scrollTop = 0; openDrawer(next); }
+      };
+    }
     $("dPlay")?.addEventListener("click", startPlaying);
     $("dWatch")?.addEventListener("click", startPlaying);
     // A director is a filter — precise, and it survives in the URL. Cast has
