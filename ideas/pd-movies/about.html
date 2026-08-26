@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About — Public Domain Movies</title>
+<meta name="description" content="Where the catalogue, the years and the poster art come from, and what this page deliberately does not do.">
+<style>
+  :root {
+    --bg: #16181d;
+    --bg-2: #1c1f26;
+    --panel: #21252e;
+    --line: #2e333e;
+    --line-2: #3a4150;
+    --ink: #e8eaf0;
+    --muted: #8b93a5;
+    --dim: #5d6577;
+    --accent: #e5a00d;
+    --accent-ink: #1a1205;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --radius: 6px;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.65 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  a:hover { text-decoration: none; }
+
+  header {
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 12px 20px;
+  }
+  .bar h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  .home {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+    min-height: 44px;
+    min-width: 44px;
+    justify-content: center;
+    margin-left: -8px;
+    padding: 0 8px;
+    border-radius: var(--radius);
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .home:hover { color: var(--ink); background: var(--panel); }
+  .home:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .to-browse {
+    margin-left: auto;
+    padding: 7px 12px;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--muted);
+    font-size: 13px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .to-browse:hover { color: var(--ink); border-color: var(--dim); }
+
+  main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 34px 20px 80px;
+  }
+  .lede {
+    font-size: 17px;
+    line-height: 1.6;
+    color: var(--ink);
+    margin: 0 0 8px;
+    text-wrap: pretty;
+  }
+  .lede + p { margin-top: 0; color: var(--muted); }
+
+  h2 {
+    margin: 40px 0 4px;
+    font-size: 12px;
+    font-family: var(--mono);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--dim);
+  }
+  h2 + p, h2 + .card, h2 + ul { margin-top: 12px; }
+  p { margin: 0 0 14px; text-wrap: pretty; }
+
+  .card {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin: 0 0 12px;
+  }
+  .card h3 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    font-weight: 640;
+  }
+  .card h3 a { text-decoration: none; }
+  .card h3 a:hover { text-decoration: underline; }
+  .card p { margin: 0; font-size: 14px; color: var(--muted); }
+  .card p + p { margin-top: 8px; }
+  .role {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    font: 10px var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+    vertical-align: 2px;
+  }
+
+  ul { margin: 0 0 14px; padding-left: 20px; color: var(--muted); }
+  li { margin-bottom: 7px; }
+  li strong { color: var(--ink); font-weight: 600; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 14px;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  th {
+    font: 11px var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+    font-weight: 500;
+  }
+  td:last-child, th:last-child { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  td { color: var(--muted); }
+  td:first-child { color: var(--ink); }
+
+  .note {
+    border-left: 2px solid var(--accent);
+    padding: 2px 0 2px 14px;
+    margin: 0 0 14px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  footer {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 20px 50px;
+    font-size: 12px;
+    color: var(--dim);
+  }
+  footer a { color: var(--muted); }
+
+  @media (max-width: 620px) {
+    .bar h1 { font-size: 15px; }
+    main { padding-top: 26px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <a class="home" href="../../" aria-label="Back to random" title="Back to random">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M10 3L5 8l5 5"/>
+      </svg>
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2.5 7.2L8 2.5l5.5 4.7"/>
+        <path d="M3.8 8.3V13h8.4V8.3"/>
+      </svg>
+    </a>
+    <h1>About</h1>
+    <a class="to-browse" href="./">Browse the films →</a>
+  </div>
+</header>
+
+<main>
+  <p class="lede">This page is a browser, not an archive. It holds no films — only a
+  searchable index of what someone else has been cataloguing for two decades.</p>
+  <p>Everything below is somebody else's work. Here is whose.</p>
+
+  <h2>The catalogue</h2>
+
+  <div class="card">
+    <h3><a href="https://www.publicdomaintorrents.info/" target="_blank" rel="noopener noreferrer">Public Domain Torrents</a><span class="role">Source</span></h3>
+    <p>Every title, genre, format and star rating here was read from their site.
+    They have been collecting and distributing public domain film since the early
+    2000s, which is the entire reason this page has anything to show.</p>
+    <p>The scrape was run once, gently — sequential requests spaced 1.5 seconds
+    apart with an identifying User-Agent, and every response cached so refreshes
+    cost them nothing. If you find something you like here, go and get it
+    from them; the downloads, the plot summaries and the comments all live on
+    their pages, not on this one.</p>
+  </div>
+
+  <h2>Years and artwork</h2>
+
+  <p>The source site publishes no release year and no poster art, so both were
+  filled in from three databases that do.</p>
+
+  <div class="card">
+    <h3><a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a><span class="role">Artwork &amp; years</span></h3>
+    <p>Metadata and artwork provided by TheTVDB, and the largest single
+    contributor of posters here. TheTVDB is built by volunteers who add and
+    correct entries by hand. If a film is missing or wrong, you can
+    <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">add the
+    information yourself</a>, or support the project by subscribing.</p>
+  </div>
+
+  <div class="card">
+    <h3><a href="https://fanart.tv" target="_blank" rel="noopener noreferrer">fanart.tv</a><span class="role">Artwork</span></h3>
+    <p>Additional poster artwork provided by fanart.tv, a community that curates
+    high-quality artwork for films and television.</p>
+  </div>
+
+  <div class="card">
+    <h3><a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer">Wikidata</a> and <a href="https://commons.wikimedia.org" target="_blank" rel="noopener noreferrer">Wikimedia Commons</a><span class="role">Years &amp; artwork</span></h3>
+    <p>Release years came mostly from Wikidata, whose data is released under
+    <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0</a>.
+    Where neither TheTVDB nor fanart.tv had a poster, the image is served from
+    Wikimedia Commons. Commons files carry their own individual licences and
+    author credits, which are shown on each file's page.</p>
+  </div>
+
+  <h2>What the numbers look like</h2>
+
+  <table id="stats">
+    <thead><tr><th>Field</th><th>Where it comes from</th><th>Coverage</th></tr></thead>
+    <tbody>
+      <tr><td>Title</td><td>Public Domain Torrents</td><td id="s-total">—</td></tr>
+      <tr><td>Genre</td><td>Public Domain Torrents</td><td id="s-genre">—</td></tr>
+      <tr><td>Format</td><td>Public Domain Torrents</td><td id="s-format">—</td></tr>
+      <tr><td>Star rating</td><td>Public Domain Torrents</td><td id="s-rating">—</td></tr>
+      <tr><td>Year</td><td>Wikidata, TheTVDB</td><td id="s-year">—</td></tr>
+      <tr><td>Poster art</td><td>TheTVDB, fanart.tv, Commons</td><td id="s-art">—</td></tr>
+    </tbody>
+  </table>
+  <p id="art-split" class="note"></p>
+
+  <h2>How titles are matched, and where it breaks</h2>
+
+  <p>The source site gives a title and nothing else — no year, no IMDb id, no
+  identifier of any kind. So years and posters are matched to the databases
+  <strong>by title alone</strong>. Two rules keep that from going badly wrong:</p>
+
+  <ul>
+    <li>A candidate must <strong>match the title exactly</strong>, once case,
+      spacing and punctuation are normalised. Without this the databases' fuzzy
+      search quietly returns some other film, which looks identical to a real hit.</li>
+    <li>Candidates dated <strong>after 1990 are rejected</strong>. This
+      catalogue's newest genuine entries are cheap late-eighties pictures, so a
+      newer match means the real film simply isn't in the database and we have
+      landed on a modern namesake.</li>
+  </ul>
+
+  <p>It still isn't perfect. A remake from the same era can satisfy both rules,
+  so <strong>some years and posters on this site belong to the wrong film</strong>.
+  Films where no confident match was found show no year and get a poster drawn
+  from their title instead of a borrowed one — a gap is more honest than a
+  confident mistake.</p>
+
+  <h2>What this page deliberately does not do</h2>
+
+  <ul>
+    <li><strong>No plot summaries.</strong> The source site's synopses aren't
+      ours to republish.</li>
+    <li><strong>No download links.</strong> Every film card links to its page on
+      Public Domain Torrents; the files stay with them.</li>
+    <li><strong>No screenshots taken from their server.</strong></li>
+    <li><strong>No tracking, no analytics, no cookies.</strong> The page is a
+      single HTML file and a JSON index.</li>
+  </ul>
+
+  <h2>About the films</h2>
+
+  <p>These titles are catalogued as public domain in the United States, generally
+  because their copyright lapsed or was never renewed. Public domain status varies
+  by country and is occasionally disputed for individual films — the listing here
+  reflects the source site's judgement, not legal advice.</p>
+
+  <h2>Corrections</h2>
+
+  <p>Wrong poster, wrong year, missing film? The fix usually belongs upstream:
+  film metadata at <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>
+  or <a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer">Wikidata</a>,
+  artwork at <a href="https://fanart.tv" target="_blank" rel="noopener noreferrer">fanart.tv</a>,
+  and the catalogue itself at
+  <a href="https://www.publicdomaintorrents.info/" target="_blank" rel="noopener noreferrer">Public Domain Torrents</a>.
+  Re-running the scraper picks up whatever you improve.</p>
+</main>
+
+<footer id="footer">
+  Part of <a href="../../">random</a>, a hub of small ideas.
+</footer>
+
+<script>
+(() => {
+  "use strict";
+  // Pull the coverage numbers from the same index the browser page reads, so
+  // this page can never drift from the data it is describing.
+  fetch("data.json")
+    .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then((d) => {
+      const mv = d.movies, n = mv.length;
+      const count = (f) => mv.filter(f).length;
+      const pct = (k) => `${k} of ${n}`;
+      const set = (id, v) => { document.getElementById(id).textContent = v; };
+
+      set("s-total", `${n}`);
+      set("s-genre", pct(count((m) => (m.genres || []).length)));
+      set("s-format", pct(count((m) => (m.formats || []).length)));
+      set("s-rating", pct(count((m) => m.rating)));
+      set("s-year", pct(count((m) => m.year)));
+      set("s-art", pct(count((m) => m.art)));
+
+      const by = {};
+      for (const m of mv) if (m.art) by[m.artSrc] = (by[m.artSrc] || 0) + 1;
+      const label = { tvdb: "TheTVDB", fanart: "fanart.tv", commons: "Wikimedia Commons" };
+      const parts = Object.entries(by).sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `${v} from ${label[k] || k}`);
+      const drawn = n - count((m) => m.art);
+      document.getElementById("art-split").textContent =
+        `Poster art breaks down as ${parts.join(", ")}. The remaining ${drawn} films ` +
+        `have no poster in any of the three, so the page draws one from the title.`;
+
+      const yrs = mv.map((m) => m.year).filter(Boolean);
+      document.getElementById("footer").insertAdjacentHTML("afterbegin",
+        `Catalogue scraped ${d.scraped}; ${n} films spanning ${Math.min(...yrs)}–${Math.max(...yrs)}. `);
+    })
+    .catch(() => {
+      document.getElementById("art-split").remove();
+      document.getElementById("stats").remove();
+    });
+})();
+</script>
+</body>
+</html>
