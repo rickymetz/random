@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>About — Public Domain Movies</title>
-<meta name="description" content="Where the catalogue, the years and the poster art come from, and what this page deliberately does not do.">
+<meta name="description" content="Where the catalogue, the years and the poster art come from — and what we do when we are not sure.">
 <style>
   :root {
     --bg: #16181d;
@@ -84,15 +84,6 @@
     margin: 0 auto;
     padding: 34px 20px 80px;
   }
-  .lede {
-    font-size: 17px;
-    line-height: 1.6;
-    color: var(--ink);
-    margin: 0 0 8px;
-    text-wrap: pretty;
-  }
-  .lede + p { margin-top: 0; color: var(--muted); }
-
   h2 {
     margin: 40px 0 4px;
     font-size: 12px;
@@ -102,6 +93,7 @@
     letter-spacing: 0.09em;
     color: var(--dim);
   }
+  h2:first-child { margin-top: 0; }
   h2 + p, h2 + .card, h2 + ul { margin-top: 12px; }
   p { margin: 0 0 14px; text-wrap: pretty; }
 
@@ -203,57 +195,52 @@
 </header>
 
 <main>
-  <p class="lede">This page is a browser, not an archive. It holds no films — only a
-  searchable index of what someone else has been cataloguing for two decades.</p>
-  <p>Everything below is somebody else's work. Here is whose.</p>
-
   <h2>The catalogue</h2>
 
   <div class="card">
     <h3><a href="https://www.publicdomaintorrents.info/" target="_blank" rel="noopener noreferrer">Public Domain Torrents</a><span class="role">Source</span></h3>
-    <p>Every title, genre, format and star rating here was read from their site.
-    They have been collecting and distributing public domain film since the early
-    2000s, which is the entire reason this page has anything to show.</p>
-    <p>The scrape was run once, gently — sequential requests spaced 1.5 seconds
-    apart with an identifying User-Agent, and every response cached so refreshes
-    cost them nothing. If you find something you like here, go and get it
-    from them; the downloads, the plot summaries and the comments all live on
-    their pages, not on this one.</p>
+    <p>Every title, genre, format and rating here came from their site. They
+    have been collecting public domain film since the early 2000s, back when
+    almost nobody was.</p>
+    <p>We read their catalogue once, slowly. One page at a time, a second and a
+    half apart, with a User-Agent that says exactly who is asking. Every page
+    cached, so we never have to ask twice.</p>
+    <p>The films live with them. So do the summaries and the comments. Find
+    something here, then go and get it there.</p>
   </div>
 
   <h2>Years and artwork</h2>
 
-  <p>The source site publishes no release year and no poster art, so both were
-  filled in from three databases that do.</p>
+  <p>The catalogue does not record a year. Or a poster. So we asked three
+  databases that do.</p>
 
   <div class="card">
-    <h3><a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a><span class="role">Artwork &amp; years</span></h3>
-    <p>Metadata and artwork provided by TheTVDB, and the largest single
-    contributor of posters here. TheTVDB is built by volunteers who add and
-    correct entries by hand. If a film is missing or wrong, you can
-    <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">add the
-    information yourself</a>, or support the project by subscribing.</p>
+    <h3><a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a><span class="role">Artwork and years</span></h3>
+    <p>Most of the artwork here is theirs. TheTVDB is built entry by entry, by
+    volunteers, by hand.</p>
+    <p>Spot something wrong? <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">Fix it at the source</a>
+    and it turns up here on the next pass. Or subscribe, and help keep the
+    project running.</p>
   </div>
 
   <div class="card">
     <h3><a href="https://fanart.tv" target="_blank" rel="noopener noreferrer">fanart.tv</a><span class="role">Artwork</span></h3>
-    <p>Additional poster artwork provided by fanart.tv, a community that curates
-    high-quality artwork for films and television.</p>
+    <p>More posters, from a community with strong opinions about what counts as
+    good artwork.</p>
   </div>
 
   <div class="card">
-    <h3><a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer">Wikidata</a> and <a href="https://commons.wikimedia.org" target="_blank" rel="noopener noreferrer">Wikimedia Commons</a><span class="role">Years &amp; artwork</span></h3>
-    <p>Release years came mostly from Wikidata, whose data is released under
-    <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0</a>.
-    Where neither TheTVDB nor fanart.tv had a poster, the image is served from
-    Wikimedia Commons. Commons files carry their own individual licences and
-    author credits, which are shown on each file's page.</p>
+    <h3><a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer">Wikidata</a> and <a href="https://commons.wikimedia.org" target="_blank" rel="noopener noreferrer">Wikimedia Commons</a><span class="role">Years and artwork</span></h3>
+    <p>Nearly every year comes from Wikidata, released under
+    <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0</a>.</p>
+    <p>When neither of the others has a poster, Commons fills the gap. Every
+    file there carries its own licence and its own credit, on its own page.</p>
   </div>
 
-  <h2>What the numbers look like</h2>
+  <h2>By the numbers</h2>
 
   <table id="stats">
-    <thead><tr><th>Field</th><th>Where it comes from</th><th>Coverage</th></tr></thead>
+    <thead><tr><th>Field</th><th>Source</th><th>Films</th></tr></thead>
     <tbody>
       <tr><td>Title</td><td>Public Domain Torrents</td><td id="s-total">—</td></tr>
       <tr><td>Genre</td><td>Public Domain Torrents</td><td id="s-genre">—</td></tr>
@@ -265,56 +252,59 @@
   </table>
   <p id="art-split" class="note"></p>
 
-  <h2>How titles are matched, and where it breaks</h2>
+  <h2>Matching</h2>
 
-  <p>The source site gives a title and nothing else — no year, no IMDb id, no
-  identifier of any kind. So years and posters are matched to the databases
-  <strong>by title alone</strong>. Two rules keep that from going badly wrong:</p>
+  <p>A title. That is all the catalogue gives us. No year, no IMDb ID, nothing
+  else to go on. So we match on the title alone, carefully.</p>
 
   <ul>
-    <li>A candidate must <strong>match the title exactly</strong>, once case,
-      spacing and punctuation are normalised. Without this the databases' fuzzy
-      search quietly returns some other film, which looks identical to a real hit.</li>
-    <li>Candidates dated <strong>after 1990 are rejected</strong>. This
-      catalogue's newest genuine entries are cheap late-eighties pictures, so a
-      newer match means the real film simply isn't in the database and we have
-      landed on a modern namesake.</li>
+    <li><strong>Exact, or nothing.</strong> Case, spacing and punctuation are
+      levelled first. Skip this and a fuzzy search hands back a different film
+      entirely, looking every bit as convincing as the right one.</li>
+    <li><strong>Nothing after 1990.</strong> The newest films here are cheap
+      late-eighties pictures. A more recent match does not mean we found it. It
+      means we found something else wearing the same name.</li>
   </ul>
 
-  <p>It still isn't perfect. A remake from the same era can satisfy both rules,
-  so <strong>some years and posters on this site belong to the wrong film</strong>.
-  Films where no confident match was found show no year and get a poster drawn
-  from their title instead of a borrowed one — a gap is more honest than a
-  confident mistake.</p>
+  <p>It is not foolproof. A remake from the same era clears both rules, so some
+  years and posters here belong to the wrong film.</p>
 
-  <h2>What this page deliberately does not do</h2>
+  <p>When we are not confident, we say nothing. No year. And a poster drawn from
+  the title, rather than borrowed from a stranger.</p>
+
+  <h2>What we don't do</h2>
 
   <ul>
-    <li><strong>No plot summaries.</strong> The source site's synopses aren't
-      ours to republish.</li>
-    <li><strong>No download links.</strong> Every film card links to its page on
-      Public Domain Torrents; the files stay with them.</li>
-    <li><strong>No screenshots taken from their server.</strong></li>
-    <li><strong>No tracking, no analytics, no cookies.</strong> The page is a
-      single HTML file and a JSON index.</li>
+    <li><strong>No plot summaries.</strong> They are not ours to reprint.</li>
+    <li><strong>No download links.</strong> Every film points home to Public
+      Domain Torrents.</li>
+    <li><strong>No screenshots</strong> lifted from their server.</li>
+    <li><strong>No tracking, no analytics, no cookies.</strong> One page and one
+      data file.</li>
   </ul>
 
   <h2>About the films</h2>
 
-  <p>These titles are catalogued as public domain in the United States, generally
-  because their copyright lapsed or was never renewed. Public domain status varies
-  by country and is occasionally disputed for individual films — the listing here
-  reflects the source site's judgement, not legal advice.</p>
+  <p>These are catalogued as public domain in the United States. Copyright
+  expired, or was never renewed.</p>
 
-  <h2>Corrections</h2>
+  <p>Status varies by country, and for a few films it is genuinely contested.
+  What you see here reflects the source site's judgement. It is not legal
+  advice.</p>
 
-  <p>Wrong poster, wrong year, missing film? The fix usually belongs upstream:
-  film metadata at <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>
-  or <a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer">Wikidata</a>,
-  artwork at <a href="https://fanart.tv" target="_blank" rel="noopener noreferrer">fanart.tv</a>,
-  and the catalogue itself at
-  <a href="https://www.publicdomaintorrents.info/" target="_blank" rel="noopener noreferrer">Public Domain Torrents</a>.
-  Re-running the scraper picks up whatever you improve.</p>
+  <h2>Found a mistake?</h2>
+
+  <p>Wrong poster. Wrong year. Missing film. Every one of them is fixable, and
+  the fix belongs upstream.</p>
+
+  <ul>
+    <li><strong>Film data</strong> — <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>
+      or <a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer">Wikidata</a></li>
+    <li><strong>Artwork</strong> — <a href="https://fanart.tv" target="_blank" rel="noopener noreferrer">fanart.tv</a></li>
+    <li><strong>The catalogue</strong> — <a href="https://www.publicdomaintorrents.info/" target="_blank" rel="noopener noreferrer">Public Domain Torrents</a></li>
+  </ul>
+
+  <p>Fix it there, and the next pass brings it here.</p>
 </main>
 
 <footer id="footer">
@@ -345,15 +335,15 @@
       for (const m of mv) if (m.art) by[m.artSrc] = (by[m.artSrc] || 0) + 1;
       const label = { tvdb: "TheTVDB", fanart: "fanart.tv", commons: "Wikimedia Commons" };
       const parts = Object.entries(by).sort((a, b) => b[1] - a[1])
-        .map(([k, v]) => `${v} from ${label[k] || k}`);
+        .map(([k, v]) => `${v} posters from ${label[k] || k}`);
       const drawn = n - count((m) => m.art);
       document.getElementById("art-split").textContent =
-        `Poster art breaks down as ${parts.join(", ")}. The remaining ${drawn} films ` +
-        `have no poster in any of the three, so the page draws one from the title.`;
+        `${parts.join(". ")}. The other ${drawn} films do not have one anywhere, ` +
+        `so we draw them a poster from their title.`;
 
       const yrs = mv.map((m) => m.year).filter(Boolean);
       document.getElementById("footer").insertAdjacentHTML("afterbegin",
-        `Catalogue scraped ${d.scraped}; ${n} films spanning ${Math.min(...yrs)}–${Math.max(...yrs)}. `);
+        `Catalogue read ${d.scraped}. ${n} films, ${Math.min(...yrs)} to ${Math.max(...yrs)}. `);
     })
     .catch(() => {
       document.getElementById("art-split").remove();

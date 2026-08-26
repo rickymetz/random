@@ -95,7 +95,7 @@
   .search input {
     width: 100%;
     height: 34px;
-    padding: 0 74px 0 32px;
+    padding: 0 86px 0 32px;
     background: var(--bg);
     border: 1px solid var(--line-2);
     border-radius: var(--radius);
@@ -107,10 +107,19 @@
     border-color: var(--accent);
   }
   .search input::placeholder { color: var(--dim); }
-  .clear {
+  /* Clear button and count ride together, centred against the right edge,
+     so the count never has to dodge a fixed offset as its width changes. */
+  .search-end {
     position: absolute;
-    right: 5px;
-    top: 4px;
+    right: 9px;
+    top: 50%;
+    translate: 0 -50%;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    pointer-events: none;
+  }
+  .clear {
     display: none;
     padding: 4px;
     background: none;
@@ -118,6 +127,7 @@
     color: var(--dim);
     cursor: pointer;
     line-height: 0;
+    pointer-events: auto;
   }
   .clear:hover { color: var(--ink); }
   .search.has-value .clear { display: block; }
@@ -139,19 +149,13 @@
   }
   .navlink:hover { color: var(--ink); border-color: var(--dim); }
   .navlink:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  /* Tucked into the search field's bottom-right corner, the way a character
-     counter sits in a text box. pointer-events:none so it never eats a tap
-     meant for the input. */
+  /* Sits inside the field against the right edge, vertically centred. */
   .count {
-    position: absolute;
-    right: 9px;
-    bottom: 2px;
     font: 10px var(--mono);
-    line-height: 1.4;
+    line-height: 1;
     color: var(--dim);
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
-    pointer-events: none;
   }
 
   /* ------------------------------------------------------------ toolbar */
@@ -447,7 +451,15 @@
   /* -------------------------------------------------------------- drawer */
   .scrim {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    /* iOS resolves fixed top/bottom against the layout viewport, so when the
+       URL bar retracts an `inset: 0` overlay stops short of the bottom and
+       the grid shows through. dvh tracks the viewport that is actually
+       visible; vh stays as the fallback for browsers without it. */
+    height: 100vh;
+    height: 100dvh;
     z-index: 40;
     background: rgb(0 0 0 / .6);
     opacity: 0;
@@ -460,13 +472,17 @@
     z-index: 50;
     top: 0;
     right: 0;
-    bottom: 0;
-    width: min(420px, 100vw);
+    height: 100vh;
+    height: 100dvh;
+    width: min(420px, 100%);
     translate: 100% 0;
     background: var(--bg-2);
     border-left: 1px solid var(--line);
     box-shadow: var(--shadow);
     overflow-y: auto;
+    /* Don't chain the scroll to the page behind — on iOS that is what makes
+       the URL bar slide about while you are reading the panel. */
+    overscroll-behavior: contain;
     transition: translate .22s cubic-bezier(.32,.72,0,1);
   }
   .drawer.open { translate: 0 0; }
@@ -496,7 +512,7 @@
     border-bottom: 1px solid var(--line);
   }
   .d-hero .poster { border-radius: 0; box-shadow: none; height: 100%; aspect-ratio: auto; }
-  .d-body { padding: 18px 20px 32px; }
+  .d-body { padding: 18px 20px calc(32px + env(safe-area-inset-bottom)); }
   .d-body h2 {
     margin: 0 0 6px;
     font-size: 20px;
@@ -644,12 +660,14 @@
         <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14" stroke-linecap="round"/>
       </svg>
       <input id="q" type="search" placeholder="Search titles…" autocomplete="off" spellcheck="false" aria-label="Search titles">
-      <button class="clear" id="clearQ" aria-label="Clear search">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
-          <path d="M4 4l8 8M12 4l-8 8"/>
-        </svg>
-      </button>
-      <output class="count" id="count" for="q" aria-live="polite">…</output>
+      <div class="search-end">
+        <button class="clear" id="clearQ" aria-label="Clear search">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+            <path d="M4 4l8 8M12 4l-8 8"/>
+          </svg>
+        </button>
+        <output class="count" id="count" for="q" aria-live="polite">…</output>
+      </div>
     </div>
     <div class="bar-end">
       <a class="navlink" href="about.html">About</a>
@@ -872,7 +890,24 @@
 
   // ---------------------------------------------------------------- drawer
   const drawer = $("drawer"), scrim = $("scrim");
-  let lastFocus = null;
+  let lastFocus = null, lockedAt = 0;
+
+  // Fixing the body is the one reliable way to stop iOS scrolling the page
+  // under an open panel; remember where we were so closing puts it back.
+  function lockScroll() {
+    lockedAt = window.scrollY;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${lockedAt}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+  }
+  function unlockScroll() {
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    window.scrollTo(0, lockedAt);
+  }
 
   function openDrawer(m) {
     lastFocus = document.activeElement;
@@ -905,6 +940,7 @@
         `<p class="d-note">Downloads, synopsis and user comments live on the source site — this page is only a browser over its catalogue.</p>` +
       `</div>`;
 
+    lockScroll();
     drawer.classList.add("open");
     drawer.setAttribute("aria-hidden", "false");
     scrim.classList.add("open");
@@ -926,6 +962,7 @@
     drawer.classList.remove("open");
     drawer.setAttribute("aria-hidden", "true");
     scrim.classList.remove("open");
+    unlockScroll();
     lastFocus?.focus();
   }
 
