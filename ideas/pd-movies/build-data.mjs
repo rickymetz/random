@@ -565,6 +565,15 @@ async function ratings(movies) {
 async function archive(movies) {
   let asked = 0, found = 0;
   for (const mv of movies) {
+    // It came from the Archive with its own identifier — there is nothing to
+    // look up, and guessing from the title only loses a working link.
+    if (mv.src === "archive") {
+      // The identifier is where this film came from, not a guess about it, so
+      // it is restored rather than re-derived — an earlier pass traded 145 of
+      // them for whatever a title search happened to return.
+      if (/^ia(.+)$/.test(mv.id)) mv.ia = mv.id.slice(2);
+      continue;
+    }
     if (!mv.year) continue;   // without a year the match cannot be trusted
     asked++;
     if (asked % 100 === 0) console.log(`  archive ${asked} (${found} matched)`);
@@ -616,9 +625,14 @@ async function archive(movies) {
     return null;
   }
 
-  let checked = 0, dropped = 0, adopted = 0;
+  let checked = 0, dropped = 0, adopted = 0, skipped = 0;
   for (const mv of movies) {
     if (!mv.ia) continue;
+    // The duration check exists to catch a bad title match. A film taken from
+    // the Archive is not a match at all, so there is nothing to disprove — and
+    // the rule was throwing away genuine early shorts, a 1905 subject running
+    // barely a minute among them.
+    if (mv.src === "archive") { skipped++; continue; }
     checked++;
     if (checked % 150 === 0) console.log(`  verifying ${checked} (${dropped} dropped)`);
     const body = await get(`https://archive.org/metadata/${encodeURIComponent(mv.ia)}`,
@@ -648,7 +662,8 @@ async function archive(movies) {
       adopted++;
     }
   }
-  console.log(`  verified ${checked}: ${dropped} were clips or empty, ${adopted} supplied a runtime`);
+  console.log(`  verified ${checked}: ${dropped} were clips or empty, ${adopted} supplied a runtime` +
+    (skipped ? `; ${skipped} came from the Archive and needed no check` : ""));
 
   // An item we matched also has a thumbnail, which covers films that had no
   // poster from anywhere else.
@@ -677,6 +692,59 @@ async function credits(movies) {
     if (!f.startsWith("wd-e-")) continue;
     try { Object.assign(ents, JSON.parse(fs.readFileSync(path.join(cacheDir, f), "utf8")).entities || {}); } catch {}
   }
+
+  // Every id here was resolved against Wikidata and checked. An earlier version
+  // of this table was written from memory and had eight of twenty wrong —
+  // adventure film filed as animation, propaganda as martial arts, "film based
+  // on book" as horror — so films carried genres they had nothing to do with.
+  const GENRE_BY_QID = {
+    Q188473: ["action"],          // action film
+    Q319221: ["action"],          // adventure film
+    Q157443: ["comedy"],          // comedy film
+    Q860626: ["comedy"],          // romantic comedy
+    Q859369: ["comedy", "drama"], // comedy drama
+    Q224700: ["comedy", "horror"],// comedy horror
+    Q130232: ["drama"],           // drama film
+    Q1054574: ["drama"],          // romance film
+    Q645928: ["drama"],           // biographical film
+    Q200092: ["horror"],          // horror film
+    Q3072049: ["horror"],         // zombie film
+    Q471839: ["scifi"],           // science fiction film
+    Q157394: ["scifi"],           // fantasy film
+    Q172980: ["westerns"],        // Western film
+    Q369747: ["war"],             // war film
+    Q1935609: ["war"],            // propaganda film
+    Q842256: ["musicals"],        // musical film
+    Q2484376: ["mystery"],        // thriller film
+    Q1200678: ["mystery"],        // mystery film
+    Q185867: ["mystery"],         // film noir
+    Q959790: ["mystery"],         // crime film
+    Q202866: ["animation"],       // animated film
+    Q17517379: ["animation"],     // animated short film
+    Q1067324: ["exploitation"],   // exploitation film
+    Q1361932: ["family"],         // family film
+    Q2143665: ["family"],         // children's film
+  };
+  // Silent film, documentary, "film based on book", teen film, independent film
+  // and film adaptation all appear in P136 but are not genres in this
+  // vocabulary, so they map to nothing rather than to something close.
+
+  let genred = 0;
+  for (const mv of movies) {
+    // Films from the Archive only ever had genres from this table, so a wrong
+    // one has to be cleared before it can be replaced.
+    if (mv.src === "archive") mv.genres = [];
+    if (mv.genres?.length) continue;
+    const c = mv.wd && ents[mv.wd]?.claims;
+    if (!c) continue;
+    const found = new Set();
+    for (const g of c.P136 || []) {
+      const q = g.mainsnak?.datavalue?.value?.id;
+      for (const name of GENRE_BY_QID[q] || []) found.add(name);
+    }
+    if (found.size) { mv.genres = [...found]; genred++; }
+  }
+  if (genred) console.log(`  ${genred} films given a genre from Wikidata`);
 
   const people = new Set();
   const want = new Map();
@@ -872,6 +940,76 @@ async function descriptions(movies) {
   return movies;
 }
 
+
+// ------------------------------------------- 10. more films from the Archive
+// The source catalogue is one man's collection. The Internet Archive holds far
+// more public domain film, already playable, so the catalogue is topped up from
+// there — ordered by downloads, which is the only signal it offers about
+// whether anyone actually wants to watch a thing.
+const IA_WANT = 1000;
+const IA_COLLECTION = "feature_films";
+
+// Archive titles carry upload cruft: a trailing year, a resolution, a rip tag.
+function cleanIaTitle(raw) {
+  let t = String(raw ?? "").replace(/\s+/g, " ").trim();
+  t = t.replace(/\s*[\(\[]\s*(19|20)\d{2}\s*[\)\]]\s*$/, "");
+  t = t.replace(/\b(1080p|720p|480p|2160p|4k|hd|remux|bluray|blu-ray|dvdrip|webrip|x264|x265|hevc|aac|mp4|avi|xvid)\b.*$/i, "");
+  t = t.replace(/\s*[-–—:|]\s*$/, "").trim();
+  return t;
+}
+
+async function expand(movies) {
+  const norm2 = (s) => norm(sortTitle(String(s)));
+  const haveIa = new Set(movies.map((m) => m.ia).filter(Boolean));
+  const haveKey = new Set(movies.map((m) => `${norm2(m.title)}|${m.year ?? ""}`));
+  const added = [];
+  let scanned = 0, page = 1;
+
+  while (added.length < IA_WANT && page <= 12) {
+    const q = `collection:(${IA_COLLECTION}) AND mediatype:(movies) AND ` +
+              `year:[1900 TO ${MAX_YEAR}] AND downloads:[1000 TO 99999999]`;
+    const url = "https://archive.org/advancedsearch.php?q=" + encodeURIComponent(q) +
+      "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=year&fl%5B%5D=downloads" +
+      "&sort%5B%5D=downloads+desc&rows=200&page=" + page + "&output=json";
+    const body = await get(url, `ia-page-${page}.json`, 500);
+    if (!body) break;
+    let docs = [];
+    try {
+      const clean = [...body].filter((c) => c.charCodeAt(0) >= 32 || c === "\n").join("");
+      docs = JSON.parse(clean)?.response?.docs || [];
+    } catch { break; }
+    if (!docs.length) break;
+
+    for (const d of docs) {
+      if (added.length >= IA_WANT) break;
+      scanned++;
+      const title = cleanIaTitle(d.title);
+      const year = parseInt(d.year, 10) || null;
+      if (!title || title.length < 2 || !year) continue;
+      if (haveIa.has(d.identifier)) continue;                 // a film here already links to it
+      const key = `${norm2(title)}|${year}`;
+      if (haveKey.has(key)) continue;                         // same film under another upload
+      haveKey.add(key);
+      haveIa.add(d.identifier);
+      added.push({
+        id: `ia${d.identifier}`.slice(0, 80),
+        title,
+        year,
+        ia: d.identifier,
+        genres: [],
+        src: "archive",
+        downloads: d.downloads || 0,
+        art: `https://archive.org/services/img/${encodeURIComponent(d.identifier)}`,
+        sort: sortTitle(title),
+      });
+    }
+    page++;
+    console.log(`  page ${page - 1}: ${added.length} new of ${scanned} scanned`);
+  }
+  console.log(`  adding ${added.length} films from the Archive`);
+  return movies.concat(added);
+}
+
 // ------------------------------------------------------------------- driver
 // Phases are separable: the PDT scrape is slow and key-free, the art pass
 // needs API keys. `--only pdt` / `--only art` run one at a time.
@@ -881,10 +1019,20 @@ const ARCHIVE_ONLY = only === "archive";
 const CREDITS_ONLY = only === "credits";
 const EXTRAS_ONLY = only === "extras";
 const DESC_ONLY = only === "desc";
+const EXPAND_ONLY = only === "expand";
+const ENRICH_ONLY = only === "enrich";
 const stageFile = path.join(cacheDir, "stage-pdt.json");
 
 let movies;
-if (only === "desc") {
+if (only === "enrich") {
+  movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
+  console.log(`loaded ${movies.length} movies from data.json`);
+  movies = await enrich(movies);
+} else if (only === "expand") {
+  movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
+  console.log(`loaded ${movies.length} movies from data.json`);
+  movies = await expand(movies);
+} else if (only === "desc") {
   movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
   console.log(`loaded ${movies.length} movies from data.json`);
   movies = await descriptions(movies);
@@ -918,7 +1066,7 @@ if (only === "desc") {
   console.log(`   staged -> ${stageFile}`);
 }
 
-if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY && !CREDITS_ONLY && !EXTRAS_ONLY && !DESC_ONLY) {
+if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY && !CREDITS_ONLY && !EXTRAS_ONLY && !DESC_ONLY && !EXPAND_ONLY && !ENRICH_ONLY) {
   console.log("3. wikidata (year, ids, fallback art)");
   movies = await enrich(movies);
   console.log("4. poster art (tvdb / fanart.tv, if keys present)");
