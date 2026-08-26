@@ -556,15 +556,69 @@ async function ratings(movies) {
   return movies;
 }
 
+
+// ------------------------------------------- 6. Internet Archive: watchable
+// The catalogue can only point at a torrent page. Many of these films are also
+// held by the Internet Archive, where they play in a browser. Matching on title
+// alone was hopeless — an early attempt returned a Twitter thumbnail for a
+// western — but with a year to constrain it, the search becomes reliable.
+async function archive(movies) {
+  let asked = 0, found = 0;
+  for (const mv of movies) {
+    if (!mv.year) continue;   // without a year the match cannot be trusted
+    asked++;
+    if (asked % 100 === 0) console.log(`  archive ${asked} (${found} matched)`);
+    const q = `title:("${mv.title}") AND mediatype:(movies) AND ` +
+              `year:[${mv.year - 1} TO ${mv.year + 1}]`;
+    const url = "https://archive.org/advancedsearch.php?q=" + encodeURIComponent(q) +
+      "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=year&rows=5&output=json";
+    const body = await get(url, `ia-${mv.id}.json`, 400);
+    if (!body) continue;
+    let docs = [];
+    try {
+      // Their JSON occasionally carries raw control characters, which is a
+      // parse error rather than a missing result.
+      const clean = [...body].filter((c) => c.charCodeAt(0) >= 32 || c === "\n").join("");
+      docs = JSON.parse(clean)?.response?.docs || [];
+    } catch { continue; }
+
+    // Strict: the item has to carry the same title. A near miss is more likely
+    // a trailer, a compilation or a different film than the one we want.
+    const want = norm(sortTitle(mv.title));
+    const exact = docs.find((d) => norm(sortTitle(String(d.title ?? ""))) === want);
+    if (!exact) continue;
+    mv.ia = exact.identifier;
+    found++;
+  }
+  console.log(`  archive.org: ${found} of ${asked} films with a year are watchable`);
+
+  // An item we matched also has a thumbnail, which covers films that had no
+  // poster from anywhere else.
+  let filled = 0;
+  for (const mv of movies) {
+    if (mv.art || !mv.ia) continue;
+    mv.art = `https://archive.org/services/img/${encodeURIComponent(mv.ia)}`;
+    mv.artSrc = "archive";
+    filled++;
+  }
+  console.log(`  archive.org: ${filled} posters filled from item thumbnails`);
+  return movies;
+}
+
 // ------------------------------------------------------------------- driver
 // Phases are separable: the PDT scrape is slow and key-free, the art pass
 // needs API keys. `--only pdt` / `--only art` run one at a time.
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : "all";
 const RATINGS_ONLY = only === "ratings";
+const ARCHIVE_ONLY = only === "archive";
 const stageFile = path.join(cacheDir, "stage-pdt.json");
 
 let movies;
-if (only === "ratings") {
+if (only === "archive") {
+  movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
+  console.log(`loaded ${movies.length} movies from data.json`);
+  movies = await archive(movies);
+} else if (only === "ratings") {
   // Re-rate whatever is already published, without touching the other sources.
   movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
   console.log(`loaded ${movies.length} movies from data.json`);
@@ -582,13 +636,15 @@ if (only === "ratings") {
   console.log(`   staged -> ${stageFile}`);
 }
 
-if (only !== "pdt" && !RATINGS_ONLY) {
+if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY) {
   console.log("3. wikidata (year, ids, fallback art)");
   movies = await enrich(movies);
   console.log("4. poster art (tvdb / fanart.tv, if keys present)");
   movies = await posters(movies);
   console.log("5. ratings (IMDb dataset, then TMDB)");
   movies = await ratings(movies);
+  console.log("6. archive.org (watch links and fallback posters)");
+  movies = await archive(movies);
 }
 
 for (const mv of movies) { delete mv._cands; mv.sort = sortTitle(mv.title); }
