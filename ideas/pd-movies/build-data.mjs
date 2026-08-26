@@ -797,6 +797,81 @@ async function extras(movies) {
   return movies;
 }
 
+
+// ------------------------------------------------------ 9. descriptions
+// The source site has synopses, but they are not ours to republish. Wikipedia's
+// opening sentences are, under CC BY-SA, which means crediting it and linking
+// back to the article each line came from — so the article title is stored
+// alongside the text and the page renders both.
+//
+// Two sentences only. Enough to decide whether to watch something, and no more
+// of someone else's writing than that needs.
+// exsentences is a request, not a guarantee: it returned three or more for 124
+// of 553 articles, so the two-sentence limit is enforced here instead. Common
+// abbreviations are masked first, or "Dr. No" would end a sentence.
+const ABBREV = /\b(Mr|Mrs|Ms|Dr|Jr|Sr|St|Co|Inc|Ltd|vs|etc|No|Capt|Lt|Sgt|Gen|Col|Prof|U\.S|U\.K)\./g;
+function trimToTwoSentences(text) {
+  const masked = text.replace(ABBREV, (m) => m.replace(".", "\u0000"));
+  const parts = masked.split(/(?<=[.!?])\s+(?=[A-Z"\u201c])/);
+  return parts.slice(0, 2).join(" ").replace(/\u0000/g, ".").trim();
+}
+
+async function descriptions(movies) {
+  const WD = "https://www.wikidata.org/w/api.php";
+  const WP = "https://en.wikipedia.org/w/api.php";
+
+  // Which films have an English article at all?
+  const withWd = movies.filter((m) => m.wd);
+  const article = new Map();
+  const qids = withWd.map((m) => m.wd);
+  for (let i = 0; i < qids.length; i += 50) {
+    const batch = qids.slice(i, i + 50);
+    if (i % 250 === 0) console.log(`  sitelinks ${i}/${qids.length}`);
+    const body = await get(
+      `${WD}?action=wbgetentities&format=json&props=sitelinks&sitefilter=enwiki&ids=${batch.join("|")}`,
+      `wd-sl2-${batchKey(batch)}.json`, 300);
+    if (!body) continue;
+    try {
+      for (const [q, e] of Object.entries(JSON.parse(body).entities || {})) {
+        const t = e.sitelinks?.enwiki?.title;
+        if (t) article.set(q, t);
+      }
+    } catch {}
+  }
+  console.log(`  ${article.size} of ${withWd.length} films have an English Wikipedia article`);
+
+  const wanted = withWd.filter((m) => article.has(m.wd));
+  let got = 0;
+  for (let i = 0; i < wanted.length; i += 20) {
+    const chunk = wanted.slice(i, i + 20);
+    if (i % 200 === 0) console.log(`  extracts ${i}/${wanted.length} (${got} so far)`);
+    const titles = chunk.map((m) => article.get(m.wd));
+    const body = await get(
+      `${WP}?action=query&format=json&redirects=1&prop=extracts&exintro=1&explaintext=1` +
+      `&exsentences=2&titles=${encodeURIComponent(titles.join("|"))}`,
+      `wp-ex-${batchKey(chunk.map((m) => m.id))}.json`, 300);
+    if (!body) continue;
+    try {
+      const q = JSON.parse(body).query || {};
+      // A redirect means the article we asked for answers under another name.
+      const alias = new Map((q.redirects || []).map((r) => [r.from, r.to]));
+      const byTitle = new Map(Object.values(q.pages || {}).map((pg) => [pg.title, pg.extract]));
+      for (const mv of chunk) {
+        const asked = article.get(mv.wd);
+        const text = byTitle.get(alias.get(asked) ?? asked);
+        if (!text) continue;
+        const clean = trimToTwoSentences(text.replace(/\s+/g, " ").trim());
+        if (clean.length < 30) continue;   // a stub tells the reader nothing
+        mv.desc = clean;
+        mv.wiki = alias.get(asked) ?? asked;
+        got++;
+      }
+    } catch {}
+  }
+  console.log(`  ${got} descriptions`);
+  return movies;
+}
+
 // ------------------------------------------------------------------- driver
 // Phases are separable: the PDT scrape is slow and key-free, the art pass
 // needs API keys. `--only pdt` / `--only art` run one at a time.
@@ -805,10 +880,15 @@ const RATINGS_ONLY = only === "ratings";
 const ARCHIVE_ONLY = only === "archive";
 const CREDITS_ONLY = only === "credits";
 const EXTRAS_ONLY = only === "extras";
+const DESC_ONLY = only === "desc";
 const stageFile = path.join(cacheDir, "stage-pdt.json");
 
 let movies;
-if (only === "extras") {
+if (only === "desc") {
+  movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
+  console.log(`loaded ${movies.length} movies from data.json`);
+  movies = await descriptions(movies);
+} else if (only === "extras") {
   movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
   console.log(`loaded ${movies.length} movies from data.json`);
   movies = await extras(movies);
@@ -838,7 +918,7 @@ if (only === "extras") {
   console.log(`   staged -> ${stageFile}`);
 }
 
-if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY && !CREDITS_ONLY && !EXTRAS_ONLY) {
+if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY && !CREDITS_ONLY && !EXTRAS_ONLY && !DESC_ONLY) {
   console.log("3. wikidata (year, ids, fallback art)");
   movies = await enrich(movies);
   console.log("4. poster art (tvdb / fanart.tv, if keys present)");
@@ -851,6 +931,8 @@ if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY && !CREDITS_ONLY && !EXTRAS
   movies = await credits(movies);
   console.log("8. runtime and remaining posters");
   movies = await extras(movies);
+  console.log("9. descriptions");
+  movies = await descriptions(movies);
 }
 
 for (const mv of movies) { delete mv._cands; mv.sort = sortTitle(mv.title); }

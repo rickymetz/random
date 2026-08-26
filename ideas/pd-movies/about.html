@@ -279,6 +279,23 @@
     ten-point ratings sort first.</p>
   </div>
 
+  <h2>Descriptions</h2>
+
+  <p>The source site writes its own synopses. Those are not ours to reprint, so
+  the summaries here come from Wikipedia instead.</p>
+
+  <div class="card">
+    <h3><a href="https://en.wikipedia.org" target="_blank" rel="noopener noreferrer">Wikipedia</a><span class="role">Descriptions</span></h3>
+    <p>Two opening sentences from each film's article, no more. Enough to decide
+    whether to watch something, and no more of someone else's writing than that
+    needs.</p>
+    <p>Wikipedia's text is published under
+    <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>,
+    which asks for credit and for the same freedom to be passed on. Every summary
+    links back to the article it came from, and this page carries the same
+    licence for that text.</p>
+  </div>
+
   <h2>By the numbers</h2>
 
   <table id="stats">
@@ -292,6 +309,7 @@
       <tr><td>Year</td><td>Wikidata, TheTVDB</td><td id="s-year">—</td></tr>
       <tr><td>Poster art</td><td>TheTVDB, fanart.tv, Commons, Archive</td><td id="s-art">—</td></tr>
       <tr><td>Plays in the page</td><td>Internet Archive</td><td id="s-watch">—</td></tr>
+      <tr><td>Description</td><td>Wikipedia</td><td id="s-desc">—</td></tr>
       <tr><td>Director</td><td>Wikidata</td><td id="s-dir">—</td></tr>
       <tr><td>Cast</td><td>Wikidata</td><td id="s-cast">—</td></tr>
     </tbody>
@@ -349,6 +367,7 @@
       or <a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer">Wikidata</a></li>
     <li><strong>Ratings</strong> — <a href="https://www.imdb.com" target="_blank" rel="noopener noreferrer">IMDb</a></li>
     <li><strong>Playback</strong> — <a href="https://archive.org" target="_blank" rel="noopener noreferrer">Internet Archive</a></li>
+    <li><strong>Descriptions</strong> — <a href="https://en.wikipedia.org" target="_blank" rel="noopener noreferrer">Wikipedia</a></li>
     <li><strong>Artwork</strong> — <a href="https://fanart.tv" target="_blank" rel="noopener noreferrer">fanart.tv</a></li>
     <li><strong>The catalogue</strong> — <a href="https://www.publicdomaintorrents.info/" target="_blank" rel="noopener noreferrer">Public Domain Torrents</a></li>
   </ul>
@@ -381,6 +400,7 @@
       set("s-year", pct(count((m) => m.year)));
       set("s-art", pct(count((m) => m.art)));
       set("s-watch", pct(count((m) => m.ia)));
+      set("s-desc", pct(count((m) => m.desc)));
       set("s-dir", pct(count((m) => m.director?.length)));
       set("s-cast", pct(count((m) => m.cast?.length)));
 
