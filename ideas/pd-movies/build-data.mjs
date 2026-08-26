@@ -77,6 +77,30 @@ const sortTitle = (t) => t.replace(/^(a|an|the)\s+/i, "").toLowerCase();
 // it rather than show a confidently wrong year and poster.
 const MAX_YEAR = 1990;
 
+// Accepting only "film" threw away shorts, which is most of what a public
+// domain catalogue holds: of 38 films rejected as not-a-film, 10 were shorts,
+// 8 television films and 4 animated shorts. The rest were genuinely albums,
+// video games and taxons, and stay rejected.
+const FILM_TYPES = new Set([
+  "Q11424",     // film
+  "Q24862",     // short film
+  "Q506240",    // television film
+  "Q202866",    // animated film
+  "Q17517379",  // animated short film
+  "Q93204",     // documentary film
+  "Q226730",    // silent film
+  "Q24856",     // film series
+]);
+
+// "Betty Boop - Pudgy Takes a Bow-Wow" is catalogued under the series, but
+// Wikidata knows it by the short's own name. Try both.
+function titleVariants(t) {
+  const out = [t];
+  const dash = t.split(/\s+-\s+/);
+  if (dash.length === 2 && dash[1].length > 3) out.push(dash[1].trim());
+  return out;
+}
+
 const GENRES = ["action", "animation", "comedy", "drama", "exploitation", "family", "horror", "martialarts", "musicals", "mystery", "scifi", "serial", "war", "westerns"];
 
 // ---------------------------------------------------------------- 1. catalog
@@ -143,14 +167,32 @@ async function enrich(movies) {
     if (!body) { misses.push(`${mv.id}\t${mv.title}\tsearch failed`); continue; }
     let hits = [];
     try { hits = JSON.parse(body).search || []; } catch {}
+
+    // wbsearchentities matches labels from the start of the string, so an
+    // obscure short often returns nothing at all — 391 films failed here.
+    // CirrusSearch reads the whole text and is far more forgiving, so it runs
+    // as a fallback, restricted to things that are instances of a film.
+    if (!hits.length) {
+      for (const variant of titleVariants(mv.title)) {
+        const q = `haswbstatement:${[...FILM_TYPES].map((t) => "P31=" + t).join("|")} "${variant}"`;
+        const alt = await get(
+          `${WD}?action=query&format=json&list=search&srlimit=6&srsearch=${encodeURIComponent(q)}`,
+          `wd-c-${mv.id}-${variant === mv.title ? "a" : "b"}.json`, 400);
+        if (!alt) continue;
+        try {
+          const found = (JSON.parse(alt).query?.search || []).map((x) => ({ id: x.title, label: variant }));
+          if (found.length) { hits = found; break; }
+        } catch {}
+      }
+    }
     if (!hits.length) { misses.push(`${mv.id}\t${mv.title}\tno entity`); continue; }
     // wbsearchentities is fuzzy/prefix: without an exact-title gate a film
     // with no Wikidata entry silently matches some *other* old film, and the
     // old-bias sort then promotes it. Demand the name actually match.
-    const want = norm(mv.title);
+    const wants = titleVariants(mv.title).map(norm);
     const exact = hits.filter((h) => {
       const names = [h.label, h.match?.text, ...(h.aliases || [])].filter(Boolean);
-      return names.some((n) => norm(n) === want);
+      return names.some((n) => wants.includes(norm(n)));
     });
     if (!exact.length) {
       misses.push(`${mv.id}\t${mv.title}\tno exact-title entity (best: ${hits[0].label || "?"})`);
@@ -170,7 +212,7 @@ async function enrich(movies) {
   for (let s = 0; s < qids.length; s += 50) {
     const batch = qids.slice(s, s + 50);
     console.log(`  wikidata entities ${s}/${qids.length}`);
-    const url = `${WD}?action=wbgetentities&format=json&props=claims&ids=${batch.join("|")}`;
+    const url = `${WD}?action=wbgetentities&format=json&props=claims|labels|aliases&languages=en&ids=${batch.join("|")}`;
     // Keyed by batch contents — an offset key would go stale and map to the
     // wrong ids as soon as a re-run shifted the candidate set.
     const body = await get(url, `wd-e-${batchKey(batch)}.json`, 500);
@@ -182,15 +224,21 @@ async function enrich(movies) {
 
   for (const mv of movies) {
     if (!mv._cands) continue;
+    const wants = titleVariants(mv.title).map(norm);
     const films = [], tooNew = [];
     for (const q of mv._cands) {
       const c = ents[q]?.claims;
       if (!c) continue;
-      const isFilm = (c.P31 || []).some((x) => {
-        const id = x.mainsnak?.datavalue?.value?.id;
-        return id === "Q11424" || id === "Q24856" || id === "Q202866"; // film, film series, animated film
-      });
+      const isFilm = (c.P31 || []).some((x) =>
+        FILM_TYPES.has(x.mainsnak?.datavalue?.value?.id));
       if (!isFilm) continue;
+
+      // CirrusSearch reads whole articles, so a hit is only a suggestion. The
+      // entity itself has to carry the title, or we are back to silently
+      // attaching the wrong film.
+      const ent = ents[q];
+      const names = [ent?.labels?.en?.value, ...(ent?.aliases?.en || []).map((a) => a.value)].filter(Boolean);
+      if (!names.some((n) => wants.includes(norm(n)))) continue;
       let year = null;
       for (const x of c.P577 || []) {
         const t = x.mainsnak?.datavalue?.value?.time;
