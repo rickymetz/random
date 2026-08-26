@@ -576,13 +576,26 @@
     /* Chips plus four selects eat half a phone screen — let the whole
        header scroll away rather than pinning it over the grid. */
     header { position: static; }
-    .bar { grid-template-columns: 1fr auto; row-gap: 10px; }
-    .search { grid-column: 1 / -1; max-width: none; }
+    /* About and the count were auto-placed onto a row of their own, right
+       aligned against empty space. Sit them on the title row instead, hard
+       against the right edge, and let the search span the full width below. */
+    .bar { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; }
+    .brand { grid-row: 1; grid-column: 1; }
+    .brand h1 { font-size: 15px; overflow: hidden; text-overflow: ellipsis; }
+    /* Unwrap the group so About and the count can sit on different rows:
+       About beside the title, the count tucked beside the search below.
+       Sharing one row truncated the title to "Public Domain Mov...". */
+    .bar-end { display: contents; }
+    .navlink { grid-row: 1; grid-column: 2; justify-self: end; }
+    /* Count sits on its own line under the search, left aligned, so the
+       search keeps the full width and the title keeps all of row 1. */
+    .search { grid-row: 2; grid-column: 1 / -1; max-width: none; }
+    .count { grid-row: 3; grid-column: 1 / -1; justify-self: start; font-size: 11px; }
     .search input { height: 40px; }
     .navlink { min-height: 40px; display: flex; align-items: center; }
-    .check { height: 38px; grid-column: 1 / -1; justify-content: flex-start; }
+    /* Pair the checkbox with Rating — Rating had an empty cell beside it. */
+    .check { height: 38px; justify-content: flex-start; }
     .check input { width: 17px; height: 17px; }
-    .bar-end { gap: 10px; }
     .home { min-height: 44px; min-width: 44px; justify-content: center; padding: 0 8px; margin-left: -8px; }
 
     /* Wrapped, the 14 genres stack five rows deep and push the grid off
