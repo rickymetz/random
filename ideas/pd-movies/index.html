@@ -1499,7 +1499,21 @@
 
   // ---------------------------------------------------------------- drawer
   const drawer = $("drawer"), scrim = $("scrim");
-  let lastFocus = null, lockedAt = 0;
+  let returnTo = null, lockedAt = 0;
+
+  // Focus has to land somewhere real once the panel is gone, or a keyboard
+  // user's next Tab resumes from inside an aria-hidden subtree.
+  function restoreFocus() {
+    if (returnTo === null) return;
+    const i = ALL.findIndex((m) => m.id === returnTo);
+    returnTo = null;
+    // The grid is rebuilt after a popstate, so wait a frame before reaching
+    // for the card — and fall back to the search box if it is not rendered.
+    requestAnimationFrame(() => {
+      const card = i >= 0 && grid.querySelector(`.card[data-i="${i}"]`);
+      (card || $("q"))?.focus({ preventScroll: true });
+    });
+  }
 
   function stopPlayer() {
     const frame = drawer.querySelector("iframe");
@@ -1529,7 +1543,10 @@
     stopPlayer();
     const reopening = Boolean(currentFilm);
     currentFilm = m;
-    if (!reopening) lastFocus = document.activeElement;
+    // Remember the film, not the element: closing re-renders the grid, so the
+    // card that was focused is detached by the time focus is handed back and
+    // calling .focus() on it does nothing at all.
+    if (!reopening) returnTo = m.id;
     drawer.innerHTML =
       `<button class="drawer-close" id="dClose" aria-label="Close">` +
         `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>` +
@@ -1695,7 +1712,7 @@
     drawer.setAttribute("aria-hidden", "true");
     scrim.classList.remove("open");
     unlockScroll();
-    lastFocus?.focus();
+    restoreFocus();
   }
 
   scrim.onclick = () => closeDrawer({ back: true });
