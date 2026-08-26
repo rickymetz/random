@@ -397,6 +397,19 @@
     -webkit-box-orient: vertical;
   }
 
+  .playable {
+    position: absolute;
+    left: 6px;
+    bottom: 6px;
+    display: grid;
+    place-items: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background: rgb(0 0 0 / .72);
+    color: var(--accent);
+  }
+  .grid.list .playable { display: none; }
   .badge {
     position: absolute;
     top: 6px;
@@ -599,6 +612,7 @@
     font-size: 14px;
     text-decoration: none;
   }
+  .btn svg { flex: none; }
   .btn:hover { filter: brightness(1.08); }
   .btn.ghost {
     background: none;
@@ -730,6 +744,10 @@
         <option value="unrated">Unrated</option>
       </select>
     </div>
+    <label class="check" for="canWatch">
+      <input type="checkbox" id="canWatch">
+      <span>Watchable</span>
+    </label>
     <label class="check" for="hasArt">
       <input type="checkbox" id="hasArt">
       <span>Has poster</span>
@@ -802,7 +820,7 @@
 
   let ALL = [];
   const state = {
-    q: "", genres: new Set(), decade: "", format: "", rating: "", hasArt: false,
+    q: "", genres: new Set(), decade: "", format: "", rating: "", hasArt: false, canWatch: false,
     sort: "title", view: "grid", seed: 1,
   };
   let currentFilm = null;   // film shown in the drawer, for arrow-key paging
@@ -834,8 +852,8 @@
       `</div>`;
     // Remote art can 404 (dead CDN entries) — fall back to the drawn poster.
     const img = m.art
-      ? `<img src="${esc(m.art)}" alt="" loading="lazy" decoding="async"
-             onerror="this.closest('.poster').querySelector('.gen').hidden=false;this.remove()">`
+      ? `<img src="${esc(m.art)}" alt="" loading="lazy" decoding="async" data-film="${esc(m.id)}"
+             onerror="window.__posterFailed(this)">`
       : "";
     const genHidden = m.art ? " hidden" : "";
     return `<div class="poster">` +
@@ -843,7 +861,40 @@
       img +
       (m.year ? `<span class="badge">${m.year}</span>` : "") +
       badge(m) +
+      (m.ia ? `<span class="playable" title="Watchable on Internet Archive" aria-hidden="true">` +
+              `<svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.5v9l7-4.5z"/></svg></span>` : "") +
     `</div>`;
+  }
+
+  // A poster URL can fail for any number of reasons — the image is gone, the
+  // host is down, an extension blocked it. Whatever the cause, the film does
+  // not have a visible poster, and the Has poster filter should not claim it
+  // does. The page's own experience is the only reliable authority here, so
+  // failures are recorded as they happen and the count corrects itself.
+  const broken = new Set();
+  window.__posterFailed = (img) => {
+    const poster = img.closest(".poster");
+    poster?.querySelector(".gen")?.removeAttribute("hidden");
+    img.remove();
+    const id = img.dataset.film;
+    if (!id || broken.has(id)) return;
+    broken.add(id);
+    const m = ALL.find((x) => x.id === id);
+    if (m) m.artBroken = true;
+    updateArtCount();
+  };
+
+  let artCountTimer;
+  function updateArtCount() {
+    clearTimeout(artCountTimer);
+    artCountTimer = setTimeout(() => {
+      const n = ALL.filter((m) => m.art && !m.artBroken).length;
+      const label = $("hasArt")?.nextElementSibling;
+      if (label) label.textContent = `Has poster (${n})`;
+      // Only redraw if the filter is on, and only then — yanking cards out
+      // from under someone mid-scroll would be worse than a stale count.
+      if (state.hasArt) render();
+    }, 400);
   }
 
   function esc(s) {
@@ -884,7 +935,8 @@
       else if (m.year < d || m.year > d + 9) return false;
     }
     if (state.format && !(m.formats || []).includes(state.format)) return false;
-    if (state.hasArt && !m.art) return false;
+    if (state.hasArt && (!m.art || m.artBroken)) return false;
+    if (state.canWatch && !m.ia) return false;
     if (state.rating === "unrated") { if (m.score || m.rating) return false; }
     else if (state.rating === "rated") { if (!m.score && !m.rating) return false; }
     else if (state.rating === "site") { if (m.score || !m.rating) return false; }
@@ -942,7 +994,8 @@
   }
 
   const isFiltered = () =>
-    state.q || state.genres.size || state.decade || state.format || state.rating || state.hasArt;
+    state.q || state.genres.size || state.decade || state.format || state.rating ||
+    state.hasArt || state.canWatch;
 
   // --------------------------------------------------- URL and preferences
   // The URL is the source of truth so a filtered view can be shared or
@@ -957,6 +1010,7 @@
     if (state.format) p.set("f", state.format);
     if (state.rating) p.set("r", state.rating);
     if (state.hasArt) p.set("art", "1");
+    if (state.canWatch) p.set("watch", "1");
     if (state.sort !== "title") p.set("sort", state.sort);
     if (state.view !== "grid") p.set("v", state.view);
     if (state.sort === "random") p.set("s", String(state.seed));
@@ -976,6 +1030,7 @@
     state.format = p.get("f") || "";
     state.rating = p.get("r") || "";
     state.hasArt = p.get("art") === "1";
+    state.canWatch = p.get("watch") === "1";
     state.sort = SORTS[p.get("sort")] ? p.get("sort") : "title";
     state.view = p.get("v") === "list" ? "list" : "grid";
     state.seed = Number(p.get("s")) || state.seed;
@@ -989,7 +1044,7 @@
       localStorage.setItem(PREFS, JSON.stringify({
         view: state.view, sort: state.sort,
         genres: [...state.genres], decade: state.decade,
-        format: state.format, rating: state.rating, hasArt: state.hasArt,
+        format: state.format, rating: state.rating, hasArt: state.hasArt, canWatch: state.canWatch,
       }));
     } catch {}
   }
@@ -1005,6 +1060,7 @@
       state.format = v.format || "";
       state.rating = v.rating || "";
       state.hasArt = Boolean(v.hasArt);
+      state.canWatch = Boolean(v.canWatch);
     } catch {}
   }
 
@@ -1016,6 +1072,7 @@
     $("format").value = state.format;
     $("minRating").value = state.rating;
     $("hasArt").checked = state.hasArt;
+    $("canWatch").checked = state.canWatch;
     $("sort").value = state.sort;
     $("viewGrid").setAttribute("aria-pressed", String(state.view === "grid"));
     $("viewList").setAttribute("aria-pressed", String(state.view === "list"));
@@ -1099,11 +1156,19 @@
             : "<span class='d-line'>Download only</span>"}</dd>` +
         `</dl>` +
         `<div class="d-actions">` +
-          `<a class="btn" href="${SRC}/nshowmovie.html?movieid=${esc(m.id)}" target="_blank" rel="noopener noreferrer">` +
+          (m.ia
+            ? `<a class="btn" href="https://archive.org/details/${encodeURIComponent(m.ia)}" target="_blank" rel="noopener noreferrer">` +
+                `<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 3.5v9l7-4.5z"/></svg>` +
+                `Watch on Internet Archive` +
+              `</a>`
+            : "") +
+          `<a class="btn${m.ia ? " ghost" : ""}" href="${SRC}/nshowmovie.html?movieid=${esc(m.id)}" target="_blank" rel="noopener noreferrer">` +
             `Open on Public Domain Torrents` +
             `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h7v7M13 3L6.5 9.5M11 9v4H3V5h4"/></svg>` +
           `</a>` +
-          `<a class="btn ghost" href="https://archive.org/search?query=${encodeURIComponent(m.title)}" target="_blank" rel="noopener noreferrer">Look for it on Internet Archive</a>` +
+          (m.ia
+            ? ""
+            : `<a class="btn ghost" href="https://archive.org/search?query=${encodeURIComponent(m.title)}" target="_blank" rel="noopener noreferrer">Look for it on Internet Archive</a>`) +
         `</div>` +
         `<p class="d-note">Downloads, synopsis and user comments live on the source site — this page is only a browser over its catalogue.</p>` +
       `</div>`;
@@ -1218,9 +1283,10 @@
   }
   $("minRating").addEventListener("change", (e) => { state.rating = e.target.value; apply(true); });
   $("hasArt").addEventListener("change", (e) => { state.hasArt = e.target.checked; apply(true); });
+  $("canWatch").addEventListener("change", (e) => { state.canWatch = e.target.checked; apply(true); });
 
   function resetAll() {
-    Object.assign(state, { q: "", genres: new Set(), decade: "", format: "", rating: "", hasArt: false });
+    Object.assign(state, { q: "", genres: new Set(), decade: "", format: "", rating: "", hasArt: false, canWatch: false });
     syncControls();
     apply(true);
   }
@@ -1295,6 +1361,8 @@
 
       const withArt = ALL.filter((m) => m.art).length;
       $("hasArt").nextElementSibling.textContent = `Has poster (${withArt})`;
+      const watchable = ALL.filter((m) => m.ia).length;
+      $("canWatch").nextElementSibling.textContent = `Watchable (${watchable})`;
       const withYear = ALL.filter((m) => m.year).length;
       $("footer").innerHTML =
         `Catalogue of ${ALL.length} public domain films scraped from ` +
