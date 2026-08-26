@@ -753,7 +753,7 @@
         <option value="-title">Title Z–A</option>
         <option value="year">Year, oldest</option>
         <option value="-year">Year, newest</option>
-        <option value="-rating">Rating, best</option>
+        <option value="-rating" selected>Rating, best</option>
         <option value="genre">Genre</option>
         <option value="random">Random</option>
       </select>
@@ -817,13 +817,17 @@
     scifi: "Sci-Fi", serial: "Serial", war: "War", westerns: "Western",
   };
 
+  // Best first by default: alphabetical opened on Abe Lincoln of the 9th Ave,
+  // which tells a visitor nothing about what is worth watching here.
+  const DEFAULT_SORT = "-rating";
+
   const $ = (id) => document.getElementById(id);
   const grid = $("grid"), empty = $("empty"), countEl = $("count");
 
   let ALL = [];
   const state = {
     q: "", genres: new Set(), decade: "", format: "", rating: "", hasArt: false, canWatch: false,
-    sort: "title", view: "grid", seed: 1,
+    sort: "-rating", view: "grid", seed: 1,
   };
   let currentFilm = null;   // film shown in the drawer, for arrow-key paging
 
@@ -1017,7 +1021,7 @@
     if (state.rating) p.set("r", state.rating);
     if (state.hasArt) p.set("art", "1");
     if (state.canWatch) p.set("watch", "1");
-    if (state.sort !== "title") p.set("sort", state.sort);
+    if (state.sort !== DEFAULT_SORT) p.set("sort", state.sort);
     if (state.view !== "grid") p.set("v", state.view);
     if (state.sort === "random") p.set("s", String(state.seed));
     if (currentFilm) p.set("film", currentFilm.id);
@@ -1037,7 +1041,7 @@
     state.rating = p.get("r") || "";
     state.hasArt = p.get("art") === "1";
     state.canWatch = p.get("watch") === "1";
-    state.sort = SORTS[p.get("sort")] ? p.get("sort") : "title";
+    state.sort = SORTS[p.get("sort")] ? p.get("sort") : DEFAULT_SORT;
     state.view = p.get("v") === "list" ? "list" : "grid";
     state.seed = Number(p.get("s")) || state.seed;
     return true;
