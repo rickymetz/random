@@ -1005,6 +1005,10 @@
       <select id="director"><option value="">Any</option></select>
     </div>
     <div class="field">
+      <label for="actor">Actor</label>
+      <select id="actor"><option value="">Any</option></select>
+    </div>
+    <div class="field">
       <label for="sort">Sort</label>
       <select id="sort">
         <option value="title">Title A–Z</option>
@@ -1012,6 +1016,7 @@
         <option value="year">Year, oldest</option>
         <option value="-year">Year, newest</option>
         <option value="-rating" selected>Rating, best</option>
+        <option value="-votes">Most voted</option>
         <option value="genre">Genre</option>
         <option value="random">Random</option>
       </select>
@@ -1099,7 +1104,7 @@
 
   let ALL = [];
   const state = {
-    q: "", genres: new Set(), decade: "", rating: "", director: "", rtMin: 0, rtMax: 120,
+    q: "", genres: new Set(), decade: "", rating: "", director: "", actor: "", rtMin: 0, rtMax: 120,
     hasArt: false, canWatch: false,
     sort: "-rating", view: "grid", seed: 1,
   };
@@ -1230,6 +1235,7 @@
     if (state.hasArt && (!m.art || m.artBroken)) return false;
     if (state.canWatch && !m.ia) return false;
     if (state.director && !(m.director || []).includes(state.director)) return false;
+    if (state.actor && !(m.cast || []).includes(state.actor)) return false;
     if (rangeActive()) {
       // Nearly half the catalogue has no runtime; a length range cannot speak
       // for those, so they step aside while it is in use.
@@ -1260,6 +1266,9 @@
         || a.sort.localeCompare(b.sort);
     },
     genre: (a, b) => (a.genres[0] || "~").localeCompare(b.genres[0] || "~") || a.sort.localeCompare(b.sort),
+    // Rating alone floats an obscure 8.0 above Night of the Living Dead. Vote
+    // count is the closest thing here to "what people actually watched".
+    "-votes": (a, b) => (b.votes ?? -1) - (a.votes ?? -1) || a.sort.localeCompare(b.sort),
     // Seeded, so the order is stable across re-renders and reproduces from a
     // shared link rather than reshuffling under the reader.
     random: (a, b) => rank(a.id) - rank(b.id),
@@ -1300,7 +1309,7 @@
 
   const isFiltered = () =>
     state.q || state.genres.size || state.decade || state.rating ||
-    rangeActive() || state.director || state.hasArt || state.canWatch;
+    rangeActive() || state.director || state.actor || state.hasArt || state.canWatch;
 
   // --------------------------------------------------- URL and preferences
   // The URL is the source of truth so a filtered view can be shared or
@@ -1315,6 +1324,7 @@
     if (state.rating) p.set("r", state.rating);
     if (rangeActive()) p.set("rt", `${state.rtMin}-${state.rtMax}`);
     if (state.director) p.set("dir", state.director);
+    if (state.actor) p.set("cast", state.actor);
     if (state.hasArt) p.set("art", "1");
     if (state.canWatch) p.set("watch", "1");
     if (state.sort !== DEFAULT_SORT) p.set("sort", state.sort);
@@ -1339,6 +1349,7 @@
     state.rtMax = rt ? Math.min(+rt[2], RT_MAX) : RT_MAX;
     if (state.rtMin > state.rtMax) [state.rtMin, state.rtMax] = [state.rtMax, state.rtMin];
     state.director = p.get("dir") || "";
+    state.actor = p.get("cast") || "";
     state.hasArt = p.get("art") === "1";
     state.canWatch = p.get("watch") === "1";
     state.sort = SORTS[p.get("sort")] ? p.get("sort") : DEFAULT_SORT;
@@ -1354,7 +1365,7 @@
       localStorage.setItem(PREFS, JSON.stringify({
         view: state.view, sort: state.sort,
         genres: [...state.genres], decade: state.decade,
-        rating: state.rating, director: state.director,
+        rating: state.rating, director: state.director, actor: state.actor,
         rtMin: state.rtMin, rtMax: state.rtMax,
         hasArt: state.hasArt, canWatch: state.canWatch,
       }));
@@ -1373,6 +1384,7 @@
       state.rtMin = Number.isFinite(v.rtMin) ? v.rtMin : 0;
       state.rtMax = Number.isFinite(v.rtMax) ? v.rtMax : RT_MAX;
       state.director = v.director || "";
+      state.actor = v.actor || "";
       state.hasArt = Boolean(v.hasArt);
       state.canWatch = Boolean(v.canWatch);
     } catch {}
@@ -1388,6 +1400,7 @@
     $("rtMax").value = state.rtMax;
     paintRange();
     $("director").value = state.director;
+    $("actor").value = state.actor;
     $("hasArt").checked = state.hasArt;
     $("canWatch").checked = state.canWatch;
     $("sort").value = state.sort;
@@ -1551,7 +1564,7 @@
             : "") +
           (m.cast?.length
             ? `<dt>Cast</dt><dd>${m.cast
-                .map((c) => `<button class="tag" data-who="${esc(c)}">${esc(c)}</button>`).join("")}</dd>`
+                .map((c) => `<button class="tag" data-cast="${esc(c)}">${esc(c)}</button>`).join("")}</dd>`
             : "") +
         `</dl>` +
         `<div class="d-actions">` +
@@ -1613,6 +1626,17 @@
         const known = [...$("director").options].some((o) => o.value === t.dataset.dir);
         if (known) { state.director = t.dataset.dir; state.q = ""; }
         else { state.q = t.dataset.dir; }   // only one film: search still finds it
+        syncControls();
+        closeDrawer();
+        apply(true);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      };
+    }
+    for (const t of drawer.querySelectorAll(".tag[data-cast]")) {
+      t.onclick = () => {
+        const known = [...$("actor").options].some((o) => o.value === t.dataset.cast);
+        if (known) { state.actor = t.dataset.cast; state.q = ""; }
+        else { state.q = t.dataset.cast; }   // a single credit: search still finds it
         syncControls();
         closeDrawer();
         apply(true);
@@ -1725,7 +1749,7 @@
     $("q").focus();
   };
 
-  for (const [id, key] of [["decade", "decade"], ["director", "director"], ["sort", "sort"]]) {
+  for (const [id, key] of [["decade", "decade"], ["director", "director"], ["actor", "actor"], ["sort", "sort"]]) {
     $(id).addEventListener("change", (e) => {
       state[key] = e.target.value;
       // A fresh shuffle each time Random is chosen, else it repeats.
@@ -1790,7 +1814,7 @@
 
   function resetAll() {
     Object.assign(state, { q: "", genres: new Set(), decade: "", rating: "",
-      director: "", rtMin: 0, rtMax: RT_MAX, hasArt: false, canWatch: false });
+      director: "", actor: "", rtMin: 0, rtMax: RT_MAX, hasArt: false, canWatch: false });
     syncControls();
     apply(true);
   }
@@ -1853,6 +1877,15 @@
       for (const m of ALL) for (const d of m.director || []) dirCount[d] = (dirCount[d] || 0) + 1;
       const browsable = Object.entries(dirCount).filter(([, n]) => n > 1)
         .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      // Same rule as directors: a name with one film is not a thing to browse,
+      // and 146 of these appear in more than one.
+      const castCount = {};
+      for (const m of ALL) for (const c of m.cast || []) castCount[c] = (castCount[c] || 0) + 1;
+      $("actor").insertAdjacentHTML("beforeend",
+        Object.entries(castCount).filter(([, n]) => n > 1)
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .map(([c, n]) => `<option value="${esc(c)}">${esc(c)} (${n})</option>`).join(""));
+
       $("director").insertAdjacentHTML("beforeend",
         browsable.map(([d, n]) => `<option value="${esc(d)}">${esc(d)} (${n})</option>`).join(""));
       // URL first so a shared link always wins; saved preferences only fill in
