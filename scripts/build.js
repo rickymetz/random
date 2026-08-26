@@ -209,7 +209,10 @@ fs.writeFileSync(path.join(root, ".nojekyll"), "");
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
 for (const idea of ideas) {
+  // Never copy dotfiles: an idea folder may hold a .env of API keys, and _site
+  // is what a deploy step would upload.
   fs.cpSync(path.join(ideasDir, idea.slug), path.join(outDir, "ideas", idea.slug), {
+    filter: (src) => !path.basename(src).startsWith("."),
     recursive: true,
   });
 }

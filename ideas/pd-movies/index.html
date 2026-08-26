@@ -817,6 +817,65 @@
     font-weight: 500;
   }
   .btn.ghost:hover { color: var(--ink); border-color: var(--dim); filter: none; }
+  /* Suggestions sit after the actions: decide about this film first, then see
+     where to go next. */
+  .related {
+    margin-top: 26px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+  }
+  .rel-h {
+    margin: 0 0 10px;
+    font: 11px var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+    font-weight: 500;
+  }
+  .rel-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .rel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0;
+    background: none;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .rel-art { display: block; }
+  .rel .poster {
+    aspect-ratio: 2 / 3;
+    height: auto;
+    width: 100%;
+    border-radius: 4px;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    transition: outline-color .12s;
+  }
+  .rel .poster img { object-fit: cover; }
+  .rel:hover .poster, .rel:focus-visible .poster { outline-color: var(--accent); }
+  .rel:focus-visible { outline: none; }
+  /* The badges are unreadable at this size and just add noise. */
+  .rel .badge, .rel .stars, .rel .playable, .rel .gen .initial { display: none; }
+  .rel .gen .t { font-size: 10px; -webkit-line-clamp: 3; }
+  .rel-t {
+    font-size: 11.5px;
+    line-height: 1.3;
+    color: var(--muted);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
   .d-note {
     margin-top: 16px;
     font-size: 11px;
@@ -946,6 +1005,10 @@
       <select id="director"><option value="">Any</option></select>
     </div>
     <div class="field">
+      <label for="actor">Actor</label>
+      <select id="actor"><option value="">Any</option></select>
+    </div>
+    <div class="field">
       <label for="sort">Sort</label>
       <select id="sort">
         <option value="title">Title A–Z</option>
@@ -953,6 +1016,7 @@
         <option value="year">Year, oldest</option>
         <option value="-year">Year, newest</option>
         <option value="-rating" selected>Rating, best</option>
+        <option value="-votes">Most voted</option>
         <option value="genre">Genre</option>
         <option value="random">Random</option>
       </select>
@@ -1040,7 +1104,7 @@
 
   let ALL = [];
   const state = {
-    q: "", genres: new Set(), decade: "", rating: "", director: "", rtMin: 0, rtMax: 120,
+    q: "", genres: new Set(), decade: "", rating: "", director: "", actor: "", rtMin: 0, rtMax: 120,
     hasArt: false, canWatch: false,
     sort: "-rating", view: "grid", seed: 1,
   };
@@ -1080,11 +1144,12 @@
         `<span class="t">${esc(m.title)}</span>` +
       `</div>`;
     // Remote art can 404 (dead CDN entries) — fall back to the drawn poster.
-    const img = m.art
-      ? `<img src="${esc(m.art)}" alt="" loading="lazy" decoding="async" data-film="${esc(m.id)}"
+    const src = safeUrl(m.art);
+    const img = src
+      ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" data-film="${esc(m.id)}"
              onerror="window.__posterFailed(this)">`
       : "";
-    const genHidden = m.art ? " hidden" : "";
+    const genHidden = src ? " hidden" : "";
     return `<div class="poster">` +
       gen.replace('class="gen"', `class="gen"${genHidden}`) +
       img +
@@ -1124,6 +1189,16 @@
       // from under someone mid-scroll would be worse than a stale count.
       if (state.hasArt) render();
     }, 400);
+  }
+
+  // Scraped values are third-party input: fanart.tv, TheTVDB and Wikipedia are
+  // all community-editable. Only plain https URLs get through, and quotes,
+  // parens, backslashes and whitespace are rejected outright — those are what
+  // break out of a CSS url() or an attribute.
+  function safeUrl(u) {
+    const v = String(u ?? "").trim();
+    if (!/^https:\/\/[^\s"'`\\()<>]+$/.test(v)) return "";
+    return v;
   }
 
   function esc(s) {
@@ -1171,6 +1246,7 @@
     if (state.hasArt && (!m.art || m.artBroken)) return false;
     if (state.canWatch && !m.ia) return false;
     if (state.director && !(m.director || []).includes(state.director)) return false;
+    if (state.actor && !(m.cast || []).includes(state.actor)) return false;
     if (rangeActive()) {
       // Nearly half the catalogue has no runtime; a length range cannot speak
       // for those, so they step aside while it is in use.
@@ -1201,6 +1277,9 @@
         || a.sort.localeCompare(b.sort);
     },
     genre: (a, b) => (a.genres[0] || "~").localeCompare(b.genres[0] || "~") || a.sort.localeCompare(b.sort),
+    // Rating alone floats an obscure 8.0 above Night of the Living Dead. Vote
+    // count is the closest thing here to "what people actually watched".
+    "-votes": (a, b) => (b.votes ?? -1) - (a.votes ?? -1) || a.sort.localeCompare(b.sort),
     // Seeded, so the order is stable across re-renders and reproduces from a
     // shared link rather than reshuffling under the reader.
     random: (a, b) => rank(a.id) - rank(b.id),
@@ -1241,7 +1320,7 @@
 
   const isFiltered = () =>
     state.q || state.genres.size || state.decade || state.rating ||
-    rangeActive() || state.director || state.hasArt || state.canWatch;
+    rangeActive() || state.director || state.actor || state.hasArt || state.canWatch;
 
   // --------------------------------------------------- URL and preferences
   // The URL is the source of truth so a filtered view can be shared or
@@ -1256,6 +1335,7 @@
     if (state.rating) p.set("r", state.rating);
     if (rangeActive()) p.set("rt", `${state.rtMin}-${state.rtMax}`);
     if (state.director) p.set("dir", state.director);
+    if (state.actor) p.set("cast", state.actor);
     if (state.hasArt) p.set("art", "1");
     if (state.canWatch) p.set("watch", "1");
     if (state.sort !== DEFAULT_SORT) p.set("sort", state.sort);
@@ -1280,6 +1360,7 @@
     state.rtMax = rt ? Math.min(+rt[2], RT_MAX) : RT_MAX;
     if (state.rtMin > state.rtMax) [state.rtMin, state.rtMax] = [state.rtMax, state.rtMin];
     state.director = p.get("dir") || "";
+    state.actor = p.get("cast") || "";
     state.hasArt = p.get("art") === "1";
     state.canWatch = p.get("watch") === "1";
     state.sort = SORTS[p.get("sort")] ? p.get("sort") : DEFAULT_SORT;
@@ -1295,7 +1376,7 @@
       localStorage.setItem(PREFS, JSON.stringify({
         view: state.view, sort: state.sort,
         genres: [...state.genres], decade: state.decade,
-        rating: state.rating, director: state.director,
+        rating: state.rating, director: state.director, actor: state.actor,
         rtMin: state.rtMin, rtMax: state.rtMax,
         hasArt: state.hasArt, canWatch: state.canWatch,
       }));
@@ -1309,11 +1390,19 @@
       state.view = v.view === "list" ? "list" : "grid";
       if (SORTS[v.sort]) state.sort = v.sort;
       state.genres = new Set(Array.isArray(v.genres) ? v.genres : []);
-      state.decade = v.decade || "";
-      state.rating = v.rating || "";
-      state.rtMin = Number.isFinite(v.rtMin) ? v.rtMin : 0;
-      state.rtMax = Number.isFinite(v.rtMax) ? v.rtMax : RT_MAX;
-      state.director = v.director || "";
+      const str = (x) => (typeof x === "string" ? x : "");
+      state.decade = str(v.decade);
+      state.rating = str(v.rating);
+      // Stored values get the same clamping and swapping the URL already had.
+      // Without it a saved {rtMin:999999} survived reloads and stretched the
+      // document to over a million pixels wide in Chromium.
+      const span = (x, fallback) =>
+        Number.isFinite(x) ? Math.min(Math.max(Math.round(x), 0), RT_MAX) : fallback;
+      state.rtMin = span(v.rtMin, 0);
+      state.rtMax = span(v.rtMax, RT_MAX);
+      if (state.rtMin > state.rtMax) [state.rtMin, state.rtMax] = [state.rtMax, state.rtMin];
+      state.director = str(v.director);
+      state.actor = str(v.actor);
       state.hasArt = Boolean(v.hasArt);
       state.canWatch = Boolean(v.canWatch);
     } catch {}
@@ -1329,6 +1418,7 @@
     $("rtMax").value = state.rtMax;
     paintRange();
     $("director").value = state.director;
+    $("actor").value = state.actor;
     $("hasArt").checked = state.hasArt;
     $("canWatch").checked = state.canWatch;
     $("sort").value = state.sort;
@@ -1359,9 +1449,78 @@
     }
   }
 
+  // Somewhere to go next. A shared director is the strongest link this data
+  // supports, so those come first; after that, the same genre from the same era,
+  // best rated first. Films that play are preferred within each group, since a
+  // suggestion you can watch beats one you cannot.
+  const RELATED_MAX = 6;
+
+  function relatedTo(m) {
+    const seen = new Set([m.id]);
+    const rank = (a, b) => (b.ia ? 1 : 0) - (a.ia ? 1 : 0)
+                        || (b.score ?? b.rating ?? 0) - (a.score ?? a.rating ?? 0);
+
+    const byDirector = m.director?.length
+      ? ALL.filter((x) => !seen.has(x.id) && (x.director || []).some((d) => m.director.includes(d)))
+           .sort(rank)
+      : [];
+    byDirector.forEach((x) => seen.add(x.id));
+
+    const genres = new Set(m.genres || []);
+    const era = m.year ? Math.floor(m.year / 10) * 10 : null;
+    const byGenre = genres.size
+      ? ALL.filter((x) => !seen.has(x.id)
+            && (x.genres || []).some((g) => genres.has(g))
+            && (era === null || (x.year && Math.abs(x.year - m.year) <= 12)))
+           .sort(rank)
+      : [];
+
+    const dir = byDirector.slice(0, RELATED_MAX);
+    return {
+      director: dir,
+      directorName: dir.length ? m.director[0] : null,
+      genre: byGenre.slice(0, RELATED_MAX - Math.min(dir.length, 3)),
+      genreLabel: genres.size ? (GENRE_LABELS[[...genres][0]] || [...genres][0]) : null,
+      era,
+    };
+  }
+
+  function relatedHTML(m) {
+    const r = relatedTo(m);
+    const strip = (films) => `<div class="rel-row">` + films.map((f) =>
+      `<button class="rel" data-rel="${esc(f.id)}" title="${esc(f.title)}">` +
+        `<span class="rel-art">${posterHTML(f)}</span>` +
+        `<span class="rel-t">${esc(f.title)}</span>` +
+      `</button>`).join("") + `</div>`;
+
+    let out = "";
+    if (r.director.length) {
+      out += `<h3 class="rel-h">More by ${esc(r.directorName)}</h3>` + strip(r.director.slice(0, 3));
+    }
+    if (r.genre.length) {
+      const era = r.era ? ` from the ${r.era}s` : "";
+      out += `<h3 class="rel-h">More ${esc((r.genreLabel || "").toLowerCase())}${era}</h3>` + strip(r.genre.slice(0, 3));
+    }
+    return out ? `<div class="related">${out}</div>` : "";
+  }
+
   // ---------------------------------------------------------------- drawer
   const drawer = $("drawer"), scrim = $("scrim");
-  let lastFocus = null, lockedAt = 0;
+  let returnTo = null, lockedAt = 0;
+
+  // Focus has to land somewhere real once the panel is gone, or a keyboard
+  // user's next Tab resumes from inside an aria-hidden subtree.
+  function restoreFocus() {
+    if (returnTo === null) return;
+    const i = ALL.findIndex((m) => m.id === returnTo);
+    returnTo = null;
+    // The grid is rebuilt after a popstate, so wait a frame before reaching
+    // for the card — and fall back to the search box if it is not rendered.
+    requestAnimationFrame(() => {
+      const card = i >= 0 && grid.querySelector(`.card[data-i="${i}"]`);
+      (card || $("q"))?.focus({ preventScroll: true });
+    });
+  }
 
   function stopPlayer() {
     const frame = drawer.querySelector("iframe");
@@ -1391,13 +1550,16 @@
     stopPlayer();
     const reopening = Boolean(currentFilm);
     currentFilm = m;
-    if (!reopening) lastFocus = document.activeElement;
+    // Remember the film, not the element: closing re-renders the grid, so the
+    // card that was focused is detached by the time focus is handed back and
+    // calling .focus() on it does nothing at all.
+    if (!reopening) returnTo = m.id;
     drawer.innerHTML =
       `<button class="drawer-close" id="dClose" aria-label="Close">` +
         `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>` +
       `</button>` +
       `<div class="d-hero" id="dHero">` +
-        (m.art && !m.artBroken ? `<div class="d-back" style="background-image:url('${esc(m.art)}')"></div>` : "") +
+        (safeUrl(m.art) && !m.artBroken ? `<div class="d-back"></div>` : "") +
         posterHTML(m) +
         (m.ia ? `<button class="play-over" id="dPlay" aria-label="Play ${esc(m.title)}">` +
                 `<svg width="26" height="26" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.2v9.6l7.5-4.8z"/></svg>` +
@@ -1437,7 +1599,7 @@
             : "") +
           (m.cast?.length
             ? `<dt>Cast</dt><dd>${m.cast
-                .map((c) => `<button class="tag" data-who="${esc(c)}">${esc(c)}</button>`).join("")}</dd>`
+                .map((c) => `<button class="tag" data-cast="${esc(c)}">${esc(c)}</button>`).join("")}</dd>`
             : "") +
         `</dl>` +
         `<div class="d-actions">` +
@@ -1451,7 +1613,7 @@
                 `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h7v7M13 3L6.5 9.5M11 9v4H3V5h4"/></svg>` +
               `</a>`
             : "") +
-          `<a class="btn${m.ia ? " ghost" : ""}" href="${SRC}/nshowmovie.html?movieid=${esc(m.id)}" target="_blank" rel="noopener noreferrer">` +
+          `<a class="btn${m.ia ? " ghost" : ""}" href="${SRC}/nshowmovie.html?movieid=${encodeURIComponent(m.id)}" target="_blank" rel="noopener noreferrer">` +
             `Open on Public Domain Torrents` +
             `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h7v7M13 3L6.5 9.5M11 9v4H3V5h4"/></svg>` +
           `</a>` +
@@ -1459,6 +1621,7 @@
             ? ""
             : `<a class="btn ghost" href="https://archive.org/search?query=${encodeURIComponent(m.title)}" target="_blank" rel="noopener noreferrer">Look for it on Internet Archive</a>`) +
         `</div>` +
+        relatedHTML(m) +
         `<p class="d-note">${m.ia
             ? "Plays here from the Internet Archive; nothing is hosted on this page. "
             : ""}Downloads, synopsis and user comments live on Public Domain Torrents.</p>` +
@@ -1466,6 +1629,13 @@
 
     if (!reopening) lockScroll();
     writeUrl(push && !reopening);
+    // Assigned through the style object rather than built into the attribute:
+    // esc() turns a quote into &#39;, the HTML parser turns it back before CSS
+    // reads it, and the value escapes the url() — six declarations instead of
+    // one, including position:fixed over the whole page.
+    const back = drawer.querySelector(".d-back");
+    if (back) back.style.backgroundImage = `url("${safeUrl(m.art)}")`;
+
     drawer.classList.add("open");
     drawer.setAttribute("aria-hidden", "false");
     scrim.classList.add("open");
@@ -1481,8 +1651,15 @@
       hero.dataset.playing = "1";
       hero.innerHTML = `<iframe src="https://archive.org/embed/${encodeURIComponent(m.ia)}" ` +
         `title="${esc(m.title)}" allow="fullscreen" allowfullscreen frameborder="0" ` +
-        `referrerpolicy="no-referrer"></iframe>`;
+        `referrerpolicy="no-referrer" ` +
+        `sandbox="allow-scripts allow-same-origin allow-fullscreen allow-presentation"></iframe>`;
     };
+    for (const t of drawer.querySelectorAll(".rel[data-rel]")) {
+      t.onclick = () => {
+        const next = ALL.find((x) => x.id === t.dataset.rel);
+        if (next) { drawer.scrollTop = 0; openDrawer(next); }
+      };
+    }
     $("dPlay")?.addEventListener("click", startPlaying);
     $("dWatch")?.addEventListener("click", startPlaying);
     // A director is a filter — precise, and it survives in the URL. Cast has
@@ -1492,6 +1669,17 @@
         const known = [...$("director").options].some((o) => o.value === t.dataset.dir);
         if (known) { state.director = t.dataset.dir; state.q = ""; }
         else { state.q = t.dataset.dir; }   // only one film: search still finds it
+        syncControls();
+        closeDrawer();
+        apply(true);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      };
+    }
+    for (const t of drawer.querySelectorAll(".tag[data-cast]")) {
+      t.onclick = () => {
+        const known = [...$("actor").options].some((o) => o.value === t.dataset.cast);
+        if (known) { state.actor = t.dataset.cast; state.q = ""; }
+        else { state.q = t.dataset.cast; }   // a single credit: search still finds it
         syncControls();
         closeDrawer();
         apply(true);
@@ -1531,7 +1719,7 @@
     drawer.setAttribute("aria-hidden", "true");
     scrim.classList.remove("open");
     unlockScroll();
-    lastFocus?.focus();
+    restoreFocus();
   }
 
   scrim.onclick = () => closeDrawer({ back: true });
@@ -1604,7 +1792,7 @@
     $("q").focus();
   };
 
-  for (const [id, key] of [["decade", "decade"], ["director", "director"], ["sort", "sort"]]) {
+  for (const [id, key] of [["decade", "decade"], ["director", "director"], ["actor", "actor"], ["sort", "sort"]]) {
     $(id).addEventListener("change", (e) => {
       state[key] = e.target.value;
       // A fresh shuffle each time Random is chosen, else it repeats.
@@ -1669,7 +1857,7 @@
 
   function resetAll() {
     Object.assign(state, { q: "", genres: new Set(), decade: "", rating: "",
-      director: "", rtMin: 0, rtMax: RT_MAX, hasArt: false, canWatch: false });
+      director: "", actor: "", rtMin: 0, rtMax: RT_MAX, hasArt: false, canWatch: false });
     syncControls();
     apply(true);
   }
@@ -1732,6 +1920,15 @@
       for (const m of ALL) for (const d of m.director || []) dirCount[d] = (dirCount[d] || 0) + 1;
       const browsable = Object.entries(dirCount).filter(([, n]) => n > 1)
         .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      // Same rule as directors: a name with one film is not a thing to browse,
+      // and 146 of these appear in more than one.
+      const castCount = {};
+      for (const m of ALL) for (const c of m.cast || []) castCount[c] = (castCount[c] || 0) + 1;
+      $("actor").insertAdjacentHTML("beforeend",
+        Object.entries(castCount).filter(([, n]) => n > 1)
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .map(([c, n]) => `<option value="${esc(c)}">${esc(c)} (${n})</option>`).join(""));
+
       $("director").insertAdjacentHTML("beforeend",
         browsable.map(([d, n]) => `<option value="${esc(d)}">${esc(d)} (${n})</option>`).join(""));
       // URL first so a shared link always wins; saved preferences only fill in
@@ -1764,12 +1961,16 @@
         `<a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>; ` +
         `the rest get a drawn poster. Titles are matched by name alone, so a few posters and years will belong to the wrong film.`;
 
+      // Read this before writeUrl: with no film open yet, writeUrl drops the
+      // film param, so reading afterwards always found nothing and a shared
+      // link never opened its film on a real page load.
+      const startId = new URLSearchParams(location.hash.replace(/^#/, "")).get("film");
+      const startFilm = startId && ALL.find((m) => m.id === startId);
+
       syncControls();
       render();
       writeUrl(false);
 
-      const startId = new URLSearchParams(location.hash.replace(/^#/, "")).get("film");
-      const startFilm = startId && ALL.find((m) => m.id === startId);
       if (startFilm) openDrawer(startFilm, { push: false });
     })
     .catch((err) => {
