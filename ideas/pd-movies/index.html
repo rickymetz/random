@@ -417,7 +417,7 @@
     background: rgb(0 0 0 / .72);
     font: 10px var(--mono);
     color: var(--accent);
-    letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
   }
   .meta { min-width: 0; }
   .meta .name {
@@ -464,7 +464,7 @@
   .grid.list .meta .name { -webkit-line-clamp: 1; font-size: 14px; }
   .grid.list .meta .sub { margin: 0; }
   .grid.list .lgenre { font: 11px var(--mono); color: var(--muted); }
-  .grid.list .lrating { font: 11px var(--mono); color: var(--accent); letter-spacing: 1px; }
+  .grid.list .lrating { font: 11px var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
   @media (max-width: 640px) {
     .grid.list .meta { grid-template-columns: 1fr auto; }
     .grid.list .lgenre { display: none; }
@@ -554,7 +554,9 @@
     color: var(--muted);
     font-variant-numeric: tabular-nums;
   }
-  .d-stars { color: var(--accent); letter-spacing: 2px; }
+  .d-stars { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .d-of { color: var(--dim); font-size: 11px; }
+  .stars.site, .lrating.site, .d-stars.site { color: var(--muted); letter-spacing: 1px; }
   .d-table {
     margin: 18px 0 0;
     display: grid;
@@ -719,11 +721,12 @@
       <label for="minRating">Rating</label>
       <select id="minRating">
         <option value="">Any</option>
-        <option value="5">★★★★★</option>
-        <option value="4">★★★★ &amp; up</option>
-        <option value="3">★★★ &amp; up</option>
-        <option value="2">★★ &amp; up</option>
+        <option value="7">7 &amp; up</option>
+        <option value="6">6 &amp; up</option>
+        <option value="5">5 &amp; up</option>
+        <option value="4">4 &amp; up</option>
         <option value="rated">Rated, any score</option>
+        <option value="site">Site stars only</option>
         <option value="unrated">Unrated</option>
       </select>
     </div>
@@ -810,7 +813,17 @@
     for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
     return Math.abs(h);
   }
+  // Ratings arrive on a 0-10 scale from IMDb or TMDB; the source site's own
+  // 1-5 star is doubled onto the same scale so one control can sort them all.
+  const fmtScore = (n) => (Number.isInteger(n) ? n + ".0" : String(n));
   const stars = (n) => "★".repeat(n);
+  const SCORE_SRC = { imdb: "IMDb", tmdb: "TMDB" };
+  // Two scales, never merged: a 0-10 rating from IMDb/TMDB, or the source
+  // site's 1-5 star. The star is dimmer so the difference is visible at a
+  // glance rather than implied.
+  const badge = (m) => m.score
+    ? `<span class="stars">${fmtScore(m.score)}</span>`
+    : (m.rating ? `<span class="stars site">${stars(m.rating)}</span>` : "");
 
   function posterHTML(m) {
     const h = hash(m.title) % 360;
@@ -829,7 +842,7 @@
       gen.replace('class="gen"', `class="gen"${genHidden}`) +
       img +
       (m.year ? `<span class="badge">${m.year}</span>` : "") +
-      (m.rating ? `<span class="stars">${stars(m.rating)}</span>` : "") +
+      badge(m) +
     `</div>`;
   }
 
@@ -851,7 +864,7 @@
         `<span class="sub">${esc(sub)}</span>` +
         (state.view === "list"
           ? `<span class="lgenre">${esc(genreNames(m))}</span>` +
-            `<span class="lrating">${m.rating ? stars(m.rating) : ""}</span>`
+            `<span class="lrating${m.score ? "" : " site"}">${m.score ? fmtScore(m.score) : (m.rating ? stars(m.rating) : "")}</span>`
           : "") +
       `</span>` +
     `</button>`;
@@ -872,9 +885,10 @@
     }
     if (state.format && !(m.formats || []).includes(state.format)) return false;
     if (state.hasArt && !m.art) return false;
-    if (state.rating === "unrated") { if (m.rating) return false; }
-    else if (state.rating === "rated") { if (!m.rating) return false; }
-    else if (state.rating && (m.rating || 0) < +state.rating) return false;
+    if (state.rating === "unrated") { if (m.score || m.rating) return false; }
+    else if (state.rating === "rated") { if (!m.score && !m.rating) return false; }
+    else if (state.rating === "site") { if (m.score || !m.rating) return false; }
+    else if (state.rating && (m.score || 0) < +state.rating) return false;
     return true;
   }
 
@@ -883,7 +897,14 @@
     "-title": (a, b) => b.sort.localeCompare(a.sort),
     year: (a, b) => (a.year ?? 9999) - (b.year ?? 9999) || a.sort.localeCompare(b.sort),
     "-year": (a, b) => (b.year ?? -1) - (a.year ?? -1) || a.sort.localeCompare(b.sort),
-    "-rating": (a, b) => (b.rating ?? -1) - (a.rating ?? -1) || a.sort.localeCompare(b.sort),
+    // Tiered, because the two scales are not comparable: everything with a
+    // real rating first, then films carrying only a site star, then the rest.
+    "-rating": (a, b) => {
+      const tier = (m) => (m.score ? 0 : m.rating ? 1 : 2);
+      return tier(a) - tier(b)
+        || (b.score ?? b.rating ?? 0) - (a.score ?? a.rating ?? 0)
+        || a.sort.localeCompare(b.sort);
+    },
     genre: (a, b) => (a.genres[0] || "~").localeCompare(b.genres[0] || "~") || a.sort.localeCompare(b.sort),
     // Seeded, so the order is stable across re-renders and reproduces from a
     // shared link rather than reshuffling under the reader.
@@ -1057,12 +1078,22 @@
       `<div class="d-body">` +
         `<h2 id="dTitle">${esc(m.title)}</h2>` +
         `<div class="d-line">${m.year || "Year unknown"}` +
-          (m.rating ? ` · <span class="d-stars">${stars(m.rating)}</span>` : "") +
+          (m.score
+            ? ` · <span class="d-stars">${fmtScore(m.score)}</span><span class="d-of">/10</span>`
+            : m.rating ? ` · <span class="d-stars site">${stars(m.rating)}</span>` : "") +
         `</div>` +
         `<dl class="d-table">` +
           `<dt>Genre</dt><dd>${m.genres.length
             ? m.genres.map((g) => `<button class="tag" data-g="${esc(g)}">${esc(GENRE_LABELS[g] || g)}</button>`).join("")
             : "<span class='d-line'>—</span>"}</dd>` +
+          (m.score
+            ? `<dt>Rating</dt><dd>${fmtScore(m.score)} / 10` +
+              (m.votes ? ` <span class="d-line">from ${m.votes.toLocaleString()} votes</span>` : "") +
+              `<br><span class="d-line">${esc(SCORE_SRC[m.scoreSrc] || "")}</span></dd>`
+            : m.rating
+              ? `<dt>Rating</dt><dd><span class="site">${stars(m.rating)}</span>` +
+                `<br><span class="d-line">Public Domain Torrents users — not comparable to a 10-point score</span></dd>`
+              : "") +
           `<dt>Formats</dt><dd>${fmt.length
             ? fmt.map((f) => `<span class="tag static">${esc(f)}</span>`).join("")
             : "<span class='d-line'>Download only</span>"}</dd>` +
@@ -1254,9 +1285,11 @@
       $("format").insertAdjacentHTML("beforeend",
         [...formats].sort().map((f) => `<option value="${f}">${f}</option>`).join(""));
 
-      const rated = ALL.filter((m) => m.rating).length;
+      const rated = ALL.filter((m) => m.score || m.rating).length;
+      const siteOnly = ALL.filter((m) => !m.score && m.rating).length;
       for (const o of $("minRating").options) {
         if (o.value === "rated") o.textContent = `Rated, any score (${rated})`;
+        if (o.value === "site") o.textContent = `Site stars only (${siteOnly})`;
         if (o.value === "unrated") o.textContent = `Unrated (${ALL.length - rated})`;
       }
 

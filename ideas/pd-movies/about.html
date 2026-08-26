@@ -237,6 +237,24 @@
     file there carries its own licence and its own credit, on its own page.</p>
   </div>
 
+  <h2>Ratings</h2>
+
+  <p>The catalogue carries its own star ratings, but only for about half the
+  films, and three quarters of those sit at four or five stars. Not much to sort
+  by. So ratings come from IMDb where a film can be matched.</p>
+
+  <div class="card">
+    <h3><a href="https://www.imdb.com" target="_blank" rel="noopener noreferrer">IMDb</a><span class="role">Ratings</span></h3>
+    <p>Information courtesy of
+    <a href="https://www.imdb.com" target="_blank" rel="noopener noreferrer">IMDb</a>.
+    Used with permission. Ratings come from their public data export, matched by
+    the IMDb ID that Wikidata holds for each film.</p>
+    <p>Where no rating exists, the catalogue's own star stands in. The two are
+    never mixed: a rating out of ten and a five-star vote from one small site
+    measure different things, so they are shown on their own scales and the
+    ten-point ratings sort first.</p>
+  </div>
+
   <h2>By the numbers</h2>
 
   <table id="stats">
@@ -245,6 +263,7 @@
       <tr><td>Title</td><td>Public Domain Torrents</td><td id="s-total">—</td></tr>
       <tr><td>Genre</td><td>Public Domain Torrents</td><td id="s-genre">—</td></tr>
       <tr><td>Format</td><td>Public Domain Torrents</td><td id="s-format">—</td></tr>
+      <tr><td>Rating, out of ten</td><td>IMDb</td><td id="s-score">—</td></tr>
       <tr><td>Star rating</td><td>Public Domain Torrents</td><td id="s-rating">—</td></tr>
       <tr><td>Year</td><td>Wikidata, TheTVDB</td><td id="s-year">—</td></tr>
       <tr><td>Poster art</td><td>TheTVDB, fanart.tv, Commons</td><td id="s-art">—</td></tr>
@@ -300,6 +319,7 @@
   <ul>
     <li><strong>Film data</strong> — <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>
       or <a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer">Wikidata</a></li>
+    <li><strong>Ratings</strong> — <a href="https://www.imdb.com" target="_blank" rel="noopener noreferrer">IMDb</a></li>
     <li><strong>Artwork</strong> — <a href="https://fanart.tv" target="_blank" rel="noopener noreferrer">fanart.tv</a></li>
     <li><strong>The catalogue</strong> — <a href="https://www.publicdomaintorrents.info/" target="_blank" rel="noopener noreferrer">Public Domain Torrents</a></li>
   </ul>
@@ -327,6 +347,7 @@
       set("s-total", `${n}`);
       set("s-genre", pct(count((m) => (m.genres || []).length)));
       set("s-format", pct(count((m) => (m.formats || []).length)));
+      set("s-score", pct(count((m) => m.score)));
       set("s-rating", pct(count((m) => m.rating)));
       set("s-year", pct(count((m) => m.year)));
       set("s-art", pct(count((m) => m.art)));
