@@ -605,16 +605,79 @@ async function archive(movies) {
   return movies;
 }
 
+
+// ------------------------------------------------- 7. director and cast
+// The entity fetch already carries P57 and P161; they were simply thrown away.
+// Reading them back costs one label lookup per person and gives the catalogue a
+// dimension it had none of — who made the film.
+async function credits(movies) {
+  const WD = "https://www.wikidata.org/w/api.php";
+
+  // Rebuild the entity map from the cached batches rather than refetching.
+  const ents = {};
+  for (const f of fs.readdirSync(cacheDir)) {
+    if (!f.startsWith("wd-e-")) continue;
+    try { Object.assign(ents, JSON.parse(fs.readFileSync(path.join(cacheDir, f), "utf8")).entities || {}); } catch {}
+  }
+
+  const people = new Set();
+  const want = new Map();
+  for (const mv of movies) {
+    const c = mv.wd && ents[mv.wd]?.claims;
+    if (!c) continue;
+    const ids = (p, n) => (c[p] || []).map((x) => x.mainsnak?.datavalue?.value?.id).filter(Boolean).slice(0, n);
+    const dirs = ids("P57", 2), cast = ids("P161", 3);
+    if (!dirs.length && !cast.length) continue;
+    want.set(mv.id, { dirs, cast });
+    [...dirs, ...cast].forEach((q) => people.add(q));
+  }
+  console.log(`  ${want.size} films name a director or cast; ${people.size} people to resolve`);
+
+  const names = {};
+  const list = [...people];
+  for (let i = 0; i < list.length; i += 50) {
+    const batch = list.slice(i, i + 50);
+    if (i % 500 === 0) console.log(`  names ${i}/${list.length}`);
+    const body = await get(
+      `${WD}?action=wbgetentities&format=json&props=labels&languages=en&ids=${batch.join("|")}`,
+      `wd-p-${batchKey(batch)}.json`, 300);
+    if (!body) continue;
+    try {
+      for (const [q, e] of Object.entries(JSON.parse(body).entities || {})) {
+        const n = e.labels?.en?.value;
+        if (n) names[q] = n;
+      }
+    } catch {}
+  }
+
+  let withDir = 0, withCast = 0;
+  for (const mv of movies) {
+    const w = want.get(mv.id);
+    if (!w) continue;
+    const d = w.dirs.map((q) => names[q]).filter(Boolean);
+    const c = w.cast.map((q) => names[q]).filter(Boolean);
+    if (d.length) { mv.director = d; withDir++; }
+    if (c.length) { mv.cast = c; withCast++; }
+  }
+  console.log(`  ${withDir} films with a director, ${withCast} with cast`);
+  return movies;
+}
+
 // ------------------------------------------------------------------- driver
 // Phases are separable: the PDT scrape is slow and key-free, the art pass
 // needs API keys. `--only pdt` / `--only art` run one at a time.
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : "all";
 const RATINGS_ONLY = only === "ratings";
 const ARCHIVE_ONLY = only === "archive";
+const CREDITS_ONLY = only === "credits";
 const stageFile = path.join(cacheDir, "stage-pdt.json");
 
 let movies;
-if (only === "archive") {
+if (only === "credits") {
+  movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
+  console.log(`loaded ${movies.length} movies from data.json`);
+  movies = await credits(movies);
+} else if (only === "archive") {
   movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
   console.log(`loaded ${movies.length} movies from data.json`);
   movies = await archive(movies);
@@ -636,7 +699,7 @@ if (only === "archive") {
   console.log(`   staged -> ${stageFile}`);
 }
 
-if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY) {
+if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY && !CREDITS_ONLY) {
   console.log("3. wikidata (year, ids, fallback art)");
   movies = await enrich(movies);
   console.log("4. poster art (tvdb / fanart.tv, if keys present)");
@@ -645,6 +708,8 @@ if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY) {
   movies = await ratings(movies);
   console.log("6. archive.org (watch links and fallback posters)");
   movies = await archive(movies);
+  console.log("7. director and cast");
+  movies = await credits(movies);
 }
 
 for (const mv of movies) { delete mv._cands; mv.sort = sortTitle(mv.title); }

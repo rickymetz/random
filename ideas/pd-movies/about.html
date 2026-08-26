@@ -286,6 +286,8 @@
       <tr><td>Year</td><td>Wikidata, TheTVDB</td><td id="s-year">—</td></tr>
       <tr><td>Poster art</td><td>TheTVDB, fanart.tv, Commons, Archive</td><td id="s-art">—</td></tr>
       <tr><td>Watch link</td><td>Internet Archive</td><td id="s-watch">—</td></tr>
+      <tr><td>Director</td><td>Wikidata</td><td id="s-dir">—</td></tr>
+      <tr><td>Cast</td><td>Wikidata</td><td id="s-cast">—</td></tr>
     </tbody>
   </table>
   <p id="art-split" class="note"></p>
@@ -372,6 +374,8 @@
       set("s-year", pct(count((m) => m.year)));
       set("s-art", pct(count((m) => m.art)));
       set("s-watch", pct(count((m) => m.ia)));
+      set("s-dir", pct(count((m) => m.director?.length)));
+      set("s-cast", pct(count((m) => m.cast?.length)));
 
       const by = {};
       for (const m of mv) if (m.art) by[m.artSrc] = (by[m.artSrc] || 0) + 1;
