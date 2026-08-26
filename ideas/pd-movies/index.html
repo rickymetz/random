@@ -783,6 +783,10 @@
       </select>
     </div>
     <div class="field">
+      <label for="director">Director</label>
+      <select id="director"><option value="">Any</option></select>
+    </div>
+    <div class="field">
       <label for="length">Length</label>
       <select id="length">
         <option value="">Any</option>
@@ -871,7 +875,7 @@
 
   let ALL = [];
   const state = {
-    q: "", genres: new Set(), decade: "", format: "", rating: "", length: "",
+    q: "", genres: new Set(), decade: "", format: "", rating: "", length: "", director: "",
     hasArt: false, canWatch: false,
     sort: "-rating", view: "grid", seed: 1,
   };
@@ -994,6 +998,7 @@
     if (state.format && !(m.formats || []).includes(state.format)) return false;
     if (state.hasArt && (!m.art || m.artBroken)) return false;
     if (state.canWatch && !m.ia) return false;
+    if (state.director && !(m.director || []).includes(state.director)) return false;
     if (state.length) {
       if (!m.runtime) return false;
       if (state.length === "short" && m.runtime >= 40) return false;
@@ -1058,7 +1063,7 @@
 
   const isFiltered = () =>
     state.q || state.genres.size || state.decade || state.format || state.rating ||
-    state.length || state.hasArt || state.canWatch;
+    state.length || state.director || state.hasArt || state.canWatch;
 
   // --------------------------------------------------- URL and preferences
   // The URL is the source of truth so a filtered view can be shared or
@@ -1073,6 +1078,7 @@
     if (state.format) p.set("f", state.format);
     if (state.rating) p.set("r", state.rating);
     if (state.length) p.set("len", state.length);
+    if (state.director) p.set("dir", state.director);
     if (state.hasArt) p.set("art", "1");
     if (state.canWatch) p.set("watch", "1");
     if (state.sort !== DEFAULT_SORT) p.set("sort", state.sort);
@@ -1094,6 +1100,7 @@
     state.format = p.get("f") || "";
     state.rating = p.get("r") || "";
     state.length = p.get("len") || "";
+    state.director = p.get("dir") || "";
     state.hasArt = p.get("art") === "1";
     state.canWatch = p.get("watch") === "1";
     state.sort = SORTS[p.get("sort")] ? p.get("sort") : DEFAULT_SORT;
@@ -1109,7 +1116,7 @@
       localStorage.setItem(PREFS, JSON.stringify({
         view: state.view, sort: state.sort,
         genres: [...state.genres], decade: state.decade,
-        format: state.format, rating: state.rating, length: state.length,
+        format: state.format, rating: state.rating, length: state.length, director: state.director,
         hasArt: state.hasArt, canWatch: state.canWatch,
       }));
     } catch {}
@@ -1126,6 +1133,7 @@
       state.format = v.format || "";
       state.rating = v.rating || "";
       state.length = v.length || "";
+      state.director = v.director || "";
       state.hasArt = Boolean(v.hasArt);
       state.canWatch = Boolean(v.canWatch);
     } catch {}
@@ -1139,6 +1147,7 @@
     $("format").value = state.format;
     $("minRating").value = state.rating;
     $("length").value = state.length;
+    $("director").value = state.director;
     $("hasArt").checked = state.hasArt;
     $("canWatch").checked = state.canWatch;
     $("sort").value = state.sort;
@@ -1234,7 +1243,7 @@
               : "") +
           (m.director?.length
             ? `<dt>Director</dt><dd>${m.director
-                .map((d) => `<button class="tag" data-who="${esc(d)}">${esc(d)}</button>`).join("")}</dd>`
+                .map((d) => `<button class="tag" data-dir="${esc(d)}">${esc(d)}</button>`).join("")}</dd>`
             : "") +
           (m.cast?.length
             ? `<dt>Cast</dt><dd>${m.cast
@@ -1287,6 +1296,19 @@
     };
     $("dPlay")?.addEventListener("click", startPlaying);
     $("dWatch")?.addEventListener("click", startPlaying);
+    // A director is a filter — precise, and it survives in the URL. Cast has
+    // no control of its own, so those stay a search.
+    for (const t of drawer.querySelectorAll(".tag[data-dir]")) {
+      t.onclick = () => {
+        const known = [...$("director").options].some((o) => o.value === t.dataset.dir);
+        if (known) { state.director = t.dataset.dir; state.q = ""; }
+        else { state.q = t.dataset.dir; }   // only one film: search still finds it
+        syncControls();
+        closeDrawer();
+        apply(true);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      };
+    }
     for (const t of drawer.querySelectorAll(".tag[data-who]")) {
       t.onclick = () => {
         state.q = t.dataset.who;
@@ -1393,7 +1415,7 @@
     $("q").focus();
   };
 
-  for (const [id, key] of [["decade", "decade"], ["format", "format"], ["length", "length"], ["sort", "sort"]]) {
+  for (const [id, key] of [["decade", "decade"], ["format", "format"], ["length", "length"], ["director", "director"], ["sort", "sort"]]) {
     $(id).addEventListener("change", (e) => {
       state[key] = e.target.value;
       // A fresh shuffle each time Random is chosen, else it repeats.
@@ -1407,7 +1429,7 @@
 
   function resetAll() {
     Object.assign(state, { q: "", genres: new Set(), decade: "", format: "", rating: "",
-      length: "", hasArt: false, canWatch: false });
+      length: "", director: "", hasArt: false, canWatch: false });
     syncControls();
     apply(true);
   }
@@ -1462,6 +1484,16 @@
         if (m.year) decades.add(m.year < 1930 ? 1900 : Math.floor(m.year / 10) * 10);
       }
       buildChips(counts);
+
+      // A list of 439 names is not a browsable thing; the 93 with more than
+      // one film here are. Ordered by how much of the catalogue they account
+      // for, since that is what makes one worth opening.
+      const dirCount = {};
+      for (const m of ALL) for (const d of m.director || []) dirCount[d] = (dirCount[d] || 0) + 1;
+      const browsable = Object.entries(dirCount).filter(([, n]) => n > 1)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      $("director").insertAdjacentHTML("beforeend",
+        browsable.map(([d, n]) => `<option value="${esc(d)}">${esc(d)} (${n})</option>`).join(""));
       // URL first so a shared link always wins; saved preferences only fill in
       // a bare visit.
       if (!readUrl()) loadPrefs();
