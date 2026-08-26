@@ -54,8 +54,8 @@
   }
   .brand {
     display: flex;
-    align-items: baseline;
-    gap: 10px;
+    align-items: center;
+    gap: 9px;
     min-width: 0;
   }
   .brand h1 {
@@ -66,12 +66,18 @@
     white-space: nowrap;
   }
   .home {
-    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+    margin-left: -5px;
+    padding: 5px 6px;
+    border-radius: var(--radius);
     color: var(--muted);
     text-decoration: none;
-    white-space: nowrap;
   }
-  .home:hover { color: var(--ink); }
+  .home:hover { color: var(--ink); background: var(--panel); }
+  .home:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   .search {
     position: relative;
@@ -534,8 +540,16 @@
 <header>
   <div class="bar">
     <div class="brand">
+      <a class="home" href="../../" aria-label="Back to random" title="Back to random">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M10 3L5 8l5 5"/>
+        </svg>
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2.5 7.2L8 2.5l5.5 4.7"/>
+          <path d="M3.8 8.3V13h8.4V8.3"/>
+        </svg>
+      </a>
       <h1>Public Domain Movies</h1>
-      <a class="home" href="../../">← random</a>
     </div>
     <div class="search" id="searchWrap">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
@@ -565,11 +579,13 @@
     <div class="field">
       <label for="minRating">Rating</label>
       <select id="minRating">
-        <option value="0">Any</option>
+        <option value="">Any</option>
         <option value="5">★★★★★</option>
         <option value="4">★★★★ &amp; up</option>
         <option value="3">★★★ &amp; up</option>
         <option value="2">★★ &amp; up</option>
+        <option value="rated">Rated, any score</option>
+        <option value="unrated">Unrated</option>
       </select>
     </div>
     <div class="field">
@@ -631,7 +647,7 @@
 
   let ALL = [];
   const state = {
-    q: "", genres: new Set(), decade: "", format: "", minRating: 0,
+    q: "", genres: new Set(), decade: "", format: "", rating: "",
     sort: "title", view: "grid",
   };
 
@@ -702,7 +718,9 @@
       else if (m.year < d || m.year > d + 9) return false;
     }
     if (state.format && !(m.formats || []).includes(state.format)) return false;
-    if (state.minRating && (m.rating || 0) < state.minRating) return false;
+    if (state.rating === "unrated") { if (m.rating) return false; }
+    else if (state.rating === "rated") { if (!m.rating) return false; }
+    else if (state.rating && (m.rating || 0) < +state.rating) return false;
     return true;
   }
 
@@ -739,7 +757,7 @@
   }
 
   const isFiltered = () =>
-    state.q || state.genres.size || state.decade || state.format || state.minRating;
+    state.q || state.genres.size || state.decade || state.format || state.rating;
 
   // Chip counts reflect every filter *except* genre, so they read as
   // "what would this chip add", not "what is already selected".
@@ -878,13 +896,13 @@
   for (const [id, key] of [["decade", "decade"], ["format", "format"], ["sort", "sort"]]) {
     $(id).addEventListener("change", (e) => { state[key] = e.target.value; render(); });
   }
-  $("minRating").addEventListener("change", (e) => { state.minRating = +e.target.value; render(); });
+  $("minRating").addEventListener("change", (e) => { state.rating = e.target.value; render(); });
 
   function resetAll() {
-    Object.assign(state, { q: "", genres: new Set(), decade: "", format: "", minRating: 0 });
+    Object.assign(state, { q: "", genres: new Set(), decade: "", format: "", rating: "" });
     $("q").value = "";
     $("searchWrap").classList.remove("has-value");
-    $("decade").value = ""; $("format").value = ""; $("minRating").value = "0";
+    $("decade").value = ""; $("format").value = ""; $("minRating").value = "";
     syncChips();
     render();
   }
@@ -928,6 +946,12 @@
           .map((d) => `<option value="${d}">${d === 1900 ? "Before 1930" : d + "s"}</option>`).join(""));
       $("format").insertAdjacentHTML("beforeend",
         [...formats].sort().map((f) => `<option value="${f}">${f}</option>`).join(""));
+
+      const rated = ALL.filter((m) => m.rating).length;
+      for (const o of $("minRating").options) {
+        if (o.value === "rated") o.textContent = `Rated, any score (${rated})`;
+        if (o.value === "unrated") o.textContent = `Unrated (${ALL.length - rated})`;
+      }
 
       const withArt = ALL.filter((m) => m.art).length;
       const withYear = ALL.filter((m) => m.year).length;
