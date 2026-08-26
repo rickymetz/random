@@ -1,4 +1,4 @@
-# Public Domain Movies
+# PDM Browser
 
 A Plex-style browser over the ~980 films catalogued at
 [publicdomaintorrents.info](https://www.publicdomaintorrents.info/nshowcat.html?category=ALL).
