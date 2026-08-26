@@ -554,6 +554,33 @@
     border-bottom: 1px solid var(--line);
   }
   .d-hero .poster { border-radius: 0; box-shadow: none; height: 100%; aspect-ratio: auto; }
+  .d-hero iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+    background: #000;
+  }
+  .d-hero[data-playing] { aspect-ratio: 16 / 9; max-height: none; }
+  /* Sits over the poster so the whole hero reads as "this one plays". */
+  .play-over {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgb(0 0 0 / .34);
+    border: 0;
+    color: #fff;
+    cursor: pointer;
+    transition: background .14s;
+  }
+  .play-over:hover { background: rgb(0 0 0 / .5); }
+  .play-over svg {
+    filter: drop-shadow(0 2px 6px rgb(0 0 0 / .6));
+    translate: 2px 0;
+  }
+  .play-over:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
   .d-body { padding: 18px 20px calc(32px + env(safe-area-inset-bottom)); }
   .d-body h2 {
     margin: 0 0 6px;
@@ -747,6 +774,15 @@
       </select>
     </div>
     <div class="field">
+      <label for="length">Length</label>
+      <select id="length">
+        <option value="">Any</option>
+        <option value="short">Short, under 40m</option>
+        <option value="feature">Feature, 40–90m</option>
+        <option value="long">Long, over 90m</option>
+      </select>
+    </div>
+    <div class="field">
       <label for="sort">Sort</label>
       <select id="sort">
         <option value="title">Title A–Z</option>
@@ -826,7 +862,8 @@
 
   let ALL = [];
   const state = {
-    q: "", genres: new Set(), decade: "", format: "", rating: "", hasArt: false, canWatch: false,
+    q: "", genres: new Set(), decade: "", format: "", rating: "", length: "",
+    hasArt: false, canWatch: false,
     sort: "-rating", view: "grid", seed: 1,
   };
   let currentFilm = null;   // film shown in the drawer, for arrow-key paging
@@ -913,7 +950,8 @@
   function cardHTML(m, i) {
     const sub = state.view === "list"
       ? (m.year || "—")
-      : [m.year, genreNames(m).split(",")[0]].filter(Boolean).join(" · ");
+      : [m.year, genreNames(m).split(",")[0], m.runtime ? m.runtime + "m" : null]
+          .filter(Boolean).join(" · ");
     return `<button class="card" data-i="${i}">` +
       posterHTML(m) +
       `<span class="meta">` +
@@ -947,6 +985,12 @@
     if (state.format && !(m.formats || []).includes(state.format)) return false;
     if (state.hasArt && (!m.art || m.artBroken)) return false;
     if (state.canWatch && !m.ia) return false;
+    if (state.length) {
+      if (!m.runtime) return false;
+      if (state.length === "short" && m.runtime >= 40) return false;
+      if (state.length === "feature" && (m.runtime < 40 || m.runtime > 90)) return false;
+      if (state.length === "long" && m.runtime <= 90) return false;
+    }
     if (state.rating === "unrated") { if (m.score || m.rating) return false; }
     else if (state.rating === "rated") { if (!m.score && !m.rating) return false; }
     else if (state.rating === "site") { if (m.score || !m.rating) return false; }
@@ -1005,7 +1049,7 @@
 
   const isFiltered = () =>
     state.q || state.genres.size || state.decade || state.format || state.rating ||
-    state.hasArt || state.canWatch;
+    state.length || state.hasArt || state.canWatch;
 
   // --------------------------------------------------- URL and preferences
   // The URL is the source of truth so a filtered view can be shared or
@@ -1019,6 +1063,7 @@
     if (state.decade) p.set("d", state.decade);
     if (state.format) p.set("f", state.format);
     if (state.rating) p.set("r", state.rating);
+    if (state.length) p.set("len", state.length);
     if (state.hasArt) p.set("art", "1");
     if (state.canWatch) p.set("watch", "1");
     if (state.sort !== DEFAULT_SORT) p.set("sort", state.sort);
@@ -1039,6 +1084,7 @@
     state.decade = p.get("d") || "";
     state.format = p.get("f") || "";
     state.rating = p.get("r") || "";
+    state.length = p.get("len") || "";
     state.hasArt = p.get("art") === "1";
     state.canWatch = p.get("watch") === "1";
     state.sort = SORTS[p.get("sort")] ? p.get("sort") : DEFAULT_SORT;
@@ -1054,7 +1100,8 @@
       localStorage.setItem(PREFS, JSON.stringify({
         view: state.view, sort: state.sort,
         genres: [...state.genres], decade: state.decade,
-        format: state.format, rating: state.rating, hasArt: state.hasArt, canWatch: state.canWatch,
+        format: state.format, rating: state.rating, length: state.length,
+        hasArt: state.hasArt, canWatch: state.canWatch,
       }));
     } catch {}
   }
@@ -1069,6 +1116,7 @@
       state.decade = v.decade || "";
       state.format = v.format || "";
       state.rating = v.rating || "";
+      state.length = v.length || "";
       state.hasArt = Boolean(v.hasArt);
       state.canWatch = Boolean(v.canWatch);
     } catch {}
@@ -1081,6 +1129,7 @@
     $("decade").value = state.decade;
     $("format").value = state.format;
     $("minRating").value = state.rating;
+    $("length").value = state.length;
     $("hasArt").checked = state.hasArt;
     $("canWatch").checked = state.canWatch;
     $("sort").value = state.sort;
@@ -1115,6 +1164,13 @@
   const drawer = $("drawer"), scrim = $("scrim");
   let lastFocus = null, lockedAt = 0;
 
+  function stopPlayer() {
+    const frame = drawer.querySelector("iframe");
+    if (frame) frame.remove();
+    const hero = drawer.querySelector(".d-hero");
+    if (hero) delete hero.dataset.playing;
+  }
+
   // Fixing the body is the one reliable way to stop iOS scrolling the page
   // under an open panel; remember where we were so closing puts it back.
   function lockScroll() {
@@ -1133,6 +1189,7 @@
   }
 
   function openDrawer(m, { push = true } = {}) {
+    stopPlayer();
     const reopening = Boolean(currentFilm);
     currentFilm = m;
     if (!reopening) lastFocus = document.activeElement;
@@ -1141,10 +1198,15 @@
       `<button class="drawer-close" id="dClose" aria-label="Close">` +
         `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>` +
       `</button>` +
-      `<div class="d-hero">${posterHTML(m)}</div>` +
+      `<div class="d-hero" id="dHero">${posterHTML(m)}` +
+        (m.ia ? `<button class="play-over" id="dPlay" aria-label="Play ${esc(m.title)}">` +
+                `<svg width="26" height="26" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.2v9.6l7.5-4.8z"/></svg>` +
+                `</button>` : "") +
+      `</div>` +
       `<div class="d-body">` +
         `<h2 id="dTitle">${esc(m.title)}</h2>` +
         `<div class="d-line">${m.year || "Year unknown"}` +
+          (m.runtime ? ` · ${m.runtime} min` : "") +
           (m.score
             ? ` · <span class="d-stars">${fmtScore(m.score)}</span><span class="d-of">/10</span>`
             : m.rating ? ` · <span class="d-stars site">${stars(m.rating)}</span>` : "") +
@@ -1175,9 +1237,13 @@
         `</dl>` +
         `<div class="d-actions">` +
           (m.ia
-            ? `<a class="btn" href="https://archive.org/details/${encodeURIComponent(m.ia)}" target="_blank" rel="noopener noreferrer">` +
+            ? `<button class="btn" id="dWatch">` +
                 `<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 3.5v9l7-4.5z"/></svg>` +
-                `Watch on Internet Archive` +
+                `Watch here` +
+              `</button>` +
+              `<a class="btn ghost" href="https://archive.org/details/${encodeURIComponent(m.ia)}" target="_blank" rel="noopener noreferrer">` +
+                `Open on Internet Archive` +
+                `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h7v7M13 3L6.5 9.5M11 9v4H3V5h4"/></svg>` +
               `</a>`
             : "") +
           `<a class="btn${m.ia ? " ghost" : ""}" href="${SRC}/nshowmovie.html?movieid=${esc(m.id)}" target="_blank" rel="noopener noreferrer">` +
@@ -1199,6 +1265,19 @@
     $("dClose").focus();
 
     $("dClose").onclick = () => closeDrawer({ back: true });
+
+    // Swap the poster for the Archive's own player. Loaded on demand rather
+    // than with the drawer, so opening a film never pulls a video frame.
+    const startPlaying = () => {
+      const hero = $("dHero");
+      if (!hero || hero.dataset.playing) return;
+      hero.dataset.playing = "1";
+      hero.innerHTML = `<iframe src="https://archive.org/embed/${encodeURIComponent(m.ia)}" ` +
+        `title="${esc(m.title)}" allow="fullscreen" allowfullscreen frameborder="0" ` +
+        `referrerpolicy="no-referrer"></iframe>`;
+    };
+    $("dPlay")?.addEventListener("click", startPlaying);
+    $("dWatch")?.addEventListener("click", startPlaying);
     for (const t of drawer.querySelectorAll(".tag[data-who]")) {
       t.onclick = () => {
         state.q = t.dataset.who;
@@ -1221,6 +1300,10 @@
   }
 
   function closeDrawer({ back = false } = {}) {
+    // Hiding the drawer does not stop the player: the iframe stays in the DOM
+    // and keeps playing out of sight. Tear it down before anything else, so
+    // the sound stops the moment the panel is dismissed.
+    stopPlayer();
     if (back && currentFilm) { currentFilm = null; history.back(); return; }
     currentFilm = null;
     writeUrl(false);
@@ -1301,7 +1384,7 @@
     $("q").focus();
   };
 
-  for (const [id, key] of [["decade", "decade"], ["format", "format"], ["sort", "sort"]]) {
+  for (const [id, key] of [["decade", "decade"], ["format", "format"], ["length", "length"], ["sort", "sort"]]) {
     $(id).addEventListener("change", (e) => {
       state[key] = e.target.value;
       // A fresh shuffle each time Random is chosen, else it repeats.
@@ -1314,7 +1397,8 @@
   $("canWatch").addEventListener("change", (e) => { state.canWatch = e.target.checked; apply(true); });
 
   function resetAll() {
-    Object.assign(state, { q: "", genres: new Set(), decade: "", format: "", rating: "", hasArt: false, canWatch: false });
+    Object.assign(state, { q: "", genres: new Set(), decade: "", format: "", rating: "",
+      length: "", hasArt: false, canWatch: false });
     syncControls();
     apply(true);
   }
