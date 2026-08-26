@@ -387,7 +387,16 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .view-toggle { display: flex; gap: 0; margin-left: auto; }
+  /* Shuffle and the view toggle both change how you look at the list, so they
+     travel together. Loose, a wrap put them on different rows as soon as Clear
+     filters appeared — the same way the checkboxes kept drifting apart. */
+  .view-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .view-toggle { display: flex; gap: 0; }
   .view-toggle button {
     display: grid;
     place-items: center;
@@ -820,8 +829,8 @@
     .field select { flex: 1; min-width: 0; height: 38px; }
     /* Shuffle and the view toggle share the last row; left alone the dice
        took a whole row to itself. */
-    .icon-btn { justify-self: start; width: 44px; height: 38px; }
-    .view-toggle { grid-column: 2; justify-self: end; margin-left: 0; }
+    .view-actions { grid-column: 1 / -1; justify-content: space-between; margin-left: 0; }
+    .icon-btn { width: 44px; height: 38px; }
     .view-toggle button { width: 40px; height: 38px; }
     .reset { grid-column: 1 / -1; justify-self: start; padding: 9px 10px; }
 
@@ -900,14 +909,6 @@
         <option value="random">Random</option>
       </select>
     </div>
-    <button class="icon-btn" id="shuffle" title="Open a random film" aria-label="Open a random film">
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-        <rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/>
-        <circle cx="5.8" cy="5.8" r="1.05" fill="currentColor" stroke="none"/>
-        <circle cx="8" cy="8" r="1.05" fill="currentColor" stroke="none"/>
-        <circle cx="10.2" cy="10.2" r="1.05" fill="currentColor" stroke="none"/>
-      </svg>
-    </button>
     <div class="field range-field">
       <label for="rtMin">Length</label>
       <div class="range" id="rtWrap">
@@ -929,6 +930,15 @@
       </label>
     </div>
     <button class="reset" id="reset" hidden>Clear filters</button>
+    <div class="view-actions">
+    <button class="icon-btn" id="shuffle" title="Open a random film" aria-label="Open a random film">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/>
+        <circle cx="5.8" cy="5.8" r="1.05" fill="currentColor" stroke="none"/>
+        <circle cx="8" cy="8" r="1.05" fill="currentColor" stroke="none"/>
+        <circle cx="10.2" cy="10.2" r="1.05" fill="currentColor" stroke="none"/>
+      </svg>
+    </button>
     <div class="view-toggle">
       <button id="viewGrid" aria-pressed="true" aria-label="Grid view" title="Grid view">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -941,6 +951,7 @@
           <path d="M2 4h12M2 8h12M2 12h12"/>
         </svg>
       </button>
+    </div>
     </div>
   </div>
 </header>
