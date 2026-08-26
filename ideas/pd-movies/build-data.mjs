@@ -393,6 +393,47 @@ async function posters(movies) {
     console.log(`  tvdb: ${got} posters`);
   }
 
+  // Some art URLs 404 — TheTVDB drops artwork it once served. Check them, but
+  // carefully: a whole host can be unreachable from wherever this runs, and
+  // treating that as "every poster is dead" would strip hundreds of working
+  // images. A URL is only dropped when its host answered some other request
+  // successfully, which proves the host itself is up.
+  async function verifyArt() {
+    const targets = movies.filter((m) => m.art);
+    const host = (u) => { try { return new URL(u).hostname; } catch { return "?"; } };
+    const live = new Map(), dead = [];
+    const queue = [...targets];
+    async function worker() {
+      while (queue.length) {
+        const mv = queue.shift();
+        const h = host(mv.art);
+        const key = path.join(cacheDir, `alive-${mv.id}.txt`);
+        let verdict = fs.existsSync(key) ? fs.readFileSync(key, "utf8").trim() : null;
+        if (verdict === null) {
+          try {
+            const r = await fetch(mv.art, { method: "GET", headers: { "User-Agent": UA } });
+            verdict = r.ok ? "ok" : "gone";
+          } catch { verdict = "unreachable"; }
+          fs.writeFileSync(key, verdict);
+        }
+        if (verdict === "ok") live.set(h, (live.get(h) || 0) + 1);
+        else dead.push({ mv, h, verdict });
+      }
+    }
+    await Promise.all(Array.from({ length: 6 }, worker));
+
+    let dropped = 0;
+    const skipped = new Map();
+    for (const { mv, h } of dead) {
+      if (!live.get(h)) { skipped.set(h, (skipped.get(h) || 0) + 1); continue; }
+      delete mv.art; delete mv.artSrc; dropped++;
+    }
+    for (const [h, n] of skipped)
+      console.warn(`  ${h} unreachable right now — left ${n} posters alone rather than guess`);
+    console.log(`  dropped ${dropped} posters whose URL is genuinely gone`);
+  }
+  await verifyArt();
+
   // Belt and braces: any single image standing in for several films is a
   // placeholder by definition, whichever service supplied it.
   const uses = new Map();
