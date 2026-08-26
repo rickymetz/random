@@ -1425,7 +1425,9 @@
             ? ""
             : `<a class="btn ghost" href="https://archive.org/search?query=${encodeURIComponent(m.title)}" target="_blank" rel="noopener noreferrer">Look for it on Internet Archive</a>`) +
         `</div>` +
-        `<p class="d-note">Downloads, synopsis and user comments live on the source site — this page is only a browser over its catalogue.</p>` +
+        `<p class="d-note">${m.ia
+            ? "Plays here from the Internet Archive; nothing is hosted on this page. "
+            : ""}Downloads, synopsis and user comments live on Public Domain Torrents.</p>` +
       `</div>`;
 
     if (!reopening) lockScroll();
