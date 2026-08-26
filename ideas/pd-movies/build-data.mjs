@@ -663,6 +663,82 @@ async function credits(movies) {
   return movies;
 }
 
+
+// ------------------------------------------------ 8. runtime and last posters
+// Archive item metadata carries a "length" field, but it cannot be trusted:
+// The 39 Steps reports 88.34 for an 86 minute film while One Week reports 93.72
+// for a 19 minute one. Wikidata's P2047 is a proper quantity with an explicit
+// unit, so runtime comes from there instead.
+const UNIT_MINUTE = "Q7727";
+const UNIT_SECOND = "Q11574";
+const UNIT_HOUR = "Q25235";
+
+async function extras(movies) {
+  const ents = {};
+  for (const f of fs.readdirSync(cacheDir)) {
+    if (!f.startsWith("wd-e-")) continue;
+    try { Object.assign(ents, JSON.parse(fs.readFileSync(path.join(cacheDir, f), "utf8")).entities || {}); } catch {}
+  }
+
+  let timed = 0;
+  for (const mv of movies) {
+    const d = mv.wd && ents[mv.wd]?.claims?.P2047?.[0]?.mainsnak?.datavalue?.value;
+    if (!d?.amount) continue;
+    const n = Math.abs(parseFloat(d.amount));
+    const unit = String(d.unit || "").split("/").pop();
+    const mins = unit === UNIT_SECOND ? n / 60 : unit === UNIT_HOUR ? n * 60 : n;
+    // A minute or a marathon both mean the value is wrong, not the film.
+    if (!(mins >= 1 && mins <= 500)) continue;
+    mv.runtime = Math.round(mins);
+    timed++;
+  }
+  console.log(`  runtime: ${timed} films`);
+
+  // Last look for artwork. Wikipedia's lead image is a different field from the
+  // Commons image already tried, so it sometimes exists where that one did not.
+  const bare = movies.filter((m) => !m.art && m.wd);
+  console.log(`  ${bare.length} films still have no poster and a Wikidata match`);
+  const titles = new Map();
+  const ids = bare.map((m) => m.wd);
+  for (let i = 0; i < ids.length; i += 50) {
+    const batch = ids.slice(i, i + 50);
+    const body = await get(
+      `https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=sitelinks&sitefilter=enwiki&ids=${batch.join("|")}`,
+      `wd-sl-${batchKey(batch)}.json`, 300);
+    if (!body) continue;
+    try {
+      for (const [q, e] of Object.entries(JSON.parse(body).entities || {})) {
+        const t = e.sitelinks?.enwiki?.title;
+        if (t) titles.set(q, t);
+      }
+    } catch {}
+  }
+
+  let filled = 0;
+  const wanted = bare.filter((m) => titles.has(m.wd));
+  for (let i = 0; i < wanted.length; i += 20) {
+    const chunk = wanted.slice(i, i + 20);
+    const body = await get(
+      "https://en.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages&piprop=original" +
+      "&titles=" + encodeURIComponent(chunk.map((m) => titles.get(m.wd)).join("|")),
+      `wp-img-${batchKey(chunk.map((m) => m.id))}.json`, 300);
+    if (!body) continue;
+    try {
+      const pages = Object.values(JSON.parse(body).query?.pages || {});
+      const byTitle = new Map(pages.map((p) => [p.title, p.original?.source]));
+      for (const mv of chunk) {
+        const src = byTitle.get(titles.get(mv.wd));
+        if (!src) continue;
+        mv.art = src;
+        mv.artSrc = "wikipedia";
+        filled++;
+      }
+    } catch {}
+  }
+  console.log(`  wikipedia lead images: ${filled} posters recovered`);
+  return movies;
+}
+
 // ------------------------------------------------------------------- driver
 // Phases are separable: the PDT scrape is slow and key-free, the art pass
 // needs API keys. `--only pdt` / `--only art` run one at a time.
@@ -670,10 +746,15 @@ const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : "all";
 const RATINGS_ONLY = only === "ratings";
 const ARCHIVE_ONLY = only === "archive";
 const CREDITS_ONLY = only === "credits";
+const EXTRAS_ONLY = only === "extras";
 const stageFile = path.join(cacheDir, "stage-pdt.json");
 
 let movies;
-if (only === "credits") {
+if (only === "extras") {
+  movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
+  console.log(`loaded ${movies.length} movies from data.json`);
+  movies = await extras(movies);
+} else if (only === "credits") {
   movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
   console.log(`loaded ${movies.length} movies from data.json`);
   movies = await credits(movies);
@@ -699,7 +780,7 @@ if (only === "credits") {
   console.log(`   staged -> ${stageFile}`);
 }
 
-if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY && !CREDITS_ONLY) {
+if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY && !CREDITS_ONLY && !EXTRAS_ONLY) {
   console.log("3. wikidata (year, ids, fallback art)");
   movies = await enrich(movies);
   console.log("4. poster art (tvdb / fanart.tv, if keys present)");
@@ -710,6 +791,8 @@ if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY && !CREDITS_ONLY) {
   movies = await archive(movies);
   console.log("7. director and cast");
   movies = await credits(movies);
+  console.log("8. runtime and remaining posters");
+  movies = await extras(movies);
 }
 
 for (const mv of movies) { delete mv._cands; mv.sort = sortTitle(mv.title); }
