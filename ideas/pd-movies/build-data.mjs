@@ -10,6 +10,8 @@
 //      neither). Matching is title-only, so see mismatches.log.
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
+import readline from "node:readline";
 
 const UA = "random-hub/1.0 (+https://github.com/rickymetz/random) static catalog browser, ~1 req/1.5s";
 const PDT = "https://www.publicdomaintorrents.info";
@@ -348,14 +350,116 @@ async function posters(movies) {
   return movies;
 }
 
+
+// ------------------------------------------ 5. ratings (IMDb, then TMDB)
+// The source site's own stars are thin and barely discriminating: 481 of 981
+// films, and three quarters of those are 4 or 5. External ratings replace them
+// where they exist, and the star falls back in only when nothing else does.
+// Everything lands on one 0-10 scale so a single control can sort them.
+const IMDB_DATASET = "https://datasets.imdbws.com/title.ratings.tsv.gz";
+
+// Only the rows matching our films are kept; the dataset itself stays in the
+// cache directory and is never committed.
+async function imdbRatings(wanted, cacheFile) {
+  if (!fs.existsSync(cacheFile)) {
+    console.log("  downloading the IMDb ratings export (~8MB)");
+    const res = await fetch(IMDB_DATASET, { headers: { "User-Agent": UA } });
+    if (!res.ok) { console.warn(`  IMDb dataset failed: HTTP ${res.status}`); return new Map(); }
+    fs.writeFileSync(cacheFile, Buffer.from(await res.arrayBuffer()));
+  }
+  const out = new Map();
+  const rl = readline.createInterface({
+    input: fs.createReadStream(cacheFile).pipe(zlib.createGunzip()),
+    crlfDelay: Infinity,
+  });
+  let first = true;
+  for await (const line of rl) {
+    if (first) { first = false; continue; }
+    const tab = line.indexOf("\t");
+    const id = line.slice(0, tab);
+    if (!wanted.has(id)) continue;
+    const [, avg, votes] = line.split("\t");
+    out.set(id, { score: parseFloat(avg), votes: parseInt(votes, 10) });
+  }
+  return out;
+}
+
+async function tmdbRatings(movies, env) {
+  const key = env.TMDB_API_KEY;
+  if (!key) { console.log("  no TMDB_API_KEY — skipping TMDB"); return new Map(); }
+  // A v4 read token goes in the header; a v3 key goes in the query string.
+  const v4 = key.startsWith("ey");
+  const out = new Map();
+  let i = 0;
+  for (const mv of movies) {
+    if (!mv.tmdb) continue;
+    i++;
+    if (i % 100 === 0) console.log(`  tmdb ${i} (${out.size} hits)`);
+    const url = `https://api.themoviedb.org/3/movie/${encodeURIComponent(mv.tmdb)}` +
+                (v4 ? "" : `?api_key=${key}`);
+    const file = path.join(cacheDir, `tm-${mv.id}.json`);
+    let body = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+    if (body === null) {
+      try {
+        const res = await fetch(url, { headers: v4
+          ? { Authorization: `Bearer ${key}`, "User-Agent": UA }
+          : { "User-Agent": UA } });
+        body = res.ok ? await res.text() : "";
+        fs.writeFileSync(file, body);
+        await sleep(120);
+      } catch { continue; }
+    }
+    if (!body) continue;
+    try {
+      const d = JSON.parse(body);
+      if (d.vote_average > 0 && d.vote_count > 0) {
+        out.set(mv.id, { score: d.vote_average, votes: d.vote_count });
+      }
+    } catch {}
+  }
+  return out;
+}
+
+async function ratings(movies) {
+  const env = loadEnv();
+  const wanted = new Set(movies.map((m) => m.imdb).filter(Boolean));
+  const imdb = await imdbRatings(wanted, path.join(cacheDir, "imdb-ratings.tsv.gz"));
+  console.log(`  imdb: ${imdb.size} of ${wanted.size} ids matched`);
+  const tmdb = await tmdbRatings(movies, env);
+  console.log(`  tmdb: ${tmdb.size} ratings`);
+
+  const tally = { imdb: 0, tmdb: 0, pdt: 0, none: 0 };
+  for (const mv of movies) {
+    const im = mv.imdb && imdb.get(mv.imdb);
+    const tm = tmdb.get(mv.id);
+    // Only a real 0-10 rating becomes a score. Doubling the site's 1-5 star
+    // would put 102 films at a flat 10.0 — a value no film on IMDb actually
+    // reaches — and float them above everything genuinely well regarded. The
+    // star stays a star, on its own scale, and is ranked below real ratings.
+    delete mv.score; delete mv.votes; delete mv.scoreSrc;
+    if (im) { mv.score = +im.score.toFixed(1); mv.votes = im.votes; mv.scoreSrc = "imdb"; tally.imdb++; }
+    else if (tm) { mv.score = +tm.score.toFixed(1); mv.votes = tm.votes; mv.scoreSrc = "tmdb"; tally.tmdb++; }
+    else if (mv.rating) tally.pdt++;
+    else tally.none++;
+  }
+  console.log(`  scores: ${tally.imdb} imdb, ${tally.tmdb} tmdb; ${tally.pdt} left on site stars, ${tally.none} unrated`);
+  return movies;
+}
+
 // ------------------------------------------------------------------- driver
 // Phases are separable: the PDT scrape is slow and key-free, the art pass
 // needs API keys. `--only pdt` / `--only art` run one at a time.
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : "all";
+const RATINGS_ONLY = only === "ratings";
 const stageFile = path.join(cacheDir, "stage-pdt.json");
 
 let movies;
-if (only === "art") {
+if (only === "ratings") {
+  // Re-rate whatever is already published, without touching the other sources.
+  movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
+  console.log(`loaded ${movies.length} movies from data.json`);
+  movies = await ratings(movies);
+} else if (only === "art") {
   movies = JSON.parse(fs.readFileSync(stageFile, "utf8"));
   console.log(`loaded ${movies.length} movies from ${stageFile}`);
 } else {
@@ -368,11 +472,13 @@ if (only === "art") {
   console.log(`   staged -> ${stageFile}`);
 }
 
-if (only !== "pdt") {
+if (only !== "pdt" && !RATINGS_ONLY) {
   console.log("3. wikidata (year, ids, fallback art)");
   movies = await enrich(movies);
   console.log("4. poster art (tvdb / fanart.tv, if keys present)");
   movies = await posters(movies);
+  console.log("5. ratings (IMDb dataset, then TMDB)");
+  movies = await ratings(movies);
 }
 
 for (const mv of movies) { delete mv._cands; mv.sort = sortTitle(mv.title); }

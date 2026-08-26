@@ -17,9 +17,16 @@ that site sends no CORS headers, so a browser can't read it directly anyway.
 | Rating | the star images on each film's detail page            |
 | Year   | Wikidata / TheTVDB — **the source site has no years** |
 
-Ratings only cover about half the catalogue, so the rating filter offers
-explicit "Rated" and "Unrated" options rather than silently dropping the
-films with no stars. A "Has poster" checkbox narrows to films with real
+Ratings come from IMDb's public data export, matched on the IMDb ID Wikidata
+holds for each film — 515 of 981. The catalogue's own star covers 481 films but
+is a weak signal: three quarters of them sit at four or five stars.
+
+The two scales are never merged. Doubling a five-star into 10/10 put 102 films
+at a value no film on IMDb actually reaches, floating them above everything
+genuinely well regarded. So a ten-point rating shows as a number, a site star
+shows as stars, and the sort ranks real ratings above stars above nothing. The
+rating filter offers "Rated", "Site stars only" and "Unrated" rather than
+silently dropping films. A "Has poster" checkbox narrows to films with real
 artwork, and a Random sort order shuffles the grid.
 
 ## Sharing a view
