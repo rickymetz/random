@@ -806,6 +806,16 @@ async function extras(movies) {
 //
 // Two sentences only. Enough to decide whether to watch something, and no more
 // of someone else's writing than that needs.
+// exsentences is a request, not a guarantee: it returned three or more for 124
+// of 553 articles, so the two-sentence limit is enforced here instead. Common
+// abbreviations are masked first, or "Dr. No" would end a sentence.
+const ABBREV = /\b(Mr|Mrs|Ms|Dr|Jr|Sr|St|Co|Inc|Ltd|vs|etc|No|Capt|Lt|Sgt|Gen|Col|Prof|U\.S|U\.K)\./g;
+function trimToTwoSentences(text) {
+  const masked = text.replace(ABBREV, (m) => m.replace(".", "\u0000"));
+  const parts = masked.split(/(?<=[.!?])\s+(?=[A-Z"\u201c])/);
+  return parts.slice(0, 2).join(" ").replace(/\u0000/g, ".").trim();
+}
+
 async function descriptions(movies) {
   const WD = "https://www.wikidata.org/w/api.php";
   const WP = "https://en.wikipedia.org/w/api.php";
@@ -850,7 +860,7 @@ async function descriptions(movies) {
         const asked = article.get(mv.wd);
         const text = byTitle.get(alias.get(asked) ?? asked);
         if (!text) continue;
-        const clean = text.replace(/\s+/g, " ").trim();
+        const clean = trimToTwoSentences(text.replace(/\s+/g, " ").trim());
         if (clean.length < 30) continue;   // a stub tells the reader nothing
         mv.desc = clean;
         mv.wiki = alias.get(asked) ?? asked;
