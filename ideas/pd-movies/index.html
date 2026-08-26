@@ -1,0 +1,1003 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Public Domain Movies</title>
+<meta name="description" content="A Plex-style browser for the ~980 public domain films at publicdomaintorrents.info — search, filter by genre, decade, format and rating, sort any way you like.">
+<style>
+  :root {
+    --bg: #16181d;
+    --bg-2: #1c1f26;
+    --panel: #21252e;
+    --line: #2e333e;
+    --line-2: #3a4150;
+    --ink: #e8eaf0;
+    --muted: #8b93a5;
+    --dim: #5d6577;
+    --accent: #e5a00d;         /* Plex amber */
+    --accent-ink: #1a1205;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --radius: 6px;
+    --shadow: 0 6px 20px rgb(0 0 0 / 0.45);
+  }
+
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+
+  /* ------------------------------------------------------------- header */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: color-mix(in srgb, var(--bg-2) 92%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .bar {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 16px;
+    align-items: center;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 12px 20px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
+  .brand h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+  }
+  .home {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+    margin-left: -5px;
+    padding: 5px 6px;
+    border-radius: var(--radius);
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .home:hover { color: var(--ink); background: var(--panel); }
+  .home:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .search {
+    position: relative;
+    justify-self: stretch;
+    max-width: 420px;
+  }
+  .search svg {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    translate: 0 -50%;
+    color: var(--dim);
+    pointer-events: none;
+  }
+  .search input {
+    width: 100%;
+    height: 34px;
+    padding: 0 30px 0 32px;
+    background: var(--bg);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--ink);
+    font: 14px var(--sans);
+  }
+  .search input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .search input::placeholder { color: var(--dim); }
+  .clear {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    translate: 0 -50%;
+    display: none;
+    padding: 4px;
+    background: none;
+    border: 0;
+    color: var(--dim);
+    cursor: pointer;
+    line-height: 0;
+  }
+  .clear:hover { color: var(--ink); }
+  .search.has-value .clear { display: block; }
+
+  .count {
+    font: 12px var(--mono);
+    color: var(--muted);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ------------------------------------------------------------ toolbar */
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: center;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 0 20px 12px;
+  }
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .field > label {
+    font: 11px var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+  }
+  select {
+    height: 30px;
+    padding: 0 26px 0 9px;
+    background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 4l3 3 3-3' fill='none' stroke='%238b93a5' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 9px center;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--ink);
+    font: 13px var(--sans);
+    appearance: none;
+    cursor: pointer;
+  }
+  select:focus { outline: none; border-color: var(--accent); }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 0 20px 12px;
+  }
+  .chip {
+    padding: 4px 11px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    color: var(--muted);
+    font: 12px var(--sans);
+    cursor: pointer;
+    transition: background .12s, color .12s, border-color .12s;
+  }
+  .chip:hover { color: var(--ink); border-color: var(--dim); }
+  .chip[aria-pressed="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 600;
+  }
+  .chip .n {
+    font-family: var(--mono);
+    font-size: 10px;
+    opacity: .65;
+    margin-left: 5px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .view-toggle { display: flex; gap: 0; margin-left: auto; }
+  .view-toggle button {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 30px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .view-toggle button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+  .view-toggle button:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-left: 0; }
+  .view-toggle button[aria-pressed="true"] { background: var(--line-2); color: var(--ink); }
+
+  .reset {
+    padding: 4px 10px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    color: var(--dim);
+    font: 12px var(--sans);
+    cursor: pointer;
+  }
+  .reset:hover { color: var(--ink); border-color: var(--line-2); }
+
+  /* --------------------------------------------------------------- grid */
+  main {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 18px 20px 64px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 22px 16px;
+  }
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: none;
+    border: 0;
+    padding: 0;
+    color: inherit;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+  }
+  .poster {
+    position: relative;
+    aspect-ratio: 2 / 3;
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--panel);
+    box-shadow: 0 2px 8px rgb(0 0 0 / .4);
+    transition: outline-color .12s, translate .12s;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+  }
+  .card:hover .poster,
+  .card:focus-visible .poster {
+    outline-color: var(--accent);
+    translate: 0 -3px;
+  }
+  .card:focus-visible { outline: none; }
+  .poster img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* Generated poster, used when no art exists (or the art 404s). */
+  .gen {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-rows: 1fr auto;
+    padding: 14px 12px 12px;
+    background: linear-gradient(160deg, hsl(var(--h) 32% 26%), hsl(var(--h2) 38% 13%));
+  }
+  .gen[hidden] { display: none; }
+  .gen::before {
+    /* sprocket holes — a film-strip edge, drawn not downloaded */
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 13px;
+    background:
+      repeating-linear-gradient(to bottom, transparent 0 7px, rgb(0 0 0 / .5) 7px 14px);
+    border-right: 1px solid rgb(255 255 255 / .07);
+  }
+  .gen .initial {
+    align-self: start;
+    justify-self: end;
+    font: 700 40px/1 var(--mono);
+    color: rgb(255 255 255 / .1);
+    letter-spacing: -0.04em;
+  }
+  .gen .t {
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 1.25;
+    color: rgb(255 255 255 / .92);
+    text-wrap: balance;
+    padding-left: 6px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+  }
+
+  .badge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgb(0 0 0 / .72);
+    font: 10px var(--mono);
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .stars {
+    position: absolute;
+    right: 6px;
+    top: 6px;
+    padding: 2px 5px;
+    border-radius: 3px;
+    background: rgb(0 0 0 / .72);
+    font: 10px var(--mono);
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+  .meta { min-width: 0; }
+  .meta .name {
+    font-size: 13px;
+    line-height: 1.3;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .meta .sub {
+    margin-top: 2px;
+    font: 11px var(--mono);
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* --------------------------------------------------------------- list */
+  .grid.list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .grid.list .card {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 8px;
+    border-bottom: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .grid.list .card:hover { background: var(--bg-2); }
+  .grid.list .poster { width: 34px; flex: none; }
+  .grid.list .card:hover .poster { translate: 0; outline-color: transparent; }
+  .grid.list .gen .initial, .grid.list .badge, .grid.list .stars { display: none; }
+  .grid.list .gen .t { font-size: 0; }
+  .grid.list .meta {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 14px;
+    align-items: center;
+  }
+  .grid.list .meta .name { -webkit-line-clamp: 1; font-size: 14px; }
+  .grid.list .meta .sub { margin: 0; }
+  .grid.list .lgenre { font: 11px var(--mono); color: var(--muted); }
+  .grid.list .lrating { font: 11px var(--mono); color: var(--accent); letter-spacing: 1px; }
+  @media (max-width: 640px) {
+    .grid.list .meta { grid-template-columns: 1fr auto; }
+    .grid.list .lgenre { display: none; }
+  }
+
+  .empty {
+    padding: 70px 20px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .empty p { margin: 0 0 14px; }
+
+  /* -------------------------------------------------------------- drawer */
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgb(0 0 0 / .6);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s;
+  }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+  .drawer {
+    position: fixed;
+    z-index: 50;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(420px, 100vw);
+    translate: 100% 0;
+    background: var(--bg-2);
+    border-left: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    overflow-y: auto;
+    transition: translate .22s cubic-bezier(.32,.72,0,1);
+  }
+  .drawer.open { translate: 0 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .drawer, .scrim, .poster, .chip { transition: none; }
+  }
+  .drawer-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    background: rgb(0 0 0 / .55);
+    border: 0;
+    border-radius: var(--radius);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .drawer-close:hover { background: rgb(0 0 0 / .8); }
+  .d-hero {
+    position: relative;
+    aspect-ratio: 2 / 3;
+    max-height: 340px;
+    overflow: hidden;
+    border-bottom: 1px solid var(--line);
+  }
+  .d-hero .poster { border-radius: 0; box-shadow: none; height: 100%; aspect-ratio: auto; }
+  .d-body { padding: 18px 20px 32px; }
+  .d-body h2 {
+    margin: 0 0 6px;
+    font-size: 20px;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .d-line {
+    font: 12px var(--mono);
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .d-stars { color: var(--accent); letter-spacing: 2px; }
+  .d-table {
+    margin: 18px 0 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 9px 14px;
+    align-items: baseline;
+  }
+  .d-table dt {
+    font: 11px var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+  }
+  .d-table dd { margin: 0; font-size: 13px; }
+  .tag {
+    display: inline-block;
+    margin: 0 4px 4px 0;
+    padding: 2px 8px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .tag:hover { color: var(--ink); border-color: var(--dim); }
+  .tag.static { cursor: default; }
+  .tag.static:hover { color: var(--muted); border-color: var(--line-2); }
+  .d-actions { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; }
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 38px;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 620;
+    font-size: 14px;
+    text-decoration: none;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.ghost {
+    background: none;
+    border: 1px solid var(--line-2);
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .btn.ghost:hover { color: var(--ink); border-color: var(--dim); filter: none; }
+  .d-note {
+    margin-top: 16px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--dim);
+  }
+
+  footer {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 0 20px 40px;
+    font-size: 12px;
+    color: var(--dim);
+    line-height: 1.6;
+  }
+  footer a { color: var(--muted); }
+
+  .sentinel { height: 1px; }
+
+  @media (max-width: 760px) {
+    /* Chips plus four selects eat half a phone screen — let the whole
+       header scroll away rather than pinning it over the grid. */
+    header { position: static; }
+    .bar { grid-template-columns: 1fr auto; row-gap: 10px; }
+    .search { grid-column: 1 / -1; max-width: none; }
+    .search input { height: 40px; }
+    .home { min-height: 44px; min-width: 44px; justify-content: center; padding: 0 8px; margin-left: -8px; }
+
+    /* Wrapped, the 14 genres stack five rows deep and push the grid off
+       screen. One horizontal rail instead, with chips tall enough to hit —
+       25px was well under the 44px touch guideline. */
+    .chips {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
+      padding-bottom: 10px;
+    }
+    .chips::-webkit-scrollbar { display: none; }
+    .chip { flex: none; padding: 11px 14px; font-size: 13px; }
+
+    /* Two columns, so four filters occupy two rows rather than four. */
+    .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .field { min-width: 0; }
+    .field select { flex: 1; min-width: 0; height: 38px; }
+    .reset { grid-column: 1; justify-self: start; padding: 9px 10px; }
+    .view-toggle { grid-column: 2; justify-self: end; margin-left: 0; }
+    .view-toggle button { width: 40px; height: 38px; }
+
+    .grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 18px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="brand">
+      <a class="home" href="../../" aria-label="Back to random" title="Back to random">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M10 3L5 8l5 5"/>
+        </svg>
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2.5 7.2L8 2.5l5.5 4.7"/>
+          <path d="M3.8 8.3V13h8.4V8.3"/>
+        </svg>
+      </a>
+      <h1>Public Domain Movies</h1>
+    </div>
+    <div class="search" id="searchWrap">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+        <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14" stroke-linecap="round"/>
+      </svg>
+      <input id="q" type="search" placeholder="Search titles…" autocomplete="off" spellcheck="false" aria-label="Search titles">
+      <button class="clear" id="clearQ" aria-label="Clear search">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <path d="M4 4l8 8M12 4l-8 8"/>
+        </svg>
+      </button>
+    </div>
+    <div class="count" id="count">…</div>
+  </div>
+
+  <div class="chips" id="genreChips"></div>
+
+  <div class="toolbar">
+    <div class="field">
+      <label for="decade">Decade</label>
+      <select id="decade"><option value="">Any</option></select>
+    </div>
+    <div class="field">
+      <label for="format">Format</label>
+      <select id="format"><option value="">Any</option></select>
+    </div>
+    <div class="field">
+      <label for="minRating">Rating</label>
+      <select id="minRating">
+        <option value="">Any</option>
+        <option value="5">★★★★★</option>
+        <option value="4">★★★★ &amp; up</option>
+        <option value="3">★★★ &amp; up</option>
+        <option value="2">★★ &amp; up</option>
+        <option value="rated">Rated, any score</option>
+        <option value="unrated">Unrated</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="sort">Sort</label>
+      <select id="sort">
+        <option value="title">Title A–Z</option>
+        <option value="-title">Title Z–A</option>
+        <option value="year">Year, oldest</option>
+        <option value="-year">Year, newest</option>
+        <option value="-rating">Rating, best</option>
+        <option value="genre">Genre</option>
+      </select>
+    </div>
+    <button class="reset" id="reset" hidden>Clear filters</button>
+    <div class="view-toggle">
+      <button id="viewGrid" aria-pressed="true" aria-label="Grid view" title="Grid view">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/>
+          <rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/>
+        </svg>
+      </button>
+      <button id="viewList" aria-pressed="false" aria-label="List view" title="List view">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <path d="M2 4h12M2 8h12M2 12h12"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="grid" id="grid"></div>
+  <div class="sentinel" id="sentinel"></div>
+  <div class="empty" id="empty" hidden>
+    <p>Nothing matches those filters.</p>
+    <button class="reset" style="border-color:var(--line-2);color:var(--ink)" id="emptyReset">Clear filters</button>
+  </div>
+</main>
+
+<footer id="footer"></footer>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="dTitle" aria-hidden="true"></aside>
+
+<script>
+(() => {
+  "use strict";
+
+  const SRC = "https://www.publicdomaintorrents.info";
+  const GENRE_LABELS = {
+    action: "Action", animation: "Animation", comedy: "Comedy", drama: "Drama",
+    exploitation: "Exploitation", family: "Family", horror: "Horror",
+    martialarts: "Martial Arts", musicals: "Musicals", mystery: "Mystery",
+    scifi: "Sci-Fi", serial: "Serial", war: "War", westerns: "Western",
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const grid = $("grid"), empty = $("empty"), countEl = $("count");
+
+  let ALL = [];
+  const state = {
+    q: "", genres: new Set(), decade: "", format: "", rating: "",
+    sort: "title", view: "grid",
+  };
+
+  // Stable hue per title so a film's generated poster never changes colour.
+  function hash(s) {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return Math.abs(h);
+  }
+  const stars = (n) => "★".repeat(n);
+
+  function posterHTML(m) {
+    const h = hash(m.title) % 360;
+    const gen =
+      `<div class="gen" style="--h:${h};--h2:${(h + 42) % 360}">` +
+        `<span class="initial">${esc((m.sort || m.title)[0] || "?").toUpperCase()}</span>` +
+        `<span class="t">${esc(m.title)}</span>` +
+      `</div>`;
+    // Remote art can 404 (dead CDN entries) — fall back to the drawn poster.
+    const img = m.art
+      ? `<img src="${esc(m.art)}" alt="" loading="lazy" decoding="async"
+             onerror="this.closest('.poster').querySelector('.gen').hidden=false;this.remove()">`
+      : "";
+    const genHidden = m.art ? " hidden" : "";
+    return `<div class="poster">` +
+      gen.replace('class="gen"', `class="gen"${genHidden}`) +
+      img +
+      (m.year ? `<span class="badge">${m.year}</span>` : "") +
+      (m.rating ? `<span class="stars">${stars(m.rating)}</span>` : "") +
+    `</div>`;
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  const genreNames = (m) => m.genres.map((g) => GENRE_LABELS[g] || g).join(", ");
+
+  function cardHTML(m, i) {
+    const sub = state.view === "list"
+      ? (m.year || "—")
+      : [m.year, genreNames(m).split(",")[0]].filter(Boolean).join(" · ");
+    return `<button class="card" data-i="${i}">` +
+      posterHTML(m) +
+      `<span class="meta">` +
+        `<span class="name">${esc(m.title)}</span>` +
+        `<span class="sub">${esc(sub)}</span>` +
+        (state.view === "list"
+          ? `<span class="lgenre">${esc(genreNames(m))}</span>` +
+            `<span class="lrating">${m.rating ? stars(m.rating) : ""}</span>`
+          : "") +
+      `</span>` +
+    `</button>`;
+  }
+
+  // ------------------------------------------------------------- filtering
+  function matches(m) {
+    if (state.q) {
+      const q = state.q.toLowerCase();
+      if (!m.title.toLowerCase().includes(q)) return false;
+    }
+    if (state.genres.size && !m.genres.some((g) => state.genres.has(g))) return false;
+    if (state.decade) {
+      if (!m.year) return false;
+      const d = +state.decade;
+      if (d === 1900) { if (m.year >= 1930) return false; }        // "before 1930"
+      else if (m.year < d || m.year > d + 9) return false;
+    }
+    if (state.format && !(m.formats || []).includes(state.format)) return false;
+    if (state.rating === "unrated") { if (m.rating) return false; }
+    else if (state.rating === "rated") { if (!m.rating) return false; }
+    else if (state.rating && (m.rating || 0) < +state.rating) return false;
+    return true;
+  }
+
+  const SORTS = {
+    title: (a, b) => a.sort.localeCompare(b.sort),
+    "-title": (a, b) => b.sort.localeCompare(a.sort),
+    year: (a, b) => (a.year ?? 9999) - (b.year ?? 9999) || a.sort.localeCompare(b.sort),
+    "-year": (a, b) => (b.year ?? -1) - (a.year ?? -1) || a.sort.localeCompare(b.sort),
+    "-rating": (a, b) => (b.rating ?? -1) - (a.rating ?? -1) || a.sort.localeCompare(b.sort),
+    genre: (a, b) => (a.genres[0] || "~").localeCompare(b.genres[0] || "~") || a.sort.localeCompare(b.sort),
+  };
+
+  // Render in chunks — ~1000 posters at once janks the first paint.
+  let shown = [], drawn = 0;
+  const PAGE = 120;
+
+  function drawMore() {
+    if (drawn >= shown.length) return;
+    const next = shown.slice(drawn, drawn + PAGE);
+    grid.insertAdjacentHTML("beforeend", next.map((m) => cardHTML(m, m._i)).join(""));
+    drawn += next.length;
+  }
+
+  function render() {
+    shown = ALL.filter(matches).sort(SORTS[state.sort]);
+    grid.className = "grid" + (state.view === "list" ? " list" : "");
+    grid.innerHTML = "";
+    drawn = 0;
+    drawMore();
+    empty.hidden = shown.length > 0;
+    countEl.textContent = `${shown.length} / ${ALL.length}`;
+    $("reset").hidden = !isFiltered();
+    updateChipCounts();
+  }
+
+  const isFiltered = () =>
+    state.q || state.genres.size || state.decade || state.format || state.rating;
+
+  // Chip counts reflect every filter *except* genre, so they read as
+  // "what would this chip add", not "what is already selected".
+  function updateChipCounts() {
+    const saved = state.genres;
+    state.genres = new Set();
+    const pool = ALL.filter(matches);
+    state.genres = saved;
+    for (const btn of $("genreChips").children) {
+      const g = btn.dataset.g;
+      const n = pool.reduce((acc, m) => acc + (m.genres.includes(g) ? 1 : 0), 0);
+      btn.querySelector(".n").textContent = n;
+      btn.style.opacity = n ? "" : ".4";
+    }
+  }
+
+  // ---------------------------------------------------------------- drawer
+  const drawer = $("drawer"), scrim = $("scrim");
+  let lastFocus = null;
+
+  function openDrawer(m) {
+    lastFocus = document.activeElement;
+    const fmt = (m.formats || []);
+    drawer.innerHTML =
+      `<button class="drawer-close" id="dClose" aria-label="Close">` +
+        `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>` +
+      `</button>` +
+      `<div class="d-hero">${posterHTML(m)}</div>` +
+      `<div class="d-body">` +
+        `<h2 id="dTitle">${esc(m.title)}</h2>` +
+        `<div class="d-line">${m.year || "Year unknown"}` +
+          (m.rating ? ` · <span class="d-stars">${stars(m.rating)}</span>` : "") +
+        `</div>` +
+        `<dl class="d-table">` +
+          `<dt>Genre</dt><dd>${m.genres.length
+            ? m.genres.map((g) => `<button class="tag" data-g="${esc(g)}">${esc(GENRE_LABELS[g] || g)}</button>`).join("")
+            : "<span class='d-line'>—</span>"}</dd>` +
+          `<dt>Formats</dt><dd>${fmt.length
+            ? fmt.map((f) => `<span class="tag static">${esc(f)}</span>`).join("")
+            : "<span class='d-line'>Download only</span>"}</dd>` +
+        `</dl>` +
+        `<div class="d-actions">` +
+          `<a class="btn" href="${SRC}/nshowmovie.html?movieid=${esc(m.id)}" target="_blank" rel="noopener noreferrer">` +
+            `Open on Public Domain Torrents` +
+            `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h7v7M13 3L6.5 9.5M11 9v4H3V5h4"/></svg>` +
+          `</a>` +
+          `<a class="btn ghost" href="https://archive.org/search?query=${encodeURIComponent(m.title)}" target="_blank" rel="noopener noreferrer">Look for it on Internet Archive</a>` +
+        `</div>` +
+        `<p class="d-note">Downloads, synopsis and user comments live on the source site — this page is only a browser over its catalogue.</p>` +
+      `</div>`;
+
+    drawer.classList.add("open");
+    drawer.setAttribute("aria-hidden", "false");
+    scrim.classList.add("open");
+    $("dClose").focus();
+
+    $("dClose").onclick = closeDrawer;
+    for (const t of drawer.querySelectorAll(".tag[data-g]")) {
+      t.onclick = () => {
+        state.genres = new Set([t.dataset.g]);
+        syncChips();
+        closeDrawer();
+        render();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      };
+    }
+  }
+
+  function closeDrawer() {
+    drawer.classList.remove("open");
+    drawer.setAttribute("aria-hidden", "true");
+    scrim.classList.remove("open");
+    lastFocus?.focus();
+  }
+
+  scrim.onclick = closeDrawer;
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && drawer.classList.contains("open")) closeDrawer();
+    // "/" focuses search, the way every media browser does it.
+    if (e.key === "/" && document.activeElement !== $("q")) {
+      e.preventDefault();
+      $("q").focus();
+    }
+  });
+  // Keep tab focus inside the drawer while it's open.
+  drawer.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab") return;
+    const f = drawer.querySelectorAll("button, a[href]");
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+
+  grid.addEventListener("click", (e) => {
+    const card = e.target.closest(".card");
+    if (card) openDrawer(ALL[+card.dataset.i]);
+  });
+
+  // ----------------------------------------------------------- UI wiring
+  function syncChips() {
+    for (const btn of $("genreChips").children) {
+      btn.setAttribute("aria-pressed", state.genres.has(btn.dataset.g) ? "true" : "false");
+    }
+  }
+
+  function buildChips(counts) {
+    $("genreChips").innerHTML = Object.keys(GENRE_LABELS)
+      .filter((g) => counts[g])
+      .map((g) => `<button class="chip" data-g="${g}" aria-pressed="false">${GENRE_LABELS[g]}<span class="n">${counts[g]}</span></button>`)
+      .join("");
+    $("genreChips").onclick = (e) => {
+      const chip = e.target.closest(".chip");
+      if (!chip) return;
+      const g = chip.dataset.g;
+      state.genres.has(g) ? state.genres.delete(g) : state.genres.add(g);
+      syncChips();
+      render();
+    };
+  }
+
+  let debounce;
+  $("q").addEventListener("input", (e) => {
+    $("searchWrap").classList.toggle("has-value", Boolean(e.target.value));
+    clearTimeout(debounce);
+    debounce = setTimeout(() => { state.q = e.target.value.trim(); render(); }, 120);
+  });
+  $("clearQ").onclick = () => {
+    $("q").value = "";
+    $("searchWrap").classList.remove("has-value");
+    state.q = "";
+    render();
+    $("q").focus();
+  };
+
+  for (const [id, key] of [["decade", "decade"], ["format", "format"], ["sort", "sort"]]) {
+    $(id).addEventListener("change", (e) => { state[key] = e.target.value; render(); });
+  }
+  $("minRating").addEventListener("change", (e) => { state.rating = e.target.value; render(); });
+
+  function resetAll() {
+    Object.assign(state, { q: "", genres: new Set(), decade: "", format: "", rating: "" });
+    $("q").value = "";
+    $("searchWrap").classList.remove("has-value");
+    $("decade").value = ""; $("format").value = ""; $("minRating").value = "";
+    syncChips();
+    render();
+  }
+  $("reset").onclick = resetAll;
+  $("emptyReset").onclick = resetAll;
+
+  function setView(v) {
+    state.view = v;
+    $("viewGrid").setAttribute("aria-pressed", String(v === "grid"));
+    $("viewList").setAttribute("aria-pressed", String(v === "list"));
+    render();
+  }
+  $("viewGrid").onclick = () => setView("grid");
+  $("viewList").onclick = () => setView("list");
+
+  new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) drawMore();
+  }, { rootMargin: "600px" }).observe($("sentinel"));
+
+  // ------------------------------------------------------------------ boot
+  fetch("data.json")
+    .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then((data) => {
+      ALL = data.movies;
+      ALL.forEach((m, i) => {
+        m._i = i;
+        m.genres = m.genres || [];
+        m.sort = m.sort || m.title.toLowerCase();
+      });
+
+      const counts = {}, formats = new Set(), decades = new Set();
+      for (const m of ALL) {
+        for (const g of m.genres) counts[g] = (counts[g] || 0) + 1;
+        for (const f of m.formats || []) formats.add(f);
+        if (m.year) decades.add(m.year < 1930 ? 1900 : Math.floor(m.year / 10) * 10);
+      }
+      buildChips(counts);
+
+      $("decade").insertAdjacentHTML("beforeend",
+        [...decades].sort((a, b) => a - b)
+          .map((d) => `<option value="${d}">${d === 1900 ? "Before 1930" : d + "s"}</option>`).join(""));
+      $("format").insertAdjacentHTML("beforeend",
+        [...formats].sort().map((f) => `<option value="${f}">${f}</option>`).join(""));
+
+      const rated = ALL.filter((m) => m.rating).length;
+      for (const o of $("minRating").options) {
+        if (o.value === "rated") o.textContent = `Rated, any score (${rated})`;
+        if (o.value === "unrated") o.textContent = `Unrated (${ALL.length - rated})`;
+      }
+
+      const withArt = ALL.filter((m) => m.art).length;
+      const withYear = ALL.filter((m) => m.year).length;
+      $("footer").innerHTML =
+        `Catalogue of ${ALL.length} public domain films scraped from ` +
+        `<a href="${SRC}/nshowcat.html?category=ALL" target="_blank" rel="noopener noreferrer">publicdomaintorrents.info</a> ` +
+        `on ${esc(data.scraped)}. Years for ${withYear} of them and ${withArt} ${withArt === 1 ? "poster" : "posters"} come from ` +
+        `<a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer">Wikidata</a>, ` +
+        `<a href="https://fanart.tv" target="_blank" rel="noopener noreferrer">fanart.tv</a> and ` +
+        `<a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>; ` +
+        `the rest get a drawn poster. Titles are matched by name alone, so a few posters and years will belong to the wrong film.`;
+
+      render();
+    })
+    .catch((err) => {
+      grid.innerHTML = "";
+      empty.hidden = false;
+      empty.innerHTML = `<p>Could not load the catalogue (${esc(err.message)}).</p>` +
+        `<p class="d-line">This page needs to be served over http — opening the file directly blocks the data fetch.</p>`;
+      countEl.textContent = "—";
+    });
+})();
+</script>
+</body>
+</html>
