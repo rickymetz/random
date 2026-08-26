@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PDM Browser</title>
-<meta name="description" content="A Plex-style browser for the ~980 public domain films at publicdomaintorrents.info — search, filter by genre, decade, format and rating, sort any way you like.">
+<meta name="description" content="A Plex-style browser for the ~980 public domain films at publicdomaintorrents.info — search, filter by genre, decade, length and rating, sort any way you like.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316181d'/%3E%3Crect x='9' y='5' width='14' height='22' rx='1.5' fill='%23e5a00d'/%3E%3Cg fill='%2316181d'%3E%3Crect x='10.5' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3C/g%3E%3C/svg%3E">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="random">
 <meta property="og:title" content="PDM Browser">
-<meta property="og:description" content="Browse ~980 public domain films. Search, filter by genre, decade, format and rating, and sort any way you like.">
+<meta property="og:description" content="Browse ~980 public domain films. Search, filter by genre, decade, length and rating, and sort any way you like.">
 <meta property="og:url" content="https://rickymetz.github.io/random/ideas/pd-movies/">
 <meta property="og:image" content="https://rickymetz.github.io/random/ideas/pd-movies/og.png">
 <meta property="og:image:width" content="1200">
@@ -303,17 +303,27 @@
   .range input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
   .range input[type="range"]:focus-visible::-moz-range-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
   .range input[type="range"]::-moz-range-track { background: none; }
-  /* This label is a value, not a heading: the toolbar's uppercase turned
-     "95m" into "95M". */
+  /* A value, not a heading: the toolbar's uppercase turned "95m" into "95M".
+     Fixed width so the row does not shift as the numbers change under a drag. */
   #rtLabel {
-    min-width: 96px;
+    flex: none;
+    width: 76px;
+    text-align: right;
     text-transform: none;
     letter-spacing: 0;
-    font-size: 12px;
+    font: 12px var(--mono);
     color: var(--muted);
     font-variant-numeric: tabular-nums;
   }
 
+  /* Grouped so a wrap cannot separate them. Left loose they drifted onto
+     different rows three times, once on a phone and once on desktop, each time
+     as a side effect of some other toolbar change. */
+  .checks {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
   .check {
     display: flex;
     align-items: center;
@@ -784,7 +794,8 @@
     .search input { height: 40px; }
     .navlink { min-height: 40px; display: flex; align-items: center; }
     /* Pair the checkbox with Rating — Rating had an empty cell beside it. */
-    .check { height: 38px; justify-content: flex-start; }
+    .checks { grid-column: 1 / -1; }
+    .checks .check { flex: 1; height: 38px; justify-content: flex-start; }
     .range-field { grid-column: 1 / -1; }
     .range { flex: 1; width: auto; }
     .check input { width: 17px; height: 17px; }
@@ -861,10 +872,6 @@
       <select id="decade"><option value="">Any</option></select>
     </div>
     <div class="field">
-      <label for="format">Format</label>
-      <select id="format"><option value="">Any</option></select>
-    </div>
-    <div class="field">
       <label for="minRating">Rating</label>
       <select id="minRating">
         <option value="">Any</option>
@@ -902,22 +909,25 @@
       </svg>
     </button>
     <div class="field range-field">
-      <label id="rtLabel" for="rtMin">Any length</label>
+      <label for="rtMin">Length</label>
       <div class="range" id="rtWrap">
         <div class="hist" id="rtHist" aria-hidden="true"></div>
         <div class="rt-track"><div class="rt-fill" id="rtFill"></div></div>
         <input type="range" id="rtMin" min="0" max="120" step="5" value="0" aria-label="Shortest length in minutes">
         <input type="range" id="rtMax" min="0" max="120" step="5" value="120" aria-label="Longest length in minutes">
       </div>
+      <output id="rtLabel" for="rtMin rtMax">Any</output>
     </div>
-    <label class="check" for="canWatch">
-      <input type="checkbox" id="canWatch">
-      <span>Watchable</span>
-    </label>
-    <label class="check" for="hasArt">
-      <input type="checkbox" id="hasArt">
-      <span>Has poster</span>
-    </label>
+    <div class="checks">
+      <label class="check" for="canWatch">
+        <input type="checkbox" id="canWatch">
+        <span>Watchable</span>
+      </label>
+      <label class="check" for="hasArt">
+        <input type="checkbox" id="hasArt">
+        <span>Has poster</span>
+      </label>
+    </div>
     <button class="reset" id="reset" hidden>Clear filters</button>
     <div class="view-toggle">
       <button id="viewGrid" aria-pressed="true" aria-label="Grid view" title="Grid view">
@@ -970,7 +980,7 @@
 
   let ALL = [];
   const state = {
-    q: "", genres: new Set(), decade: "", format: "", rating: "", director: "", rtMin: 0, rtMax: 120,
+    q: "", genres: new Set(), decade: "", rating: "", director: "", rtMin: 0, rtMax: 120,
     hasArt: false, canWatch: false,
     sort: "-rating", view: "grid", seed: 1,
   };
@@ -1090,7 +1100,6 @@
       if (d === 1900) { if (m.year >= 1930) return false; }        // "before 1930"
       else if (m.year < d || m.year > d + 9) return false;
     }
-    if (state.format && !(m.formats || []).includes(state.format)) return false;
     if (state.hasArt && (!m.art || m.artBroken)) return false;
     if (state.canWatch && !m.ia) return false;
     if (state.director && !(m.director || []).includes(state.director)) return false;
@@ -1163,7 +1172,7 @@
   const rangeActive = () => state.rtMin > 0 || state.rtMax < RT_MAX;
 
   const isFiltered = () =>
-    state.q || state.genres.size || state.decade || state.format || state.rating ||
+    state.q || state.genres.size || state.decade || state.rating ||
     rangeActive() || state.director || state.hasArt || state.canWatch;
 
   // --------------------------------------------------- URL and preferences
@@ -1176,7 +1185,6 @@
     if (state.q) p.set("q", state.q);
     if (state.genres.size) p.set("g", [...state.genres].join(","));
     if (state.decade) p.set("d", state.decade);
-    if (state.format) p.set("f", state.format);
     if (state.rating) p.set("r", state.rating);
     if (rangeActive()) p.set("rt", `${state.rtMin}-${state.rtMax}`);
     if (state.director) p.set("dir", state.director);
@@ -1198,7 +1206,6 @@
     state.q = p.get("q") || "";
     state.genres = new Set((p.get("g") || "").split(",").filter(Boolean));
     state.decade = p.get("d") || "";
-    state.format = p.get("f") || "";
     state.rating = p.get("r") || "";
     const rt = (p.get("rt") || "").match(/^(\d+)-(\d+)$/);
     state.rtMin = rt ? Math.min(+rt[1], RT_MAX) : 0;
@@ -1220,7 +1227,7 @@
       localStorage.setItem(PREFS, JSON.stringify({
         view: state.view, sort: state.sort,
         genres: [...state.genres], decade: state.decade,
-        format: state.format, rating: state.rating, director: state.director,
+        rating: state.rating, director: state.director,
         rtMin: state.rtMin, rtMax: state.rtMax,
         hasArt: state.hasArt, canWatch: state.canWatch,
       }));
@@ -1235,7 +1242,6 @@
       if (SORTS[v.sort]) state.sort = v.sort;
       state.genres = new Set(Array.isArray(v.genres) ? v.genres : []);
       state.decade = v.decade || "";
-      state.format = v.format || "";
       state.rating = v.rating || "";
       state.rtMin = Number.isFinite(v.rtMin) ? v.rtMin : 0;
       state.rtMax = Number.isFinite(v.rtMax) ? v.rtMax : RT_MAX;
@@ -1250,7 +1256,6 @@
     $("q").value = state.q;
     $("searchWrap").classList.toggle("has-value", Boolean(state.q));
     $("decade").value = state.decade;
-    $("format").value = state.format;
     $("minRating").value = state.rating;
     $("rtMin").value = state.rtMin;
     $("rtMax").value = state.rtMax;
@@ -1319,7 +1324,6 @@
     const reopening = Boolean(currentFilm);
     currentFilm = m;
     if (!reopening) lastFocus = document.activeElement;
-    const fmt = (m.formats || []);
     drawer.innerHTML =
       `<button class="drawer-close" id="dClose" aria-label="Close">` +
         `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>` +
@@ -1357,9 +1361,6 @@
             ? `<dt>Cast</dt><dd>${m.cast
                 .map((c) => `<button class="tag" data-who="${esc(c)}">${esc(c)}</button>`).join("")}</dd>`
             : "") +
-          `<dt>Formats</dt><dd>${fmt.length
-            ? fmt.map((f) => `<span class="tag static">${esc(f)}</span>`).join("")
-            : "<span class='d-line'>Download only</span>"}</dd>` +
         `</dl>` +
         `<div class="d-actions">` +
           (m.ia
@@ -1523,7 +1524,7 @@
     $("q").focus();
   };
 
-  for (const [id, key] of [["decade", "decade"], ["format", "format"], ["director", "director"], ["sort", "sort"]]) {
+  for (const [id, key] of [["decade", "decade"], ["director", "director"], ["sort", "sort"]]) {
     $(id).addEventListener("change", (e) => {
       state[key] = e.target.value;
       // A fresh shuffle each time Random is chosen, else it repeats.
@@ -1545,9 +1546,9 @@
     }
     const label = $("rtLabel");
     if (label) {
-      label.textContent = !rangeActive() ? "Any length"
-        : lo === 0 ? `Under ${hi}m`
-        : hi >= RT_MAX ? `${lo}m and over`
+      label.textContent = !rangeActive() ? "Any"
+        : lo === 0 ? `to ${hi}m`
+        : hi >= RT_MAX ? `${lo}m+`
         : `${lo}–${hi}m`;
     }
     for (const bar of $("rtHist")?.children || []) {
@@ -1587,7 +1588,7 @@
   }
 
   function resetAll() {
-    Object.assign(state, { q: "", genres: new Set(), decade: "", format: "", rating: "",
+    Object.assign(state, { q: "", genres: new Set(), decade: "", rating: "",
       director: "", rtMin: 0, rtMax: RT_MAX, hasArt: false, canWatch: false });
     syncControls();
     apply(true);
@@ -1636,10 +1637,9 @@
         m.sort = m.sort || m.title.toLowerCase();
       });
 
-      const counts = {}, formats = new Set(), decades = new Set();
+      const counts = {}, decades = new Set();
       for (const m of ALL) {
         for (const g of m.genres) counts[g] = (counts[g] || 0) + 1;
-        for (const f of m.formats || []) formats.add(f);
         if (m.year) decades.add(m.year < 1930 ? 1900 : Math.floor(m.year / 10) * 10);
       }
       buildChips(counts);
@@ -1661,8 +1661,6 @@
       $("decade").insertAdjacentHTML("beforeend",
         [...decades].sort((a, b) => a - b)
           .map((d) => `<option value="${d}">${d === 1900 ? "Before 1930" : d + "s"}</option>`).join(""));
-      $("format").insertAdjacentHTML("beforeend",
-        [...formats].sort().map((f) => `<option value="${f}">${f}</option>`).join(""));
 
       const rated = ALL.filter((m) => m.score || m.rating).length;
       const siteOnly = ALL.filter((m) => !m.score && m.rating).length;
