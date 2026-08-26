@@ -9,13 +9,28 @@ that site sends no CORS headers, so a browser can't read it directly anyway.
 
 ## What you can filter and sort by
 
-| Field   | Where it comes from                                  |
-| ------- | ---------------------------------------------------- |
-| Title   | the catalogue                                        |
-| Genre   | the catalogue's 14 category pages                    |
-| Format  | the format icons on each catalogue row               |
-| Rating  | the star images on each film's detail page           |
-| Year    | Wikidata / TheTVDB — **the source site has no years** |
+| Field  | Where it comes from                                   |
+| ------ | ----------------------------------------------------- |
+| Title  | the catalogue                                         |
+| Genre  | the catalogue's 14 category pages                     |
+| Format | the format icons on each catalogue row                |
+| Rating | the star images on each film's detail page            |
+| Year   | Wikidata / TheTVDB — **the source site has no years** |
+
+Ratings only cover about half the catalogue, so the rating filter offers
+explicit "Rated" and "Unrated" options rather than silently dropping the
+films with no stars. A "Has poster" checkbox narrows to films with real
+artwork, and a Random sort order shuffles the grid.
+
+## Sharing a view
+
+Filters, search, sort and the open film are all kept in the URL hash, so any
+view can be copied out of the address bar and reopened exactly. The browser's
+back button steps through filter changes and closes an open film. On a bare
+visit with no hash, the last-used filters come back from `localStorage`.
+
+The Random sort carries its seed in the URL, so a shared random order
+reproduces instead of reshuffling for the next reader.
 
 Poster art comes from fanart.tv, then TheTVDB, then a Wikimedia Commons image
 via Wikidata. Anything still without art gets a poster drawn in CSS from a hash
