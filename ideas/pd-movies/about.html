@@ -237,6 +237,24 @@
     file there carries its own licence and its own credit, on its own page.</p>
   </div>
 
+  <h2>Watching</h2>
+
+  <p>The catalogue points at downloads. Many of these films are also held by the
+  Internet Archive, where they play in the browser, so each film that can be
+  matched carries a link straight to it.</p>
+
+  <div class="card">
+    <h3><a href="https://archive.org" target="_blank" rel="noopener noreferrer">Internet Archive</a><span class="role">Watch links and artwork</span></h3>
+    <p>Films are matched by title and year, and only an exact title inside a
+    one-year window counts. A near miss is more likely a trailer or a
+    compilation than the film you wanted, so those are dropped rather than
+    guessed at.</p>
+    <p>That leaves some films without a link even though the Archive holds them.
+    A missing button is better than one that opens the wrong film. Where a
+    matched item has artwork and nothing else did, its thumbnail becomes the
+    poster.</p>
+  </div>
+
   <h2>Ratings</h2>
 
   <p>The catalogue carries its own star ratings, but only for about half the
@@ -266,7 +284,8 @@
       <tr><td>Rating, out of ten</td><td>IMDb</td><td id="s-score">—</td></tr>
       <tr><td>Star rating</td><td>Public Domain Torrents</td><td id="s-rating">—</td></tr>
       <tr><td>Year</td><td>Wikidata, TheTVDB</td><td id="s-year">—</td></tr>
-      <tr><td>Poster art</td><td>TheTVDB, fanart.tv, Commons</td><td id="s-art">—</td></tr>
+      <tr><td>Poster art</td><td>TheTVDB, fanart.tv, Commons, Archive</td><td id="s-art">—</td></tr>
+      <tr><td>Watch link</td><td>Internet Archive</td><td id="s-watch">—</td></tr>
     </tbody>
   </table>
   <p id="art-split" class="note"></p>
@@ -320,6 +339,7 @@
     <li><strong>Film data</strong> — <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>
       or <a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer">Wikidata</a></li>
     <li><strong>Ratings</strong> — <a href="https://www.imdb.com" target="_blank" rel="noopener noreferrer">IMDb</a></li>
+    <li><strong>Watch links</strong> — <a href="https://archive.org" target="_blank" rel="noopener noreferrer">Internet Archive</a></li>
     <li><strong>Artwork</strong> — <a href="https://fanart.tv" target="_blank" rel="noopener noreferrer">fanart.tv</a></li>
     <li><strong>The catalogue</strong> — <a href="https://www.publicdomaintorrents.info/" target="_blank" rel="noopener noreferrer">Public Domain Torrents</a></li>
   </ul>
@@ -351,10 +371,11 @@
       set("s-rating", pct(count((m) => m.rating)));
       set("s-year", pct(count((m) => m.year)));
       set("s-art", pct(count((m) => m.art)));
+      set("s-watch", pct(count((m) => m.ia)));
 
       const by = {};
       for (const m of mv) if (m.art) by[m.artSrc] = (by[m.artSrc] || 0) + 1;
-      const label = { tvdb: "TheTVDB", fanart: "fanart.tv", commons: "Wikimedia Commons" };
+      const label = { tvdb: "TheTVDB", fanart: "fanart.tv", commons: "Wikimedia Commons", archive: "the Internet Archive" };
       const parts = Object.entries(by).sort((a, b) => b[1] - a[1])
         .map(([k, v]) => `${v} posters from ${label[k] || k}`);
       const drawn = n - count((m) => m.art);
