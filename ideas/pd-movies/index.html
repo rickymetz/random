@@ -533,6 +533,9 @@
   }
   .drawer-close {
     position: absolute;
+    /* Above the hero: the close button sits earlier in the DOM, so once an
+       iframe fills the hero it painted straight over the only way out. */
+    z-index: 3;
     top: 12px;
     right: 12px;
     display: grid;
@@ -546,6 +549,11 @@
     cursor: pointer;
   }
   .drawer-close:hover { background: rgb(0 0 0 / .8); }
+  /* A video behind it can be any colour, so give it a solid edge to sit on. */
+  .drawer:has(.d-hero[data-playing]) .drawer-close {
+    background: rgb(0 0 0 / .82);
+    border: 1px solid rgb(255 255 255 / .28);
+  }
   .d-hero {
     position: relative;
     aspect-ratio: 2 / 3;
@@ -562,6 +570,7 @@
     background: #000;
   }
   .d-hero[data-playing] { aspect-ratio: 16 / 9; max-height: none; }
+  .d-hero { z-index: 1; }
   /* Sits over the poster so the whole hero reads as "this one plays". */
   .play-over {
     position: absolute;
