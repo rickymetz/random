@@ -221,6 +221,99 @@
   .icon-btn:active { background: var(--line-2); }
   .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+  /* Two overlapping range inputs rather than a custom widget: the handles stay
+     real, so they are keyboard reachable and announce themselves. */
+  .range-field { gap: 10px; }
+  .range {
+    position: relative;
+    width: 190px;
+    height: 30px;
+    flex: none;
+  }
+  .rt-track {
+    position: absolute;
+    left: 0; right: 0;
+    top: 50%;
+    height: 4px;
+    translate: 0 -50%;
+    background: var(--line-2);
+    border-radius: 2px;
+  }
+  .rt-fill {
+    position: absolute;
+    top: 0; bottom: 0;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+  /* The shape of the catalogue, behind the track: a cluster of shorts, then
+     the mass of features. Visible while dragging, so the range means something
+     before you let go. */
+  .hist {
+    position: absolute;
+    left: 0; right: 0;
+    bottom: 50%;
+    height: 15px;
+    margin-bottom: 3px;
+    display: flex;
+    align-items: flex-end;
+    gap: 1px;
+    pointer-events: none;
+  }
+  .hist i {
+    flex: 1;
+    background: var(--line-2);
+    border-radius: 1px 1px 0 0;
+    min-height: 1px;
+    transition: background .12s;
+  }
+  .hist i.on { background: color-mix(in srgb, var(--accent) 55%, var(--panel)); }
+  .range input[type="range"] {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    top: 50%;
+    translate: 0 -50%;
+    margin: 0;
+    height: 30px;
+    background: none;
+    appearance: none;
+    pointer-events: none;   /* only the thumbs should take a drag */
+  }
+  .range input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--ink);
+    border: 2px solid var(--bg-2);
+    box-shadow: 0 1px 3px rgb(0 0 0 / .6);
+    cursor: grab;
+    pointer-events: auto;
+  }
+  .range input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--bg-2);
+    border-radius: 50%;
+    background: var(--ink);
+    box-shadow: 0 1px 3px rgb(0 0 0 / .6);
+    cursor: grab;
+    pointer-events: auto;
+  }
+  .range input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .range input[type="range"]:focus-visible::-moz-range-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .range input[type="range"]::-moz-range-track { background: none; }
+  /* This label is a value, not a heading: the toolbar's uppercase turned
+     "95m" into "95M". */
+  #rtLabel {
+    min-width: 96px;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
   .check {
     display: flex;
     align-items: center;
@@ -692,6 +785,8 @@
     .navlink { min-height: 40px; display: flex; align-items: center; }
     /* Pair the checkbox with Rating — Rating had an empty cell beside it. */
     .check { height: 38px; justify-content: flex-start; }
+    .range-field { grid-column: 1 / -1; }
+    .range { flex: 1; width: auto; }
     .check input { width: 17px; height: 17px; }
     .home { min-height: 44px; min-width: 44px; justify-content: center; padding: 0 8px; margin-left: -8px; }
 
@@ -714,7 +809,7 @@
     .field select { flex: 1; min-width: 0; height: 38px; }
     /* Shuffle and the view toggle share the last row; left alone the dice
        took a whole row to itself. */
-    .icon-btn { grid-column: 1; justify-self: start; width: 44px; height: 38px; }
+    .icon-btn { justify-self: start; width: 44px; height: 38px; }
     .view-toggle { grid-column: 2; justify-self: end; margin-left: 0; }
     .view-toggle button { width: 40px; height: 38px; }
     .reset { grid-column: 1 / -1; justify-self: start; padding: 9px 10px; }
@@ -787,15 +882,6 @@
       <select id="director"><option value="">Any</option></select>
     </div>
     <div class="field">
-      <label for="length">Length</label>
-      <select id="length">
-        <option value="">Any</option>
-        <option value="short">Short, under 40m</option>
-        <option value="feature">Feature, 40–90m</option>
-        <option value="long">Long, over 90m</option>
-      </select>
-    </div>
-    <div class="field">
       <label for="sort">Sort</label>
       <select id="sort">
         <option value="title">Title A–Z</option>
@@ -807,14 +893,6 @@
         <option value="random">Random</option>
       </select>
     </div>
-    <label class="check" for="canWatch">
-      <input type="checkbox" id="canWatch">
-      <span>Watchable</span>
-    </label>
-    <label class="check" for="hasArt">
-      <input type="checkbox" id="hasArt">
-      <span>Has poster</span>
-    </label>
     <button class="icon-btn" id="shuffle" title="Open a random film" aria-label="Open a random film">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
         <rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/>
@@ -823,6 +901,23 @@
         <circle cx="10.2" cy="10.2" r="1.05" fill="currentColor" stroke="none"/>
       </svg>
     </button>
+    <div class="field range-field">
+      <label id="rtLabel" for="rtMin">Any length</label>
+      <div class="range" id="rtWrap">
+        <div class="hist" id="rtHist" aria-hidden="true"></div>
+        <div class="rt-track"><div class="rt-fill" id="rtFill"></div></div>
+        <input type="range" id="rtMin" min="0" max="120" step="5" value="0" aria-label="Shortest length in minutes">
+        <input type="range" id="rtMax" min="0" max="120" step="5" value="120" aria-label="Longest length in minutes">
+      </div>
+    </div>
+    <label class="check" for="canWatch">
+      <input type="checkbox" id="canWatch">
+      <span>Watchable</span>
+    </label>
+    <label class="check" for="hasArt">
+      <input type="checkbox" id="hasArt">
+      <span>Has poster</span>
+    </label>
     <button class="reset" id="reset" hidden>Clear filters</button>
     <div class="view-toggle">
       <button id="viewGrid" aria-pressed="true" aria-label="Grid view" title="Grid view">
@@ -875,7 +970,7 @@
 
   let ALL = [];
   const state = {
-    q: "", genres: new Set(), decade: "", format: "", rating: "", length: "", director: "",
+    q: "", genres: new Set(), decade: "", format: "", rating: "", director: "", rtMin: 0, rtMax: 120,
     hasArt: false, canWatch: false,
     sort: "-rating", view: "grid", seed: 1,
   };
@@ -999,11 +1094,14 @@
     if (state.hasArt && (!m.art || m.artBroken)) return false;
     if (state.canWatch && !m.ia) return false;
     if (state.director && !(m.director || []).includes(state.director)) return false;
-    if (state.length) {
+    if (rangeActive()) {
+      // Nearly half the catalogue has no runtime; a length range cannot speak
+      // for those, so they step aside while it is in use.
       if (!m.runtime) return false;
-      if (state.length === "short" && m.runtime >= 40) return false;
-      if (state.length === "feature" && (m.runtime < 40 || m.runtime > 90)) return false;
-      if (state.length === "long" && m.runtime <= 90) return false;
+      if (m.runtime < state.rtMin) return false;
+      // The top handle at its maximum means "and over", so six long films are
+      // not stranded off the end of the track.
+      if (state.rtMax < RT_MAX && m.runtime > state.rtMax) return false;
     }
     if (state.rating === "unrated") { if (m.score || m.rating) return false; }
     else if (state.rating === "rated") { if (!m.score && !m.rating) return false; }
@@ -1061,9 +1159,12 @@
     updateChipCounts();
   }
 
+  const RT_MAX = 120, RT_STEP = 5;
+  const rangeActive = () => state.rtMin > 0 || state.rtMax < RT_MAX;
+
   const isFiltered = () =>
     state.q || state.genres.size || state.decade || state.format || state.rating ||
-    state.length || state.director || state.hasArt || state.canWatch;
+    rangeActive() || state.director || state.hasArt || state.canWatch;
 
   // --------------------------------------------------- URL and preferences
   // The URL is the source of truth so a filtered view can be shared or
@@ -1077,7 +1178,7 @@
     if (state.decade) p.set("d", state.decade);
     if (state.format) p.set("f", state.format);
     if (state.rating) p.set("r", state.rating);
-    if (state.length) p.set("len", state.length);
+    if (rangeActive()) p.set("rt", `${state.rtMin}-${state.rtMax}`);
     if (state.director) p.set("dir", state.director);
     if (state.hasArt) p.set("art", "1");
     if (state.canWatch) p.set("watch", "1");
@@ -1099,7 +1200,10 @@
     state.decade = p.get("d") || "";
     state.format = p.get("f") || "";
     state.rating = p.get("r") || "";
-    state.length = p.get("len") || "";
+    const rt = (p.get("rt") || "").match(/^(\d+)-(\d+)$/);
+    state.rtMin = rt ? Math.min(+rt[1], RT_MAX) : 0;
+    state.rtMax = rt ? Math.min(+rt[2], RT_MAX) : RT_MAX;
+    if (state.rtMin > state.rtMax) [state.rtMin, state.rtMax] = [state.rtMax, state.rtMin];
     state.director = p.get("dir") || "";
     state.hasArt = p.get("art") === "1";
     state.canWatch = p.get("watch") === "1";
@@ -1116,7 +1220,8 @@
       localStorage.setItem(PREFS, JSON.stringify({
         view: state.view, sort: state.sort,
         genres: [...state.genres], decade: state.decade,
-        format: state.format, rating: state.rating, length: state.length, director: state.director,
+        format: state.format, rating: state.rating, director: state.director,
+        rtMin: state.rtMin, rtMax: state.rtMax,
         hasArt: state.hasArt, canWatch: state.canWatch,
       }));
     } catch {}
@@ -1132,7 +1237,8 @@
       state.decade = v.decade || "";
       state.format = v.format || "";
       state.rating = v.rating || "";
-      state.length = v.length || "";
+      state.rtMin = Number.isFinite(v.rtMin) ? v.rtMin : 0;
+      state.rtMax = Number.isFinite(v.rtMax) ? v.rtMax : RT_MAX;
       state.director = v.director || "";
       state.hasArt = Boolean(v.hasArt);
       state.canWatch = Boolean(v.canWatch);
@@ -1146,7 +1252,9 @@
     $("decade").value = state.decade;
     $("format").value = state.format;
     $("minRating").value = state.rating;
-    $("length").value = state.length;
+    $("rtMin").value = state.rtMin;
+    $("rtMax").value = state.rtMax;
+    paintRange();
     $("director").value = state.director;
     $("hasArt").checked = state.hasArt;
     $("canWatch").checked = state.canWatch;
@@ -1415,7 +1523,7 @@
     $("q").focus();
   };
 
-  for (const [id, key] of [["decade", "decade"], ["format", "format"], ["length", "length"], ["director", "director"], ["sort", "sort"]]) {
+  for (const [id, key] of [["decade", "decade"], ["format", "format"], ["director", "director"], ["sort", "sort"]]) {
     $(id).addEventListener("change", (e) => {
       state[key] = e.target.value;
       // A fresh shuffle each time Random is chosen, else it repeats.
@@ -1427,9 +1535,60 @@
   $("hasArt").addEventListener("change", (e) => { state.hasArt = e.target.checked; apply(true); });
   $("canWatch").addEventListener("change", (e) => { state.canWatch = e.target.checked; apply(true); });
 
+  // Redraw the fill, the label and which histogram bars are in range.
+  function paintRange() {
+    const lo = state.rtMin, hi = state.rtMax;
+    const fill = $("rtFill");
+    if (fill) {
+      fill.style.left = (lo / RT_MAX * 100) + "%";
+      fill.style.right = (100 - hi / RT_MAX * 100) + "%";
+    }
+    const label = $("rtLabel");
+    if (label) {
+      label.textContent = !rangeActive() ? "Any length"
+        : lo === 0 ? `Under ${hi}m`
+        : hi >= RT_MAX ? `${lo}m and over`
+        : `${lo}–${hi}m`;
+    }
+    for (const bar of $("rtHist")?.children || []) {
+      const b = +bar.dataset.min;
+      bar.classList.toggle("on", b >= lo && (hi >= RT_MAX || b < hi));
+    }
+  }
+
+  function onRange(which) {
+    let lo = +$("rtMin").value, hi = +$("rtMax").value;
+    // Handles must not cross; the one being dragged pushes the other.
+    if (lo > hi) {
+      if (which === "min") hi = lo; else lo = hi;
+      $("rtMin").value = lo;
+      $("rtMax").value = hi;
+    }
+    state.rtMin = lo;
+    state.rtMax = hi;
+    paintRange();
+    apply(false);
+  }
+  $("rtMin").addEventListener("input", () => onRange("min"));
+  $("rtMax").addEventListener("input", () => onRange("max"));
+  // Dragging replaces history; letting go records the result.
+  for (const id of ["rtMin", "rtMax"]) $(id).addEventListener("change", () => writeUrl(true));
+
+  function buildHistogram() {
+    const buckets = new Array(RT_MAX / RT_STEP).fill(0);
+    for (const m of ALL) {
+      if (!m.runtime) continue;
+      buckets[Math.min(buckets.length - 1, Math.floor(m.runtime / RT_STEP))]++;
+    }
+    const peak = Math.max(1, ...buckets);
+    $("rtHist").innerHTML = buckets
+      .map((n, i) => `<i data-min="${i * RT_STEP}" style="height:${Math.round(n / peak * 100)}%"></i>`)
+      .join("");
+  }
+
   function resetAll() {
     Object.assign(state, { q: "", genres: new Set(), decade: "", format: "", rating: "",
-      length: "", director: "", hasArt: false, canWatch: false });
+      director: "", rtMin: 0, rtMax: RT_MAX, hasArt: false, canWatch: false });
     syncControls();
     apply(true);
   }
@@ -1484,6 +1643,7 @@
         if (m.year) decades.add(m.year < 1930 ? 1900 : Math.floor(m.year / 10) * 10);
       }
       buildChips(counts);
+      buildHistogram();
 
       // A list of 439 names is not a browsable thing; the 93 with more than
       // one film here are. Ordered by how much of the catalogue they account
