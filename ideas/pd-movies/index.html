@@ -1390,12 +1390,19 @@
       state.view = v.view === "list" ? "list" : "grid";
       if (SORTS[v.sort]) state.sort = v.sort;
       state.genres = new Set(Array.isArray(v.genres) ? v.genres : []);
-      state.decade = v.decade || "";
-      state.rating = v.rating || "";
-      state.rtMin = Number.isFinite(v.rtMin) ? v.rtMin : 0;
-      state.rtMax = Number.isFinite(v.rtMax) ? v.rtMax : RT_MAX;
-      state.director = v.director || "";
-      state.actor = v.actor || "";
+      const str = (x) => (typeof x === "string" ? x : "");
+      state.decade = str(v.decade);
+      state.rating = str(v.rating);
+      // Stored values get the same clamping and swapping the URL already had.
+      // Without it a saved {rtMin:999999} survived reloads and stretched the
+      // document to over a million pixels wide in Chromium.
+      const span = (x, fallback) =>
+        Number.isFinite(x) ? Math.min(Math.max(Math.round(x), 0), RT_MAX) : fallback;
+      state.rtMin = span(v.rtMin, 0);
+      state.rtMax = span(v.rtMax, RT_MAX);
+      if (state.rtMin > state.rtMax) [state.rtMin, state.rtMax] = [state.rtMax, state.rtMin];
+      state.director = str(v.director);
+      state.actor = str(v.actor);
       state.hasArt = Boolean(v.hasArt);
       state.canWatch = Boolean(v.canWatch);
     } catch {}
@@ -1954,12 +1961,16 @@
         `<a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>; ` +
         `the rest get a drawn poster. Titles are matched by name alone, so a few posters and years will belong to the wrong film.`;
 
+      // Read this before writeUrl: with no film open yet, writeUrl drops the
+      // film param, so reading afterwards always found nothing and a shared
+      // link never opened its film on a real page load.
+      const startId = new URLSearchParams(location.hash.replace(/^#/, "")).get("film");
+      const startFilm = startId && ALL.find((m) => m.id === startId);
+
       syncControls();
       render();
       writeUrl(false);
 
-      const startId = new URLSearchParams(location.hash.replace(/^#/, "")).get("film");
-      const startFilm = startId && ALL.find((m) => m.id === startId);
       if (startFilm) openDrawer(startFilm, { push: false });
     })
     .catch((err) => {
