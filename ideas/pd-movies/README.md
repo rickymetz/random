@@ -35,7 +35,7 @@ Keys are optional. Without them you still get titles, genres, formats, ratings
 and Wikidata years and art — you just lose the fanart.tv and TheTVDB posters.
 `.env` is gitignored and no key is ever written into `data.json`.
 
-The run takes about 40 minutes, almost all of it waiting: requests are
+The run takes roughly half an hour, almost all of it waiting: requests are
 sequential with a 1.5s delay and an identifying User-Agent, because ~1000 page
 views is a lot to ask of a small site. **Every response is cached to the
 `--cache` directory**, so a re-run costs nothing and a crash loses nothing.
@@ -53,10 +53,17 @@ node ideas/pd-movies/build-data.mjs --only art --cache /tmp/pdt   # add years + 
 
 The source site gives no year, no IMDb id, and no other identifier — only a
 title. So years and posters are matched to Wikidata and TheTVDB **by title
-alone**, biased toward the earliest plausible film, since this catalogue is
-almost entirely pre-1980. That mostly works, but it will sometimes attach the
-wrong film's poster or year — a remake, or an unrelated modern film sharing a
-title.
+alone**. Two rules keep that honest:
+
+- A candidate must match the title exactly once case, spacing and punctuation
+  are normalised. Without this the databases' fuzzy search quietly returns
+  some *other* film, which looks identical to a real hit.
+- Candidates dated after 1990 are rejected outright. The catalogue's newest
+  genuine entries are cheap late-80s pictures, so a newer match means the
+  real film isn't in the database and we've landed on a modern namesake.
+  Those titles get no year and a drawn poster instead of a wrong one.
+
+It still won't be perfect — a same-era remake can pass both rules.
 
 `build-data.mjs` writes every miss and ambiguous match to `mismatches.log`
 (gitignored) so they can be reviewed. The page says as much in its footer
