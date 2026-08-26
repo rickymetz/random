@@ -1057,6 +1057,14 @@
   const fmtScore = (n) => (Number.isInteger(n) ? n + ".0" : String(n));
   const stars = (n) => "★".repeat(n);
   const SCORE_SRC = { imdb: "IMDb", tmdb: "TMDB" };
+
+  // The rating came from a specific title page, so say which one. Ids are only
+  // ever "tt" and digits; anything else is not something to build a URL from.
+  function imdbLink(m) {
+    if (m.scoreSrc !== "imdb" || !/^tt\d+$/.test(m.imdb || "")) return "";
+    return `<a class="d-src" href="https://www.imdb.com/title/${m.imdb}/" ` +
+      `target="_blank" rel="noopener noreferrer">IMDb</a>`;
+  }
   // Two scales, never merged: a 0-10 rating from IMDb/TMDB, or the source
   // site's 1-5 star. The star is dimmer so the difference is visible at a
   // glance rather than implied.
@@ -1418,7 +1426,7 @@
           (m.score
             ? `<dt>Rating</dt><dd>${fmtScore(m.score)} / 10` +
               (m.votes ? ` <span class="d-line">from ${m.votes.toLocaleString()} votes</span>` : "") +
-              `<br><span class="d-line">${esc(SCORE_SRC[m.scoreSrc] || "")}</span></dd>`
+              `<br>${imdbLink(m) || `<span class="d-line">${esc(SCORE_SRC[m.scoreSrc] || "")}</span>`}</dd>`
             : m.rating
               ? `<dt>Rating</dt><dd><span class="site">${stars(m.rating)}</span>` +
                 `<br><span class="d-line">Public Domain Torrents users — not comparable to a 10-point score</span></dd>`
