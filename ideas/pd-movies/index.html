@@ -123,6 +123,23 @@
   .clear:hover { color: var(--ink); }
   .search.has-value .clear { display: block; }
 
+  .bar-end {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    justify-self: end;
+  }
+  .navlink {
+    padding: 7px 11px;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--muted);
+    font-size: 13px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .navlink:hover { color: var(--ink); border-color: var(--dim); }
+  .navlink:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .count {
     font: 12px var(--mono);
     color: var(--muted);
@@ -163,6 +180,36 @@
     cursor: pointer;
   }
   select:focus { outline: none; border-color: var(--accent); }
+
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 11px 0 9px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .check:hover { color: var(--ink); border-color: var(--dim); }
+  .check input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .check:has(input:checked) {
+    background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+    border-color: var(--accent);
+    color: var(--ink);
+  }
+  .check:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   .chips {
     display: flex;
@@ -532,6 +579,10 @@
     .bar { grid-template-columns: 1fr auto; row-gap: 10px; }
     .search { grid-column: 1 / -1; max-width: none; }
     .search input { height: 40px; }
+    .navlink { min-height: 40px; display: flex; align-items: center; }
+    .check { height: 38px; grid-column: 1 / -1; justify-content: flex-start; }
+    .check input { width: 17px; height: 17px; }
+    .bar-end { gap: 10px; }
     .home { min-height: 44px; min-width: 44px; justify-content: center; padding: 0 8px; margin-left: -8px; }
 
     /* Wrapped, the 14 genres stack five rows deep and push the grid off
@@ -586,7 +637,10 @@
         </svg>
       </button>
     </div>
-    <div class="count" id="count">…</div>
+    <div class="bar-end">
+      <a class="navlink" href="about.html">About</a>
+      <div class="count" id="count">…</div>
+    </div>
   </div>
 
   <div class="chips" id="genreChips"></div>
@@ -612,6 +666,10 @@
         <option value="unrated">Unrated</option>
       </select>
     </div>
+    <label class="check" for="hasArt">
+      <input type="checkbox" id="hasArt">
+      <span>Has poster</span>
+    </label>
     <div class="field">
       <label for="sort">Sort</label>
       <select id="sort">
@@ -671,7 +729,7 @@
 
   let ALL = [];
   const state = {
-    q: "", genres: new Set(), decade: "", format: "", rating: "",
+    q: "", genres: new Set(), decade: "", format: "", rating: "", hasArt: false,
     sort: "title", view: "grid",
   };
 
@@ -742,6 +800,7 @@
       else if (m.year < d || m.year > d + 9) return false;
     }
     if (state.format && !(m.formats || []).includes(state.format)) return false;
+    if (state.hasArt && !m.art) return false;
     if (state.rating === "unrated") { if (m.rating) return false; }
     else if (state.rating === "rated") { if (!m.rating) return false; }
     else if (state.rating && (m.rating || 0) < +state.rating) return false;
@@ -781,7 +840,7 @@
   }
 
   const isFiltered = () =>
-    state.q || state.genres.size || state.decade || state.format || state.rating;
+    state.q || state.genres.size || state.decade || state.format || state.rating || state.hasArt;
 
   // Chip counts reflect every filter *except* genre, so they read as
   // "what would this chip add", not "what is already selected".
@@ -921,12 +980,14 @@
     $(id).addEventListener("change", (e) => { state[key] = e.target.value; render(); });
   }
   $("minRating").addEventListener("change", (e) => { state.rating = e.target.value; render(); });
+  $("hasArt").addEventListener("change", (e) => { state.hasArt = e.target.checked; render(); });
 
   function resetAll() {
-    Object.assign(state, { q: "", genres: new Set(), decade: "", format: "", rating: "" });
+    Object.assign(state, { q: "", genres: new Set(), decade: "", format: "", rating: "", hasArt: false });
     $("q").value = "";
     $("searchWrap").classList.remove("has-value");
     $("decade").value = ""; $("format").value = ""; $("minRating").value = "";
+    $("hasArt").checked = false;
     syncChips();
     render();
   }
@@ -978,6 +1039,7 @@
       }
 
       const withArt = ALL.filter((m) => m.art).length;
+      $("hasArt").nextElementSibling.textContent = `Has poster (${withArt})`;
       const withYear = ALL.filter((m) => m.year).length;
       $("footer").innerHTML =
         `Catalogue of ${ALL.length} public domain films scraped from ` +
