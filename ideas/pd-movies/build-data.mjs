@@ -318,7 +318,6 @@ async function posters(movies) {
         // Same old-film bias as the Wikidata matcher.
         const want = norm(mv.title);
         const scored = results
-          .filter((r) => r.image_url)
           .filter((r) => {
             const names = [r.name, r.title, ...Object.values(r.translations || {})].filter(Boolean);
             return names.some((n) => norm(n) === want);
@@ -327,14 +326,36 @@ async function posters(movies) {
           .filter((x) => !(x.year && x.year > MAX_YEAR))
           .sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999));
         if (!scored.length) continue;
-        mv.art = scored[0].r.image_url;
-        mv.artSrc = "tvdb";
+
+        // The match is good even when the artwork is not, so take the year
+        // from it regardless.
         if (!mv.year && scored[0].year) mv.year = scored[0].year;
+
+        // TheTVDB returns a shared "no poster" placeholder rather than
+        // omitting the field, and says so in the path. 42 films were carrying
+        // it, which made the Has poster filter overcount.
+        const real = scored.find((x) =>
+          x.r.image_url && !/\/images\/missing\//i.test(x.r.image_url));
+        if (!real) continue;
+        mv.art = real.r.image_url;
+        mv.artSrc = "tvdb";
         got++;
       } catch {}
     }
     console.log(`  tvdb: ${got} posters`);
   }
+
+  // Belt and braces: any single image standing in for several films is a
+  // placeholder by definition, whichever service supplied it.
+  const uses = new Map();
+  for (const mv of movies) if (mv.art) uses.set(mv.art, (uses.get(mv.art) || 0) + 1);
+  let shared = 0;
+  for (const mv of movies) {
+    if (mv.art && uses.get(mv.art) > 2) {
+      delete mv.art; delete mv.artSrc; shared++;
+    }
+  }
+  if (shared) console.log(`  dropped ${shared} films using shared placeholder art`);
 
   // Commons fallback for anything still bare.
   let wd = 0;
