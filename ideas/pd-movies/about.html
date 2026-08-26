@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>About — Public Domain Movies</title>
-<meta name="description" content="The sources of the catalogue, the years and the poster art, and the limits of this page.">
+<meta name="description" content="Where the catalogue, the years and the poster art come from — and what we do when we are not sure.">
 <style>
   :root {
     --bg: #16181d;
@@ -84,15 +84,6 @@
     margin: 0 auto;
     padding: 34px 20px 80px;
   }
-  .lede {
-    font-size: 17px;
-    line-height: 1.6;
-    color: var(--ink);
-    margin: 0 0 8px;
-    text-wrap: pretty;
-  }
-  .lede + p { margin-top: 0; color: var(--muted); }
-
   h2 {
     margin: 40px 0 4px;
     font-size: 12px;
@@ -102,6 +93,7 @@
     letter-spacing: 0.09em;
     color: var(--dim);
   }
+  h2:first-child { margin-top: 0; }
   h2 + p, h2 + .card, h2 + ul { margin-top: 12px; }
   p { margin: 0 0 14px; text-wrap: pretty; }
 
@@ -203,58 +195,49 @@
 </header>
 
 <main>
-  <p class="lede">This page is an index of films. It does not contain films.
-  It lists the films from a different website, and lets you search, filter and
-  sort that list.</p>
-  <p>Other people made all of the data on this page. This section gives the
-  credit to them.</p>
-
   <h2>The catalogue</h2>
 
   <div class="card">
     <h3><a href="https://www.publicdomaintorrents.info/" target="_blank" rel="noopener noreferrer">Public Domain Torrents</a><span class="role">Source</span></h3>
-    <p>This page reads all of the titles, the genres, the formats and the star
-    ratings from their website. They collect and supply public domain films.
-    They started this work in the early 2000s.</p>
-    <p>The program reads their website one page at a time. It waits 1.5 seconds
-    between each page. It sends a User-Agent that identifies it. It also keeps a
-    copy of each page. Thus a second run does not add load to their server.</p>
-    <p>Their website has the downloads, the plot summaries and the user
-    comments. This page does not have them. Use their website to get a film.</p>
+    <p>Every title, genre, format and rating here came from their site. They
+    have been collecting public domain film since the early 2000s, back when
+    almost nobody was.</p>
+    <p>We read their catalogue once, slowly. One page at a time, a second and a
+    half apart, with a User-Agent that says exactly who is asking. Every page
+    cached, so we never have to ask twice.</p>
+    <p>The films live with them. So do the summaries and the comments. Find
+    something here, then go and get it there.</p>
   </div>
 
   <h2>Years and artwork</h2>
 
-  <p>The source website does not give a release year. It does not give poster
-  art. This page gets these two items from three other databases.</p>
+  <p>The catalogue does not record a year. Or a poster. So we asked three
+  databases that do.</p>
 
   <div class="card">
     <h3><a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a><span class="role">Artwork and years</span></h3>
-    <p>TheTVDB supplies metadata and artwork. It gives more posters to this page
-    than the other two sources.</p>
-    <p>Volunteers make TheTVDB. They add and correct each entry manually. If a
-    film is not correct, you can
-    <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">add the correct data</a>.
-    You can also subscribe to give support to the project.</p>
+    <p>Most of the artwork here is theirs. TheTVDB is built entry by entry, by
+    volunteers, by hand.</p>
+    <p>Spot something wrong? <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">Fix it at the source</a>
+    and it turns up here on the next pass. Or subscribe, and help keep the
+    project running.</p>
   </div>
 
   <div class="card">
     <h3><a href="https://fanart.tv" target="_blank" rel="noopener noreferrer">fanart.tv</a><span class="role">Artwork</span></h3>
-    <p>fanart.tv supplies more poster artwork. A community of users collects and
-    approves this artwork for films and television.</p>
+    <p>More posters, from a community with strong opinions about what counts as
+    good artwork.</p>
   </div>
 
   <div class="card">
     <h3><a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer">Wikidata</a> and <a href="https://commons.wikimedia.org" target="_blank" rel="noopener noreferrer">Wikimedia Commons</a><span class="role">Years and artwork</span></h3>
-    <p>Most of the release years come from Wikidata. Wikidata supplies its data
-    under the
-    <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0 licence</a>.</p>
-    <p>If TheTVDB and fanart.tv do not have a poster, the image comes from
-    Wikimedia Commons. Each Commons file has its own licence and its own author
-    credit. The page for the file shows this information.</p>
+    <p>Nearly every year comes from Wikidata, released under
+    <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0</a>.</p>
+    <p>When neither of the others has a poster, Commons fills the gap. Every
+    file there carries its own licence and its own credit, on its own page.</p>
   </div>
 
-  <h2>Data coverage</h2>
+  <h2>By the numbers</h2>
 
   <table id="stats">
     <thead><tr><th>Field</th><th>Source</th><th>Films</th></tr></thead>
@@ -269,69 +252,63 @@
   </table>
   <p id="art-split" class="note"></p>
 
-  <h2>How the page matches a film</h2>
+  <h2>Matching</h2>
 
-  <p>The source website gives only a title. It does not give a year. It does not
-  give an IMDb identifier. Thus this page matches each film to the databases by
-  the title only. Two rules make the matches more accurate.</p>
+  <p>A title. That is all the catalogue gives us. No year, no IMDb ID, nothing
+  else to go on. So we match on the title alone, carefully.</p>
 
   <ul>
-    <li><strong>The title must be an exact match.</strong> First the program
-      makes the letter case, the spaces and the punctuation the same in both
-      titles. Without this rule, a database search can return a different film.
-      A wrong result of this type looks the same as a correct result.</li>
-    <li><strong>The program refuses a date after 1990.</strong> The most recent
-      films in this catalogue are from the late 1980s. Thus a more recent match
-      shows that the database does not have the correct film. The match is a
-      different film with the same name.</li>
+    <li><strong>Exact, or nothing.</strong> Case, spacing and punctuation are
+      levelled first. Skip this and a fuzzy search hands back a different film
+      entirely, looking every bit as convincing as the right one.</li>
+    <li><strong>Nothing after 1990.</strong> The newest films here are cheap
+      late-eighties pictures. A more recent match does not mean we found it. It
+      means we found something else wearing the same name.</li>
   </ul>
 
-  <p>These two rules are not sufficient. A remake from the same period can obey
-  both rules. Thus some years and some posters on this page are for the wrong
-  film.</p>
+  <p>It is not foolproof. A remake from the same era clears both rules, so some
+  years and posters here belong to the wrong film.</p>
 
-  <p>If the program does not find a good match, the film shows no year. The page
-  then draws a poster from the title of the film. An empty field is better than
-  incorrect data.</p>
+  <p>When we are not confident, we say nothing. No year. And a poster drawn from
+  the title, rather than borrowed from a stranger.</p>
 
-  <h2>Limits of this page</h2>
+  <h2>What we don't do</h2>
 
   <ul>
-    <li><strong>No plot summaries.</strong> The summaries belong to the source
-      website. This page does not copy them.</li>
-    <li><strong>No download links.</strong> Each film links to its page on
-      Public Domain Torrents. The files stay on their website.</li>
-    <li><strong>No screenshots from their server.</strong></li>
-    <li><strong>No tracking, no analytics and no cookies.</strong> This page is
-      one HTML file and one data file.</li>
+    <li><strong>No plot summaries.</strong> They are not ours to reprint.</li>
+    <li><strong>No download links.</strong> Every film points home to Public
+      Domain Torrents.</li>
+    <li><strong>No screenshots</strong> lifted from their server.</li>
+    <li><strong>No tracking, no analytics, no cookies.</strong> One page and one
+      data file.</li>
   </ul>
 
-  <h2>The status of the films</h2>
+  <h2>About the films</h2>
 
-  <p>The source website lists these films as public domain in the United States.
-  Usually the copyright expired, or the owner did not renew it.</p>
+  <p>These are catalogued as public domain in the United States. Copyright
+  expired, or was never renewed.</p>
 
-  <p>Public domain status is different in each country. For some films the
-  status is not certain. This list shows the opinion of the source website. It
-  is not legal advice.</p>
+  <p>Status varies by country, and for a few films it is genuinely contested.
+  What you see here reflects the source site's judgement. It is not legal
+  advice.</p>
 
-  <h2>How to correct an error</h2>
+  <h2>Found a mistake?</h2>
 
-  <p>You can correct a wrong poster, a wrong year or a missing film. Make the
-  correction at the source:</p>
+  <p>Wrong poster. Wrong year. Missing film. Every one of them is fixable, and
+  the fix belongs upstream.</p>
 
   <ul>
-    <li>Film data: <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>
+    <li><strong>Film data</strong> — <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>
       or <a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer">Wikidata</a></li>
-    <li>Artwork: <a href="https://fanart.tv" target="_blank" rel="noopener noreferrer">fanart.tv</a></li>
-    <li>The catalogue: <a href="https://www.publicdomaintorrents.info/" target="_blank" rel="noopener noreferrer">Public Domain Torrents</a></li>
+    <li><strong>Artwork</strong> — <a href="https://fanart.tv" target="_blank" rel="noopener noreferrer">fanart.tv</a></li>
+    <li><strong>The catalogue</strong> — <a href="https://www.publicdomaintorrents.info/" target="_blank" rel="noopener noreferrer">Public Domain Torrents</a></li>
   </ul>
 
-  <p>The next run of the program includes your correction.</p>
+  <p>Fix it there, and the next pass brings it here.</p>
 </main>
 
 <footer id="footer">
-  This page is part of <a href="../../">random</a>, a set of small pages.
+  Part of <a href="../../">random</a>, a hub of small ideas.
 </footer>
 
 <script>
@@ -358,16 +335,15 @@
       for (const m of mv) if (m.art) by[m.artSrc] = (by[m.artSrc] || 0) + 1;
       const label = { tvdb: "TheTVDB", fanart: "fanart.tv", commons: "Wikimedia Commons" };
       const parts = Object.entries(by).sort((a, b) => b[1] - a[1])
-        .map(([k, v]) => `${v} from ${label[k] || k}`);
+        .map(([k, v]) => `${v} posters from ${label[k] || k}`);
       const drawn = n - count((m) => m.art);
       document.getElementById("art-split").textContent =
-        `The poster art comes from these sources: ${parts.join(", ")}. ` +
-        `${drawn} films have no poster in the three sources. For these films ` +
-        `the page draws a poster from the title.`;
+        `${parts.join(". ")}. The other ${drawn} films do not have one anywhere, ` +
+        `so we draw them a poster from their title.`;
 
       const yrs = mv.map((m) => m.year).filter(Boolean);
       document.getElementById("footer").insertAdjacentHTML("afterbegin",
-        `The program read the catalogue on ${d.scraped}. It found ${n} films from ${Math.min(...yrs)} to ${Math.max(...yrs)}. `);
+        `Catalogue read ${d.scraped}. ${n} films, ${Math.min(...yrs)} to ${Math.max(...yrs)}. `);
     })
     .catch(() => {
       document.getElementById("art-split").remove();
