@@ -1144,11 +1144,12 @@
         `<span class="t">${esc(m.title)}</span>` +
       `</div>`;
     // Remote art can 404 (dead CDN entries) — fall back to the drawn poster.
-    const img = m.art
-      ? `<img src="${esc(m.art)}" alt="" loading="lazy" decoding="async" data-film="${esc(m.id)}"
+    const src = safeUrl(m.art);
+    const img = src
+      ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" data-film="${esc(m.id)}"
              onerror="window.__posterFailed(this)">`
       : "";
-    const genHidden = m.art ? " hidden" : "";
+    const genHidden = src ? " hidden" : "";
     return `<div class="poster">` +
       gen.replace('class="gen"', `class="gen"${genHidden}`) +
       img +
@@ -1188,6 +1189,16 @@
       // from under someone mid-scroll would be worse than a stale count.
       if (state.hasArt) render();
     }, 400);
+  }
+
+  // Scraped values are third-party input: fanart.tv, TheTVDB and Wikipedia are
+  // all community-editable. Only plain https URLs get through, and quotes,
+  // parens, backslashes and whitespace are rejected outright — those are what
+  // break out of a CSS url() or an attribute.
+  function safeUrl(u) {
+    const v = String(u ?? "").trim();
+    if (!/^https:\/\/[^\s"'`\\()<>]+$/.test(v)) return "";
+    return v;
   }
 
   function esc(s) {
@@ -1524,7 +1535,7 @@
         `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>` +
       `</button>` +
       `<div class="d-hero" id="dHero">` +
-        (m.art && !m.artBroken ? `<div class="d-back" style="background-image:url('${esc(m.art)}')"></div>` : "") +
+        (safeUrl(m.art) && !m.artBroken ? `<div class="d-back"></div>` : "") +
         posterHTML(m) +
         (m.ia ? `<button class="play-over" id="dPlay" aria-label="Play ${esc(m.title)}">` +
                 `<svg width="26" height="26" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.2v9.6l7.5-4.8z"/></svg>` +
@@ -1578,7 +1589,7 @@
                 `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h7v7M13 3L6.5 9.5M11 9v4H3V5h4"/></svg>` +
               `</a>`
             : "") +
-          `<a class="btn${m.ia ? " ghost" : ""}" href="${SRC}/nshowmovie.html?movieid=${esc(m.id)}" target="_blank" rel="noopener noreferrer">` +
+          `<a class="btn${m.ia ? " ghost" : ""}" href="${SRC}/nshowmovie.html?movieid=${encodeURIComponent(m.id)}" target="_blank" rel="noopener noreferrer">` +
             `Open on Public Domain Torrents` +
             `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h7v7M13 3L6.5 9.5M11 9v4H3V5h4"/></svg>` +
           `</a>` +
@@ -1594,6 +1605,13 @@
 
     if (!reopening) lockScroll();
     writeUrl(push && !reopening);
+    // Assigned through the style object rather than built into the attribute:
+    // esc() turns a quote into &#39;, the HTML parser turns it back before CSS
+    // reads it, and the value escapes the url() — six declarations instead of
+    // one, including position:fixed over the whole page.
+    const back = drawer.querySelector(".d-back");
+    if (back) back.style.backgroundImage = `url("${safeUrl(m.art)}")`;
+
     drawer.classList.add("open");
     drawer.setAttribute("aria-hidden", "false");
     scrim.classList.add("open");
@@ -1609,7 +1627,8 @@
       hero.dataset.playing = "1";
       hero.innerHTML = `<iframe src="https://archive.org/embed/${encodeURIComponent(m.ia)}" ` +
         `title="${esc(m.title)}" allow="fullscreen" allowfullscreen frameborder="0" ` +
-        `referrerpolicy="no-referrer"></iframe>`;
+        `referrerpolicy="no-referrer" ` +
+        `sandbox="allow-scripts allow-same-origin allow-fullscreen allow-presentation"></iframe>`;
     };
     for (const t of drawer.querySelectorAll(".rel[data-rel]")) {
       t.onclick = () => {
