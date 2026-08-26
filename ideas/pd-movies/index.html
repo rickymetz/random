@@ -531,6 +531,30 @@
     header { position: static; }
     .bar { grid-template-columns: 1fr auto; row-gap: 10px; }
     .search { grid-column: 1 / -1; max-width: none; }
+    .search input { height: 40px; }
+    .home { min-height: 44px; min-width: 44px; justify-content: center; padding: 0 8px; margin-left: -8px; }
+
+    /* Wrapped, the 14 genres stack five rows deep and push the grid off
+       screen. One horizontal rail instead, with chips tall enough to hit —
+       25px was well under the 44px touch guideline. */
+    .chips {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
+      padding-bottom: 10px;
+    }
+    .chips::-webkit-scrollbar { display: none; }
+    .chip { flex: none; padding: 11px 14px; font-size: 13px; }
+
+    /* Two columns, so four filters occupy two rows rather than four. */
+    .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .field { min-width: 0; }
+    .field select { flex: 1; min-width: 0; height: 38px; }
+    .reset { grid-column: 1; justify-self: start; padding: 9px 10px; }
+    .view-toggle { grid-column: 2; justify-self: end; margin-left: 0; }
+    .view-toggle button { width: 40px; height: 38px; }
+
     .grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 18px 12px; }
   }
 </style>
