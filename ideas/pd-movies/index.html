@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PDM Browser</title>
-<meta name="description" content="A Plex-style browser for the ~980 public domain films at publicdomaintorrents.info — search, filter by genre, decade, length and rating, sort any way you like.">
+<meta name="description" content="Browse 981 public domain films — search by title or cast, filter by genre, decade, length and rating, and watch hundreds of them in the page.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316181d'/%3E%3Crect x='9' y='5' width='14' height='22' rx='1.5' fill='%23e5a00d'/%3E%3Cg fill='%2316181d'%3E%3Crect x='10.5' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3C/g%3E%3C/svg%3E">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="random">
 <meta property="og:title" content="PDM Browser">
-<meta property="og:description" content="Browse ~980 public domain films. Search, filter by genre, decade, length and rating, and sort any way you like.">
+<meta property="og:description" content="Browse 981 public domain films. Search, filter, sort — and watch hundreds of them without leaving the page.">
 <meta property="og:url" content="https://rickymetz.github.io/random/ideas/pd-movies/">
 <meta property="og:image" content="https://rickymetz.github.io/random/ideas/pd-movies/og.png">
 <meta property="og:image:width" content="1200">
@@ -17,7 +17,7 @@
 <meta property="og:image:alt" content="PDM Browser — a grid of vintage film posters">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="PDM Browser">
-<meta name="twitter:description" content="Browse ~980 public domain films. Search, filter, sort.">
+<meta name="twitter:description" content="Browse 981 public domain films. Hundreds play in the page.">
 <meta name="twitter:image" content="https://rickymetz.github.io/random/ideas/pd-movies/og.png">
 <style>
   :root {
@@ -28,7 +28,9 @@
     --line-2: #3a4150;
     --ink: #e8eaf0;
     --muted: #8b93a5;
-    --dim: #5d6577;
+    /* Was #5d6577 — 3.04:1 on --bg, under the 4.5:1 minimum, and it carried the
+       field labels, the result count and the footer. */
+    --dim: #858da1;
     --accent: #e5a00d;         /* Plex amber */
     --accent-ink: #1a1205;
     --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
@@ -91,6 +93,14 @@
     text-decoration: none;
   }
   .home:hover { color: var(--ink); background: var(--panel); }
+  /* "PDM Browser" alone told a first-time reader nothing — one reviewer took
+     ten seconds to guess it, another assumed the site was something else. */
+  .tagline {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
   .home:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   .search {
@@ -427,6 +437,38 @@
     cursor: pointer;
   }
   .reset:hover { color: var(--ink); border-color: var(--line-2); }
+
+  /* The filters are the whole page on a phone: 453px of controls, 54% of the
+     viewport, before a single poster. They collapse behind a disclosure there
+     and stay open everywhere else. */
+  .filters-toggle { display: none; }
+
+  @media (max-width: 760px) {
+    .filters-toggle {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin: 0 20px 12px;
+      padding: 9px 13px;
+      background: var(--panel);
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font: 13px var(--sans);
+      cursor: pointer;
+    }
+    .filters-toggle[aria-expanded="true"] { color: var(--ink); border-color: var(--dim); }
+    .filters-toggle .n {
+      margin-left: 2px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      font: 11px var(--mono);
+      font-weight: 600;
+    }
+    #filterPanel[hidden] { display: none; }
+  }
 
   /* --------------------------------------------------------------- grid */
   main {
@@ -905,6 +947,7 @@
     .bar { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; }
     .brand { grid-row: 1; grid-column: 1; }
     .brand h1 { font-size: 15px; overflow: hidden; text-overflow: ellipsis; }
+    .tagline { display: none; }   /* no room beside the title on a phone */
     .bar-end { grid-row: 1; grid-column: 2; justify-self: end; }
     .search { grid-row: 2; grid-column: 1 / -1; max-width: none; }
     .search input { height: 40px; }
@@ -960,6 +1003,7 @@
         </svg>
       </a>
       <h1>PDM Browser</h1>
+      <p class="tagline">Public domain movies, free to watch</p>
     </div>
     <div class="search" id="searchWrap">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
@@ -980,6 +1024,14 @@
     </div>
   </div>
 
+  <button class="filters-toggle" id="filtersToggle" aria-expanded="false" aria-controls="filterPanel">
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+      <path d="M2 4h12M4.5 8h7M6.5 12h3"/>
+    </svg>
+    <span id="filtersLabel">Filters</span>
+  </button>
+
+  <div id="filterPanel">
   <div class="chips" id="genreChips"></div>
 
   <div class="toolbar">
@@ -1066,6 +1118,7 @@
       </button>
     </div>
     </div>
+  </div>
   </div>
 </header>
 
@@ -1312,6 +1365,7 @@
     empty.hidden = shown.length > 0;
     countEl.textContent = `${shown.length} / ${ALL.length}`;
     $("reset").hidden = !isFiltered();
+    syncPanel();
     updateChipCounts();
   }
 
@@ -1543,6 +1597,15 @@
     document.body.style.top = "";
     document.body.style.left = "";
     document.body.style.right = "";
+    // Closing re-renders the grid back to a single page, so the document is
+    // suddenly far shorter than where the reader was and the scroll clamps to
+    // the new bottom. Draw enough chunks to reach the old position first, or
+    // every film you look at costs you your place in 981 of them.
+    let guard = 0;
+    while (document.documentElement.scrollHeight < lockedAt + window.innerHeight
+           && drawn < shown.length && guard++ < 40) {
+      drawMore();
+    }
     window.scrollTo(0, lockedAt);
   }
 
@@ -1889,6 +1952,27 @@
     if (film) openDrawer(film, { push: false });
     else if (drawer.classList.contains("open")) closeDrawer();
   });
+
+  // Collapsed by default on a phone, and it says how many filters are on so a
+  // hidden filter is never a mystery.
+  const SMALL = window.matchMedia("(max-width: 760px)");
+  function syncPanel() {
+    const small = SMALL.matches;
+    const open = !small || $("filtersToggle").getAttribute("aria-expanded") === "true";
+    $("filterPanel").hidden = small && !open;
+    const n = activeFilterCount();
+    $("filtersLabel").innerHTML = "Filters" + (n ? ` <span class="n">${n}</span>` : "");
+  }
+  function activeFilterCount() {
+    return [state.q, state.genres.size, state.decade, state.rating, state.director,
+            state.actor, rangeActive(), state.hasArt, state.canWatch].filter(Boolean).length;
+  }
+  $("filtersToggle").addEventListener("click", () => {
+    const t = $("filtersToggle");
+    t.setAttribute("aria-expanded", t.getAttribute("aria-expanded") === "true" ? "false" : "true");
+    syncPanel();
+  });
+  SMALL.addEventListener("change", syncPanel);
 
   new IntersectionObserver((entries) => {
     if (entries[0].isIntersecting) drawMore();
