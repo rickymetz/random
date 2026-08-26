@@ -473,9 +473,17 @@ const IMDB_DATASET = "https://datasets.imdbws.com/title.ratings.tsv.gz";
 async function imdbRatings(wanted, cacheFile) {
   if (!fs.existsSync(cacheFile)) {
     console.log("  downloading the IMDb ratings export (~8MB)");
-    const res = await fetch(IMDB_DATASET, { headers: { "User-Agent": UA } });
-    if (!res.ok) { console.warn(`  IMDb dataset failed: HTTP ${res.status}`); return new Map(); }
-    fs.writeFileSync(cacheFile, Buffer.from(await res.arrayBuffer()));
+    try {
+      const res = await fetch(IMDB_DATASET, { headers: { "User-Agent": UA } });
+      if (!res.ok) { console.warn(`  IMDb dataset failed: HTTP ${res.status}`); return new Map(); }
+      fs.writeFileSync(cacheFile, Buffer.from(await res.arrayBuffer()));
+    } catch (e) {
+      // An unreachable host throws rather than returning a bad status, so
+      // without this the process died here instead of reaching the guard that
+      // is supposed to notice there is nothing to write.
+      console.warn(`  IMDb dataset unreachable: ${e.message}`);
+      return new Map();
+    }
   }
   const out = new Map();
   const rl = readline.createInterface({
@@ -537,6 +545,19 @@ async function ratings(movies) {
   console.log(`  imdb: ${imdb.size} of ${wanted.size} ids matched`);
   const tmdb = await tmdbRatings(movies, env);
   console.log(`  tmdb: ${tmdb.size} ratings`);
+
+  // Nothing is deleted until there is something to put back. The dataset
+  // download only warns on failure, and the delete below is unconditional, so a
+  // network blip used to mean every score in data.json was erased in one run —
+  // with the default sort being "Rating, best".
+  if (!imdb.size && !tmdb.size) {
+    const had = movies.filter((m) => m.score).length;
+    if (had) {
+      console.error(`  refusing to continue: no ratings were fetched and ${had} films already have one`);
+      console.error("  (an empty IMDb download would otherwise clear every score)");
+      return movies;
+    }
+  }
 
   const tally = { imdb: 0, tmdb: 0, pdt: 0, none: 0 };
   for (const mv of movies) {
@@ -745,6 +766,12 @@ async function credits(movies) {
     if (found.size) { mv.genres = [...found]; genred++; }
   }
   if (genred) console.log(`  ${genred} films given a genre from Wikidata`);
+
+  if (!Object.keys(ents).length) {
+    console.error("  refusing to continue: no cached Wikidata entities in this cache directory");
+    console.error("  (running with a fresh --cache would clear genres and credits instead of filling them)");
+    return movies;
+  }
 
   const people = new Set();
   const want = new Map();
@@ -1096,6 +1123,26 @@ if (only === "pdt") {
     count: movies.length,
     movies,
   };
+  // A phase that loses a large share of a field has gone wrong, not found less.
+  if (fs.existsSync(outFile)) {
+    try {
+      const prev = JSON.parse(fs.readFileSync(outFile, "utf8")).movies || [];
+      const count = (list, f) => list.filter(f).length;
+      const checks = [
+        ["films", (m) => true], ["scores", (m) => m.score], ["years", (m) => m.year],
+        ["posters", (m) => m.art], ["watch links", (m) => m.ia],
+      ];
+      for (const [label, f] of checks) {
+        const was = count(prev, f), now = count(movies, f);
+        if (was > 20 && now < was * 0.8) {
+          console.error(`  ABORT: ${label} would drop ${was} -> ${now}. data.json left untouched.`);
+          console.error("  Re-run the phase, or pass --force if the loss is intended.");
+          if (!args.includes("--force")) process.exit(1);
+        }
+      }
+    } catch {}
+  }
+
   fs.writeFileSync(outFile, JSON.stringify(out));
   console.log(`wrote ${outFile}: ${movies.length} movies, ${movies.filter((m) => m.art).length} with art, ${movies.filter((m) => m.year).length} with year`);
 }
