@@ -676,10 +676,12 @@
     .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .field { min-width: 0; }
     .field select { flex: 1; min-width: 0; height: 38px; }
-    .reset { grid-column: 1; justify-self: start; padding: 9px 10px; }
+    /* Shuffle and the view toggle share the last row; left alone the dice
+       took a whole row to itself. */
+    .icon-btn { grid-column: 1; justify-self: start; width: 44px; height: 38px; }
     .view-toggle { grid-column: 2; justify-self: end; margin-left: 0; }
     .view-toggle button { width: 40px; height: 38px; }
-    .icon-btn { width: 44px; height: 38px; justify-self: start; }
+    .reset { grid-column: 1 / -1; justify-self: start; padding: 9px 10px; }
 
     .grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 18px 12px; }
   }
@@ -705,7 +707,7 @@
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
         <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14" stroke-linecap="round"/>
       </svg>
-      <input id="q" type="search" placeholder="Search titles…" autocomplete="off" spellcheck="false" aria-label="Search titles">
+      <input id="q" type="search" placeholder="Search titles and people…" autocomplete="off" spellcheck="false" aria-label="Search titles, directors and cast">
       <div class="search-end">
         <button class="clear" id="clearQ" aria-label="Clear search">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
@@ -744,14 +746,6 @@
         <option value="unrated">Unrated</option>
       </select>
     </div>
-    <label class="check" for="canWatch">
-      <input type="checkbox" id="canWatch">
-      <span>Watchable</span>
-    </label>
-    <label class="check" for="hasArt">
-      <input type="checkbox" id="hasArt">
-      <span>Has poster</span>
-    </label>
     <div class="field">
       <label for="sort">Sort</label>
       <select id="sort">
@@ -764,6 +758,14 @@
         <option value="random">Random</option>
       </select>
     </div>
+    <label class="check" for="canWatch">
+      <input type="checkbox" id="canWatch">
+      <span>Watchable</span>
+    </label>
+    <label class="check" for="hasArt">
+      <input type="checkbox" id="hasArt">
+      <span>Has poster</span>
+    </label>
     <button class="icon-btn" id="shuffle" title="Open a random film" aria-label="Open a random film">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
         <rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/>
@@ -925,7 +927,11 @@
   function matches(m) {
     if (state.q) {
       const q = state.q.toLowerCase();
-      if (!m.title.toLowerCase().includes(q)) return false;
+      // Searching people as well as titles is what makes a director name
+      // clickable — otherwise the credit is a dead end.
+      const hay = m._hay || (m._hay = [m.title, ...(m.director || []), ...(m.cast || [])]
+        .join(" ").toLowerCase());
+      if (!hay.includes(q)) return false;
     }
     if (state.genres.size && !m.genres.some((g) => state.genres.has(g))) return false;
     if (state.decade) {
@@ -1151,6 +1157,14 @@
               ? `<dt>Rating</dt><dd><span class="site">${stars(m.rating)}</span>` +
                 `<br><span class="d-line">Public Domain Torrents users — not comparable to a 10-point score</span></dd>`
               : "") +
+          (m.director?.length
+            ? `<dt>Director</dt><dd>${m.director
+                .map((d) => `<button class="tag" data-who="${esc(d)}">${esc(d)}</button>`).join("")}</dd>`
+            : "") +
+          (m.cast?.length
+            ? `<dt>Cast</dt><dd>${m.cast
+                .map((c) => `<button class="tag" data-who="${esc(c)}">${esc(c)}</button>`).join("")}</dd>`
+            : "") +
           `<dt>Formats</dt><dd>${fmt.length
             ? fmt.map((f) => `<span class="tag static">${esc(f)}</span>`).join("")
             : "<span class='d-line'>Download only</span>"}</dd>` +
@@ -1181,6 +1195,16 @@
     $("dClose").focus();
 
     $("dClose").onclick = () => closeDrawer({ back: true });
+    for (const t of drawer.querySelectorAll(".tag[data-who]")) {
+      t.onclick = () => {
+        state.q = t.dataset.who;
+        $("q").value = state.q;
+        $("searchWrap").classList.add("has-value");
+        closeDrawer();
+        apply(true);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      };
+    }
     for (const t of drawer.querySelectorAll(".tag[data-g]")) {
       t.onclick = () => {
         state.genres = new Set([t.dataset.g]);
