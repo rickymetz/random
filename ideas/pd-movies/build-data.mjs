@@ -592,6 +592,64 @@ async function archive(movies) {
   }
   console.log(`  archive.org: ${found} of ${asked} films with a year are watchable`);
 
+  // A matching title is not a matching film: the Archive holds trailers and
+  // clips under the film's own name, and roughly a fifth of the matches played
+  // a minute of footage instead of the feature.
+  //
+  // The per-file "length" is seconds. That was worth establishing rather than
+  // assuming — a small value like 44.4 reads naturally as minutes, and taking
+  // it that way kept a 44 second clip of The Kid as a 68 minute film. Loading
+  // the media in a browser settled it: The Kid runs 0.7 minutes, American
+  // Empire runs 80.7, and both agree with the seconds reading.
+  const VIDEO = /\.(mp4|m4v|ogv|mpg|mpeg|avi|mkv|webm)$/i;
+
+  // "89 min." | "1:19:07" | "48:35"
+  function statedMinutes(raw) {
+    const t = String(raw ?? "").trim();
+    if (!t) return null;
+    const m = t.match(/^(\d+)\s*min/i);
+    if (m) return +m[1];
+    const p = t.split(":").map((x) => parseInt(x, 10));
+    if (p.some(Number.isNaN)) return null;
+    if (p.length === 3) return p[0] * 60 + p[1] + p[2] / 60;
+    if (p.length === 2) return p[0] + p[1] / 60;
+    return null;
+  }
+
+  let checked = 0, dropped = 0, adopted = 0;
+  for (const mv of movies) {
+    if (!mv.ia) continue;
+    checked++;
+    if (checked % 150 === 0) console.log(`  verifying ${checked} (${dropped} dropped)`);
+    const body = await get(`https://archive.org/metadata/${encodeURIComponent(mv.ia)}`,
+      `iam-${mv.id}.json`, 300);
+    if (!body) continue;
+    let files = [], meta = {};
+    try { const j = JSON.parse(body); files = j.files || []; meta = j.metadata || {}; }
+    catch { continue; }
+
+    const vids = files.filter((f) => VIDEO.test(f.name || ""));
+    if (!vids.length) { delete mv.ia; dropped++; continue; }
+
+    // Several files usually means several encodings of one film, which share a
+    // duration — but a serial split across parts has different ones. Summing
+    // the distinct values covers both without double counting.
+    const distinct = new Set(vids.map((f) => Math.round(parseFloat(f.length) || 0)).filter(Boolean));
+    const fromFiles = [...distinct].reduce((a, x) => a + x, 0) / 60;
+    const mins = statedMinutes(meta.runtime) ?? fromFiles;
+    if (!mins) { delete mv.ia; dropped++; continue; }
+
+    if (mv.runtime) {
+      if (mins < mv.runtime * 0.6) { delete mv.ia; dropped++; }
+    } else if (mins < 4) {
+      delete mv.ia; dropped++;
+    } else {
+      mv.runtime = Math.round(mins);
+      adopted++;
+    }
+  }
+  console.log(`  verified ${checked}: ${dropped} were clips or empty, ${adopted} supplied a runtime`);
+
   // An item we matched also has a thumbnail, which covers films that had no
   // poster from anywhere else.
   let filled = 0;
