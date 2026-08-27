@@ -774,6 +774,35 @@
     cursor: pointer;
   }
   .drawer-close:hover { background: rgb(0 0 0 / .8); }
+  /* Escape can't reach us once focus is inside the archive.org iframe -- a
+     cross-origin document's keystrokes are invisible to the parent frame by
+     design, not a bug here. Shift+Tab still works: browsers walk focus back
+     out of a frame at the chrome level, landing on #dClose within two
+     presses (verified in Chromium and Firefox), so that is the path worth
+     telling a keyboard user about. Mouse users are unaffected either way;
+     touch users would not be reading a kbd hint. */
+  .kbd-hint {
+    position: absolute;
+    z-index: 3;
+    top: 12px;
+    right: 50px;
+    max-width: 220px;
+    padding: 6px 10px;
+    background: rgb(0 0 0 / .82);
+    border: 1px solid rgb(255 255 255 / .28);
+    border-radius: var(--radius);
+    color: var(--ink);
+    font: 12px var(--sans);
+  }
+  .kbd-hint kbd {
+    font: 11px var(--mono);
+    background: rgb(255 255 255 / .12);
+    border-radius: 3px;
+    padding: 1px 4px;
+  }
+  @media not all and (hover: hover) and (pointer: fine) {
+    .kbd-hint { display: none; }
+  }
   /* A video behind it can be any colour, so give it a solid edge to sit on. */
   .drawer:has(.d-hero[data-playing]) .drawer-close {
     background: rgb(0 0 0 / .82);
@@ -1673,6 +1702,27 @@
     if (frame) frame.remove();
     const hero = drawer.querySelector(".d-hero");
     if (hero) delete hero.dataset.playing;
+    const hint = $("kbdHint");
+    if (hint) hint.hidden = true;
+    clearInterval(kbdHintTimer);
+    kbdHintTimer = null;
+  }
+
+  // A keydown listener on our document never sees Escape pressed once focus
+  // is inside the player -- cross-origin frame content is opaque to the
+  // parent by design, and neither 'focusin' nor window 'blur' reliably fires
+  // for that transition either (measured empirically: neither fires in
+  // Chromium or Firefox for a real click into the iframe, even though
+  // document.activeElement does correctly become the iframe). Polling
+  // activeElement is the one thing that works in both.
+  let kbdHintTimer = null;
+  function watchPlayerFocus() {
+    clearInterval(kbdHintTimer);
+    kbdHintTimer = setInterval(() => {
+      const hint = $("kbdHint");
+      if (!hint) return clearInterval(kbdHintTimer);
+      hint.hidden = document.activeElement?.tagName !== "IFRAME";
+    }, 400);
   }
 
   // Fixing the body is the one reliable way to stop iOS scrolling the page
@@ -1713,6 +1763,7 @@
       `<button class="drawer-close" id="dClose" aria-label="Close">` +
         `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>` +
       `</button>` +
+      `<div class="kbd-hint" id="kbdHint" hidden><kbd>Shift</kbd>+<kbd>Tab</kbd> then <kbd>Enter</kbd> to close</div>` +
       `<div class="d-hero" id="dHero">` +
         (safeUrl(m.art) && !m.artBroken ? `<div class="d-back"></div>` : "") +
         posterHTML(m) +
@@ -1808,6 +1859,7 @@
         `title="${esc(m.title)}" allow="fullscreen" allowfullscreen frameborder="0" ` +
         `referrerpolicy="no-referrer" ` +
         `sandbox="allow-scripts allow-same-origin allow-fullscreen allow-presentation"></iframe>`;
+      watchPlayerFocus();
     };
     for (const t of drawer.querySelectorAll(".rel[data-rel]")) {
       t.onclick = () => {
