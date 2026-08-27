@@ -1158,7 +1158,7 @@
   let ALL = [];
   const state = {
     q: "", genres: new Set(), decade: "", rating: "", director: "", actor: "", rtMin: 0, rtMax: 120,
-    hasArt: false, canWatch: false,
+    hasArt: false, canWatch: true,
     sort: "-rating", view: "grid", seed: 1,
   };
   let currentFilm = null;   // film shown in the drawer, for arrow-key paging
@@ -1920,7 +1920,7 @@
 
   function resetAll() {
     Object.assign(state, { q: "", genres: new Set(), decade: "", rating: "",
-      director: "", actor: "", rtMin: 0, rtMax: RT_MAX, hasArt: false, canWatch: false });
+      director: "", actor: "", rtMin: 0, rtMax: RT_MAX, hasArt: false, canWatch: true });
     syncControls();
     apply(true);
   }
