@@ -49,8 +49,8 @@ of its title, so every card looks deliberate.
 workflow only runs `scripts/build.js`, and this scraper must never run on push.
 
 ```sh
-cp ideas/pd-movies/.env.example ideas/pd-movies/.env   # then fill in the keys
-node ideas/pd-movies/build-data.mjs --cache /tmp/pdt
+cp ideas/public-screening/.env.example ideas/public-screening/.env   # then fill in the keys
+node ideas/public-screening/build-data.mjs --cache /tmp/pdt
 ```
 
 Keys are optional. Without them you still get titles, genres, formats, ratings
@@ -67,8 +67,8 @@ Phases can run separately — useful because the first is slow and key-free whil
 the second needs the API keys:
 
 ```sh
-node ideas/pd-movies/build-data.mjs --only pdt --cache /tmp/pdt   # scrape the site
-node ideas/pd-movies/build-data.mjs --only art --cache /tmp/pdt   # add years + posters
+node ideas/public-screening/build-data.mjs --only pdt --cache /tmp/pdt   # scrape the site
+node ideas/public-screening/build-data.mjs --only art --cache /tmp/pdt   # add years + posters
 ```
 
 ## Known limitation: title-only matching

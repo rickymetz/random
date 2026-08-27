@@ -2,7 +2,7 @@
 // Author-time scraper for the PD Movies browser. NOT part of CI — the hub
 // workflow only runs scripts/build.js. Run this by hand to refresh data.json:
 //
-//   node ideas/pd-movies/build-data.mjs --cache <dir>
+//   node ideas/public-screening/build-data.mjs --cache <dir>
 //
 // Two sources, both polite (sequential, delayed, identifying UA, cached):
 //   1. publicdomaintorrents.info — catalog + per-movie genres/rating/formats
