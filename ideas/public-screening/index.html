@@ -1028,9 +1028,13 @@
     .search { grid-row: 2; grid-column: 1 / -1; max-width: none; }
     .search input { height: 40px; }
     .navlink { min-height: 40px; display: flex; align-items: center; }
-    /* Pair the checkbox with Rating — Rating had an empty cell beside it. */
-    .checks { grid-column: 1 / -1; }
-    .checks .check { flex: 1; height: 38px; justify-content: flex-start; }
+    /* Pair the checkbox with Rating — Rating had an empty cell beside it.
+       flex: 1 alone doesn't shrink below content width (flex items default
+       to min-width: auto), so three of these summed past the row's real
+       width and pushed the whole page into horizontal scroll. Wrapping is
+       the fix that stays correct if a fourth checkbox ever joins these. */
+    .checks { grid-column: 1 / -1; flex-wrap: wrap; }
+    .checks .check { flex: 1 1 150px; min-width: 0; height: 38px; justify-content: flex-start; }
     .range-field { grid-column: 1 / -1; }
     .range { flex: 1; width: auto; }
     .check input { width: 17px; height: 17px; }
