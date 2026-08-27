@@ -470,6 +470,47 @@
     #filterPanel[hidden] { display: none; }
   }
 
+  /* A place to start. 1,186 films sorted by rating is a wall; these are the
+     handful of ways in that the catalogue actually rewards. They disappear the
+     moment anything is filtered, so they never sit between you and results. */
+  .collections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 22px;
+  }
+  .coll {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 8px 13px;
+    background: var(--bg-2);
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    color: var(--ink);
+    font: 13px var(--sans);
+    cursor: pointer;
+    transition: border-color .12s, background .12s;
+  }
+  .coll:hover { border-color: var(--accent); background: var(--panel); }
+  .coll.active {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
+    color: var(--accent);
+  }
+  .coll.active .n { color: var(--accent); }
+  .coll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .coll .n {
+    font: 11px var(--mono);
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+  }
+  @media (max-width: 760px) {
+    .collections { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-bottom: 16px; }
+    .collections::-webkit-scrollbar { display: none; }
+    .coll { flex: none; }
+  }
+
   /* --------------------------------------------------------------- grid */
   main {
     max-width: 1600px;
@@ -1123,6 +1164,7 @@
 </header>
 
 <main>
+  <nav class="collections" id="collections" aria-label="Collections"></nav>
   <div class="grid" id="grid"></div>
   <div class="sentinel" id="sentinel"></div>
   <div class="empty" id="empty" hidden>
@@ -1292,9 +1334,12 @@
     if (state.genres.size && !m.genres.some((g) => state.genres.has(g))) return false;
     if (state.decade) {
       if (!m.year) return false;
-      const d = +state.decade;
-      if (d === 1900) { if (m.year >= 1930) return false; }        // "before 1930"
-      else if (m.year < d || m.year > d + 9) return false;
+      if (state.decade === "silent") { if (m.year > 1930) return false; }
+      else {
+        const d = +state.decade;
+        if (d === 1900) { if (m.year >= 1930) return false; }      // "before 1930"
+        else if (m.year < d || m.year > d + 9) return false;
+      }
     }
     if (state.hasArt && (!m.art || m.artBroken)) return false;
     if (state.canWatch && !m.ia) return false;
@@ -1365,6 +1410,7 @@
     empty.hidden = shown.length > 0;
     countEl.textContent = `${shown.length} / ${ALL.length}`;
     $("reset").hidden = !isFiltered();
+    markCollections();
     syncPanel();
     updateChipCounts();
   }
@@ -1974,6 +2020,79 @@
   });
   SMALL.addEventListener("change", syncPanel);
 
+  // Each of these is a combination of filters that already exist, so choosing
+  // one lands in a state the controls can show and the URL can carry — a
+  // collection is a starting point, not a mode you get stuck in.
+  const COLLECTIONS = [
+    { label: "Silent era",    apply: (st) => { st.decade = "silent"; } },
+    { label: "Watch tonight", apply: (st) => { st.canWatch = true; st.rtMax = 40; } },
+    { label: "Best rated",    apply: (st) => { st.rating = "7"; } },
+    // These three pair a genre with playability. A plain genre would only
+    // repeat the chip rail directly above; adding "watchable" gives the row a
+    // job the chips cannot do in one click.
+    { label: "Horror night",     apply: (st) => { st.genres = new Set(["horror"]);   st.canWatch = true; } },
+    { label: "Saturday matinee", apply: (st) => { st.genres = new Set(["westerns"]); st.canWatch = true; } },
+    { label: "Space & science",  apply: (st) => { st.genres = new Set(["scifi"]);    st.canWatch = true; } },
+  ];
+
+  function blankState() {
+    return { q: "", genres: new Set(), decade: "", rating: "", director: "", actor: "",
+             rtMin: 0, rtMax: RT_MAX, hasArt: false, canWatch: false,
+             sort: state.sort, view: state.view, seed: state.seed };
+  }
+
+  // Identity of a view, by its filters alone — sort, layout and shuffle seed are
+  // presentation, so changing them must not un-highlight the chosen collection.
+  function filterKey(st) {
+    return JSON.stringify([st.q, [...st.genres].sort(), st.decade, st.rating,
+      st.director, st.actor, st.rtMin, st.rtMax, st.hasArt, st.canWatch]);
+  }
+
+  function activeCollection() {
+    const now = filterKey(state);
+    return COLLECTIONS.findIndex((c) => {
+      const probe = blankState();
+      c.apply(probe);
+      return filterKey(probe) === now;
+    });
+  }
+
+  function markCollections() {
+    const active = activeCollection();
+    for (const btn of $("collections").children) {
+      const on = +btn.dataset.c === active;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+
+  function buildCollections() {
+    const saved = { ...state, genres: new Set(state.genres) };
+    const html = COLLECTIONS.map((c, i) => {
+      // Count against a clean slate, so a count means what the button will do.
+      const probe = blankState();
+      c.apply(probe);
+      Object.assign(state, probe);
+      const n = ALL.filter(matches).length;
+      return `<button class="coll" data-c="${i}" aria-pressed="false">` +
+             `${esc(c.label)}<span class="n">${n}</span></button>`;
+    }).join("");
+    Object.assign(state, saved);
+    $("collections").innerHTML = html;
+    $("collections").onclick = (e) => {
+      const btn = e.target.closest(".coll");
+      if (!btn) return;
+      const next = blankState();
+      // Pressing the collection you are already in returns to the whole
+      // catalogue, so the row works as a toggle rather than a one-way door.
+      if (+btn.dataset.c !== activeCollection()) COLLECTIONS[+btn.dataset.c].apply(next);
+      Object.assign(state, next);
+      syncControls();
+      apply(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+  }
+
   new IntersectionObserver((entries) => {
     if (entries[0].isIntersecting) drawMore();
   }, { rootMargin: "600px" }).observe($("sentinel"));
@@ -1996,6 +2115,7 @@
       }
       buildChips(counts);
       buildHistogram();
+      buildCollections();
 
       // A list of 439 names is not a browsable thing; the 93 with more than
       // one film here are. Ordered by how much of the catalogue they account
@@ -2019,6 +2139,10 @@
       // a bare visit.
       if (!readUrl()) loadPrefs();
 
+      // The whole silent era in one option: it spans several decade buckets and
+      // is the distinctive part of this catalogue.
+      $("decade").insertAdjacentHTML("beforeend",
+        `<option value="silent">Silent era, to 1930</option>`);
       $("decade").insertAdjacentHTML("beforeend",
         [...decades].sort((a, b) => a - b)
           .map((d) => `<option value="${d}">${d === 1900 ? "Before 1930" : d + "s"}</option>`).join(""));
