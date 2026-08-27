@@ -1,9 +1,9 @@
 _site/
 node_modules/
 
-# API keys for the pd-movies author-time scraper
+# API keys and author-time scraper output for public-screening
 .env
-ideas/pd-movies/mismatches.log
-ideas/pd-movies/.cache/
+ideas/public-screening/mismatches.log
+ideas/public-screening/.cache/
 .DS_Store
 .playwright-mcp/
