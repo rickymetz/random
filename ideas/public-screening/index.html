@@ -1038,6 +1038,18 @@
     .chips::-webkit-scrollbar { display: none; }
     .chip { flex: none; padding: 11px 14px; font-size: 13px; }
 
+    /* Nothing else marks this row as scrollable, so the last chip can look
+       like the last genre in the catalogue. Hidden once JS finds the rail
+       already scrolled to its end. */
+    .chips-wrap { position: relative; }
+    .chips-fade {
+      position: absolute;
+      top: 0; right: 0; bottom: 10px; width: 32px;
+      background: linear-gradient(to right, transparent, var(--bg));
+      pointer-events: none;
+    }
+    .chips-fade[hidden] { display: none; }
+
     /* Two columns, so four filters occupy two rows rather than four. */
     .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .field { min-width: 0; }
@@ -1097,7 +1109,10 @@
   </button>
 
   <div id="filterPanel">
-  <div class="chips" id="genreChips"></div>
+  <div class="chips-wrap">
+    <div class="chips" id="genreChips"></div>
+    <div class="chips-fade" aria-hidden="true"></div>
+  </div>
 
   <div class="toolbar">
     <div class="field">
@@ -1902,11 +1917,22 @@
     }
   }
 
+  // On desktop the rail wraps, so it never scrolls and the fade stays hidden.
+  // On a phone it's a single scrolling row with nothing else to say so —
+  // the fade marks that more genres sit past the edge, and disappears once
+  // scrolling reaches the true last chip.
+  function updateChipsFade() {
+    const el = $("genreChips"), fade = document.querySelector(".chips-fade");
+    if (!el || !fade) return;
+    fade.hidden = el.scrollWidth - el.clientWidth - el.scrollLeft <= 4;
+  }
+
   function buildChips(counts) {
     $("genreChips").innerHTML = Object.keys(GENRE_LABELS)
       .filter((g) => counts[g])
       .map((g) => `<button class="chip" data-g="${g}" aria-pressed="false">${GENRE_LABELS[g]}<span class="n">${counts[g]}</span></button>`)
       .join("");
+    updateChipsFade();
     $("genreChips").onclick = (e) => {
       const chip = e.target.closest(".chip");
       if (!chip) return;
@@ -2037,6 +2063,7 @@
     const small = SMALL.matches;
     const open = !small || $("filtersToggle").getAttribute("aria-expanded") === "true";
     $("filterPanel").hidden = small && !open;
+    updateChipsFade();
     const n = activeFilterCount();
     $("filtersLabel").innerHTML = "Filters" + (n ? ` <span class="n">${n}</span>` : "");
   }
@@ -2050,6 +2077,8 @@
     syncPanel();
   });
   SMALL.addEventListener("change", syncPanel);
+  $("genreChips").addEventListener("scroll", updateChipsFade, { passive: true });
+  window.addEventListener("resize", updateChipsFade);
 
   // Each of these is a combination of filters that already exist, so choosing
   // one lands in a state the controls can show and the URL can carry — a
