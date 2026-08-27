@@ -254,9 +254,24 @@ async function enrich(movies) {
     }
     // This catalog is old public domain film. Prefer a plausibly-old match,
     // then the earliest, then one that actually has art.
-    films.sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999) || (b.art ? 1 : 0) - (a.art ? 1 : 0));
+    // Earliest-wins exists to stop a 1940 western matching a 2023 remake, but
+    // it is only a tiebreak for when nothing better is known. Where the film
+    // already carries a year — corroborated by two sources agreeing within two
+    // years — that is stronger evidence than being oldest, and preferring the
+    // oldest instead rewrote 27 of them wrongly: The Iron Mask 1929 became
+    // 1909, The Hunchback of Notre Dame 1923 became 1911.
+    const known = mv.year;
+    films.sort((a, b) => {
+      if (known) {
+        const near = (f) => (f.year ? Math.abs(f.year - known) : 99);
+        const d = near(a) - near(b);
+        if (d) return d;
+      }
+      return (a.year ?? 9999) - (b.year ?? 9999) || (b.art ? 1 : 0) - (a.art ? 1 : 0);
+    });
     const best = films[0];
-    mv.year = best.year ?? undefined;
+    // A year that was verified on the way in is not up for revision here.
+    if (!(mv.pd && mv.year)) mv.year = best.year ?? mv.year;
     mv.wd = best.q;
     if (best.imdb) mv.imdb = best.imdb;
     if (best.tmdb) mv.tmdb = best.tmdb;
@@ -1037,6 +1052,165 @@ async function expand(movies) {
   return movies.concat(added);
 }
 
+
+// ------------------------------------ 11. expansion, with the status checked
+// An earlier attempt took a thousand films from the Archive's feature_films
+// collection on the assumption that a collection of features is a collection of
+// public domain features. It is not, and Mad Max, two Hitchcocks and a handful
+// of eighties horror ended up in a catalogue that says on three pages that
+// everything in it is public domain. All thousand were removed.
+//
+// So nothing here rests on a collection sounding right. Two streams, each with
+// a reason that can be checked:
+//
+//   before 1931  — the US term is 95 years, so a film published before 1931 is
+//                  public domain by statute. The Archive's year field is user
+//                  entered, so it is corroborated against Wikidata and a film
+//                  is rejected when the two disagree or Wikidata has no record.
+//   prelinger    — Rick Prelinger's collection of ephemeral, sponsored and
+//                  educational film, offered for reuse. Membership is confirmed
+//                  from the item's own metadata rather than the search index.
+const PD_YEAR_LIMIT = 1930;   // published this year or earlier
+
+async function iaSearch(q, page, rows = 200) {
+  const url = "https://archive.org/advancedsearch.php?q=" + encodeURIComponent(q) +
+    "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=year&fl%5B%5D=downloads" +
+    "&sort%5B%5D=downloads+desc&rows=" + rows + "&page=" + page + "&output=json";
+  const body = await get(url, `pd-${batchKey([q, String(page)])}.json`, 500);
+  if (!body) return [];
+  try {
+    const clean = [...body].filter((c) => c.charCodeAt(0) >= 32 || c === "\n").join("");
+    return JSON.parse(clean)?.response?.docs || [];
+  } catch { return []; }
+}
+
+// Does an independent source agree this film is old enough?
+async function corroborateYear(title, claimed) {
+  const url = `https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json` +
+    `&language=en&type=item&limit=10&search=${encodeURIComponent(title)}`;
+  const body = await get(url, `pdy-${batchKey([title])}.json`, 350);
+  if (!body) return null;
+  let ids = [];
+  try {
+    const want = norm(title);
+    ids = (JSON.parse(body).search || [])
+      .filter((h) => [h.label, h.match?.text, ...(h.aliases || [])]
+        .filter(Boolean).some((n) => norm(n) === want))
+      .map((h) => h.id);
+  } catch { return null; }
+  if (!ids.length) return null;
+
+  const ents = await get(
+    `https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims&ids=${ids.slice(0, 10).join("|")}`,
+    `pde-${batchKey(ids.slice(0, 10))}.json`, 350);
+  if (!ents) return null;
+  try {
+    for (const e of Object.values(JSON.parse(ents).entities || {})) {
+      const c = e.claims || {};
+      const isFilm = (c.P31 || []).some((x) => FILM_TYPES.has(x.mainsnak?.datavalue?.value?.id));
+      if (!isFilm) continue;
+      for (const x of c.P577 || []) {
+        const t = x.mainsnak?.datavalue?.value?.time;
+        if (!t) continue;
+        const y = parseInt(t.slice(1, 5), 10);
+        // Within two years covers a release/copyright date mismatch; further
+        // apart means these are probably not the same film.
+        if (Number.isFinite(y) && Math.abs(y - claimed) <= 2) return y;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+async function pdExpand(movies) {
+  const norm2 = (x) => norm(sortTitle(String(x)));
+  const haveIa = new Set(movies.map((m) => m.ia).filter(Boolean));
+  const haveKey = new Set(movies.map((m) => `${norm2(m.title)}|${m.year ?? ""}`));
+
+  // Prelinger was tried and dropped. Its terms are sound, but three in ten of
+  // its films appear in Wikidata against ten in ten of the silent features, so
+  // they arrived with no rating, director, genre or description and could not
+  // be reached by any filter the page browses with. 730 records that cannot
+  // participate is not a bigger catalogue, it is a thinner one.
+  const streams = [
+    ["pre-1931", `mediatype:(movies) AND year:[1890 TO ${PD_YEAR_LIMIT}] AND downloads:[500 TO 99999999]`],
+  ];
+
+  const candidates = [];
+  for (const [name, q] of streams) {
+    let page = 1, taken = 0;
+    while (taken < 700 && page <= 6) {
+      const docs = await iaSearch(q, page);
+      if (!docs.length) break;
+      for (const d of docs) {
+        const title = cleanIaTitle(d.title);
+        const year = parseInt(d.year, 10) || null;
+        if (!title || title.length < 2) continue;
+        if (name === "pre-1931" && !year) continue;
+        if (haveIa.has(d.identifier)) continue;
+        const key = `${norm2(title)}|${year ?? ""}`;
+        if (haveKey.has(key)) continue;
+        haveKey.add(key); haveIa.add(d.identifier);
+        candidates.push({ stream: name, id: d.identifier, title, year, downloads: d.downloads || 0 });
+        taken++;
+      }
+      page++;
+    }
+    console.log(`  ${name}: ${taken} candidates after dedupe`);
+  }
+
+  const added = [];
+  const rejected = { noVideo: 0, notPrelinger: 0, modern: 0, yearUnconfirmed: 0, tooNew: 0 };
+  let done = 0;
+  for (const c of candidates) {
+    done++;
+    if (done % 100 === 0) console.log(`  checking ${done}/${candidates.length} (${added.length} accepted)`);
+
+    const meta = await get(`https://archive.org/metadata/${encodeURIComponent(c.id)}`,
+      `pdm-${c.id.slice(0, 60)}.json`, 250);
+    if (!meta) continue;
+    let files = [], md = {};
+    try { const j = JSON.parse(meta); files = j.files || []; md = j.metadata || {}; }
+    catch { continue; }
+    if (!files.some((f) => /\.(mp4|m4v|ogv|mpg|mpeg|avi|mkv|webm)$/i.test(f.name || ""))) {
+      rejected.noVideo++; continue;
+    }
+
+    let year = c.year;
+    if (c.stream === "prelinger") {
+      // The reason this one qualifies is the collection, so confirm it from the
+      // item rather than from the index that returned it.
+      const cols = [].concat(md.collection ?? []);
+      if (!cols.includes("prelinger")) { rejected.notPrelinger++; continue; }
+      // The collection runs from the thirties to the seventies. A later date is
+      // either the upload date captured as the film's year — five items came
+      // through dated 2026 — or one of Prelinger's own modern compilations,
+      // and neither is an old film.
+      if (c.year && c.year > 1980) { rejected.modern++; continue; }
+    } else {
+      const confirmed = await corroborateYear(c.title, c.year);
+      if (confirmed === null) { rejected.yearUnconfirmed++; continue; }
+      if (confirmed > PD_YEAR_LIMIT) { rejected.tooNew++; continue; }
+      year = confirmed;
+    }
+
+    added.push({
+      id: `ia${c.id}`.slice(0, 80),
+      title: c.title,
+      year: year ?? undefined,
+      ia: c.id,
+      genres: [],
+      src: "archive",
+      pd: c.stream,          // why this film is here, recorded with it
+      downloads: c.downloads,
+      art: `https://archive.org/services/img/${encodeURIComponent(c.id)}`,
+      sort: sortTitle(c.title),
+    });
+  }
+  console.log(`  accepted ${added.length}; rejected ${JSON.stringify(rejected)}`);
+  return movies.concat(added);
+}
+
 // ------------------------------------------------------------------- driver
 // Phases are separable: the PDT scrape is slow and key-free, the art pass
 // needs API keys. `--only pdt` / `--only art` run one at a time.
@@ -1048,10 +1222,15 @@ const EXTRAS_ONLY = only === "extras";
 const DESC_ONLY = only === "desc";
 const EXPAND_ONLY = only === "expand";
 const ENRICH_ONLY = only === "enrich";
+const PD_ONLY = only === "pd-expand";
 const stageFile = path.join(cacheDir, "stage-pdt.json");
 
 let movies;
-if (only === "enrich") {
+if (only === "pd-expand") {
+  movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
+  console.log(`loaded ${movies.length} movies from data.json`);
+  movies = await pdExpand(movies);
+} else if (only === "enrich") {
   movies = JSON.parse(fs.readFileSync(outFile, "utf8")).movies;
   console.log(`loaded ${movies.length} movies from data.json`);
   movies = await enrich(movies);
@@ -1093,7 +1272,7 @@ if (only === "enrich") {
   console.log(`   staged -> ${stageFile}`);
 }
 
-if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY && !CREDITS_ONLY && !EXTRAS_ONLY && !DESC_ONLY && !EXPAND_ONLY && !ENRICH_ONLY) {
+if (only !== "pdt" && !RATINGS_ONLY && !ARCHIVE_ONLY && !CREDITS_ONLY && !EXTRAS_ONLY && !DESC_ONLY && !EXPAND_ONLY && !ENRICH_ONLY && !PD_ONLY) {
   console.log("3. wikidata (year, ids, fallback art)");
   movies = await enrich(movies);
   console.log("4. poster art (tvdb / fanart.tv, if keys present)");
