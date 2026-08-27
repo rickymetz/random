@@ -1406,6 +1406,12 @@
       if (state.decade === "silent") { if (m.year > 1930) return false; }
       else {
         const d = +state.decade;
+        // A hash edited or replaced while the app is already running skips
+        // the boot-time decade check below (see validDecades) — a garbage
+        // value like "1600s" parses to NaN, and every NaN comparison here
+        // is false, which silently matched every film with a year instead
+        // of the none a bogus decade should. Reject outright instead.
+        if (!Number.isFinite(d)) return false;
         if (d === 1900) { if (m.year >= 1930) return false; }      // "before 1930"
         else if (m.year < d || m.year > d + 9) return false;
       }
