@@ -473,14 +473,32 @@
   /* A place to start. 1,186 films sorted by rating is a wall; these are the
      handful of ways in that the catalogue actually rewards. They disappear the
      moment anything is filtered, so they never sit between you and results. */
-  .collections {
+  /* Naming the mechanism is the point of a rail. The chips are shortcuts, but
+     the label is what tells you which control they drove, so a reader can go
+     on to do the same thing by hand. Matches the toolbar's field labels. */
+  .rail {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin: 0 0 10px;
+  }
+  .rail:last-of-type { margin-bottom: 22px; }
+  .rail[hidden] { display: none; }
+  .rail-label {
+    flex: none;
+    width: 54px;
+    font: 11px var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+  }
+  .rail-items {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin: 0 0 10px;
+    flex: 1;
+    min-width: 0;
   }
-  .collections:last-of-type { margin-bottom: 22px; }
-  .collections:empty { display: none; }
   .coll {
     display: flex;
     align-items: baseline;
@@ -508,9 +526,12 @@
     font-variant-numeric: tabular-nums;
   }
   @media (max-width: 760px) {
-    .collections { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-    .collections:last-of-type { margin-bottom: 16px; }
-    .collections::-webkit-scrollbar { display: none; }
+    /* The label stays put while the chips scroll, so the lesson survives a
+       narrow screen — where the real controls are hidden behind Filters. */
+    .rail:last-of-type { margin-bottom: 16px; }
+    .rail-label { width: 46px; }
+    .rail-items { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .rail-items::-webkit-scrollbar { display: none; }
     .coll { flex: none; }
   }
 
@@ -1167,8 +1188,14 @@
 </header>
 
 <main>
-  <nav class="collections" id="collections" aria-label="Collections"></nav>
-      <nav class="collections people" id="people" aria-label="People"></nav>
+  <nav class="rail" aria-label="Example searches">
+    <span class="rail-label">Search</span>
+    <div class="rail-items" id="railSearch"></div>
+  </nav>
+  <nav class="rail" aria-label="Example filters">
+    <span class="rail-label">Filters</span>
+    <div class="rail-items" id="railFilters"></div>
+  </nav>
   <div class="grid" id="grid"></div>
   <div class="sentinel" id="sentinel"></div>
   <div class="empty" id="empty" hidden>
@@ -1414,7 +1441,7 @@
     empty.hidden = shown.length > 0;
     countEl.textContent = `${shown.length} / ${ALL.length}`;
     $("reset").hidden = !isFiltered();
-    markCollections();
+    markRails();
     syncPanel();
     updateChipCounts();
   }
@@ -2037,18 +2064,19 @@
     { label: "Horror night",     apply: (st) => { st.genres = new Set(["horror"]);   st.canWatch = true; } },
     { label: "Saturday matinee", apply: (st) => { st.genres = new Set(["westerns"]); st.canWatch = true; } },
     { label: "Space & science",  apply: (st) => { st.genres = new Set(["scifi"]);    st.canWatch = true; } },
-  ].map((c) => ({ ...c, row: "collections" }));
+  ].map((c) => ({ ...c, row: "filters" }));
 
-  // A person is just a prefilled search. That is deliberate: the search box
-  // already spans title, director and cast, so one name covers someone who
-  // both directed and starred without needing to know which they did here.
-  const PEOPLE = [
+  // Every chip on this rail is nothing but a prefilled search box, which is
+  // the lesson. The names show the box reaching directors and cast — Keaton
+  // directed 18 and appears in 23, and one chip finds all 26 — and the
+  // characters show it reaching titles, which no filter can do.
+  const SEARCHES = [
     "Charlie Chaplin", "Buster Keaton", "Douglas Fairbanks", "Bela Lugosi",
     "Frank Capra", "Georges M\u00e9li\u00e8s", "Lon Chaney", "Mary Pickford",
-    "Boris Karloff",
-  ].map((name) => ({ label: name, row: "people", apply: (st) => { st.q = name; } }));
+    "Boris Karloff", "Tarzan", "Zorro", "Sherlock",
+  ].map((term) => ({ label: term, row: "search", apply: (st) => { st.q = term; } }));
 
-  const PRESETS = [...COLLECTIONS, ...PEOPLE];
+  const PRESETS = [...SEARCHES, ...COLLECTIONS];
 
   function blankState() {
     return { q: "", genres: new Set(), decade: "", rating: "", director: "", actor: "",
@@ -2072,12 +2100,15 @@
     });
   }
 
-  const ROWS = ["collections", "people"];
+  const ROWS = [
+    { key: "search", el: "railSearch" },
+    { key: "filters", el: "railFilters" },
+  ];
 
-  function markCollections() {
+  function markRails() {
     const active = activeCollection();
     for (const row of ROWS) {
-      for (const btn of $(row).children) {
+      for (const btn of $(row.el).children) {
         const on = +btn.dataset.c === active;
         btn.classList.toggle("active", on);
         btn.setAttribute("aria-pressed", on ? "true" : "false");
@@ -2098,7 +2129,7 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function buildCollections() {
+  function buildRails() {
     const saved = { ...state, genres: new Set(state.genres) };
     // Count against a clean slate, so a count means what the button will do.
     const counted = PRESETS.map((c, i) => {
@@ -2110,14 +2141,15 @@
     Object.assign(state, saved);
 
     for (const row of ROWS) {
-      // Drop anything the catalogue cannot fill: a curated name that loses its
+      // Drop anything the catalogue cannot fill: a curated term that loses its
       // last film should disappear rather than offer a button showing zero.
-      const items = counted.filter((c) => c.row === row && c.n > 0);
-      if (row === "people") items.sort((a, b) => b.n - a.n);
-      $(row).innerHTML = items.map((c) =>
+      const items = counted.filter((c) => c.row === row.key && c.n > 0);
+      if (row.key === "search") items.sort((a, b) => b.n - a.n);
+      $(row.el).innerHTML = items.map((c) =>
         `<button class="coll" data-c="${c.i}" aria-pressed="false">` +
         `${esc(c.label)}<span class="n">${c.n}</span></button>`).join("");
-      $(row).onclick = onPresetClick;
+      $(row.el).onclick = onPresetClick;
+      $(row.el).parentElement.hidden = items.length === 0;
     }
   }
 
@@ -2143,7 +2175,7 @@
       }
       buildChips(counts);
       buildHistogram();
-      buildCollections();
+      buildRails();
 
       // A list of 439 names is not a browsable thing; the 93 with more than
       // one film here are. Ordered by how much of the catalogue they account
