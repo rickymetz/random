@@ -817,13 +817,16 @@ async function credits(movies) {
   for (let i = 0; i < list.length; i += 50) {
     const batch = list.slice(i, i + 50);
     if (i % 500 === 0) console.log(`  names ${i}/${list.length}`);
+    // en alone misses a person whose Wikidata item only carries a "mul"
+    // (language-independent) label -- a real, common case for a name
+    // that's already in Latin script, not something needing translation.
     const body = await get(
-      `${WD}?action=wbgetentities&format=json&props=labels&languages=en&ids=${batch.join("|")}`,
+      `${WD}?action=wbgetentities&format=json&props=labels&languages=en|mul&ids=${batch.join("|")}`,
       `wd-p-${batchKey(batch)}.json`, 300);
     if (!body) continue;
     try {
       for (const [q, e] of Object.entries(JSON.parse(body).entities || {})) {
-        const n = e.labels?.en?.value;
+        const n = e.labels?.en?.value || e.labels?.mul?.value;
         if (n) names[q] = n;
       }
     } catch {}
