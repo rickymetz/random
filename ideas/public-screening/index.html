@@ -473,30 +473,15 @@
   /* A place to start. 1,186 films sorted by rating is a wall; these are the
      handful of ways in that the catalogue actually rewards. They disappear the
      moment anything is filtered, so they never sit between you and results. */
-  /* Naming the mechanism is the point of a rail. The chips are shortcuts, but
-     the label is what tells you which control they drove, so a reader can go
-     on to do the same thing by hand. Matches the toolbar's field labels. */
   .rail {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
     margin: 0 0 10px;
   }
   .rail:last-of-type { margin-bottom: 22px; }
   .rail[hidden] { display: none; }
-  .rail-label {
-    flex: none;
-    width: 54px;
-    font: 11px var(--mono);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--dim);
-  }
   .rail-items {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    flex: 1;
     min-width: 0;
   }
   .coll {
@@ -526,10 +511,7 @@
     font-variant-numeric: tabular-nums;
   }
   @media (max-width: 760px) {
-    /* The label stays put while the chips scroll, so the lesson survives a
-       narrow screen — where the real controls are hidden behind Filters. */
     .rail:last-of-type { margin-bottom: 16px; }
-    .rail-label { width: 46px; }
     .rail-items { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
     .rail-items::-webkit-scrollbar { display: none; }
     .coll { flex: none; }
@@ -1233,11 +1215,9 @@
 
 <main>
   <nav class="rail" aria-label="Example searches">
-    <span class="rail-label">Search</span>
     <div class="rail-items" id="railSearch"></div>
   </nav>
   <nav class="rail" aria-label="Example filters">
-    <span class="rail-label">Filters</span>
     <div class="rail-items" id="railFilters"></div>
   </nav>
   <div class="grid" id="grid"></div>
