@@ -1183,6 +1183,10 @@
         <input type="checkbox" id="hasArt">
         <span>Has poster</span>
       </label>
+      <label class="check" for="favOnly">
+        <input type="checkbox" id="favOnly">
+        <span>My list</span>
+      </label>
     </div>
     <button class="reset" id="reset" hidden>Clear filters</button>
     <div class="view-actions">
@@ -1261,7 +1265,7 @@
   let ALL = [];
   const state = {
     q: "", genres: new Set(), decade: "", rating: "", director: "", actor: "", rtMin: 0, rtMax: 120,
-    hasArt: false, canWatch: false,
+    hasArt: false, canWatch: false, favOnly: false,
     sort: "-rating", view: "grid", seed: 1,
   };
   let currentFilm = null;   // film shown in the drawer, for arrow-key paging
@@ -1404,6 +1408,7 @@
     }
     if (state.hasArt && (!m.art || m.artBroken)) return false;
     if (state.canWatch && !m.ia) return false;
+    if (state.favOnly && !favorites.has(m.id)) return false;
     if (state.director && !(m.director || []).includes(state.director)) return false;
     if (state.actor && !(m.cast || []).includes(state.actor)) return false;
     if (rangeActive()) {
@@ -1481,12 +1486,41 @@
 
   const isFiltered = () =>
     state.q || state.genres.size || state.decade || state.rating ||
-    rangeActive() || state.director || state.actor || state.hasArt || state.canWatch;
+    rangeActive() || state.director || state.actor || state.hasArt || state.canWatch || state.favOnly;
 
   // --------------------------------------------------- URL and preferences
   // The URL is the source of truth so a filtered view can be shared or
   // reloaded; localStorage only supplies defaults on a bare first visit.
   const PREFS = "pd-movies:prefs";
+  // A separate key, not folded into PREFS: favorites are a durable personal
+  // list, not a filter default -- "Clear filters" or a collection resetting
+  // favOnly must never touch which films are actually starred.
+  const FAV_KEY = "pd-movies:favorites";
+  let favorites = new Set();
+  function loadFavorites() {
+    try { return new Set(JSON.parse(localStorage.getItem(FAV_KEY) || "[]")); }
+    catch { return new Set(); }
+  }
+  function saveFavorites() {
+    try { localStorage.setItem(FAV_KEY, JSON.stringify([...favorites])); } catch {}
+  }
+  function toggleFavorite(id) {
+    if (favorites.has(id)) favorites.delete(id); else favorites.add(id);
+    saveFavorites();
+    updateFavUI();
+  }
+  function updateFavUI() {
+    const label = $("favOnly")?.nextElementSibling;
+    if (label) label.textContent = `My list (${favorites.size})`;
+    const dFav = $("dFav");
+    if (dFav && currentFilm) setFavButton(dFav, favorites.has(currentFilm.id));
+    if (state.favOnly) render();
+  }
+  function setFavButton(btn, on) {
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.querySelector("svg").setAttribute("fill", on ? "currentColor" : "none");
+    btn.lastChild.textContent = on ? "In your list" : "Add to My List";
+  }
 
   function writeUrl(push) {
     const p = new URLSearchParams();
@@ -1539,7 +1573,7 @@
         genres: [...state.genres], decade: state.decade,
         rating: state.rating, director: state.director, actor: state.actor,
         rtMin: state.rtMin, rtMax: state.rtMax,
-        hasArt: state.hasArt, canWatch: state.canWatch,
+        hasArt: state.hasArt, canWatch: state.canWatch, favOnly: state.favOnly,
       }));
     } catch {}
   }
@@ -1566,6 +1600,7 @@
       state.actor = str(v.actor);
       state.hasArt = Boolean(v.hasArt);
       state.canWatch = Boolean(v.canWatch);
+      state.favOnly = Boolean(v.favOnly);
     } catch {}
   }
 
@@ -1582,6 +1617,7 @@
     $("actor").value = state.actor;
     $("hasArt").checked = state.hasArt;
     $("canWatch").checked = state.canWatch;
+    $("favOnly").checked = state.favOnly;
     $("sort").value = state.sort;
     $("viewGrid").setAttribute("aria-pressed", String(state.view === "grid"));
     $("viewList").setAttribute("aria-pressed", String(state.view === "list"));
@@ -1795,6 +1831,10 @@
             : "") +
         `</dl>` +
         `<div class="d-actions">` +
+          `<button class="btn ghost" id="dFav" aria-pressed="${favorites.has(m.id) ? "true" : "false"}">` +
+            `<svg width="13" height="13" viewBox="0 0 16 16" fill="${favorites.has(m.id) ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.5l1.9 4.2 4.6.5-3.4 3.1.9 4.6L8 11.8 3.9 13.9l.9-4.6L1.4 6.2l4.6-.5L8 1.5z"/></svg>` +
+            (favorites.has(m.id) ? "In your list" : "Add to My List") +
+          `</button>` +
           `<button class="btn ghost" id="dShare">` +
             `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M5 5l3-3 3 3M3 9v4a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V9"/></svg>` +
             `Copy link` +
@@ -1838,6 +1878,8 @@
     $("dClose").focus();
 
     $("dClose").onclick = () => closeDrawer({ back: true });
+
+    $("dFav").onclick = () => toggleFavorite(m.id);
 
     // Copies the f/<id>/ page, not the address bar's #film= link: only the
     // former can ever show this film's name and poster when it's shared.
@@ -2025,6 +2067,7 @@
   $("minRating").addEventListener("change", (e) => { state.rating = e.target.value; apply(true); });
   $("hasArt").addEventListener("change", (e) => { state.hasArt = e.target.checked; apply(true); });
   $("canWatch").addEventListener("change", (e) => { state.canWatch = e.target.checked; apply(true); });
+  $("favOnly").addEventListener("change", (e) => { state.favOnly = e.target.checked; apply(true); });
 
   // Redraw the fill, the label and which histogram bars are in range.
   function paintRange() {
@@ -2079,7 +2122,7 @@
 
   function resetAll() {
     Object.assign(state, { q: "", genres: new Set(), decade: "", rating: "",
-      director: "", actor: "", rtMin: 0, rtMax: RT_MAX, hasArt: false, canWatch: false });
+      director: "", actor: "", rtMin: 0, rtMax: RT_MAX, hasArt: false, canWatch: false, favOnly: false });
     syncControls();
     apply(true);
   }
@@ -2125,7 +2168,7 @@
   }
   function activeFilterCount() {
     return [state.q, state.genres.size, state.decade, state.rating, state.director,
-            state.actor, rangeActive(), state.hasArt, state.canWatch].filter(Boolean).length;
+            state.actor, rangeActive(), state.hasArt, state.canWatch, state.favOnly].filter(Boolean).length;
   }
   $("filtersToggle").addEventListener("click", () => {
     const t = $("filtersToggle");
@@ -2165,7 +2208,7 @@
 
   function blankState() {
     return { q: "", genres: new Set(), decade: "", rating: "", director: "", actor: "",
-             rtMin: 0, rtMax: RT_MAX, hasArt: false, canWatch: false,
+             rtMin: 0, rtMax: RT_MAX, hasArt: false, canWatch: false, favOnly: false,
              sort: state.sort, view: state.view, seed: state.seed };
   }
 
@@ -2173,7 +2216,7 @@
   // presentation, so changing them must not un-highlight the chosen collection.
   function filterKey(st) {
     return JSON.stringify([st.q, [...st.genres].sort(), st.decade, st.rating,
-      st.director, st.actor, st.rtMin, st.rtMax, st.hasArt, st.canWatch]);
+      st.director, st.actor, st.rtMin, st.rtMax, st.hasArt, st.canWatch, st.favOnly]);
   }
 
   function activeCollection() {
@@ -2246,6 +2289,7 @@
   fetch("data.json")
     .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
     .then((data) => {
+      favorites = loadFavorites();
       ALL = data.movies;
       ALL.forEach((m, i) => {
         m._i = i;
@@ -2310,6 +2354,7 @@
       $("hasArt").nextElementSibling.textContent = `Has poster (${withArt})`;
       const watchable = ALL.filter((m) => m.ia).length;
       $("canWatch").nextElementSibling.textContent = `Watchable (${watchable})`;
+      $("favOnly").nextElementSibling.textContent = `My list (${favorites.size})`;
       const withYear = ALL.filter((m) => m.year).length;
       $("footer").innerHTML =
         `Catalogue of ${ALL.length} public domain films scraped from ` +
