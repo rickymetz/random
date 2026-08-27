@@ -477,8 +477,10 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin: 0 0 22px;
+    margin: 0 0 10px;
   }
+  .collections:last-of-type { margin-bottom: 22px; }
+  .collections:empty { display: none; }
   .coll {
     display: flex;
     align-items: baseline;
@@ -506,7 +508,8 @@
     font-variant-numeric: tabular-nums;
   }
   @media (max-width: 760px) {
-    .collections { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-bottom: 16px; }
+    .collections { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .collections:last-of-type { margin-bottom: 16px; }
     .collections::-webkit-scrollbar { display: none; }
     .coll { flex: none; }
   }
@@ -1165,6 +1168,7 @@
 
 <main>
   <nav class="collections" id="collections" aria-label="Collections"></nav>
+      <nav class="collections people" id="people" aria-label="People"></nav>
   <div class="grid" id="grid"></div>
   <div class="sentinel" id="sentinel"></div>
   <div class="empty" id="empty" hidden>
@@ -2033,7 +2037,18 @@
     { label: "Horror night",     apply: (st) => { st.genres = new Set(["horror"]);   st.canWatch = true; } },
     { label: "Saturday matinee", apply: (st) => { st.genres = new Set(["westerns"]); st.canWatch = true; } },
     { label: "Space & science",  apply: (st) => { st.genres = new Set(["scifi"]);    st.canWatch = true; } },
-  ];
+  ].map((c) => ({ ...c, row: "collections" }));
+
+  // A person is just a prefilled search. That is deliberate: the search box
+  // already spans title, director and cast, so one name covers someone who
+  // both directed and starred without needing to know which they did here.
+  const PEOPLE = [
+    "Charlie Chaplin", "Buster Keaton", "John Wayne", "Douglas Fairbanks",
+    "Bela Lugosi", "Frank Capra", "Georges M\u00e9li\u00e8s", "Lon Chaney",
+    "Mary Pickford", "Boris Karloff",
+  ].map((name) => ({ label: name, row: "people", apply: (st) => { st.q = name; } }));
+
+  const PRESETS = [...COLLECTIONS, ...PEOPLE];
 
   function blankState() {
     return { q: "", genres: new Set(), decade: "", rating: "", director: "", actor: "",
@@ -2050,47 +2065,60 @@
 
   function activeCollection() {
     const now = filterKey(state);
-    return COLLECTIONS.findIndex((c) => {
+    return PRESETS.findIndex((c) => {
       const probe = blankState();
       c.apply(probe);
       return filterKey(probe) === now;
     });
   }
 
+  const ROWS = ["collections", "people"];
+
   function markCollections() {
     const active = activeCollection();
-    for (const btn of $("collections").children) {
-      const on = +btn.dataset.c === active;
-      btn.classList.toggle("active", on);
-      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    for (const row of ROWS) {
+      for (const btn of $(row).children) {
+        const on = +btn.dataset.c === active;
+        btn.classList.toggle("active", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+      }
     }
+  }
+
+  function onPresetClick(e) {
+    const btn = e.target.closest(".coll");
+    if (!btn) return;
+    const next = blankState();
+    // Pressing the preset you are already in returns to the whole catalogue,
+    // so a rail works as a toggle rather than a one-way door.
+    if (+btn.dataset.c !== activeCollection()) PRESETS[+btn.dataset.c].apply(next);
+    Object.assign(state, next);
+    syncControls();
+    apply(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function buildCollections() {
     const saved = { ...state, genres: new Set(state.genres) };
-    const html = COLLECTIONS.map((c, i) => {
-      // Count against a clean slate, so a count means what the button will do.
+    // Count against a clean slate, so a count means what the button will do.
+    const counted = PRESETS.map((c, i) => {
       const probe = blankState();
       c.apply(probe);
       Object.assign(state, probe);
-      const n = ALL.filter(matches).length;
-      return `<button class="coll" data-c="${i}" aria-pressed="false">` +
-             `${esc(c.label)}<span class="n">${n}</span></button>`;
-    }).join("");
+      return { ...c, i, n: ALL.filter(matches).length };
+    });
     Object.assign(state, saved);
-    $("collections").innerHTML = html;
-    $("collections").onclick = (e) => {
-      const btn = e.target.closest(".coll");
-      if (!btn) return;
-      const next = blankState();
-      // Pressing the collection you are already in returns to the whole
-      // catalogue, so the row works as a toggle rather than a one-way door.
-      if (+btn.dataset.c !== activeCollection()) COLLECTIONS[+btn.dataset.c].apply(next);
-      Object.assign(state, next);
-      syncControls();
-      apply(true);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    };
+
+    for (const row of ROWS) {
+      // Drop anything the catalogue cannot fill: a curated name that loses its
+      // last film should disappear rather than offer a button showing zero.
+      const items = counted.filter((c) => c.row === row && c.n > 0);
+      if (row === "people") items.sort((a, b) => b.n - a.n);
+      $(row).innerHTML = items.map((c) =>
+        `<button class="coll" data-c="${c.i}" aria-pressed="false">` +
+        `${esc(c.label)}<span class="n">${c.n}</span></button>`).join("");
+      $(row).onclick = onPresetClick;
+    }
   }
 
   new IntersectionObserver((entries) => {
