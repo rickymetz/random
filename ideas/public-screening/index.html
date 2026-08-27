@@ -1961,17 +1961,17 @@
                 `Watch here` +
               `</button>` +
               `<a class="btn ghost" href="https://archive.org/details/${encodeURIComponent(m.ia)}" target="_blank" rel="noopener noreferrer">` +
-                `Open on Internet Archive` +
+                `Internet Archive` +
                 `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h7v7M13 3L6.5 9.5M11 9v4H3V5h4"/></svg>` +
               `</a>`
             : "") +
           `<a class="btn${m.ia ? " ghost" : ""}" href="${SRC}/nshowmovie.html?movieid=${encodeURIComponent(m.id)}" target="_blank" rel="noopener noreferrer">` +
-            `Open on the source site` +
+            `Source site` +
             `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h7v7M13 3L6.5 9.5M11 9v4H3V5h4"/></svg>` +
           `</a>` +
           (m.ia
             ? ""
-            : `<a class="btn ghost" href="https://archive.org/search?query=${encodeURIComponent(m.title)}" target="_blank" rel="noopener noreferrer">Look for it on Internet Archive</a>`) +
+            : `<a class="btn ghost" href="https://archive.org/search?query=${encodeURIComponent(m.title)}" target="_blank" rel="noopener noreferrer">Look on Internet Archive</a>`) +
         `</div>` +
         relatedHTML(m) +
         `<p class="d-note">${m.ia
