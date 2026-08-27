@@ -1,33 +1,73 @@
 # Public Screening
 
-A Plex-style browser over the ~980 films catalogued at
+A Plex-style browser over 1,186 public domain films catalogued at
 [publicdomaintorrents.info](https://www.publicdomaintorrents.info/nshowcat.html?category=ALL).
 
-The page is static: it reads `data.json` and does all searching, filtering and
-sorting in the browser. Nothing is fetched from the source site at view time —
-that site sends no CORS headers, so a browser can't read it directly anyway.
+The page is static: it reads `data.json` and does all searching, filtering,
+sorting and playback in the browser. Nothing is fetched from the source site
+at view time — that site sends no CORS headers, so a browser can't read it
+directly anyway.
 
-## What you can filter and sort by
+## What you can filter, sort and search by
 
-| Field  | Where it comes from                                   |
-| ------ | ----------------------------------------------------- |
-| Title  | the catalogue                                         |
-| Genre  | the catalogue's 14 category pages                     |
-| Format | the format icons on each catalogue row                |
-| Rating | the star images on each film's detail page            |
-| Year   | Wikidata / TheTVDB — **the source site has no years** |
+| Field       | Where it comes from                                       |
+| ----------- | ----------------------------------------------------------- |
+| Title       | the catalogue                                              |
+| Genre       | the catalogue's category pages                             |
+| Rating      | IMDb's public data export, matched on the IMDb ID Wikidata holds for each film (798 of 1,186); the catalogue's own star fills in where no match exists |
+| Year        | Wikidata / TheTVDB — the source site has no years          |
+| Director / cast | Wikidata (773 / 628 films)                              |
+| Length      | Wikidata's duration claim                                  |
+| Watchable   | has a verified Internet Archive playback match (564 films) |
+| Has poster  | 804 films, art from fanart.tv, TheTVDB, Wikidata or the Archive |
 
-Ratings come from IMDb's public data export, matched on the IMDb ID Wikidata
-holds for each film — 515 of 981. The catalogue's own star covers 481 films but
-is a weak signal: three quarters of them sit at four or five stars.
+The two rating scales are never merged. Doubling a five-star into a 10/10
+would put 102 films at a value no real IMDb rating reaches, floating them
+above everything genuinely well regarded. So a ten-point rating shows as a
+number, a site star shows as stars, and sort ranks real ratings above stars
+above nothing. The rating filter offers "Rated", "Site stars only" and
+"Unrated" rather than silently dropping films.
 
-The two scales are never merged. Doubling a five-star into 10/10 put 102 films
-at a value no film on IMDb actually reaches, floating them above everything
-genuinely well regarded. So a ten-point rating shows as a number, a site star
-shows as stars, and the sort ranks real ratings above stars above nothing. The
-rating filter offers "Rated", "Site stars only" and "Unrated" rather than
-silently dropping films. A "Has poster" checkbox narrows to films with real
-artwork, and a Random sort order shuffles the grid.
+Search covers title, director and cast in one box — searching "Buster
+Keaton" finds everything he directed and everything he appeared in, without
+needing to know which. Above the grid, two rails demonstrate this: **Search**
+holds prefilled searches (people the catalogue holds a lot of, plus a few
+titles like Tarzan and Zorro that only a title match — not a filter — could
+find), and **Filters** holds combinations of the controls below it (a
+decade, a genre plus playability, and so on). Both are shortcuts into states
+the real controls can already reach; clicking one moves the actual control,
+so the rails double as a demonstration of what the toolbar can do.
+
+## Watching in the page
+
+Where a title matches an Internet Archive item, a "Watch here" button opens
+the Archive's own player inside the panel — nothing is copied here, the film
+streams from their bandwidth, and the player loads only on request so opening
+a film never fetches video you didn't ask for.
+
+Archive items are matched by exact title and year, then checked again: the
+Archive holds trailers and clips under a film's own name, so a matched item's
+real running time is compared against the length the film should be, and
+anything much shorter is rejected as a clip rather than the feature. That
+check removed 113 of 471 title matches — a missing "Watch here" button is the
+right trade against one that opens ninety seconds of trailer.
+
+Escape can't close the panel once keyboard focus is inside the Archive's
+iframe — a cross-origin document's keystrokes are invisible to the parent
+page by design, not a bug here. Two presses of Shift+Tab reliably walk focus
+back out to the close button (browsers handle that at the frame-chrome level,
+which isn't blocked by cross-origin rules the way key events are), and a
+small hint appears near the close button to say so while focus is inside the
+player.
+
+## Descriptions
+
+The source site writes its own synopses; those aren't ours to reprint, so
+summaries here (737 of 1,186 films) are the first two sentences of each
+film's Wikipedia article, quoted under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) with a link
+back to the source article. Ratings are used with permission from IMDb.
+Full credit for every source lives on the page's **About** screen.
 
 ## Sharing a view
 
@@ -39,61 +79,76 @@ visit with no hash, the last-used filters come back from `localStorage`.
 The Random sort carries its seed in the URL, so a shared random order
 reproduces instead of reshuffling for the next reader.
 
-Poster art comes from fanart.tv, then TheTVDB, then a Wikimedia Commons image
-via Wikidata. Anything still without art gets a poster drawn in CSS from a hash
-of its title, so every card looks deliberate.
+Anything without art gets a poster drawn in CSS from a hash of its title, so
+every card still looks deliberate.
 
 ## Refreshing the data
 
 `build-data.mjs` is an author-time script. It is **not** part of CI — the hub
-workflow only runs `scripts/build.js`, and this scraper must never run on push.
+workflow only runs `scripts/build.js`, and this scraper must never run on
+push.
 
 ```sh
 cp ideas/public-screening/.env.example ideas/public-screening/.env   # then fill in the keys
 node ideas/public-screening/build-data.mjs --cache /tmp/pdt
 ```
 
-Keys are optional. Without them you still get titles, genres, formats, ratings
-and Wikidata years and art — you just lose the fanart.tv and TheTVDB posters.
-`.env` is gitignored and no key is ever written into `data.json`.
+Keys are optional. Without them you still get titles, genres, ratings and
+Wikidata years, art, credits and descriptions — you just lose the fanart.tv
+and TheTVDB posters. `.env` is gitignored and no key is ever written into
+`data.json`.
 
-The run takes roughly half an hour, almost all of it waiting: requests are
-sequential with a 1.5s delay and an identifying User-Agent, because ~1000 page
-views is a lot to ask of a small site. **Every response is cached to the
-`--cache` directory**, so a re-run costs nothing and a crash loses nothing.
-Delete that directory to force a genuinely fresh scrape.
+The run takes a while, almost all of it waiting: requests are sequential with
+a 1.5s delay and an identifying User-Agent, because this asks a lot of a
+small site. **Every response is cached to the `--cache` directory**, so a
+re-run costs nothing and a crash loses nothing. Delete that directory to
+force a genuinely fresh scrape.
 
-Phases can run separately — useful because the first is slow and key-free while
-the second needs the API keys:
+Phases can run separately — useful because the first is slow and key-free
+while the rest need external lookups:
 
 ```sh
 node ideas/public-screening/build-data.mjs --only pdt --cache /tmp/pdt   # scrape the site
-node ideas/public-screening/build-data.mjs --only art --cache /tmp/pdt   # add years + posters
+node ideas/public-screening/build-data.mjs --only art --cache /tmp/pdt   # everything else: years, posters,
+                                                                          # ratings, Archive, credits, descriptions
 ```
+
+Any single stage can also be rerun on its own against the published
+`data.json`, without repeating the rest: `--only enrich` (Wikidata year/ids),
+`--only ratings` (IMDb), `--only archive` (playback matches), `--only
+credits` (director/cast), `--only extras` (runtime + remaining posters), or
+`--only desc` (Wikipedia summaries).
+
+Each phase refuses to overwrite good data with a bad run: if a phase fetches
+nothing, or a field would lose more than 20% of its coverage, it aborts the
+write instead of silently gutting `data.json`. Pass `--force` to override.
 
 ## Known limitation: title-only matching
 
 The source site gives no year, no IMDb id, and no other identifier — only a
-title. So years and posters are matched to Wikidata and TheTVDB **by title
-alone**. Two rules keep that honest:
+title. So years, posters, ratings and Archive matches are all found **by
+title alone**. Two rules keep that honest:
 
-- A candidate must match the title exactly once case, spacing and punctuation
-  are normalised. Without this the databases' fuzzy search quietly returns
-  some *other* film, which looks identical to a real hit.
+- A candidate must match the title exactly — case, spacing and punctuation
+  are normalised first. Without this, a database's fuzzy search quietly
+  returns some *other* film, which looks identical to a real hit.
 - Candidates dated after 1990 are rejected outright. The catalogue's newest
   genuine entries are cheap late-80s pictures, so a newer match means the
   real film isn't in the database and we've landed on a modern namesake.
   Those titles get no year and a drawn poster instead of a wrong one.
 
-It still won't be perfect — a same-era remake can pass both rules.
-
-`build-data.mjs` writes every miss and ambiguous match to `mismatches.log`
-(gitignored) so they can be reviewed. The page says as much in its footer
-rather than presenting the metadata as authoritative.
+It still won't be perfect — a same-era remake can pass both rules. Every miss
+and ambiguous match is written to `mismatches.log` (gitignored) for review,
+and the page's footer says as much rather than presenting the metadata as
+authoritative.
 
 ## What this page deliberately does not do
 
-- **No synopses.** The source site's plot summaries aren't ours to republish.
+- **No reprinted synopses.** The source site's own plot summaries aren't ours
+  to republish — the two-sentence Wikipedia excerpts are quoted, credited and
+  licensed instead.
 - **No torrent links.** Cards link to the film's page on the source site;
   downloads stay there.
-- **No hotlinked screenshots** from the source site's server.
+- **No hotlinked screenshots** from the source site's server, and nothing
+  from the Internet Archive is copied — it streams from their player, in an
+  iframe, on request.
