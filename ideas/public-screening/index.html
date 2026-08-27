@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Public Screening</title>
-<meta name="description" content="Browse 981 public domain films — search by title or cast, filter by genre, decade, length and rating, and watch hundreds of them in the page.">
+<meta name="description" content="Browse 1,186 public domain films — search by title, director or cast, filter by genre, decade, length and rating, and watch hundreds of them in the page.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316181d'/%3E%3Crect x='9' y='5' width='14' height='22' rx='1.5' fill='%23e5a00d'/%3E%3Cg fill='%2316181d'%3E%3Crect x='10.5' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3C/g%3E%3C/svg%3E">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="random">
 <meta property="og:title" content="Public Screening">
-<meta property="og:description" content="Browse 981 public domain films. Search, filter, sort — and watch hundreds of them without leaving the page.">
+<meta property="og:description" content="Browse 1,186 public domain films. Search, filter, sort — and watch hundreds of them without leaving the page.">
 <meta property="og:url" content="https://rickymetz.github.io/random/ideas/public-screening/">
 <meta property="og:image" content="https://rickymetz.github.io/random/ideas/public-screening/og.png">
 <meta property="og:image:width" content="1200">
@@ -17,7 +17,7 @@
 <meta property="og:image:alt" content="Public Screening — a grid of vintage film posters">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Public Screening">
-<meta name="twitter:description" content="Browse 981 public domain films. Hundreds play in the page.">
+<meta name="twitter:description" content="Browse 1,186 public domain films. Hundreds play in the page.">
 <meta name="twitter:image" content="https://rickymetz.github.io/random/ideas/public-screening/og.png">
 <style>
   :root {
@@ -1722,7 +1722,7 @@
     // Closing re-renders the grid back to a single page, so the document is
     // suddenly far shorter than where the reader was and the scroll clamps to
     // the new bottom. Draw enough chunks to reach the old position first, or
-    // every film you look at costs you your place in 981 of them.
+    // every film you look at costs you your place in 1,186 of them.
     let guard = 0;
     while (document.documentElement.scrollHeight < lockedAt + window.innerHeight
            && drawn < shown.length && guard++ < 40) {
