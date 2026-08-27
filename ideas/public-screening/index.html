@@ -572,23 +572,36 @@
     translate: 0 -3px;
   }
   .card:focus-visible { outline: none; }
+  /* The touch target is 44px square -- the visible dark circle stays the
+     original 22px, drawn as a ::before so the button itself can be the
+     bigger, invisible tappable area without looking oversized on the
+     poster. Both it and the star icon share one grid cell to stay centered
+     on each other regardless of which is visually larger. */
   .fav {
     position: absolute;
     z-index: 2;
-    right: 6px;
-    bottom: 6px;
+    right: 0;
+    bottom: 0;
     display: grid;
     place-items: center;
+    width: 44px;
+    height: 44px;
+    background: none;
+    border: 0;
+    color: #fff;
+    cursor: pointer;
+  }
+  .fav::before {
+    content: "";
+    grid-area: 1 / 1;
     width: 22px;
     height: 22px;
     border-radius: 50%;
     background: rgb(0 0 0 / .6);
-    border: 0;
-    color: #fff;
-    cursor: pointer;
-    transition: background .12s, color .12s;
+    transition: background .12s;
   }
-  .fav:hover { background: rgb(0 0 0 / .8); }
+  .fav svg { grid-area: 1 / 1; transition: color .12s; }
+  .fav:hover::before { background: rgb(0 0 0 / .8); }
   .fav.active { color: var(--accent); }
   .fav:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .poster img {
@@ -770,7 +783,7 @@
   }
   .drawer.open { translate: 0 0; }
   @media (prefers-reduced-motion: reduce) {
-    .drawer, .scrim, .poster, .chip, .fav { transition: none; }
+    .drawer, .scrim, .poster, .chip, .fav, .fav::before, .fav svg { transition: none; }
   }
   .drawer-close {
     position: absolute;
