@@ -1054,16 +1054,17 @@
     .chip { flex: none; padding: 11px 14px; font-size: 13px; }
 
     /* Nothing else marks this row as scrollable, so the last chip can look
-       like the last genre in the catalogue. Hidden once JS finds the rail
-       already scrolled to its end. */
-    .chips-wrap { position: relative; }
-    .chips-fade {
+       like the last one in the list. Hidden once JS finds the rail already
+       scrolled to its end. Shared by the genre rail and the two preset
+       rails below it -- all three switch to horizontal scroll here. */
+    .chips-wrap, .rail { position: relative; }
+    .chips-fade, .rail-fade {
       position: absolute;
       top: 0; right: 0; bottom: 10px; width: 32px;
       background: linear-gradient(to right, transparent, var(--bg));
       pointer-events: none;
     }
-    .chips-fade[hidden] { display: none; }
+    .chips-fade[hidden], .rail-fade[hidden] { display: none; }
 
     /* Two columns, so four filters occupy two rows rather than four. */
     .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -1126,7 +1127,7 @@
   <div id="filterPanel">
   <div class="chips-wrap">
     <div class="chips" id="genreChips"></div>
-    <div class="chips-fade" aria-hidden="true"></div>
+    <div class="chips-fade" id="chipsFade" aria-hidden="true"></div>
   </div>
 
   <div class="toolbar">
@@ -1224,9 +1225,11 @@
 <main>
   <nav class="rail" aria-label="Example searches">
     <div class="rail-items" id="railSearch"></div>
+    <div class="rail-fade" id="railSearchFade" aria-hidden="true"></div>
   </nav>
   <nav class="rail" aria-label="Example filters">
     <div class="rail-items" id="railFilters"></div>
+    <div class="rail-fade" id="railFiltersFade" aria-hidden="true"></div>
   </nav>
   <div class="grid" id="grid"></div>
   <div class="sentinel" id="sentinel"></div>
@@ -2038,14 +2041,21 @@
     }
   }
 
-  // On desktop the rail wraps, so it never scrolls and the fade stays hidden.
-  // On a phone it's a single scrolling row with nothing else to say so —
-  // the fade marks that more genres sit past the edge, and disappears once
-  // scrolling reaches the true last chip.
-  function updateChipsFade() {
-    const el = $("genreChips"), fade = document.querySelector(".chips-fade");
+  // On desktop these rails wrap, so they never scroll and the fade stays
+  // hidden. On a phone each is a single scrolling row with nothing else to
+  // say so — the fade marks that more sits past the edge, and disappears
+  // once scrolling reaches the true last item. Shared by the genre rail and
+  // the two preset rails; each needs its own call since they scroll (and
+  // rebuild) independently of one another.
+  function updateFadeFor(elId, fadeId) {
+    const el = $(elId), fade = $(fadeId);
     if (!el || !fade) return;
     fade.hidden = el.scrollWidth - el.clientWidth - el.scrollLeft <= 4;
+  }
+  function updateChipsFade() { updateFadeFor("genreChips", "chipsFade"); }
+  function updateRailFades() {
+    updateFadeFor("railSearch", "railSearchFade");
+    updateFadeFor("railFilters", "railFiltersFade");
   }
 
   function buildChips(counts) {
@@ -2200,7 +2210,9 @@
   });
   SMALL.addEventListener("change", syncPanel);
   $("genreChips").addEventListener("scroll", updateChipsFade, { passive: true });
-  window.addEventListener("resize", updateChipsFade);
+  $("railSearch").addEventListener("scroll", updateRailFades, { passive: true });
+  $("railFilters").addEventListener("scroll", updateRailFades, { passive: true });
+  window.addEventListener("resize", () => { updateChipsFade(); updateRailFades(); });
 
   // Each of these is a combination of filters that already exist, so choosing
   // one lands in a state the controls can show and the URL can carry — a
@@ -2302,6 +2314,7 @@
       $(row.el).onclick = onPresetClick;
       $(row.el).parentElement.hidden = items.length === 0;
     }
+    updateRailFades();
   }
 
   new IntersectionObserver((entries) => {
