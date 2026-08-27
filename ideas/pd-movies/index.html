@@ -3,20 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PDM Browser</title>
+<title>Public Screening</title>
 <meta name="description" content="Browse 981 public domain films — search by title or cast, filter by genre, decade, length and rating, and watch hundreds of them in the page.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316181d'/%3E%3Crect x='9' y='5' width='14' height='22' rx='1.5' fill='%23e5a00d'/%3E%3Cg fill='%2316181d'%3E%3Crect x='10.5' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3C/g%3E%3C/svg%3E">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="random">
-<meta property="og:title" content="PDM Browser">
+<meta property="og:title" content="Public Screening">
 <meta property="og:description" content="Browse 981 public domain films. Search, filter, sort — and watch hundreds of them without leaving the page.">
 <meta property="og:url" content="https://rickymetz.github.io/random/ideas/pd-movies/">
 <meta property="og:image" content="https://rickymetz.github.io/random/ideas/pd-movies/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="PDM Browser — a grid of vintage film posters">
+<meta property="og:image:alt" content="Public Screening — a grid of vintage film posters">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="PDM Browser">
+<meta name="twitter:title" content="Public Screening">
 <meta name="twitter:description" content="Browse 981 public domain films. Hundreds play in the page.">
 <meta name="twitter:image" content="https://rickymetz.github.io/random/ideas/pd-movies/og.png">
 <style>
@@ -93,7 +93,7 @@
     text-decoration: none;
   }
   .home:hover { color: var(--ink); background: var(--panel); }
-  /* "PDM Browser" alone told a first-time reader nothing — one reviewer took
+  /* The old name was an initialism nobody could expand — one reviewer took
      ten seconds to guess it, another assumed the site was something else. */
   .tagline {
     margin: 0;
@@ -1002,7 +1002,7 @@
           <path d="M3.8 8.3V13h8.4V8.3"/>
         </svg>
       </a>
-      <h1>PDM Browser</h1>
+      <h1>Public Screening</h1>
       <p class="tagline">Public domain movies, free to watch</p>
     </div>
     <div class="search" id="searchWrap">
@@ -1654,7 +1654,7 @@
               `<br>${imdbLink(m) || `<span class="d-line">${esc(SCORE_SRC[m.scoreSrc] || "")}</span>`}</dd>`
             : m.rating
               ? `<dt>Rating</dt><dd><span class="site">${stars(m.rating)}</span>` +
-                `<br><span class="d-line">Public Domain Torrents users — not comparable to a 10-point score</span></dd>`
+                `<br><span class="d-line">Voted by the source site's users — not comparable to a 10-point score</span></dd>`
               : "") +
           (m.director?.length
             ? `<dt>Director</dt><dd>${m.director
@@ -1677,7 +1677,7 @@
               `</a>`
             : "") +
           `<a class="btn${m.ia ? " ghost" : ""}" href="${SRC}/nshowmovie.html?movieid=${encodeURIComponent(m.id)}" target="_blank" rel="noopener noreferrer">` +
-            `Open on Public Domain Torrents` +
+            `Open on the source site` +
             `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h7v7M13 3L6.5 9.5M11 9v4H3V5h4"/></svg>` +
           `</a>` +
           (m.ia
@@ -1687,7 +1687,7 @@
         relatedHTML(m) +
         `<p class="d-note">${m.ia
             ? "Plays here from the Internet Archive; nothing is hosted on this page. "
-            : ""}Downloads, synopsis and user comments live on Public Domain Torrents.</p>` +
+            : ""}Downloads, synopsis and user comments live on publicdomaintorrents.info.</p>` +
       `</div>`;
 
     if (!reopening) lockScroll();
