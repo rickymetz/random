@@ -2043,9 +2043,9 @@
   // already spans title, director and cast, so one name covers someone who
   // both directed and starred without needing to know which they did here.
   const PEOPLE = [
-    "Charlie Chaplin", "Buster Keaton", "John Wayne", "Douglas Fairbanks",
-    "Bela Lugosi", "Frank Capra", "Georges M\u00e9li\u00e8s", "Lon Chaney",
-    "Mary Pickford", "Boris Karloff",
+    "Charlie Chaplin", "Buster Keaton", "Douglas Fairbanks", "Bela Lugosi",
+    "Frank Capra", "Georges M\u00e9li\u00e8s", "Lon Chaney", "Mary Pickford",
+    "Boris Karloff",
   ].map((name) => ({ label: name, row: "people", apply: (st) => { st.q = name; } }));
 
   const PRESETS = [...COLLECTIONS, ...PEOPLE];
