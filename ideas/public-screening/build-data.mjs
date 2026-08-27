@@ -54,6 +54,17 @@ function decodeEntities(s) {
 
 // Compare titles on their letters alone: case, spacing, punctuation and a
 // trailing parenthetical all vary between the catalogue and the databases.
+// encodeURIComponent deliberately leaves ( ) ' ! ~ * unescaped (RFC 3986
+// "unreserved-ish" holdovers), but the frontend's safeUrl() rejects parens
+// and quotes outright as a CSS/HTML-injection guard. A Commons filename with
+// "(1930 film)" in it — extremely common — survives encodeURIComponent and
+// then gets silently rejected by safeUrl(), so the poster never renders even
+// though data.json says the film has one. Escape what safeUrl() forbids too.
+function urlEncodeStrict(s) {
+  return encodeURIComponent(s).replace(/[()'!~*]/g, (c) =>
+    "%" + c.charCodeAt(0).toString(16).toUpperCase());
+}
+
 function norm(s) {
   return String(s).toLowerCase()
     .replace(/[\u2018\u2019\u201c\u201d]/g, "'")
@@ -465,7 +476,7 @@ async function posters(movies) {
   let wd = 0;
   for (const mv of movies) {
     if (mv.art || !mv.wdArt) continue;
-    mv.art = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(mv.wdArt)}?width=400`;
+    mv.art = `https://commons.wikimedia.org/wiki/Special:FilePath/${urlEncodeStrict(mv.wdArt)}?width=400`;
     mv.artSrc = "commons";
     wd++;
   }
