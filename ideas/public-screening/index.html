@@ -2207,6 +2207,12 @@
         [...decades].sort((a, b) => a - b)
           .map((d) => `<option value="${d}">${d === 1900 ? "Before 1930" : d + "s"}</option>`).join(""));
 
+      // A hand-edited or stale hash can name a decade this build no longer
+      // has (or never did). Left alone, the select would show "Any" while
+      // state.decade stayed truthy — filtered results with no visible filter.
+      const validDecades = new Set(["silent", ...[...decades].map(String)]);
+      if (state.decade && !validDecades.has(state.decade)) state.decade = "";
+
       const rated = ALL.filter((m) => m.score || m.rating).length;
       const siteOnly = ALL.filter((m) => !m.score && m.rating).length;
       for (const o of $("minRating").options) {
