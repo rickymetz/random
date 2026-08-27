@@ -1487,6 +1487,15 @@
     drawn = 0;
     drawMore();
     empty.hidden = shown.length > 0;
+    if (!empty.hidden) {
+      // The generic "filters too strict" copy reads like broken data to
+      // someone who just checked My List out of curiosity and has never
+      // starred anything — say the actual reason instead, for that one case.
+      const bare = state.favOnly && favorites.size === 0;
+      empty.querySelector("p").textContent = bare
+        ? "Nothing in My List yet. Open a film and choose \u201cAdd to My List\u201d to save it here."
+        : "Nothing matches those filters.";
+    }
     countEl.textContent = `${shown.length} / ${ALL.length}`;
     $("reset").hidden = !isFiltered();
     markRails();
