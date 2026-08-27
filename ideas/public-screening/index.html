@@ -1608,6 +1608,19 @@
     } catch {}
   }
 
+  // favOnly never goes in the URL (see writeUrl), so "URL wins on a shared
+  // link" doesn't apply to it the way it does to every other filter — there
+  // is nothing in the URL for it to lose to. Without this, opening any
+  // shared/filtered link took the loadPrefs() branch below out of the boot
+  // sequence entirely, and My List silently reset every time regardless of
+  // whether the link's own params mentioned it.
+  function loadFavOnlyPref() {
+    try {
+      const v = JSON.parse(localStorage.getItem(PREFS) || "null");
+      state.favOnly = Boolean(v?.favOnly);
+    } catch {}
+  }
+
   // Push the state back onto the controls, after a popstate or on load.
   function syncControls() {
     $("q").value = state.q;
@@ -2331,6 +2344,7 @@
       // URL first so a shared link always wins; saved preferences only fill in
       // a bare visit.
       if (!readUrl()) loadPrefs();
+      else loadFavOnlyPref();
 
       // The whole silent era in one option: it spans several decade buckets and
       // is the distinctive part of this catalogue.
