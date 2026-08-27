@@ -528,13 +528,25 @@
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 22px 16px;
   }
-  .card {
+  /* .card-wrap holds the visible content (poster, meta); .card is an
+     invisible button stacked over the whole wrap, first in DOM so its
+     :focus-visible can reach the poster with a sibling combinator. .fav
+     sits inside .poster with a higher z-index, so it stays clickable on
+     top of an overlay that otherwise covers the entire card. */
+  .card-wrap {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+  .card {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
     background: none;
     border: 0;
     padding: 0;
+    margin: 0;
     color: inherit;
     text-align: left;
     font: inherit;
@@ -551,12 +563,34 @@
     outline: 2px solid transparent;
     outline-offset: 2px;
   }
-  .card:hover .poster,
-  .card:focus-visible .poster {
+  /* Excluding :has(.fav:hover) matters for more than looks: without it,
+     hovering the star to click it also lifts the poster it sits on, moving
+     the star out from under a coordinate-based click mid-transition. */
+  .card-wrap:hover:not(:has(.fav:hover)) .poster,
+  .card:focus-visible ~ .poster {
     outline-color: var(--accent);
     translate: 0 -3px;
   }
   .card:focus-visible { outline: none; }
+  .fav {
+    position: absolute;
+    z-index: 2;
+    right: 6px;
+    bottom: 6px;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgb(0 0 0 / .6);
+    border: 0;
+    color: #fff;
+    cursor: pointer;
+    transition: background .12s, color .12s;
+  }
+  .fav:hover { background: rgb(0 0 0 / .8); }
+  .fav.active { color: var(--accent); }
+  .fav:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .poster img {
     width: 100%;
     height: 100%;
@@ -616,7 +650,7 @@
     background: rgb(0 0 0 / .72);
     color: var(--accent);
   }
-  .grid.list .playable { display: none; }
+  .grid.list .playable, .grid.list .fav { display: none; }
   .badge {
     position: absolute;
     top: 6px;
@@ -661,7 +695,7 @@
     flex-direction: column;
     gap: 0;
   }
-  .grid.list .card {
+  .grid.list .card-wrap {
     flex-direction: row;
     align-items: center;
     gap: 12px;
@@ -669,9 +703,9 @@
     border-bottom: 1px solid var(--line);
     border-radius: var(--radius);
   }
-  .grid.list .card:hover { background: var(--bg-2); }
+  .grid.list .card-wrap:hover { background: var(--bg-2); }
   .grid.list .poster { width: 34px; flex: none; }
-  .grid.list .card:hover .poster { translate: 0; outline-color: transparent; }
+  .grid.list .card-wrap:hover .poster { translate: 0; outline-color: transparent; }
   .grid.list .gen .initial, .grid.list .badge, .grid.list .stars { display: none; }
   .grid.list .gen .t { font-size: 0; }
   .grid.list .meta {
@@ -736,7 +770,7 @@
   }
   .drawer.open { translate: 0 0; }
   @media (prefers-reduced-motion: reduce) {
-    .drawer, .scrim, .poster, .chip { transition: none; }
+    .drawer, .scrim, .poster, .chip, .fav { transition: none; }
   }
   .drawer-close {
     position: absolute;
@@ -1303,7 +1337,13 @@
     ? `<span class="stars">${fmtScore(m.score)}</span>`
     : (m.rating ? `<span class="stars site">${stars(m.rating)}</span>` : "");
 
-  function posterHTML(m) {
+  const STAR_PATH = "M8 1.5l1.9 4.2 4.6.5-3.4 3.1.9 4.6L8 11.8 3.9 13.9l.9-4.6L1.4 6.2l4.6-.5L8 1.5z";
+
+  // withFav: only the main grid/list cards get a favorite toggle on the
+  // poster itself — the related-films strip and the drawer's own hero both
+  // reuse this same markup, and the strip's poster already sits inside its
+  // own button (.rel), where a second, nested button isn't valid HTML.
+  function posterHTML(m, withFav) {
     const h = hash(m.title) % 360;
     const gen =
       `<div class="gen" style="--h:${h};--h2:${(h + 42) % 360}">` +
@@ -1317,6 +1357,7 @@
              onerror="window.__posterFailed(this)">`
       : "";
     const genHidden = src ? " hidden" : "";
+    const on = withFav && favorites.has(m.id);
     return `<div class="poster">` +
       gen.replace('class="gen"', `class="gen"${genHidden}`) +
       img +
@@ -1324,6 +1365,12 @@
       badge(m) +
       (m.ia ? `<span class="playable" title="Watchable on Internet Archive" aria-hidden="true">` +
               `<svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.5v9l7-4.5z"/></svg></span>` : "") +
+      (withFav
+        ? `<button class="fav${on ? " active" : ""}" data-id="${esc(m.id)}" aria-pressed="${on}" ` +
+            `aria-label="${on ? "Remove" : "Add"} ${esc(m.title)} ${on ? "from" : "to"} My List">` +
+            `<svg width="13" height="13" viewBox="0 0 16 16" fill="${on ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="${STAR_PATH}"/></svg>` +
+          `</button>`
+        : "") +
     `</div>`;
   }
 
@@ -1375,13 +1422,19 @@
 
   const genreNames = (m) => m.genres.map((g) => GENRE_LABELS[g] || g).join(", ");
 
+  // Two siblings, not one nested inside the other: a button can't contain
+  // another button, and the poster now carries its own favorite toggle.
+  // .card is an invisible full-cover overlay (open the film); .fav sits on
+  // top of it at one corner with a higher z-index, so a click there never
+  // reaches the overlay underneath.
   function cardHTML(m, i) {
     const sub = state.view === "list"
       ? (m.year || "—")
       : [m.year, genreNames(m).split(",")[0], m.runtime ? m.runtime + "m" : null]
           .filter(Boolean).join(" · ");
-    return `<button class="card" data-i="${i}">` +
-      posterHTML(m) +
+    return `<div class="card-wrap">` +
+      `<button class="card" data-i="${i}" aria-label="Open ${esc(m.title)}"></button>` +
+      posterHTML(m, true) +
       `<span class="meta">` +
         `<span class="name">${esc(m.title)}</span>` +
         `<span class="sub">${esc(sub)}</span>` +
@@ -1390,7 +1443,7 @@
             `<span class="lrating${m.score ? "" : " site"}">${m.score ? fmtScore(m.score) : (m.rating ? stars(m.rating) : "")}</span>`
           : "") +
       `</span>` +
-    `</button>`;
+    `</div>`;
   }
 
   // ------------------------------------------------------------- filtering
@@ -1536,7 +1589,18 @@
     if (label) label.textContent = `My list (${favorites.size})`;
     const dFav = $("dFav");
     if (dFav && currentFilm) setFavButton(dFav, favorites.has(currentFilm.id));
-    if (state.favOnly) render();
+    // If My List is the active filter, un-starring has to remove the card,
+    // which only a re-render does. Otherwise, patch the one button that
+    // changed in place rather than rebuild every card on the page for it.
+    if (state.favOnly) { render(); return; }
+    for (const btn of grid.querySelectorAll(".fav")) {
+      const on = favorites.has(btn.dataset.id);
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      btn.querySelector("svg").setAttribute("fill", on ? "currentColor" : "none");
+      const title = btn.getAttribute("aria-label").replace(/^(Add|Remove) /, "").replace(/ (to|from) My List$/, "");
+      btn.setAttribute("aria-label", `${on ? "Remove" : "Add"} ${title} ${on ? "from" : "to"} My List`);
+    }
   }
   function setFavButton(btn, on) {
     btn.setAttribute("aria-pressed", on ? "true" : "false");
@@ -1867,7 +1931,7 @@
         `</dl>` +
         `<div class="d-actions">` +
           `<button class="btn ghost" id="dFav" aria-pressed="${favorites.has(m.id) ? "true" : "false"}">` +
-            `<svg width="13" height="13" viewBox="0 0 16 16" fill="${favorites.has(m.id) ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.5l1.9 4.2 4.6.5-3.4 3.1.9 4.6L8 11.8 3.9 13.9l.9-4.6L1.4 6.2l4.6-.5L8 1.5z"/></svg>` +
+            `<svg width="13" height="13" viewBox="0 0 16 16" fill="${favorites.has(m.id) ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="${STAR_PATH}"/></svg>` +
             (favorites.has(m.id) ? "In your list" : "Add to My List") +
           `</button>` +
           `<button class="btn ghost" id="dShare">` +
@@ -2039,6 +2103,8 @@
   });
 
   grid.addEventListener("click", (e) => {
+    const fav = e.target.closest(".fav");
+    if (fav) { toggleFavorite(fav.dataset.id); return; }
     const card = e.target.closest(".card");
     if (card) openDrawer(ALL[+card.dataset.i]);
   });
