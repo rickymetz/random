@@ -959,7 +959,11 @@
   .tag:hover { color: var(--ink); border-color: var(--dim); }
   .tag.static { cursor: default; }
   .tag.static:hover { color: var(--muted); border-color: var(--line-2); }
-  .d-actions { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; }
+  /* Two columns by default; a .wide button (Watch here, or the source-site
+     link standing in for it when there's nothing to watch) breaks onto its
+     own full-width row, and whatever follows starts a fresh row after it. */
+  .d-actions { margin-top: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .d-actions .wide { grid-column: 1 / -1; }
   .btn {
     display: flex;
     align-items: center;
@@ -1952,7 +1956,7 @@
             `Copy link` +
           `</button>` +
           (m.ia
-            ? `<button class="btn" id="dWatch">` +
+            ? `<button class="btn wide" id="dWatch">` +
                 `<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 3.5v9l7-4.5z"/></svg>` +
                 `Watch here` +
               `</button>` +
