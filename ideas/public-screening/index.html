@@ -1238,6 +1238,12 @@
   "use strict";
 
   const SRC = "https://www.publicdomaintorrents.info";
+  // A #film= URL never unfurls: a hash is never sent to any server, so a
+  // share-preview bot fetching the address-bar link sees the bare page and
+  // nothing about which film was open. f/<id>/ is a real, distinct path with
+  // that film's own tags baked in at build time by build-share-pages.mjs, so
+  // this is the link Share actually copies.
+  const SITE = "https://rickymetz.github.io/random/ideas/public-screening/";
   const GENRE_LABELS = {
     action: "Action", animation: "Animation", comedy: "Comedy", drama: "Drama",
     exploitation: "Exploitation", family: "Family", horror: "Horror",
@@ -1789,6 +1795,10 @@
             : "") +
         `</dl>` +
         `<div class="d-actions">` +
+          `<button class="btn ghost" id="dShare">` +
+            `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M5 5l3-3 3 3M3 9v4a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V9"/></svg>` +
+            `Copy link` +
+          `</button>` +
           (m.ia
             ? `<button class="btn" id="dWatch">` +
                 `<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 3.5v9l7-4.5z"/></svg>` +
@@ -1828,6 +1838,20 @@
     $("dClose").focus();
 
     $("dClose").onclick = () => closeDrawer({ back: true });
+
+    // Copies the f/<id>/ page, not the address bar's #film= link: only the
+    // former can ever show this film's name and poster when it's shared.
+    $("dShare").onclick = async () => {
+      const btn = $("dShare");
+      const label = btn.lastChild;
+      try {
+        await navigator.clipboard.writeText(`${SITE}f/${encodeURIComponent(m.id)}/`);
+        label.textContent = "Copied!";
+      } catch {
+        label.textContent = "Couldn't copy";
+      }
+      setTimeout(() => { if ($("dShare") === btn) label.textContent = "Copy link"; }, 1600);
+    };
 
     // Swap the poster for the Archive's own player. Loaded on demand rather
     // than with the drawer, so opening a film never pulls a video frame.

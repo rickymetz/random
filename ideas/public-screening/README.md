@@ -82,6 +82,23 @@ reproduces instead of reshuffling for the next reader.
 Anything without art gets a poster drawn in CSS from a hash of its title, so
 every card still looks deliberate.
 
+### Why "Copy link" exists
+
+A `#film=` hash never reaches a server — a social unfurl bot fetching the
+address-bar URL for an open film sees the bare page and nothing about which
+film was open, on any host, hash-routed or not. The **Copy link** button in
+a film's panel copies a different URL instead: `f/<id>/`, a real static path
+with that film's own title, description and poster baked into its Open Graph
+tags at build time. It redirects a human visitor straight into the app with
+that film open; a crawler stops at the tags and never runs the redirect.
+
+`build-share-pages.mjs` generates all 1,186 of these from `data.json` and is
+**not** part of CI — rerun it by hand after any data refresh:
+
+```sh
+node ideas/public-screening/build-share-pages.mjs
+```
+
 ## Refreshing the data
 
 `build-data.mjs` is an author-time script. It is **not** part of CI — the hub
