@@ -415,14 +415,22 @@ const SORTS = {
 
 function matches(m) { return true; }   // filters arrive in Tasks 3 and 4
 
+// Stable hue per title so a film's generated poster never changes colour.
+function hash(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return Math.abs(h);
+}
+
 function posterHTML(m) {
   const src = `${IA}/services/img/${encodeURIComponent(m.id)}`;
+  const h = hash(m.t) % 360;
   // A thumbnail URL is always present, so the drawn fallback starts hidden —
   // this keeps its title out of the accessibility tree while the real
   // thumbnail is showing. window.__posterFailed unhides it if the image
   // 404s or otherwise fails to load.
   return `<div class="poster">` +
-    `<div class="gen" hidden><span class="t">${esc(m.t)}</span></div>` +
+    `<div class="gen" hidden style="--h:${h};--h2:${(h + 42) % 360}"><span class="t">${esc(m.t)}</span></div>` +
     `<img src="${esc(src)}" alt="" loading="lazy" decoding="async"
           onerror="window.__posterFailed(this)">` +
     (m.y ? `<span class="badge">${m.y}</span>` : "") +
