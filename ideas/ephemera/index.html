@@ -151,6 +151,15 @@
     gap: 8px;
     justify-self: end;
   }
+  #sort {
+    height: 30px;
+    padding: 0 8px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--ink);
+    font: 12px var(--sans);
+  }
   .view-toggle { display: flex; gap: 0; }
   .view-toggle button {
     display: grid;
@@ -369,6 +378,12 @@
       </div>
     </div>
     <div class="view-actions">
+      <select id="sort" aria-label="Sort">
+        <option value="-n">Most viewed</option>
+        <option value="-year">Newest</option>
+        <option value="year">Oldest</option>
+        <option value="title">Title A–Z</option>
+      </select>
       <div class="view-toggle">
         <button id="viewGrid" aria-pressed="true" aria-label="Grid view" title="Grid view">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -413,7 +428,74 @@ const SORTS = {
   "title": (a, b) => a.sort.localeCompare(b.sort),
 };
 
-function matches(m) { return true; }   // filters arrive in Tasks 3 and 4
+function matches(m) {
+  if (state.q) {
+    const q = state.q.toLowerCase();
+    const hay = m._hay || (m._hay = [m.t, m.d || "", (m.g || []).join(" ")].join(" ").toLowerCase());
+    if (!hay.includes(q)) return false;
+  }
+  return true;
+}
+
+const isFiltered = () => Boolean(state.q || state.tags.size || state.decade || state.favOnly);
+
+const PREFS = "ephemera:prefs";
+
+function writeUrl(push) {
+  const p = new URLSearchParams();
+  if (state.q) p.set("q", state.q);
+  if (state.sort !== "-n") p.set("sort", state.sort);
+  if (state.view !== "grid") p.set("v", state.view);
+  const hash = p.toString();
+  const url = location.pathname + (hash ? "#" + hash : "");
+  if (push && url !== location.pathname + location.hash) history.pushState(null, "", url);
+  else history.replaceState(null, "", url);
+}
+
+function readUrl() {
+  const p = new URLSearchParams(location.hash.replace(/^#/, ""));
+  if (!p.toString()) return false;
+  state.q = p.get("q") || "";
+  state.sort = SORTS[p.get("sort")] ? p.get("sort") : "-n";
+  state.view = p.get("v") === "list" ? "list" : "grid";
+  return true;
+}
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREFS, JSON.stringify({ sort: state.sort, view: state.view }));
+  } catch {}
+}
+
+function loadPrefs() {
+  try {
+    const v = JSON.parse(localStorage.getItem(PREFS) || "null");
+    if (!v) return;
+    if (SORTS[v.sort]) state.sort = v.sort;
+    state.view = v.view === "list" ? "list" : "grid";
+  } catch {}
+}
+
+function syncControls() {
+  $("q").value = state.q;
+  $("sort").value = state.sort;
+  $("viewGrid").setAttribute("aria-pressed", String(state.view === "grid"));
+  $("viewList").setAttribute("aria-pressed", String(state.view === "list"));
+}
+
+function apply(push = false) {
+  writeUrl(push);
+  savePrefs();
+  render();
+}
+
+let debounce;
+$("q").addEventListener("input", (e) => {
+  clearTimeout(debounce);
+  debounce = setTimeout(() => { state.q = e.target.value.trim(); apply(false); }, 120);
+});
+$("sort").addEventListener("change", (e) => { state.sort = e.target.value; apply(true); });
+window.addEventListener("popstate", () => { readUrl(); syncControls(); render(); });
 
 // Stable hue per title so a film's generated poster never changes colour.
 function hash(s) {
@@ -479,8 +561,8 @@ function render() {
 new IntersectionObserver((e) => { if (e[0].isIntersecting) drawMore(); })
   .observe($("sentinel"));
 
-$("viewGrid").onclick = () => { state.view = "grid"; render(); };
-$("viewList").onclick = () => { state.view = "list"; render(); };
+$("viewGrid").onclick = () => { state.view = "grid"; apply(true); };
+$("viewList").onclick = () => { state.view = "list"; apply(true); };
 
 fetch("data.json")
   .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
@@ -488,7 +570,10 @@ fetch("data.json")
     ALL = data.items;
     TAGS = data.tags;
     ALL.forEach((m, i) => { m._i = i; });
+    if (!readUrl()) loadPrefs();
+    syncControls();
     render();
+    writeUrl(false);
   })
   .catch((err) => {
     grid.innerHTML = `<p class="err">Could not load the catalogue (${esc(err.message)}).</p>`;
