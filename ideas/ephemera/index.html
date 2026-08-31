@@ -372,7 +372,7 @@
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
         <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14" stroke-linecap="round"/>
       </svg>
-      <input id="q" type="search" placeholder="Search titles…" autocomplete="off" spellcheck="false" aria-label="Search titles">
+      <input id="q" type="search" placeholder="Search titles, descriptions, tags…" autocomplete="off" spellcheck="false" aria-label="Search titles, descriptions, tags">
       <div class="search-end">
         <output class="count" id="count" for="q" aria-live="polite">…</output>
       </div>
@@ -431,8 +431,11 @@ const SORTS = {
 function matches(m) {
   if (state.q) {
     const q = state.q.toLowerCase();
-    const hay = m._hay || (m._hay = [m.t, m.d || "", (m.g || []).join(" ")].join(" ").toLowerCase());
-    if (!hay.includes(q)) return false;
+    if (m._hay === undefined) {
+      const hay = [m.t, m.d || "", (m.g || []).join(" ")].join(" ").toLowerCase();
+      Object.defineProperty(m, "_hay", { value: hay, enumerable: false, writable: true, configurable: true });
+    }
+    if (!m._hay.includes(q)) return false;
   }
   return true;
 }
@@ -479,8 +482,6 @@ function loadPrefs() {
 function syncControls() {
   $("q").value = state.q;
   $("sort").value = state.sort;
-  $("viewGrid").setAttribute("aria-pressed", String(state.view === "grid"));
-  $("viewList").setAttribute("aria-pressed", String(state.view === "list"));
 }
 
 function apply(push = false) {
@@ -495,7 +496,7 @@ $("q").addEventListener("input", (e) => {
   debounce = setTimeout(() => { state.q = e.target.value.trim(); apply(false); }, 120);
 });
 $("sort").addEventListener("change", (e) => { state.sort = e.target.value; apply(true); });
-window.addEventListener("popstate", () => { readUrl(); syncControls(); render(); });
+window.addEventListener("popstate", () => { if (!readUrl()) loadPrefs(); syncControls(); render(); });
 
 // Stable hue per title so a film's generated poster never changes colour.
 function hash(s) {
