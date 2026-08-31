@@ -111,7 +111,7 @@ const items = movies.map((r) => {
   if (d) rec.d = d;
   const g = [...new Set(subjects(r).map((t) => t.toLowerCase()).filter((t) => keep.has(t)))].sort();
   if (g.length) rec.g = g;
-  if (r.downloads) rec.n = r.downloads;
+  if (r.downloads != null) rec.n = r.downloads;
   return rec;
 }).sort((a, b) => a.sort.localeCompare(b.sort));
 
