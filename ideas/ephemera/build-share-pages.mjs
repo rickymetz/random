@@ -84,11 +84,16 @@ let n = 0;
 // URL 404ing on the case-sensitive host. Guard against that the same way we
 // guard against unsafe characters: skip and warn rather than silently
 // clobber.
+//
+// This check is applied unconditionally on purpose: it keeps the committed
+// output byte-identical regardless of which machine runs the generator.
 const seenLower = new Set();
 for (const m of data.items) {
   // Identifiers come from Archive and are [A-Za-z0-9._-]; verify before
-  // using one as a directory name.
-  if (!/^[A-Za-z0-9._-]+$/.test(m.id)) {
+  // using one as a directory name. Reject all-dot identifiers (., .., etc.)
+  // separately because . is otherwise legal, but path.join(outDir, "..") would
+  // escape to ideas/ephemera/ and overwrite the live app.
+  if (!/^[A-Za-z0-9._-]+$/.test(m.id) || /^\.+$/.test(m.id)) {
     console.warn(`  skipping unsafe identifier: ${m.id}`);
     continue;
   }
