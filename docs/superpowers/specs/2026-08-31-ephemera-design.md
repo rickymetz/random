@@ -52,7 +52,8 @@ these are counts from an actual complete scrape performed during design):
 | downloads | 8,001 / 8,039 (99%) |
 | description | 7,033 (87%) |
 | year or date | 4,460 (55%) |
-| decade resolvable (year, date, or decade tag) | 4,940 (61%) |
+| decade resolvable — year or date field (**this is what the scraper implements**) | 4,460 (55% at design time; 54% as built) |
+| decade resolvable if decade subject tags were also used as a fallback | 4,940 (61%) — **not implemented**; recorded only to explain the gap between this row and the one above |
 | any subject tag | 4,232 (52%) |
 | non-junk subject tag | 3,931 (48%) |
 

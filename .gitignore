@@ -7,3 +7,10 @@ ideas/public-screening/mismatches.log
 ideas/public-screening/.cache/
 .DS_Store
 .playwright-mcp/
+
+# Playwright is a local verification tool only. This hub ships no dependencies
+# and no build step, so a dependency manifest must never enter a commit --
+# a subagent running `npm install playwright` in the repo root created these
+# once already. node_modules/ is ignored above; these are the committable half.
+package.json
+package-lock.json
