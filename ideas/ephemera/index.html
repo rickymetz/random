@@ -407,6 +407,170 @@
 
   .sentinel { height: 1px; }
 
+  /* -------------------------------------------------------------- drawer */
+  .scrim {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    /* iOS resolves fixed top/bottom against the layout viewport, so when the
+       URL bar retracts an `inset: 0` overlay stops short of the bottom and
+       the grid shows through. dvh tracks the viewport that is actually
+       visible; vh stays as the fallback for browsers without it. */
+    height: 100vh;
+    height: 100dvh;
+    z-index: 40;
+    background: rgb(0 0 0 / .6);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s;
+  }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+  .drawer {
+    position: fixed;
+    z-index: 50;
+    top: 0;
+    right: 0;
+    height: 100vh;
+    height: 100dvh;
+    width: min(420px, 100%);
+    translate: 100% 0;
+    background: var(--bg-2);
+    border-left: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transition: translate .22s cubic-bezier(.32,.72,0,1);
+  }
+  .drawer.open { translate: 0 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .drawer, .scrim, .poster, .chip { transition: none; }
+  }
+  .drawer-close {
+    position: absolute;
+    z-index: 3;
+    top: 12px;
+    right: 12px;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    background: rgb(0 0 0 / .55);
+    border: 0;
+    border-radius: var(--radius);
+    color: var(--ink);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .drawer-close:hover { background: rgb(0 0 0 / .8); }
+  .drawer:has(.d-hero[data-playing]) .drawer-close {
+    background: rgb(0 0 0 / .82);
+    border: 1px solid rgb(255 255 255 / .28);
+  }
+  .d-hero {
+    position: relative;
+    width: 100%;
+    height: 300px;
+    overflow: hidden;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    z-index: 1;
+  }
+  .d-hero .poster {
+    position: relative;
+    height: 100%;
+    width: 100%;
+    border-radius: 0;
+    box-shadow: none;
+    background: none;
+    aspect-ratio: auto;
+  }
+  /* contain, so a poster is shown whole rather than cropped to fit */
+  .d-hero .poster img { object-fit: contain; }
+  .d-hero iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+    background: #000;
+  }
+  .d-hero[data-playing] { aspect-ratio: 16 / 9; max-height: none; }
+  .play-over {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgb(0 0 0 / .34);
+    border: 0;
+    color: #fff;
+    font-size: 26px;
+    cursor: pointer;
+    transition: background .14s;
+  }
+  .play-over:hover { background: rgb(0 0 0 / .5); }
+  .play-over:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+  .d-body { padding: 18px 20px calc(32px + env(safe-area-inset-bottom)); }
+  .d-body h2 {
+    margin: 0 0 6px;
+    font-size: 20px;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .d-line {
+    font: 12px var(--mono);
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .d-desc {
+    margin: 14px 0 0;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--muted);
+    text-wrap: pretty;
+  }
+  .d-tags { margin: 14px 0 0; }
+  .tag {
+    display: inline-block;
+    margin: 0 4px 4px 0;
+    padding: 2px 8px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .tag:hover { color: var(--ink); border-color: var(--dim); }
+  .d-actions { margin-top: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .d-actions .wide { grid-column: 1 / -1; }
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 38px;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 620;
+    font-size: 14px;
+    text-decoration: none;
+    border: 0;
+    cursor: pointer;
+    font-family: var(--sans);
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.ghost {
+    background: none;
+    border: 1px solid var(--line-2);
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .btn.ghost:hover { color: var(--ink); border-color: var(--dim); filter: none; }
+
   @media (max-width: 760px) {
     header { position: static; }
     .bar { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; }
@@ -503,6 +667,9 @@
   </div>
 </main>
 
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true"></aside>
+
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -555,6 +722,7 @@ function writeUrl(push) {
   if (state.decade) p.set("d", state.decade);
   if (state.sort !== "-n") p.set("sort", state.sort);
   if (state.view !== "grid") p.set("v", state.view);
+  if (currentItem) p.set("item", currentItem.id);
   const hash = p.toString();
   const url = location.pathname + (hash ? "#" + hash : "");
   if (push && url !== location.pathname + location.hash) history.pushState(null, "", url);
@@ -610,7 +778,16 @@ $("q").addEventListener("input", (e) => {
   debounce = setTimeout(() => { state.q = e.target.value.trim(); apply(false); }, 120);
 });
 $("sort").addEventListener("change", (e) => { state.sort = e.target.value; apply(true); });
-window.addEventListener("popstate", () => { if (!readUrl()) loadPrefs(); syncControls(); render(); });
+// Back/forward, and hand-edited URLs, both land here.
+window.addEventListener("popstate", () => {
+  if (!readUrl()) loadPrefs();
+  syncControls();
+  render();
+  const id = new URLSearchParams(location.hash.replace(/^#/, "")).get("item");
+  const m = id && ALL.find((x) => x.id === id);
+  if (m) { if (currentItem !== m) openDrawer(m, { push: false }); }
+  else if (drawer.classList.contains("open")) closeDrawer();
+});
 
 // Stable hue per title so a film's generated poster never changes colour.
 function hash(s) {
@@ -724,6 +901,119 @@ function resetAll() {
 }
 $("reset").onclick = resetAll;
 
+const drawer = $("drawer"), scrim = $("scrim");
+let currentItem = null;
+const detailCache = new Map();
+
+function stopPlayer() {
+  const f = drawer.querySelector("iframe");
+  if (f) f.remove();
+  const hero = drawer.querySelector(".d-hero");
+  if (hero) delete hero.dataset.playing;
+}
+
+// archive.org/metadata is CORS-open, so full description and runtime are
+// fetched for the one item actually opened rather than shipped for all 8,039.
+async function loadDetail(m) {
+  if (detailCache.has(m.id)) return detailCache.get(m.id);
+  try {
+    const r = await fetch(`${IA}/metadata/${encodeURIComponent(m.id)}`);
+    if (!r.ok) throw new Error(String(r.status));
+    const j = await r.json();
+    const meta = j.metadata || {};
+    const detail = {
+      desc: Array.isArray(meta.description) ? meta.description.join(" ") : (meta.description || ""),
+      runtime: meta.runtime || null,
+      creator: meta.creator || null,
+    };
+    detailCache.set(m.id, detail);
+    return detail;
+  } catch {
+    return null;
+  }
+}
+
+function openDrawer(m, { push = true } = {}) {
+  stopPlayer();
+  currentItem = m;
+  drawer.innerHTML =
+    `<button class="drawer-close" id="dClose" aria-label="Close">×</button>` +
+    `<div class="d-hero" id="dHero">${posterHTML(m)}` +
+      `<button class="play-over" id="dPlay" aria-label="Play ${esc(m.t)}">▶</button>` +
+    `</div>` +
+    `<div class="d-body">` +
+      `<h2>${esc(m.t)}</h2>` +
+      `<p class="d-line">${[m.y, m.n ? m.n.toLocaleString() + " views" : null].filter(Boolean).map(esc).join(" · ")}` +
+        `<span class="d-runtime"></span></p>` +
+      `<p class="d-desc">${esc(m.d || "No description provided for this film.")}</p>` +
+      ((m.g || []).length ? `<p class="d-tags">${m.g.map((g) =>
+        `<button class="tag" data-g="${esc(g)}">${esc((TAGS.find((t) => t.slug === g) || {}).label || g)}</button>`).join("")}</p>` : "") +
+      `<div class="d-actions">` +
+        `<button class="btn wide" id="dWatch">▶ Watch here</button>` +
+        `<a class="btn ghost" href="${IA}/details/${encodeURIComponent(m.id)}" target="_blank" rel="noopener noreferrer">Internet Archive</a>` +
+        `<a class="btn ghost" href="${IA}/download/${encodeURIComponent(m.id)}" target="_blank" rel="noopener noreferrer">Download</a>` +
+      `</div>` +
+    `</div>`;
+
+  drawer.classList.add("open");
+  drawer.setAttribute("aria-hidden", "false");
+  scrim.classList.add("open");
+  $("dClose").focus();
+  $("dClose").onclick = () => closeDrawer({ back: true });
+
+  const startPlaying = () => {
+    const hero = $("dHero");
+    if (!hero || hero.dataset.playing) return;
+    hero.dataset.playing = "1";
+    hero.innerHTML = `<iframe src="${IA}/embed/${encodeURIComponent(m.id)}" ` +
+      `title="${esc(m.t)}" allow="fullscreen" allowfullscreen frameborder="0" ` +
+      `referrerpolicy="no-referrer" ` +
+      `sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
+  };
+  $("dPlay").addEventListener("click", startPlaying);
+  $("dWatch").addEventListener("click", startPlaying);
+
+  for (const t of drawer.querySelectorAll(".tag[data-g]")) {
+    // apply() re-renders the grid but never touches the chips row (only
+    // syncControls() does, on load/popstate) -- without this the chip rail
+    // shows the tag set from before the drawer was opened.
+    t.onclick = () => { state.tags = new Set([t.dataset.g]); closeDrawer(); apply(true); syncChips(); };
+  }
+
+  loadDetail(m).then((d) => {
+    if (!d || currentItem !== m) return;
+    if (d.runtime) drawer.querySelector(".d-runtime").textContent = " · " + d.runtime;
+    if (d.desc && d.desc.length > (m.d || "").length) {
+      drawer.querySelector(".d-desc").textContent =
+        d.desc.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    }
+  });
+
+  // Go through writeUrl, never a raw pushState: a bare "#item=<id>" would
+  // discard whatever search/sort/tag/decade params were already in the hash,
+  // so reloading or sharing a link with the panel open lost the view behind it.
+  if (push) writeUrl(true);
+}
+
+function closeDrawer({ back = false } = {}) {
+  stopPlayer();
+  if (back && currentItem) { currentItem = null; history.back(); return; }
+  currentItem = null;
+  writeUrl(false);
+  drawer.classList.remove("open");
+  drawer.setAttribute("aria-hidden", "true");
+  scrim.classList.remove("open");
+}
+
+scrim.onclick = () => closeDrawer({ back: true });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && drawer.classList.contains("open")) closeDrawer({ back: true });
+});
+grid.addEventListener("click", (e) => {
+  const card = e.target.closest(".card");
+  if (card) openDrawer(ALL[+card.dataset.i]);
+});
+
 fetch("data.json")
   .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
   .then((data) => {
@@ -735,6 +1025,9 @@ fetch("data.json")
     buildDecades();
     syncControls();
     render();
+    const startId = new URLSearchParams(location.hash.replace(/^#/, "")).get("item");
+    const startItem = startId && ALL.find((m) => m.id === startId);
+    if (startItem) openDrawer(startItem, { push: false });
     writeUrl(false);
   })
   .catch((err) => {
