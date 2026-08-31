@@ -4,12 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ephemera</title>
-<meta name="description" content="Browse 8,039 industrial, educational and advertising films from the Prelinger Archives, and watch them in the page.">
+<!--
+  The "8,038" item count below is hardcoded copy, not derived from data.json.
+  It goes stale whenever build-data.mjs is re-run against a refreshed Prelinger
+  scrape. Before shipping, check it against data.json's top-level "count" field
+  (and items.length) and update every occurrence below if they've drifted.
+-->
+<meta name="description" content="Browse 8,038 industrial, educational and advertising films from the Prelinger Archives, and watch them in the page.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316181d'/%3E%3Crect x='9' y='5' width='14' height='22' rx='1.5' fill='%235fb3a1'/%3E%3Cg fill='%2316181d'%3E%3Crect x='10.5' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3C/g%3E%3C/svg%3E">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="random">
 <meta property="og:title" content="Ephemera">
-<meta property="og:description" content="Browse 8,039 industrial, educational and advertising films from the Prelinger Archives, and watch them in the page.">
+<meta property="og:description" content="Browse 8,038 industrial, educational and advertising films from the Prelinger Archives, and watch them in the page.">
 <meta property="og:url" content="https://rickymetz.github.io/random/ideas/ephemera/">
 <meta property="og:image" content="https://rickymetz.github.io/random/ideas/ephemera/og.png">
 <meta property="og:image:width" content="1200">
@@ -17,7 +23,7 @@
 <meta property="og:image:alt" content="Ephemera — a grid of vintage film frames">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Ephemera">
-<meta name="twitter:description" content="Browse 8,039 industrial, educational and advertising films. Watch them without leaving the page.">
+<meta name="twitter:description" content="Browse 8,038 industrial, educational and advertising films. Watch them without leaving the page.">
 <meta name="twitter:image" content="https://rickymetz.github.io/random/ideas/ephemera/og.png">
 <style>
   :root {
@@ -208,7 +214,6 @@
   }
   .card:focus-visible { outline: none; }
   .poster img {
-    position: relative;
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -412,16 +417,28 @@ function matches(m) { return true; }   // filters arrive in Tasks 3 and 4
 
 function posterHTML(m) {
   const src = `${IA}/services/img/${encodeURIComponent(m.id)}`;
+  // A thumbnail URL is always present, so the drawn fallback starts hidden —
+  // this keeps its title out of the accessibility tree while the real
+  // thumbnail is showing. window.__posterFailed unhides it if the image
+  // 404s or otherwise fails to load.
   return `<div class="poster">` +
-    `<div class="gen"><span class="t">${esc(m.t)}</span></div>` +
+    `<div class="gen" hidden><span class="t">${esc(m.t)}</span></div>` +
     `<img src="${esc(src)}" alt="" loading="lazy" decoding="async"
-          onerror="this.remove()">` +
+          onerror="window.__posterFailed(this)">` +
     (m.y ? `<span class="badge">${m.y}</span>` : "") +
   `</div>`;
 }
 
+// A thumbnail can fail to load for any number of reasons — the item has no
+// derived image yet, the host is down, an extension blocked it. Whatever the
+// cause, drop the broken <img> and reveal the drawn fallback in its place.
+window.__posterFailed = (img) => {
+  img.closest(".poster")?.querySelector(".gen")?.removeAttribute("hidden");
+  img.remove();
+};
+
 function cardHTML(m, i) {
-  const sub = [m.y, m.n ? m.n.toLocaleString() + " views" : null].filter(Boolean).join(" · ");
+  const sub = [m.y, m.n != null ? m.n.toLocaleString() + " views" : null].filter(Boolean).join(" · ");
   return `<div class="card-wrap">` +
     `<button class="card" data-i="${i}" aria-label="Open ${esc(m.t)}"></button>` +
     posterHTML(m) +
