@@ -849,6 +849,7 @@ function render() {
   $("viewGrid").setAttribute("aria-pressed", String(state.view === "grid"));
   $("viewList").setAttribute("aria-pressed", String(state.view === "list"));
   $("reset").hidden = !isFiltered();
+  syncChips();
 }
 
 new IntersectionObserver((e) => { if (e[0].isIntersecting) drawMore(); })
@@ -903,7 +904,31 @@ $("reset").onclick = resetAll;
 
 const drawer = $("drawer"), scrim = $("scrim");
 let currentItem = null;
+// Tracks whether the currently-open drawer actually pushed a history entry.
+// A deep link (#item=X) opens with push:false, so closeDrawer must not call
+// history.back() in that case -- there is nothing of ours on the stack to
+// rewind to, and back() would either no-op or navigate off the site.
+let itemPushed = false;
+// Remember the film that opened the panel, not the element: closing
+// re-renders the grid, so a stored DOM node would be detached by the time
+// focus is handed back.
+let returnTo = null;
 const detailCache = new Map();
+
+// Focus has to land somewhere real once the panel is gone, or a keyboard
+// user's next Tab resumes from inside an aria-hidden subtree.
+function restoreFocus() {
+  if (returnTo === null) return;
+  const i = ALL.findIndex((m) => m.id === returnTo);
+  returnTo = null;
+  // The grid can be rebuilt between the close and this running, so wait a
+  // frame before reaching for the card -- and fall back to the search box
+  // if it is not rendered (e.g. it was filtered out).
+  requestAnimationFrame(() => {
+    const card = i >= 0 && grid.querySelector(`.card[data-i="${i}"]`);
+    (card || $("q"))?.focus({ preventScroll: true });
+  });
+}
 
 function stopPlayer() {
   const f = drawer.querySelector("iframe");
@@ -935,7 +960,9 @@ async function loadDetail(m) {
 
 function openDrawer(m, { push = true } = {}) {
   stopPlayer();
+  const reopening = Boolean(currentItem);
   currentItem = m;
+  if (!reopening) returnTo = m.id;
   drawer.innerHTML =
     `<button class="drawer-close" id="dClose" aria-label="Close">×</button>` +
     `<div class="d-hero" id="dHero">${posterHTML(m)}` +
@@ -974,10 +1001,9 @@ function openDrawer(m, { push = true } = {}) {
   $("dWatch").addEventListener("click", startPlaying);
 
   for (const t of drawer.querySelectorAll(".tag[data-g]")) {
-    // apply() re-renders the grid but never touches the chips row (only
-    // syncControls() does, on load/popstate) -- without this the chip rail
-    // shows the tag set from before the drawer was opened.
-    t.onclick = () => { state.tags = new Set([t.dataset.g]); closeDrawer(); apply(true); syncChips(); };
+    // render() owns syncing the chip row's aria-pressed state, so apply()
+    // (which calls render()) is enough here -- no separate syncChips() call.
+    t.onclick = () => { state.tags = new Set([t.dataset.g]); closeDrawer(); apply(true); };
   }
 
   loadDetail(m).then((d) => {
@@ -992,17 +1018,28 @@ function openDrawer(m, { push = true } = {}) {
   // Go through writeUrl, never a raw pushState: a bare "#item=<id>" would
   // discard whatever search/sort/tag/decade params were already in the hash,
   // so reloading or sharing a link with the panel open lost the view behind it.
-  if (push) writeUrl(true);
+  if (push) { writeUrl(true); itemPushed = true; }
+  else { itemPushed = false; }
 }
 
 function closeDrawer({ back = false } = {}) {
   stopPlayer();
-  if (back && currentItem) { currentItem = null; history.back(); return; }
+  // Only rewind history if opening this panel actually pushed an entry.
+  // A deep link opens with push:false, so history.back() would either do
+  // nothing or navigate off the site instead of closing the panel.
+  if (back && currentItem && itemPushed) {
+    currentItem = null;
+    itemPushed = false;
+    history.back();
+    return;
+  }
   currentItem = null;
+  itemPushed = false;
   writeUrl(false);
   drawer.classList.remove("open");
   drawer.setAttribute("aria-hidden", "true");
   scrim.classList.remove("open");
+  restoreFocus();
 }
 
 scrim.onclick = () => closeDrawer({ back: true });
