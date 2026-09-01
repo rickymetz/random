@@ -1043,7 +1043,11 @@ function matches(m) {
 const RT_MAX = 45, RT_STEP = 1;
 const rangeActive = () => state.rtMin > 0 || state.rtMax < RT_MAX;
 
-const isFiltered = () => Boolean(state.q || state.tags.size || state.decade || state.favOnly);
+// Must list every filter the reset button clears, including the length range --
+// otherwise narrowing only the slider counts toward the Filters button's
+// count while the button that clears it stays hidden.
+const isFiltered = () =>
+  Boolean(state.q || state.tags.size || state.decade || state.favOnly) || rangeActive();
 
 const PREFS = "ephemera:prefs";
 // A separate key, not folded into PREFS: favorites are a durable personal
