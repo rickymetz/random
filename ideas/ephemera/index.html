@@ -485,7 +485,7 @@
   .grid.list .poster { width: 34px; flex: none; }
   .grid.list .card-wrap:hover .poster { outline-color: transparent; }
   .grid.list .card-wrap:hover .meta { translate: none; }
-  .grid.list .gen .initial, .grid.list .badge, .grid.list .fav { display: none; }
+  .grid.list .badge, .grid.list .fav { display: none; }
   .grid.list .gen .t { font-size: 0; }
   .grid.list .meta {
     flex: 1;
@@ -672,6 +672,11 @@
     font-weight: 500;
   }
   .btn.ghost:hover { color: var(--ink); border-color: var(--dim); filter: none; }
+  /* Drawer's own favorite toggle -- the only star affordance list view has,
+     since the poster-corner .fav button is too small to fit the tiny
+     list-view thumbnail (44px hit target on a 34x25 poster). */
+  .fav-toggle svg { transition: color .12s; }
+  .fav-toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 
   @media (max-width: 760px) {
     header { position: static; }
@@ -779,7 +784,7 @@
 </main>
 
 <div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer" aria-hidden="true"></aside>
+<aside class="drawer" id="drawer" aria-hidden="true" inert></aside>
 
 <script>
 "use strict";
@@ -936,7 +941,7 @@ $("q").addEventListener("input", (e) => {
   clearTimeout(debounce);
   debounce = setTimeout(() => { state.q = e.target.value.trim(); apply(false); }, 120);
 });
-$("sort").addEventListener("change", (e) => { state.sort = e.target.value; apply(true); });
+$("sort").addEventListener("change", (e) => { state.sort = e.target.value; apply(false); });
 $("favOnly").addEventListener("change", (e) => { state.favOnly = e.target.checked; apply(true); });
 // Back/forward, and hand-edited URLs, both land here.
 window.addEventListener("popstate", () => {
@@ -1038,8 +1043,8 @@ function render() {
 new IntersectionObserver((e) => { if (e[0].isIntersecting) drawMore(); })
   .observe($("sentinel"));
 
-$("viewGrid").onclick = () => { state.view = "grid"; apply(true); };
-$("viewList").onclick = () => { state.view = "list"; apply(true); };
+$("viewGrid").onclick = () => { state.view = "grid"; apply(false); };
+$("viewList").onclick = () => { state.view = "list"; apply(false); };
 
 function buildChips() {
   $("chips").innerHTML = TAGS.map((t) =>
@@ -1153,13 +1158,17 @@ function openDrawer(m, { push = true } = {}) {
     `</div>` +
     `<div class="d-body">` +
       `<h2>${esc(m.t)}</h2>` +
-      `<p class="d-line">${[m.y, m.n ? m.n.toLocaleString() + " views" : null].filter(Boolean).map(esc).join(" · ")}` +
+      `<p class="d-line">${[m.y, m.n != null ? m.n.toLocaleString() + " views" : null].filter(Boolean).map(esc).join(" · ")}` +
         `<span class="d-runtime"></span></p>` +
       `<p class="d-desc">${esc(m.d || "No description provided for this film.")}</p>` +
       ((m.g || []).length ? `<p class="d-tags">${m.g.map((g) =>
         `<button class="tag" data-g="${esc(g)}">${esc((TAGS.find((t) => t.slug === g) || {}).label || g)}</button>`).join("")}</p>` : "") +
       `<div class="d-actions">` +
         `<button class="btn wide" id="dWatch">▶ Watch here</button>` +
+        `<button class="btn wide ghost fav-toggle" id="dFav" aria-pressed="${favorites.has(m.id) ? "true" : "false"}">` +
+          `<svg width="14" height="14" viewBox="0 0 16 16" fill="${favorites.has(m.id) ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="${STAR_PATH}"/></svg>` +
+          `<span>${favorites.has(m.id) ? "Remove from My List" : "Add to My List"}</span>` +
+        `</button>` +
         `<a class="btn ghost" href="${IA}/details/${encodeURIComponent(m.id)}" target="_blank" rel="noopener noreferrer">Internet Archive</a>` +
         `<a class="btn ghost" href="${IA}/download/${encodeURIComponent(m.id)}" target="_blank" rel="noopener noreferrer">Download</a>` +
       `</div>` +
@@ -1167,6 +1176,7 @@ function openDrawer(m, { push = true } = {}) {
 
   drawer.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");
+  drawer.inert = false;
   scrim.classList.add("open");
   $("dClose").focus();
   $("dClose").onclick = () => closeDrawer({ back: true });
@@ -1182,6 +1192,15 @@ function openDrawer(m, { push = true } = {}) {
   };
   $("dPlay").addEventListener("click", startPlaying);
   $("dWatch").addEventListener("click", startPlaying);
+
+  $("dFav").addEventListener("click", () => {
+    toggleFavorite(m.id);
+    const on = favorites.has(m.id);
+    const btn = $("dFav");
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.querySelector("svg").setAttribute("fill", on ? "currentColor" : "none");
+    btn.querySelector("span").textContent = on ? "Remove from My List" : "Add to My List";
+  });
 
   for (const t of drawer.querySelectorAll(".tag[data-g]")) {
     // render() owns syncing the chip row's aria-pressed state, so apply()
@@ -1221,6 +1240,7 @@ function closeDrawer({ back = false } = {}) {
   writeUrl(false);
   drawer.classList.remove("open");
   drawer.setAttribute("aria-hidden", "true");
+  drawer.inert = true;
   scrim.classList.remove("open");
   restoreFocus();
 }
@@ -1249,6 +1269,7 @@ fetch("data.json")
     buildDecades();
     syncControls();
     render();
+    updateFavUI();
     const startId = new URLSearchParams(location.hash.replace(/^#/, "")).get("item");
     const startItem = startId && ALL.find((m) => m.id === startId);
     if (startItem) openDrawer(startItem, { push: false });
