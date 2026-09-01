@@ -1123,7 +1123,10 @@ function savePrefs() {
     localStorage.setItem(PREFS, JSON.stringify({
       sort: state.sort, view: state.view, favOnly: state.favOnly,
       tags: [...state.tags], decade: state.decade,
-      rtMin: state.rtMin, rtMax: state.rtMax,
+      // rtCeil records which ceiling rtMin/rtMax were chosen against, so a
+      // later change to RT_MAX can tell "the user picked 30m" apart from
+      // "30m was simply the top of the track back then".
+      rtCeil: RT_MAX, rtMin: state.rtMin, rtMax: state.rtMax,
     }));
   } catch {}
 }
@@ -1142,9 +1145,21 @@ function loadPrefs() {
     // once and stretched the document to over a million pixels wide.
     const span = (x, fallback) =>
       Number.isFinite(x) ? Math.min(Math.max(Math.round(x), 0), RT_MAX) : fallback;
-    state.rtMin = span(v.rtMin, 0);
-    state.rtMax = span(v.rtMax, RT_MAX);
-    if (state.rtMin > state.rtMax) [state.rtMin, state.rtMax] = [state.rtMax, state.rtMin];
+    // Prefs written against a different ceiling can't be read as a choice.
+    // savePrefs stores rtMin/rtMax on every save, so a visitor who only ever
+    // changed the sort still has the old track's full span sitting in storage;
+    // when the ceiling moved 30 -> 45 that span became a real 0-30m filter,
+    // hiding 1,081 films on a visit where they narrowed nothing. Anything not
+    // written against today's ceiling reopens to the full span. Missing
+    // rtCeil means a build from before this field existed.
+    if (v.rtCeil === RT_MAX) {
+      state.rtMin = span(v.rtMin, 0);
+      state.rtMax = span(v.rtMax, RT_MAX);
+      if (state.rtMin > state.rtMax) [state.rtMin, state.rtMax] = [state.rtMax, state.rtMin];
+    } else {
+      state.rtMin = 0;
+      state.rtMax = RT_MAX;
+    }
   } catch {}
 }
 
