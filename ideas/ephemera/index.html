@@ -219,6 +219,99 @@
     letter-spacing: 0.06em;
     color: var(--dim);
   }
+  .range-field { gap: 10px; }
+  .range {
+    position: relative;
+    width: 190px;
+    height: 34px;
+    flex: none;
+  }
+  .rt-track {
+    position: absolute;
+    left: 0; right: 0;
+    top: 50%;
+    height: 4px;
+    translate: 0 -50%;
+    background: var(--line-2);
+    border-radius: 2px;
+  }
+  .rt-fill {
+    position: absolute;
+    top: 0; bottom: 0;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+  /* The shape of the collection behind the track. These are shorts: the mass
+     sits under twenty minutes, so the range tops out at 30 rather than the
+     sibling app's 120, where nine tenths of the track would have been empty. */
+  .hist {
+    position: absolute;
+    left: 0; right: 0;
+    bottom: 50%;
+    height: 15px;
+    margin-bottom: 3px;
+    display: flex;
+    align-items: flex-end;
+    gap: 1px;
+    pointer-events: none;
+  }
+  .hist i {
+    flex: 1;
+    background: var(--line-2);
+    border-radius: 1px 1px 0 0;
+    min-height: 1px;
+    transition: background .12s;
+  }
+  .hist i.on { background: color-mix(in srgb, var(--accent) 55%, var(--panel)); }
+  .range input[type="range"] {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    top: 50%;
+    translate: 0 -50%;
+    margin: 0;
+    height: 34px;
+    background: none;
+    appearance: none;
+    pointer-events: none;   /* only the thumbs should take a drag */
+    /* Without this a drag on a phone scrolls the page instead of moving the
+       handle, which is most of why they felt hard to grab. */
+    touch-action: none;
+  }
+  .range input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--ink);
+    border: 2px solid var(--bg-2);
+    box-shadow: 0 1px 3px rgb(0 0 0 / .6);
+    cursor: grab;
+    pointer-events: auto;
+  }
+  .range input[type="range"]::-moz-range-thumb {
+    width: 20px; height: 20px;
+    border: 2px solid var(--bg-2);
+    border-radius: 50%;
+    background: var(--ink);
+    box-shadow: 0 1px 3px rgb(0 0 0 / .6);
+    cursor: grab;
+    pointer-events: auto;
+  }
+  .range input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .range input[type="range"]:focus-visible::-moz-range-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .range input[type="range"]::-moz-range-track { background: none; }
+  /* A value, not a heading: the toolbar's uppercase would turn "21m" into
+     "21M". Fixed width so the row does not shift under a drag. */
+  #rtLabel {
+    flex: none;
+    width: 76px;
+    text-align: right;
+    text-transform: none;
+    letter-spacing: 0;
+    font: 12px var(--mono);
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
   .checks {
     display: flex;
     align-items: center;
@@ -753,6 +846,8 @@
     .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .field { min-width: 0; }
     .field select { flex: 1; min-width: 0; }
+    .range-field { grid-column: 1 / -1; }
+    .range { flex: 1; width: auto; }
     .checks { grid-column: 1 / -1; flex-wrap: wrap; }
     .checks .check { flex: 1 1 150px; min-width: 0; height: 38px; justify-content: flex-start; }
     .view-actions { grid-column: 1 / -1; margin-left: 0; }
@@ -836,6 +931,16 @@
         <option value="title">Title A–Z</option>
       </select>
     </div>
+    <div class="field range-field">
+      <label for="rtMin">Length</label>
+      <div class="range" id="rtWrap">
+        <div class="hist" id="rtHist" aria-hidden="true"></div>
+        <div class="rt-track"><div class="rt-fill" id="rtFill"></div></div>
+        <input type="range" id="rtMin" min="0" max="30" step="1" value="0" aria-label="Shortest length in minutes">
+        <input type="range" id="rtMax" min="0" max="30" step="1" value="30" aria-label="Longest length in minutes">
+      </div>
+      <output id="rtLabel" for="rtMin rtMax">Any</output>
+    </div>
     <div class="checks">
       <label class="check" for="favOnly">
         <input type="checkbox" id="favOnly">
@@ -888,7 +993,8 @@ const grid = $("grid"), countEl = $("count"), empty = $("empty");
 
 let ALL = [], TAGS = [], shown = [], drawn = 0;
 const PAGE = 120;
-const state = { q: "", tags: new Set(), decade: "", sort: "-n", view: "grid", favOnly: false };
+const state = { q: "", tags: new Set(), decade: "", sort: "-n", view: "grid", favOnly: false,
+                rtMin: 0, rtMax: 30 };
 
 const SORTS = {
   "-n": (a, b) => (b.n || 0) - (a.n || 0),
@@ -917,8 +1023,23 @@ function matches(m) {
     if (m.y < d || m.y > d + 9) return false;
   }
   if (state.favOnly && !favorites.has(m.id)) return false;
+  if (rangeActive()) {
+    // Only a fifth of the collection reports a runtime at all. A length range
+    // cannot speak for the rest, so they step aside while it is in use --
+    // which is a much larger share here than in the sibling app, and the
+    // reason the About page says so plainly.
+    if (!m.r) return false;
+    if (m.r < state.rtMin) return false;
+    if (state.rtMax < RT_MAX && m.r > state.rtMax) return false;
+  }
   return true;
 }
+
+// Ephemera's films are shorts: median 12 minutes, ninety percent under 21.
+// A 0-120 track like the sibling app's would leave the data crammed into its
+// first quarter, so the range stops at 30 and the top handle means "and over".
+const RT_MAX = 30, RT_STEP = 1;
+const rangeActive = () => state.rtMin > 0 || state.rtMax < RT_MAX;
 
 const isFiltered = () => Boolean(state.q || state.tags.size || state.decade || state.favOnly);
 
@@ -962,6 +1083,7 @@ function writeUrl(push) {
   if (state.q) p.set("q", state.q);
   if (state.tags.size) p.set("g", [...state.tags].join(","));
   if (state.decade) p.set("d", state.decade);
+  if (rangeActive()) p.set("rt", `${state.rtMin}-${state.rtMax}`);
   if (state.sort !== "-n") p.set("sort", state.sort);
   if (state.view !== "grid") p.set("v", state.view);
   if (currentItem) p.set("item", currentItem.id);
@@ -981,6 +1103,10 @@ function readUrl() {
   state.q = p.get("q") || "";
   state.tags = new Set((p.get("g") || "").split(",").filter(Boolean));
   state.decade = p.get("d") || "";
+  const rt = (p.get("rt") || "").match(/^(\d+)-(\d+)$/);
+  state.rtMin = rt ? Math.min(+rt[1], RT_MAX) : 0;
+  state.rtMax = rt ? Math.min(+rt[2], RT_MAX) : RT_MAX;
+  if (state.rtMin > state.rtMax) [state.rtMin, state.rtMax] = [state.rtMax, state.rtMin];
   state.sort = SORTS[p.get("sort")] ? p.get("sort") : "-n";
   state.view = p.get("v") === "list" ? "list" : "grid";
   return had;
@@ -1018,6 +1144,9 @@ function syncControls() {
   $("q").value = state.q;
   $("sort").value = state.sort;
   $("decade").value = state.decade;
+  $("rtMin").value = state.rtMin;
+  $("rtMax").value = state.rtMax;
+  paintRange();
   $("favOnly").checked = state.favOnly;
   syncChips();
 }
@@ -1189,7 +1318,7 @@ window.addEventListener("resize", updateChipsFade);
 // on so a hidden filter is never a mystery.
 const SMALL = window.matchMedia("(max-width: 760px)");
 function activeFilterCount() {
-  return [state.q, state.tags.size, state.decade, state.favOnly].filter(Boolean).length;
+  return [state.q, state.tags.size, state.decade, state.favOnly, rangeActive()].filter(Boolean).length;
 }
 function syncPanel() {
   const small = SMALL.matches;
@@ -1206,6 +1335,40 @@ $("filtersToggle").addEventListener("click", () => {
 });
 SMALL.addEventListener("change", syncPanel);
 
+function paintRange() {
+  const lo = state.rtMin, hi = state.rtMax;
+  const fill = $("rtFill");
+  if (fill) {
+    fill.style.left = (lo / RT_MAX * 100) + "%";
+    fill.style.right = (100 - hi / RT_MAX * 100) + "%";
+  }
+  const label = $("rtLabel");
+  if (label) {
+    label.textContent = !rangeActive() ? "Any"
+      : lo === 0 ? `to ${hi}m`
+      : hi >= RT_MAX ? `${lo}m+`
+      : `${lo}\u2013${hi}m`;
+  }
+  for (const bar of $("rtHist")?.children || []) {
+    const v = +bar.dataset.min;
+    bar.classList.toggle("on", v >= lo && v <= hi);
+  }
+}
+
+function buildHistogram() {
+  const buckets = new Array(RT_MAX / RT_STEP).fill(0);
+  for (const m of ALL) {
+    if (!m.r) continue;
+    // Anything past the top of the track piles into the last bar, so the
+    // handful of longer films still register rather than vanishing.
+    buckets[Math.min(buckets.length - 1, Math.floor(m.r / RT_STEP))]++;
+  }
+  const peak = Math.max(1, ...buckets);
+  $("rtHist").innerHTML = buckets
+    .map((n, i) => `<i data-min="${i * RT_STEP}" style="height:${Math.round(n / peak * 100)}%"></i>`)
+    .join("");
+}
+
 function buildDecades() {
   const present = [...new Set(ALL.filter((m) => m.y).map((m) => Math.floor(m.y / 10) * 10))].sort();
   $("decade").insertAdjacentHTML("beforeend",
@@ -1215,8 +1378,26 @@ function buildDecades() {
 }
 $("decade").addEventListener("change", (e) => { state.decade = e.target.value; apply(true); });
 
+// Length is a filter, not a setting: like the chips and the decade it goes in
+// the URL and pushes history, and it is deliberately NOT persisted to prefs --
+// prefs re-importing a value the URL had just cleared is what left stale state
+// behind the Back button once already.
+function onRange(which, raw) {
+  let lo = state.rtMin, hi = state.rtMax;
+  const v = Math.min(Math.max(Math.round(+raw), 0), RT_MAX);
+  if (which === "min") lo = Math.min(v, hi); else hi = Math.max(v, lo);
+  if (lo === state.rtMin && hi === state.rtMax) return;
+  state.rtMin = lo; state.rtMax = hi;
+  $("rtMin").value = lo; $("rtMax").value = hi;
+  paintRange();
+  apply(true);
+}
+$("rtMin").addEventListener("input", (e) => onRange("min", e.target.value));
+$("rtMax").addEventListener("input", (e) => onRange("max", e.target.value));
+
 function resetAll() {
-  Object.assign(state, { q: "", tags: new Set(), decade: "", favOnly: false });
+  Object.assign(state, { q: "", tags: new Set(), decade: "", favOnly: false,
+                        rtMin: 0, rtMax: RT_MAX });
   syncControls();
   apply(true);
 }
@@ -1417,6 +1598,7 @@ fetch("data.json")
     else loadFavOnlyPref();
     buildChips();
     buildDecades();
+    buildHistogram();
     syncControls();
     render();
     updateFavUI();
