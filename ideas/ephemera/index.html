@@ -151,6 +151,17 @@
     gap: 8px;
     justify-self: end;
   }
+  .navlink {
+    padding: 7px 11px;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--muted);
+    font-size: 13px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .navlink:hover { color: var(--ink); border-color: var(--dim); }
+  .navlink:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   #sort {
     height: 30px;
     padding: 0 8px;
@@ -225,6 +236,10 @@
     margin: 0 auto;
     padding: 0 20px 14px;
   }
+  /* Shown only below 760px — see media query. The header's own About link
+     has no room to spare there once the sort select and view toggle are
+     both on the title row, so a second copy lives here instead. */
+  .mobile-about { display: none; margin-left: auto; }
   #decade {
     height: 30px;
     padding: 0 8px;
@@ -664,10 +679,12 @@
     .brand { grid-row: 1; grid-column: 1; }
     .brand h1 { font-size: 15px; overflow: hidden; text-overflow: ellipsis; }
     .view-actions { grid-row: 1; grid-column: 2; justify-self: end; }
+    .view-actions .navlink { display: none; }
     .search { grid-row: 2; grid-column: 1 / -1; max-width: none; }
     .search input { height: 40px; }
     .home { min-height: 44px; min-width: 44px; justify-content: center; padding: 0 8px; margin-left: -8px; }
     .view-toggle button { width: 40px; height: 38px; }
+    .mobile-about { display: inline-flex; align-items: center; min-height: 38px; }
 
     /* A wrapped chip row on a phone eats vertical space fast for a
        secondary filter. One horizontal rail instead, with chips tall
@@ -716,6 +733,7 @@
       </div>
     </div>
     <div class="view-actions">
+      <a class="navlink" href="about.html">About</a>
       <select id="sort" aria-label="Sort">
         <option value="-n">Most viewed</option>
         <option value="-year">Newest</option>
@@ -751,6 +769,7 @@
       <span>My list</span>
     </label>
     <button class="reset" id="reset" hidden>Clear filters</button>
+    <a class="navlink mobile-about" href="about.html">About</a>
   </div>
   <div class="grid" id="grid"></div>
   <div class="sentinel" id="sentinel"></div>
