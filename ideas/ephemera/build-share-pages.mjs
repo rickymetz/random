@@ -35,6 +35,11 @@ function page(m) {
     name: title, url: destAbs, image, description: desc,
   };
   if (m.y) ld.datePublished = String(m.y);
+  // ISO 8601 duration. m.r is whole minutes, so PT<n>M is the exact form.
+  // Guarded rather than truthy-checked: emitting PT0M would assert a zero-length
+  // film, which is worse than saying nothing. 91% of items carry a runtime; the
+  // rest simply omit the field.
+  if (Number.isInteger(m.r) && m.r > 0) ld.duration = `PT${m.r}M`;
   if (m.g?.length) {
     ld.genre = m.g.map((g) => (data.tags.find((t) => t.slug === g) || {}).label || g);
   }
