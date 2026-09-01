@@ -1287,16 +1287,17 @@ function compact(n) {
 }
 
 function cardHTML(m, i) {
-  // In the grid, runtime sits on the poster's top-right corner (see .rt), so
-  // repeating it here would print it twice on the same card. List view keeps
-  // it on the line, because a 34px thumbnail cannot hold the badge. Both
-  // views re-render from scratch on toggle, so reading state.view is safe.
+  // Year and runtime already sit on the poster in the grid (.badge top-left,
+  // .rt top-right), so the line below the title carries the view count alone
+  // rather than printing either of them a second time. List view hides both
+  // badges -- a 34px thumbnail cannot hold them -- so there the line carries
+  // all three. Both views rebuild from scratch on toggle, so reading
+  // state.view here is safe.
   //
-  // Runtime is present for 91% of items but still joins the line rather than
-  // reserving a slot, so the 9% without one do not leave a gap. View counts
-  // are abbreviated because a full 27,198,976 alongside a year and a runtime
-  // overruns the card and clips the word "views" off the end.
-  const sub = [m.y, m.r && state.view === "list" ? m.r + "m" : null,
+  // View counts are abbreviated because a full 27,198,976 alongside a year
+  // and a runtime overruns the card and clips the word "views" off the end.
+  const isList = state.view === "list";
+  const sub = [isList ? m.y : null, isList && m.r ? m.r + "m" : null,
                m.n != null ? compact(m.n) + " views" : null]
               .filter(Boolean).join(" · ");
   return `<div class="card-wrap">` +
