@@ -14,3 +14,4 @@ ideas/public-screening/.cache/
 # once already. node_modules/ is ignored above; these are the committable half.
 package.json
 package-lock.json
+ideas/ephemera/.cache/

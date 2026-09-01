@@ -1114,7 +1114,11 @@ function readUrl() {
 
 function savePrefs() {
   try {
-    localStorage.setItem(PREFS, JSON.stringify({ sort: state.sort, view: state.view, favOnly: state.favOnly }));
+    localStorage.setItem(PREFS, JSON.stringify({
+      sort: state.sort, view: state.view, favOnly: state.favOnly,
+      tags: [...state.tags], decade: state.decade,
+      rtMin: state.rtMin, rtMax: state.rtMax,
+    }));
   } catch {}
 }
 
@@ -1125,6 +1129,16 @@ function loadPrefs() {
     if (SORTS[v.sort]) state.sort = v.sort;
     state.view = v.view === "list" ? "list" : "grid";
     state.favOnly = Boolean(v.favOnly);
+    state.tags = new Set(Array.isArray(v.tags) ? v.tags.filter((t) => typeof t === "string") : []);
+    state.decade = typeof v.decade === "string" ? v.decade : "";
+    // Clamp rather than trust: a stored {rtMin: 999999} would otherwise sail
+    // straight into the slider and the filter. The sibling app shipped that
+    // once and stretched the document to over a million pixels wide.
+    const span = (x, fallback) =>
+      Number.isFinite(x) ? Math.min(Math.max(Math.round(x), 0), RT_MAX) : fallback;
+    state.rtMin = span(v.rtMin, 0);
+    state.rtMax = span(v.rtMax, RT_MAX);
+    if (state.rtMin > state.rtMax) [state.rtMin, state.rtMax] = [state.rtMax, state.rtMin];
   } catch {}
 }
 
@@ -1166,8 +1180,11 @@ $("sort").addEventListener("change", (e) => { state.sort = e.target.value; apply
 $("favOnly").addEventListener("change", (e) => { state.favOnly = e.target.checked; apply(true); });
 // Back/forward, and hand-edited URLs, both land here.
 window.addEventListener("popstate", () => {
-  if (!readUrl()) loadPrefs();
-  else loadFavOnlyPref();
+  // Deliberately no loadPrefs() here. Preferences seed the first visit only;
+  // after that the URL is the source of truth. Re-importing them on a
+  // navigation would restore the very filter the URL had just cleared, which
+  // is what made Back stop working before.
+  readUrl();
   syncControls();
   render();
   const id = new URLSearchParams(location.hash.replace(/^#/, "")).get("item");

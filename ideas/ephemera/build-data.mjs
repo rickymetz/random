@@ -15,6 +15,14 @@ const QUERY = "collection:prelinger AND NOT title:(Home Movie)";
 const SOURCE = "https://archive.org/details/prelinger";
 const outFile = path.join(import.meta.dirname, "data.json");
 
+// Used only by the --runtimes pass below; the bulk scrape needs neither a
+// cache nor arguments, so these did not exist until that pass was added.
+const args = process.argv.slice(2);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const cacheDir = args.includes("--cache")
+  ? args[args.indexOf("--cache") + 1]
+  : path.join(import.meta.dirname, ".cache");
+
 // Archivist placeholders, not topics. "need keyword" is the second most
 // common tag in the entire collection — 225 items — so this matters.
 const JUNK = new Set(["need keyword", "need meta", "to come", "needs keyword", "tbd"]);
@@ -97,6 +105,72 @@ function resolveRuntime(raw) {
 
 // "A Trip Down Market Street" sorts under T, matching the sibling app.
 const sortTitle = (t) => t.replace(/^(a|an|the)\s+/i, "").toLowerCase();
+
+
+// ---------------------------------------------------------------------------
+// Second pass: runtimes the bulk search field does not carry.
+//
+//   node ideas/ephemera/build-data.mjs --runtimes --cache <dir>
+//
+// The scrape endpoint reports a runtime for only about a fifth of the
+// collection, but each item's own metadata usually names a video file with a
+// length in seconds. Sampling found one for 12 of 14 items the bulk field had
+// missed. This walks the gaps, caches every response so a re-run costs
+// nothing, and never touches items that already have a runtime.
+//
+// NOT part of CI. Author-time only, like every other phase here.
+async function runtimesPass() {
+  const doc = JSON.parse(fs.readFileSync(outFile, "utf8"));
+  const todo = doc.items.filter((m) => !m.r);
+  console.log(`${todo.length} items without a runtime`);
+
+  const rtDir = path.join(cacheDir, "meta");
+  fs.mkdirSync(rtDir, { recursive: true });
+
+  let done = 0, found = 0;
+  const queue = [...todo];
+  async function worker() {
+    while (queue.length) {
+      const mv = queue.shift();
+      const f = path.join(rtDir, `${mv.id.replace(/[^A-Za-z0-9._-]/g, "_")}.json`);
+      let body = fs.existsSync(f) ? fs.readFileSync(f, "utf8") : null;
+      if (body === null) {
+        try {
+          const res = await fetch(`https://archive.org/metadata/${encodeURIComponent(mv.id)}`,
+                                  { headers: { "User-Agent": UA } });
+          body = res.ok ? await res.text() : "";
+          fs.writeFileSync(f, body);
+          await sleep(120);
+        } catch { body = ""; }
+      }
+      if (++done % 250 === 0) console.log(`  ${done}/${todo.length} (${found} found)`);
+      if (!body) continue;
+      try {
+        const j = JSON.parse(body);
+        const secs = (j.files || [])
+          .filter((x) => /mp4|mpeg|ogv|mkv|avi|m4v/i.test(String(x.format || "")))
+          .map((x) => parseFloat(x.length))
+          .filter((n) => Number.isFinite(n) && n > 0);
+        // Several lengths means several reels or outtakes, not one film in
+        // different bitrates -- take the longest as the item's own length.
+        const best = secs.length ? Math.max(...secs) : null;
+        if (best && best <= 6 * 3600) { mv.r = Math.max(1, Math.round(best / 60)); found++; }
+      } catch {}
+    }
+  }
+  // Four at a time with a short delay: enough to finish in minutes, gentle
+  // enough to stay a good guest on an endpoint built for programmatic use.
+  await Promise.all(Array.from({ length: 4 }, worker));
+
+  const withR = doc.items.filter((m) => m.r).length;
+  console.log(`recovered ${found}; ${withR}/${doc.items.length} now have a runtime (${Math.round(withR / doc.items.length * 100)}%)`);
+  if (withR < doc.items.filter((m) => m.r).length) { console.error("refusing to lose runtimes"); process.exit(1); }
+  doc.count = doc.items.length;
+  fs.writeFileSync(outFile, JSON.stringify(doc));
+  console.log("wrote data.json");
+}
+
+if (args.includes("--runtimes")) { await runtimesPass(); process.exit(0); }
 
 const raw = await scrapeAll();
 const movies = raw.filter((r) => r.mediatype === "movies");
