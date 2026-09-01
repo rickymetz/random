@@ -1,0 +1,1306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ephemera</title>
+<!--
+  The "8,038" item count below is hardcoded copy, not derived from data.json.
+  It goes stale whenever build-data.mjs is re-run against a refreshed Prelinger
+  scrape. Before shipping, check it against data.json's top-level "count" field
+  (and items.length) and update every occurrence below if they've drifted.
+-->
+<meta name="description" content="Browse 8,038 industrial, educational and advertising films from the Prelinger Archives, and watch them in the page.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316181d'/%3E%3Crect x='9' y='5' width='14' height='22' rx='1.5' fill='%235fb3a1'/%3E%3Cg fill='%2316181d'%3E%3Crect x='10.5' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3C/g%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="random">
+<meta property="og:title" content="Ephemera">
+<meta property="og:description" content="Browse 8,038 industrial, educational and advertising films from the Prelinger Archives, and watch them in the page.">
+<meta property="og:url" content="https://rickymetz.github.io/random/ideas/ephemera/">
+<meta property="og:image" content="https://rickymetz.github.io/random/ideas/ephemera/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Ephemera — a grid of vintage film frames">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Ephemera">
+<meta name="twitter:description" content="Browse 8,038 industrial, educational and advertising films. Watch them without leaving the page.">
+<meta name="twitter:image" content="https://rickymetz.github.io/random/ideas/ephemera/og.png">
+<style>
+  :root {
+    --bg: #16181d;
+    --bg-2: #1c1f26;
+    --panel: #21252e;
+    --line: #2e333e;
+    --line-2: #3a4150;
+    --ink: #e8eaf0;
+    --muted: #8b93a5;
+    --dim: #858da1;
+    --accent: #5fb3a1;         /* teal — distinct from Public Screening's amber */
+    --accent-ink: #0c211c;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --radius: 6px;
+    --shadow: 0 6px 20px rgb(0 0 0 / 0.45);
+  }
+
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+
+  /* ------------------------------------------------------------- header */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: color-mix(in srgb, var(--bg-2) 92%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .bar {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 16px;
+    align-items: center;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 12px 20px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
+  .brand h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+  }
+  .home {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+    margin-left: -5px;
+    padding: 5px 6px;
+    border-radius: var(--radius);
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .home:hover { color: var(--ink); background: var(--panel); }
+  .home:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .search {
+    position: relative;
+    justify-self: stretch;
+    max-width: 420px;
+  }
+  .search svg {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    translate: 0 -50%;
+    color: var(--dim);
+    pointer-events: none;
+  }
+  .search input {
+    width: 100%;
+    height: 34px;
+    padding: 0 66px 0 32px;
+    background: var(--bg);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--ink);
+    font: 14px var(--sans);
+  }
+  .search input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .search input::placeholder { color: var(--dim); }
+  .search-end {
+    position: absolute;
+    right: 9px;
+    top: 50%;
+    translate: 0 -50%;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    pointer-events: none;
+  }
+  .count {
+    font: 10px var(--mono);
+    line-height: 1;
+    color: var(--dim);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .view-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-self: end;
+  }
+  .navlink {
+    padding: 7px 11px;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--muted);
+    font-size: 13px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .navlink:hover { color: var(--ink); border-color: var(--dim); }
+  .navlink:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #sort {
+    height: 30px;
+    padding: 0 8px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--ink);
+    font: 12px var(--sans);
+  }
+  .view-toggle { display: flex; gap: 0; }
+  .view-toggle button {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 30px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .view-toggle button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+  .view-toggle button:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-left: 0; }
+  .view-toggle button[aria-pressed="true"] { background: var(--line-2); color: var(--ink); }
+
+  /* ---------------------------------------------------------------- chips */
+  .chips-wrap { position: relative; }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 0 20px 12px;
+  }
+  .chip {
+    padding: 4px 11px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    color: var(--muted);
+    font: 12px var(--sans);
+    cursor: pointer;
+    transition: background .12s, color .12s, border-color .12s;
+  }
+  .chip:hover { color: var(--ink); border-color: var(--dim); }
+  .chip[aria-pressed="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 600;
+  }
+  .chip .n {
+    font-family: var(--mono);
+    font-size: 10px;
+    opacity: .65;
+    margin-left: 5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .chips-fade {
+    position: absolute;
+    top: 0; right: 0; bottom: 12px; width: 32px;
+    background: linear-gradient(to right, transparent, var(--bg));
+    pointer-events: none;
+  }
+  .chips-fade[hidden] { display: none; }
+
+  .filters {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 0 20px 14px;
+  }
+  /* Shown only below 760px — see media query. The header's own About link
+     has no room to spare there once the sort select and view toggle are
+     both on the title row, so a second copy lives here instead. */
+  .mobile-about { display: none; margin-left: auto; }
+  #decade {
+    height: 30px;
+    padding: 0 8px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--ink);
+    font: 12px var(--sans);
+  }
+  .reset {
+    padding: 4px 10px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    color: var(--dim);
+    font: 12px var(--sans);
+    cursor: pointer;
+  }
+  .reset:hover { color: var(--ink); border-color: var(--line-2); }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 11px 0 9px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .check:hover { color: var(--ink); border-color: var(--dim); }
+  .check input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .check:has(input:checked) {
+    background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+    border-color: var(--accent);
+    color: var(--ink);
+  }
+  .check:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* --------------------------------------------------------------- grid */
+  main {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 18px 20px 64px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 22px 16px;
+  }
+  .card-wrap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: translate .12s;
+  }
+  .card {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    color: inherit;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+  }
+  .poster {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--panel);
+    box-shadow: 0 2px 8px rgb(0 0 0 / .4);
+    transition: outline-color .12s;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+  }
+  /* The lift moves .card-wrap (not .poster) with .meta counter-translated
+     back to its resting spot, so only the poster appears to rise -- the
+     same look as translating .poster directly, but without giving .poster
+     its own stacking context. A non-none `translate` on an element always
+     creates one, and if that landed on .poster it would trap .fav's
+     z-index inside it: the whole lifted poster (fav included) would then
+     be compared against .card as a single unit at .poster's stack level,
+     which loses to .card's explicit z-index regardless of how high .fav's
+     own z-index is set -- burying the star under .card's invisible overlay
+     any time the poster is lifted. Keeping the stacking context on
+     .card-wrap instead leaves .card, .poster and .fav all siblings-in-effect
+     under it, ordered by their own z-index exactly as when nothing is
+     lifted, so .fav (z-index 2) keeps winning over .card (z-index 1) in
+     every state, not just at rest. Excluding :has(.fav:hover) here also
+     stops the lift from nudging the wrap while the pointer is on the star,
+     which is no longer needed for click accuracy but still avoids a
+     distracting wobble mid-click. */
+  .card-wrap:hover:not(:has(.fav:hover)),
+  .card-wrap:has(.card:focus-visible) {
+    translate: 0 -3px;
+  }
+  .card-wrap:hover:not(:has(.fav:hover)) .poster,
+  .card-wrap:has(.card:focus-visible) .poster {
+    outline-color: var(--accent);
+  }
+  .card:focus-visible { outline: none; }
+  .card-wrap:hover:not(:has(.fav:hover)) .meta,
+  .card-wrap:has(.card:focus-visible) .meta {
+    translate: 0 3px;
+  }
+  /* The touch target is 44px square -- the visible dark circle stays 22px,
+     drawn as a ::before so the button itself can be the bigger, invisible
+     tappable area without looking oversized on the poster. Both it and the
+     star icon share one grid cell to stay centered on each other regardless
+     of which is visually larger. */
+  .fav {
+    position: absolute;
+    z-index: 2;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    background: none;
+    border: 0;
+    color: #fff;
+    cursor: pointer;
+  }
+  .fav::before {
+    content: "";
+    grid-area: 1 / 1;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgb(0 0 0 / .6);
+    transition: background .12s;
+  }
+  .fav svg { grid-area: 1 / 1; transition: color .12s; }
+  .fav:hover::before { background: rgb(0 0 0 / .8); }
+  .fav.active { color: var(--accent); }
+  .fav:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .poster img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* Generated poster, used when no art exists (or the art 404s). */
+  .gen {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-rows: 1fr auto;
+    padding: 14px 12px 12px;
+    background: linear-gradient(160deg, hsl(var(--h) 32% 26%), hsl(var(--h2) 38% 13%));
+  }
+  .gen[hidden] { display: none; }
+  .gen::before {
+    /* sprocket holes — a film-strip edge, drawn not downloaded */
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 13px;
+    background:
+      repeating-linear-gradient(to bottom, transparent 0 7px, rgb(0 0 0 / .5) 7px 14px);
+    border-right: 1px solid rgb(255 255 255 / .07);
+  }
+  .gen .initial {
+    align-self: start;
+    justify-self: end;
+    font: 700 40px/1 var(--mono);
+    color: rgb(255 255 255 / .1);
+    letter-spacing: -0.04em;
+  }
+  .gen .t {
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 1.25;
+    color: rgb(255 255 255 / .92);
+    text-wrap: balance;
+    padding-left: 6px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+  }
+
+  .badge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgb(0 0 0 / .72);
+    font: 10px var(--mono);
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .meta { min-width: 0; transition: translate .12s; }
+  .meta .name {
+    font-size: 13px;
+    line-height: 1.3;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .meta .sub {
+    margin-top: 2px;
+    font: 11px var(--mono);
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* --------------------------------------------------------------- list */
+  .grid.list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .grid.list .card-wrap {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 8px;
+    border-bottom: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .grid.list .card-wrap:hover { background: var(--bg-2); translate: none; }
+  .grid.list .poster { width: 34px; flex: none; }
+  .grid.list .card-wrap:hover .poster { outline-color: transparent; }
+  .grid.list .card-wrap:hover .meta { translate: none; }
+  .grid.list .badge, .grid.list .fav { display: none; }
+  .grid.list .gen .t { font-size: 0; }
+  .grid.list .meta {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 14px;
+    align-items: center;
+  }
+  .grid.list .meta .name { -webkit-line-clamp: 1; font-size: 14px; }
+  .grid.list .meta .sub { margin: 0; }
+  @media (max-width: 640px) {
+    .grid.list .meta { grid-template-columns: 1fr auto; }
+  }
+
+  .empty {
+    padding: 70px 20px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .empty p { margin: 0; }
+
+  .sentinel { height: 1px; }
+
+  /* -------------------------------------------------------------- drawer */
+  .scrim {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    /* iOS resolves fixed top/bottom against the layout viewport, so when the
+       URL bar retracts an `inset: 0` overlay stops short of the bottom and
+       the grid shows through. dvh tracks the viewport that is actually
+       visible; vh stays as the fallback for browsers without it. */
+    height: 100vh;
+    height: 100dvh;
+    z-index: 40;
+    background: rgb(0 0 0 / .6);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s;
+  }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+  .drawer {
+    position: fixed;
+    z-index: 50;
+    top: 0;
+    right: 0;
+    height: 100vh;
+    height: 100dvh;
+    width: min(420px, 100%);
+    translate: 100% 0;
+    background: var(--bg-2);
+    border-left: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transition: translate .22s cubic-bezier(.32,.72,0,1);
+  }
+  .drawer.open { translate: 0 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .drawer, .scrim, .poster, .chip, .fav, .fav::before, .fav svg, .card-wrap, .meta { transition: none; }
+  }
+  .drawer-close {
+    position: absolute;
+    z-index: 3;
+    top: 12px;
+    right: 12px;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    background: rgb(0 0 0 / .55);
+    border: 0;
+    border-radius: var(--radius);
+    color: var(--ink);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .drawer-close:hover { background: rgb(0 0 0 / .8); }
+  .drawer:has(.d-hero[data-playing]) .drawer-close {
+    background: rgb(0 0 0 / .82);
+    border: 1px solid rgb(255 255 255 / .28);
+  }
+  .d-hero {
+    position: relative;
+    width: 100%;
+    height: 300px;
+    overflow: hidden;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    z-index: 1;
+  }
+  .d-hero .poster {
+    position: relative;
+    height: 100%;
+    width: 100%;
+    border-radius: 0;
+    box-shadow: none;
+    background: none;
+    aspect-ratio: auto;
+  }
+  /* contain, so a poster is shown whole rather than cropped to fit */
+  .d-hero .poster img { object-fit: contain; }
+  .d-hero iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+    background: #000;
+  }
+  .d-hero[data-playing] { aspect-ratio: 16 / 9; max-height: none; }
+  .play-over {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgb(0 0 0 / .34);
+    border: 0;
+    color: #fff;
+    font-size: 26px;
+    cursor: pointer;
+    transition: background .14s;
+  }
+  .play-over:hover { background: rgb(0 0 0 / .5); }
+  .play-over:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+  .d-body { padding: 18px 20px calc(32px + env(safe-area-inset-bottom)); }
+  .d-body h2 {
+    margin: 0 0 6px;
+    font-size: 20px;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .d-line {
+    font: 12px var(--mono);
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .d-desc {
+    margin: 14px 0 0;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--muted);
+    text-wrap: pretty;
+  }
+  .d-tags { margin: 14px 0 0; }
+  .tag {
+    display: inline-block;
+    margin: 0 4px 4px 0;
+    padding: 2px 8px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .tag:hover { color: var(--ink); border-color: var(--dim); }
+  .d-actions { margin-top: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .d-actions .wide { grid-column: 1 / -1; }
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 38px;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 620;
+    font-size: 14px;
+    text-decoration: none;
+    border: 0;
+    cursor: pointer;
+    font-family: var(--sans);
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.ghost {
+    background: none;
+    border: 1px solid var(--line-2);
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .btn.ghost:hover { color: var(--ink); border-color: var(--dim); filter: none; }
+  /* Drawer's own favorite toggle -- the only star affordance list view has,
+     since the poster-corner .fav button is too small to fit the tiny
+     list-view thumbnail (44px hit target on a 34x25 poster). */
+  .fav-toggle svg { transition: color .12s; }
+  .fav-toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+
+  @media (max-width: 760px) {
+    header { position: static; }
+    .bar { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; }
+    .brand { grid-row: 1; grid-column: 1; }
+    .brand h1 { font-size: 15px; overflow: hidden; text-overflow: ellipsis; }
+    .view-actions { grid-row: 1; grid-column: 2; justify-self: end; }
+    .view-actions .navlink { display: none; }
+    .search { grid-row: 2; grid-column: 1 / -1; max-width: none; }
+    .search input { height: 40px; }
+    .home { min-height: 44px; min-width: 44px; justify-content: center; padding: 0 8px; margin-left: -8px; }
+    .view-toggle button { width: 40px; height: 38px; }
+    .mobile-about { display: inline-flex; align-items: center; min-height: 38px; }
+
+    /* A wrapped chip row on a phone eats vertical space fast for a
+       secondary filter. One horizontal rail instead, with chips tall
+       enough to hit the 44px touch guideline. */
+    .chips {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
+      padding-bottom: 10px;
+    }
+    .chips::-webkit-scrollbar { display: none; }
+    .chip { flex: none; padding: 11px 14px; font-size: 13px; }
+
+    #decade { height: 38px; }
+    .reset { padding: 9px 10px; }
+    .check { height: 38px; }
+
+    .grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 18px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="brand">
+      <a class="home" href="../../" aria-label="Back to random" title="Back to random">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M10 3L5 8l5 5"/>
+        </svg>
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2.5 7.2L8 2.5l5.5 4.7"/>
+          <path d="M3.8 8.3V13h8.4V8.3"/>
+        </svg>
+      </a>
+      <h1>Ephemera</h1>
+    </div>
+    <div class="search" id="searchWrap">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+        <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14" stroke-linecap="round"/>
+      </svg>
+      <input id="q" type="search" placeholder="Search titles, descriptions, tags…" autocomplete="off" spellcheck="false" aria-label="Search titles, descriptions, tags">
+      <div class="search-end">
+        <output class="count" id="count" for="q" aria-live="polite">…</output>
+      </div>
+    </div>
+    <div class="view-actions">
+      <a class="navlink" href="about.html">About</a>
+      <select id="sort" aria-label="Sort">
+        <option value="-n">Most viewed</option>
+        <option value="-year">Newest</option>
+        <option value="year">Oldest</option>
+        <option value="title">Title A–Z</option>
+      </select>
+      <div class="view-toggle">
+        <button id="viewGrid" aria-pressed="true" aria-label="Grid view" title="Grid view">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/>
+            <rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/>
+          </svg>
+        </button>
+        <button id="viewList" aria-pressed="false" aria-label="List view" title="List view">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+            <path d="M2 4h12M2 8h12M2 12h12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="chips-wrap">
+    <div class="chips" id="chips"></div>
+    <div class="chips-fade" id="chipsFade" aria-hidden="true"></div>
+  </div>
+  <div class="filters">
+    <select id="decade"><option value="">Any decade</option></select>
+    <label class="check" for="favOnly">
+      <input type="checkbox" id="favOnly">
+      <span>My list</span>
+    </label>
+    <button class="reset" id="reset" hidden>Clear filters</button>
+    <a class="navlink mobile-about" href="about.html">About</a>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="sentinel" id="sentinel"></div>
+  <div class="empty" id="empty" hidden>
+    <p>Nothing matches your search.</p>
+  </div>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true" inert></aside>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const IA = "https://archive.org";
+// A #item= hash never reaches a server, so an unfurl bot fetching the
+// address-bar link learns nothing about which film is open. f/<id>/ is a real
+// path carrying that film's own tags, generated by build-share-pages.mjs --
+// so that, not the address bar, is what Copy link hands you.
+const SITE = "https://rickymetz.github.io/random/ideas/ephemera/";
+const grid = $("grid"), countEl = $("count"), empty = $("empty");
+
+let ALL = [], TAGS = [], shown = [], drawn = 0;
+const PAGE = 120;
+const state = { q: "", tags: new Set(), decade: "", sort: "-n", view: "grid", favOnly: false };
+
+const SORTS = {
+  "-n": (a, b) => (b.n || 0) - (a.n || 0),
+  "year": (a, b) => (a.y || 9999) - (b.y || 9999),
+  "-year": (a, b) => (b.y || 0) - (a.y || 0),
+  "title": (a, b) => a.sort.localeCompare(b.sort),
+};
+
+function matches(m) {
+  if (state.q) {
+    const q = state.q.toLowerCase();
+    if (m._hay === undefined) {
+      const hay = [m.t, m.d || "", (m.g || []).join(" ")].join(" ").toLowerCase();
+      Object.defineProperty(m, "_hay", { value: hay, enumerable: false, writable: true, configurable: true });
+    }
+    if (!m._hay.includes(q)) return false;
+  }
+  if (state.tags.size && !(m.g || []).some((g) => state.tags.has(g))) return false;
+  if (state.decade) {
+    if (!m.y) return false;
+    const d = +state.decade;
+    // A hash edited while the app is running skips the boot-time option
+    // check, and every comparison against NaN is false — which would
+    // silently match every dated item instead of none.
+    if (!Number.isFinite(d)) return false;
+    if (m.y < d || m.y > d + 9) return false;
+  }
+  if (state.favOnly && !favorites.has(m.id)) return false;
+  return true;
+}
+
+const isFiltered = () => Boolean(state.q || state.tags.size || state.decade || state.favOnly);
+
+const PREFS = "ephemera:prefs";
+// A separate key, not folded into PREFS: favorites are a durable personal
+// list, not a filter default -- "Clear filters" resetting favOnly must never
+// touch which films are actually starred.
+const FAV_KEY = "ephemera:favorites";
+let favorites = new Set();
+const loadFavorites = () => {
+  try { return new Set(JSON.parse(localStorage.getItem(FAV_KEY) || "[]")); }
+  catch { return new Set(); }
+};
+const saveFavorites = () => {
+  try { localStorage.setItem(FAV_KEY, JSON.stringify([...favorites])); } catch {}
+};
+function toggleFavorite(id) {
+  if (favorites.has(id)) favorites.delete(id); else favorites.add(id);
+  saveFavorites();
+  updateFavUI();
+}
+function updateFavUI() {
+  const label = $("favOnly")?.nextElementSibling;
+  if (label) label.textContent = `My list (${favorites.size})`;
+  // If My List is the active filter, un-starring has to remove the card,
+  // which only a re-render does. Otherwise, patch the one button that
+  // changed in place rather than rebuild every card on the page for it.
+  if (state.favOnly) { render(); return; }
+  for (const btn of grid.querySelectorAll(".fav")) {
+    const on = favorites.has(btn.dataset.id);
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.querySelector("svg")?.setAttribute("fill", on ? "currentColor" : "none");
+    const title = btn.getAttribute("aria-label").replace(/^(Add|Remove) /, "").replace(/ (to|from) My List$/, "");
+    btn.setAttribute("aria-label", `${on ? "Remove" : "Add"} ${title} ${on ? "from" : "to"} My List`);
+  }
+}
+
+function writeUrl(push) {
+  const p = new URLSearchParams();
+  if (state.q) p.set("q", state.q);
+  if (state.tags.size) p.set("g", [...state.tags].join(","));
+  if (state.decade) p.set("d", state.decade);
+  if (state.sort !== "-n") p.set("sort", state.sort);
+  if (state.view !== "grid") p.set("v", state.view);
+  if (currentItem) p.set("item", currentItem.id);
+  const hash = p.toString();
+  const url = location.pathname + (hash ? "#" + hash : "");
+  if (push && url !== location.pathname + location.hash) history.pushState(null, "", url);
+  else history.replaceState(null, "", url);
+}
+
+function readUrl() {
+  const p = new URLSearchParams(location.hash.replace(/^#/, ""));
+  // Always assign every URL-carried field, even when the hash is empty.
+  // An early return here left stale state (e.g. a leftover search term)
+  // in place when back-navigation landed on a hash-less entry -- the box
+  // and results kept showing the old query even though the URL had none.
+  const had = Boolean(p.toString());
+  state.q = p.get("q") || "";
+  state.tags = new Set((p.get("g") || "").split(",").filter(Boolean));
+  state.decade = p.get("d") || "";
+  state.sort = SORTS[p.get("sort")] ? p.get("sort") : "-n";
+  state.view = p.get("v") === "list" ? "list" : "grid";
+  return had;
+}
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREFS, JSON.stringify({ sort: state.sort, view: state.view, favOnly: state.favOnly }));
+  } catch {}
+}
+
+function loadPrefs() {
+  try {
+    const v = JSON.parse(localStorage.getItem(PREFS) || "null");
+    if (!v) return;
+    if (SORTS[v.sort]) state.sort = v.sort;
+    state.view = v.view === "list" ? "list" : "grid";
+    state.favOnly = Boolean(v.favOnly);
+  } catch {}
+}
+
+// favOnly never goes in the URL (see writeUrl) -- a personal star list means
+// nothing in someone else's browser, so "URL wins on a shared link" doesn't
+// apply to it the way it does to every other filter. Without this, opening
+// any link that carried other filter state took the loadPrefs() branch out
+// of the boot sequence entirely, and My List silently reset on every reload.
+function loadFavOnlyPref() {
+  try {
+    const v = JSON.parse(localStorage.getItem(PREFS) || "null");
+    state.favOnly = Boolean(v?.favOnly);
+  } catch {}
+}
+
+function syncControls() {
+  $("q").value = state.q;
+  $("sort").value = state.sort;
+  $("decade").value = state.decade;
+  $("favOnly").checked = state.favOnly;
+  syncChips();
+}
+
+function apply(push = false) {
+  writeUrl(push);
+  savePrefs();
+  render();
+}
+
+let debounce;
+$("q").addEventListener("input", (e) => {
+  clearTimeout(debounce);
+  debounce = setTimeout(() => { state.q = e.target.value.trim(); apply(false); }, 120);
+});
+$("sort").addEventListener("change", (e) => { state.sort = e.target.value; apply(false); });
+$("favOnly").addEventListener("change", (e) => { state.favOnly = e.target.checked; apply(true); });
+// Back/forward, and hand-edited URLs, both land here.
+window.addEventListener("popstate", () => {
+  if (!readUrl()) loadPrefs();
+  else loadFavOnlyPref();
+  syncControls();
+  render();
+  const id = new URLSearchParams(location.hash.replace(/^#/, "")).get("item");
+  const m = id && ALL.find((x) => x.id === id);
+  if (m) { if (currentItem !== m) openDrawer(m, { push: false }); }
+  else if (drawer.classList.contains("open")) closeDrawer();
+});
+
+// Stable hue per title so a film's generated poster never changes colour.
+function hash(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return Math.abs(h);
+}
+
+const STAR_PATH = "M8 1.5l1.9 4.2 4.6.5-3.4 3.1.9 4.6L8 11.8 3.9 13.9l.9-4.6L1.4 6.2l4.6-.5L8 1.5z";
+
+// withFav: only the main grid/list cards get a favorite toggle on the
+// poster itself -- the drawer hero reuses this same markup and omits it,
+// since a button can't nest inside the drawer's own action buttons the way
+// grid cards would need it to.
+function posterHTML(m, withFav) {
+  const src = `${IA}/services/img/${encodeURIComponent(m.id)}`;
+  const h = hash(m.t) % 360;
+  const on = withFav && favorites.has(m.id);
+  // A thumbnail URL is always present, so the drawn fallback starts hidden —
+  // this keeps its title out of the accessibility tree while the real
+  // thumbnail is showing. window.__posterFailed unhides it if the image
+  // 404s or otherwise fails to load.
+  return `<div class="poster">` +
+    `<div class="gen" hidden style="--h:${h};--h2:${(h + 42) % 360}"><span class="t">${esc(m.t)}</span></div>` +
+    `<img src="${esc(src)}" alt="" loading="lazy" decoding="async"
+          onerror="window.__posterFailed(this)">` +
+    (m.y ? `<span class="badge">${m.y}</span>` : "") +
+    (withFav
+      ? `<button class="fav${on ? " active" : ""}" data-id="${esc(m.id)}" aria-pressed="${on}" ` +
+          `aria-label="${on ? "Remove" : "Add"} ${esc(m.t)} ${on ? "from" : "to"} My List">` +
+          `<svg width="13" height="13" viewBox="0 0 16 16" fill="${on ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="${STAR_PATH}"/></svg>` +
+        `</button>`
+      : "") +
+  `</div>`;
+}
+
+// A thumbnail can fail to load for any number of reasons — the item has no
+// derived image yet, the host is down, an extension blocked it. Whatever the
+// cause, drop the broken <img> and reveal the drawn fallback in its place.
+window.__posterFailed = (img) => {
+  img.closest(".poster")?.querySelector(".gen")?.removeAttribute("hidden");
+  img.remove();
+};
+
+function cardHTML(m, i) {
+  const sub = [m.y, m.n != null ? m.n.toLocaleString() + " views" : null].filter(Boolean).join(" · ");
+  return `<div class="card-wrap">` +
+    `<button class="card" data-i="${i}" aria-label="Open ${esc(m.t)}"></button>` +
+    posterHTML(m, true) +
+    `<span class="meta">` +
+      `<span class="name">${esc(m.t)}</span>` +
+      `<span class="sub">${esc(sub)}</span>` +
+    `</span>` +
+  `</div>`;
+}
+
+function drawMore() {
+  if (drawn >= shown.length) return;
+  const next = shown.slice(drawn, drawn + PAGE);
+  grid.insertAdjacentHTML("beforeend", next.map((m) => cardHTML(m, m._i)).join(""));
+  drawn += next.length;
+}
+
+function render() {
+  shown = ALL.filter(matches).sort(SORTS[state.sort]);
+  grid.className = "grid" + (state.view === "list" ? " list" : "");
+  grid.innerHTML = "";
+  drawn = 0;
+  drawMore();
+  empty.hidden = shown.length > 0;
+  if (!empty.hidden) {
+    // The generic "nothing matches" copy reads like broken data to someone
+    // who just checked My List out of curiosity and has never starred
+    // anything -- say the actual reason instead, for that one case.
+    const bare = state.favOnly && favorites.size === 0;
+    empty.querySelector("p").textContent = bare
+      ? "Nothing in My List yet. Star a film from the grid to save it here."
+      : "Nothing matches your search.";
+  }
+  countEl.textContent = `${shown.length} / ${ALL.length}`;
+  $("viewGrid").setAttribute("aria-pressed", String(state.view === "grid"));
+  $("viewList").setAttribute("aria-pressed", String(state.view === "list"));
+  $("reset").hidden = !isFiltered();
+  syncChips();
+}
+
+new IntersectionObserver((e) => { if (e[0].isIntersecting) drawMore(); })
+  .observe($("sentinel"));
+
+$("viewGrid").onclick = () => { state.view = "grid"; apply(false); };
+$("viewList").onclick = () => { state.view = "list"; apply(false); };
+
+function buildChips() {
+  $("chips").innerHTML = TAGS.map((t) =>
+    `<button class="chip" data-g="${esc(t.slug)}" aria-pressed="false">` +
+    `${esc(t.label)}<span class="n">${t.n}</span></button>`).join("");
+  $("chips").onclick = (e) => {
+    const chip = e.target.closest(".chip");
+    if (!chip) return;
+    const g = chip.dataset.g;
+    if (state.tags.has(g)) state.tags.delete(g); else state.tags.add(g);
+    apply(true);
+  };
+  updateChipsFade();
+}
+
+function syncChips() {
+  for (const btn of $("chips").children) {
+    btn.setAttribute("aria-pressed", state.tags.has(btn.dataset.g) ? "true" : "false");
+  }
+}
+
+function updateChipsFade() {
+  const el = $("chips"), fade = $("chipsFade");
+  if (!el || !fade) return;
+  fade.hidden = el.scrollWidth - el.clientWidth - el.scrollLeft <= 4;
+}
+$("chips").addEventListener("scroll", updateChipsFade, { passive: true });
+window.addEventListener("resize", updateChipsFade);
+
+function buildDecades() {
+  const present = [...new Set(ALL.filter((m) => m.y).map((m) => Math.floor(m.y / 10) * 10))].sort();
+  $("decade").insertAdjacentHTML("beforeend",
+    present.map((d) => `<option value="${d}">${d}s</option>`).join(""));
+  const valid = new Set(present.map(String));
+  if (state.decade && !valid.has(state.decade)) state.decade = "";
+}
+$("decade").addEventListener("change", (e) => { state.decade = e.target.value; apply(true); });
+
+function resetAll() {
+  Object.assign(state, { q: "", tags: new Set(), decade: "", favOnly: false });
+  syncControls();
+  apply(true);
+}
+$("reset").onclick = resetAll;
+
+const drawer = $("drawer"), scrim = $("scrim");
+let currentItem = null;
+// Tracks whether the currently-open drawer actually pushed a history entry.
+// A deep link (#item=X) opens with push:false, so closeDrawer must not call
+// history.back() in that case -- there is nothing of ours on the stack to
+// rewind to, and back() would either no-op or navigate off the site.
+let itemPushed = false;
+// Remember the film that opened the panel, not the element: closing
+// re-renders the grid, so a stored DOM node would be detached by the time
+// focus is handed back.
+let returnTo = null;
+const detailCache = new Map();
+
+// Focus has to land somewhere real once the panel is gone, or a keyboard
+// user's next Tab resumes from inside an aria-hidden subtree.
+function restoreFocus() {
+  if (returnTo === null) return;
+  const i = ALL.findIndex((m) => m.id === returnTo);
+  returnTo = null;
+  // The grid can be rebuilt between the close and this running, so wait a
+  // frame before reaching for the card -- and fall back to the search box
+  // if it is not rendered (e.g. it was filtered out).
+  requestAnimationFrame(() => {
+    const card = i >= 0 && grid.querySelector(`.card[data-i="${i}"]`);
+    (card || $("q"))?.focus({ preventScroll: true });
+  });
+}
+
+function stopPlayer() {
+  const f = drawer.querySelector("iframe");
+  if (f) f.remove();
+  const hero = drawer.querySelector(".d-hero");
+  if (hero) delete hero.dataset.playing;
+}
+
+// archive.org/metadata is CORS-open, so full description and runtime are
+// fetched for the one item actually opened rather than shipped for all 8,039.
+async function loadDetail(m) {
+  if (detailCache.has(m.id)) return detailCache.get(m.id);
+  try {
+    const r = await fetch(`${IA}/metadata/${encodeURIComponent(m.id)}`);
+    if (!r.ok) throw new Error(String(r.status));
+    const j = await r.json();
+    const meta = j.metadata || {};
+    const detail = {
+      desc: Array.isArray(meta.description) ? meta.description.join(" ") : (meta.description || ""),
+      runtime: meta.runtime || null,
+      creator: meta.creator || null,
+    };
+    detailCache.set(m.id, detail);
+    return detail;
+  } catch {
+    return null;
+  }
+}
+
+function openDrawer(m, { push = true } = {}) {
+  stopPlayer();
+  const reopening = Boolean(currentItem);
+  currentItem = m;
+  if (!reopening) returnTo = m.id;
+  drawer.innerHTML =
+    `<button class="drawer-close" id="dClose" aria-label="Close">×</button>` +
+    `<div class="d-hero" id="dHero">${posterHTML(m)}` +
+      `<button class="play-over" id="dPlay" aria-label="Play ${esc(m.t)}">▶</button>` +
+    `</div>` +
+    `<div class="d-body">` +
+      `<h2>${esc(m.t)}</h2>` +
+      `<p class="d-line">${[m.y, m.n != null ? m.n.toLocaleString() + " views" : null].filter(Boolean).map(esc).join(" · ")}` +
+        `<span class="d-runtime"></span></p>` +
+      `<p class="d-desc">${esc(m.d || "No description provided for this film.")}</p>` +
+      ((m.g || []).length ? `<p class="d-tags">${m.g.map((g) =>
+        `<button class="tag" data-g="${esc(g)}">${esc((TAGS.find((t) => t.slug === g) || {}).label || g)}</button>`).join("")}</p>` : "") +
+      `<div class="d-actions">` +
+        `<button class="btn wide" id="dWatch">▶ Watch here</button>` +
+        `<button class="btn wide ghost fav-toggle" id="dFav" aria-pressed="${favorites.has(m.id) ? "true" : "false"}">` +
+          `<svg width="14" height="14" viewBox="0 0 16 16" fill="${favorites.has(m.id) ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="${STAR_PATH}"/></svg>` +
+          `<span>${favorites.has(m.id) ? "Remove from My List" : "Add to My List"}</span>` +
+        `</button>` +
+        `<button class="btn wide ghost" id="dShare">` +
+          `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M5 5l3-3 3 3M3 9v4a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V9"/></svg>` +
+          `<span>Copy link</span>` +
+        `</button>` +
+        `<a class="btn ghost" href="${IA}/details/${encodeURIComponent(m.id)}" target="_blank" rel="noopener noreferrer">Internet Archive</a>` +
+        `<a class="btn ghost" href="${IA}/download/${encodeURIComponent(m.id)}" target="_blank" rel="noopener noreferrer">Download</a>` +
+      `</div>` +
+    `</div>`;
+
+  drawer.classList.add("open");
+  drawer.setAttribute("aria-hidden", "false");
+  drawer.inert = false;
+  scrim.classList.add("open");
+  $("dClose").focus();
+  $("dClose").onclick = () => closeDrawer({ back: true });
+
+  // Copies the f/<id>/ page rather than the address bar, which carries the
+  // non-unfurling #item= hash this whole share-page scheme exists to replace.
+  $("dShare").onclick = async () => {
+    const btn = $("dShare");
+    const label = btn.querySelector("span");
+    try {
+      await navigator.clipboard.writeText(`${SITE}f/${encodeURIComponent(m.id)}/`);
+      label.textContent = "Copied!";
+    } catch {
+      label.textContent = "Couldn't copy";
+    }
+    setTimeout(() => { if ($("dShare") === btn) label.textContent = "Copy link"; }, 1600);
+  };
+
+  const startPlaying = () => {
+    const hero = $("dHero");
+    if (!hero || hero.dataset.playing) return;
+    hero.dataset.playing = "1";
+    hero.innerHTML = `<iframe src="${IA}/embed/${encodeURIComponent(m.id)}" ` +
+      `title="${esc(m.t)}" allow="fullscreen" allowfullscreen frameborder="0" ` +
+      `referrerpolicy="no-referrer" ` +
+      `sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>`;
+  };
+  $("dPlay").addEventListener("click", startPlaying);
+  $("dWatch").addEventListener("click", startPlaying);
+
+  $("dFav").addEventListener("click", () => {
+    toggleFavorite(m.id);
+    const on = favorites.has(m.id);
+    const btn = $("dFav");
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.querySelector("svg").setAttribute("fill", on ? "currentColor" : "none");
+    btn.querySelector("span").textContent = on ? "Remove from My List" : "Add to My List";
+  });
+
+  for (const t of drawer.querySelectorAll(".tag[data-g]")) {
+    // render() owns syncing the chip row's aria-pressed state, so apply()
+    // (which calls render()) is enough here -- no separate syncChips() call.
+    t.onclick = () => { state.tags = new Set([t.dataset.g]); closeDrawer(); apply(true); };
+  }
+
+  loadDetail(m).then((d) => {
+    if (!d || currentItem !== m) return;
+    if (d.runtime) drawer.querySelector(".d-runtime").textContent = " · " + d.runtime;
+    if (d.desc && d.desc.length > (m.d || "").length) {
+      drawer.querySelector(".d-desc").textContent =
+        d.desc.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    }
+  });
+
+  // Go through writeUrl, never a raw pushState: a bare "#item=<id>" would
+  // discard whatever search/sort/tag/decade params were already in the hash,
+  // so reloading or sharing a link with the panel open lost the view behind it.
+  if (push) { writeUrl(true); itemPushed = true; }
+  else { itemPushed = false; }
+}
+
+function closeDrawer({ back = false } = {}) {
+  stopPlayer();
+  // Only rewind history if opening this panel actually pushed an entry.
+  // A deep link opens with push:false, so history.back() would either do
+  // nothing or navigate off the site instead of closing the panel.
+  if (back && currentItem && itemPushed) {
+    currentItem = null;
+    itemPushed = false;
+    history.back();
+    return;
+  }
+  currentItem = null;
+  itemPushed = false;
+  writeUrl(false);
+  drawer.classList.remove("open");
+  drawer.setAttribute("aria-hidden", "true");
+  drawer.inert = true;
+  scrim.classList.remove("open");
+  restoreFocus();
+}
+
+scrim.onclick = () => closeDrawer({ back: true });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && drawer.classList.contains("open")) closeDrawer({ back: true });
+});
+grid.addEventListener("click", (e) => {
+  const fav = e.target.closest(".fav");
+  if (fav) { toggleFavorite(fav.dataset.id); return; }
+  const card = e.target.closest(".card");
+  if (card) openDrawer(ALL[+card.dataset.i]);
+});
+
+fetch("data.json")
+  .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+  .then((data) => {
+    favorites = loadFavorites();
+    ALL = data.items;
+    TAGS = data.tags;
+    ALL.forEach((m, i) => { m._i = i; });
+    if (!readUrl()) loadPrefs();
+    else loadFavOnlyPref();
+    buildChips();
+    buildDecades();
+    syncControls();
+    render();
+    updateFavUI();
+    const startId = new URLSearchParams(location.hash.replace(/^#/, "")).get("item");
+    const startItem = startId && ALL.find((m) => m.id === startId);
+    if (startItem) openDrawer(startItem, { push: false });
+    writeUrl(false);
+  })
+  .catch((err) => {
+    grid.innerHTML = `<p class="err">Could not load the catalogue (${esc(err.message)}).</p>`;
+  });
+</script>
+</body>
+</html>

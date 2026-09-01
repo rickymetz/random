@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About — Ephemera</title>
+<meta name="description" content="Where the films come from, what ephemeral film is, and what the catalogue's metadata does and doesn't cover.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316181d'/%3E%3Crect x='9' y='5' width='14' height='22' rx='1.5' fill='%235fb3a1'/%3E%3Cg fill='%2316181d'%3E%3Crect x='10.5' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='10.5' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='7' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='11.5' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='16' width='2.5' height='2.5' rx='.6'/%3E%3Crect x='19' y='20.5' width='2.5' height='2.5' rx='.6'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #16181d;
+    --bg-2: #1c1f26;
+    --panel: #21252e;
+    --line: #2e333e;
+    --line-2: #3a4150;
+    --ink: #e8eaf0;
+    --muted: #8b93a5;
+    --dim: #858da1;
+    --accent: #5fb3a1;
+    --accent-ink: #0c211c;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --radius: 6px;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.65 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  a:hover { text-decoration: none; }
+
+  header {
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 12px 20px;
+  }
+  .bar h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  .home {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+    min-height: 44px;
+    min-width: 44px;
+    justify-content: center;
+    margin-left: -8px;
+    padding: 0 8px;
+    border-radius: var(--radius);
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .home:hover { color: var(--ink); background: var(--panel); }
+  .home:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .to-browse {
+    margin-left: auto;
+    padding: 7px 12px;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--muted);
+    font-size: 13px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .to-browse:hover { color: var(--ink); border-color: var(--dim); }
+
+  main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 34px 20px 80px;
+  }
+  h2 {
+    margin: 40px 0 4px;
+    font-size: 12px;
+    font-family: var(--mono);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--dim);
+  }
+  h2:first-child { margin-top: 0; }
+  h2 + p, h2 + .card, h2 + ul, h2 + table { margin-top: 12px; }
+  p { margin: 0 0 14px; text-wrap: pretty; }
+
+  .card {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin: 0 0 12px;
+  }
+  .card h3 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    font-weight: 640;
+  }
+  .card h3 a { text-decoration: none; }
+  .card h3 a:hover { text-decoration: underline; }
+  .card p { margin: 0; font-size: 14px; color: var(--muted); }
+  .card p + p { margin-top: 8px; }
+  .role {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    font: 10px var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+    vertical-align: 2px;
+  }
+
+  ul { margin: 0 0 14px; padding-left: 20px; color: var(--muted); }
+  li { margin-bottom: 7px; }
+  li strong { color: var(--ink); font-weight: 600; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 14px;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  th {
+    font: 11px var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+    font-weight: 500;
+  }
+  td:last-child, th:last-child { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  td { color: var(--muted); }
+  td:first-child { color: var(--ink); }
+
+  .note {
+    border-left: 2px solid var(--accent);
+    padding: 2px 0 2px 14px;
+    margin: 0 0 14px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  footer {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 20px 50px;
+    font-size: 12px;
+    color: var(--dim);
+  }
+  footer a { color: var(--muted); }
+
+  @media (max-width: 620px) {
+    .bar h1 { font-size: 15px; }
+    main { padding-top: 26px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <a class="home" href="../../" aria-label="Back to random" title="Back to random">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M10 3L5 8l5 5"/>
+      </svg>
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2.5 7.2L8 2.5l5.5 4.7"/>
+        <path d="M3.8 8.3V13h8.4V8.3"/>
+      </svg>
+    </a>
+    <h1>About</h1>
+    <a class="to-browse" href="./">Browse the films →</a>
+  </div>
+</header>
+
+<main>
+  <h2>Source</h2>
+
+  <div class="card">
+    <h3><a href="https://archive.org/details/prelinger" target="_blank" rel="noopener noreferrer">Prelinger Archives</a><span class="role">Source</span></h3>
+    <p>Every film here comes from the Prelinger Archives, a collection of
+    ephemeral film held at the Internet Archive. This site is a browser on
+    top of that collection, nothing more: nothing is hosted here. Press play
+    on a film and it streams straight from archive.org, on their bandwidth,
+    and the download button on each film goes there too.</p>
+    <p>The catalogue is drawn from the Prelinger collection with home movies
+    filtered out. Home movies exist there in their own right, but they are a
+    different kind of thing from the industrial and institutional films this
+    site is about.</p>
+  </div>
+
+  <h2>What is ephemeral film?</h2>
+
+  <p>Ephemeral film is anything made for a purpose other than art or
+  entertainment: industrial process films, classroom filmstrips, government
+  civil-defense and public-health reels, sales pitches, safety
+  demonstrations, corporate training. It was made to do a job once and then
+  be forgotten — the name comes from the fact that almost none of it was
+  meant to last. What survives is a strange, specific record of how
+  institutions in the 20th century tried to instruct, sell to and reassure
+  people, on film that mostly nobody expected anyone to keep.</p>
+
+  <h2>What's here, honestly</h2>
+
+  <p>The catalogue's metadata is uneven, because it is uneven at the source.
+  Archive.org's records for these films were entered over decades by
+  different people with different amounts of time, so some films arrive with
+  a full description and a clear date, and plenty arrive with neither.</p>
+
+  <table>
+    <thead><tr><th>Field</th><th>Coverage</th></tr></thead>
+    <tbody>
+      <tr><td>Has a description</td><td>7,032 of 8,038 (87%)</td></tr>
+      <tr><td>Can be dated</td><td>4,317 of 8,038 (54%)</td></tr>
+      <tr><td>Carries a filterable tag</td><td>1,450 of 8,038 (18%)</td></tr>
+    </tbody>
+  </table>
+
+  <p>That last number is why the tag chips along the top of the browse view
+  should be read as entry points into the collection, not as a complete
+  index of it — 41 chips cover a topic well enough to be worth a filter, but
+  most films don't carry any of those 41 subjects. Search reaches further,
+  since it matches against titles and descriptions as well as tags, so if a
+  chip doesn't turn up what you're looking for, searching for it is worth
+  trying next.</p>
+
+  <h2>Why some films have no year</h2>
+
+  <p>Archive.org's date field doesn't always hold the year a film was made.
+  Sometimes it holds the day the reel was digitized and uploaded instead —
+  which, taken at face value, would make a 1930s industrial film look like
+  it was shot decades from now. Rather than show a wrong date as if it were
+  real, any date that resolves to later than 2015 is dropped and the film is
+  shown with no year at all. That's a deliberate trade: a missing year is
+  honest, a digitization date dressed up as a film date is not.</p>
+
+  <h2>Public domain</h2>
+
+  <p>These films are believed to be in the public domain or otherwise free
+  of known copyright restrictions — that determination comes from the
+  Prelinger Archives and the Internet Archive, not from this site. It's why
+  downloading a film is offered directly from its detail panel rather than
+  only linking out to watch it. Public-domain status can still vary by
+  country, and a small number of items are genuinely disputed; nothing here
+  is legal advice.</p>
+</main>
+
+<footer>
+  Part of <a href="../../">random</a>, a hub of small ideas.
+</footer>
+
+</body>
+</html>
