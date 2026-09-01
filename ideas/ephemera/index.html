@@ -151,6 +151,18 @@
     gap: 8px;
     justify-self: end;
   }
+  .tagline {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .bar-end {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    justify-self: end;
+  }
   .navlink {
     padding: 7px 11px;
     border: 1px solid var(--line-2);
@@ -187,6 +199,41 @@
   .view-toggle button[aria-pressed="true"] { background: var(--line-2); color: var(--ink); }
 
   /* ---------------------------------------------------------------- chips */
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: center;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 0 20px 12px;
+  }
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .field > label {
+    font: 11px var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+  }
+  .checks {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .view-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  /* Collapsed behind one button on a phone, exactly as the sibling app does
+     -- the header keeps only back / title / About, and the sort select and
+     view toggle move in here rather than crowding the title out. */
+  .filters-toggle { display: none; }
   .chips-wrap { position: relative; }
   .chips {
     display: flex;
@@ -228,18 +275,6 @@
   }
   .chips-fade[hidden] { display: none; }
 
-  .filters {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    max-width: 1600px;
-    margin: 0 auto;
-    padding: 0 20px 14px;
-  }
-  /* Shown only below 760px — see media query. The header's own About link
-     has no room to spare there once the sort select and view toggle are
-     both on the title row, so a second copy lives here instead. */
-  .mobile-about { display: none; margin-left: auto; }
   #decade {
     height: 30px;
     padding: 0 8px;
@@ -683,13 +718,44 @@
     .bar { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; }
     .brand { grid-row: 1; grid-column: 1; }
     .brand h1 { font-size: 15px; overflow: hidden; text-overflow: ellipsis; }
-    .view-actions { grid-row: 1; grid-column: 2; justify-self: end; }
-    .view-actions .navlink { display: none; }
+    .tagline { display: none; }   /* no room beside the title on a phone */
+    .bar-end { grid-row: 1; grid-column: 2; justify-self: end; }
     .search { grid-row: 2; grid-column: 1 / -1; max-width: none; }
     .search input { height: 40px; }
     .home { min-height: 44px; min-width: 44px; justify-content: center; padding: 0 8px; margin-left: -8px; }
     .view-toggle button { width: 40px; height: 38px; }
-    .mobile-about { display: inline-flex; align-items: center; min-height: 38px; }
+    .navlink { min-height: 40px; display: flex; align-items: center; }
+
+    .filters-toggle {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin: 0 20px 12px;
+      padding: 9px 13px;
+      background: var(--panel);
+      border: 1px solid var(--line-2);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font: 13px var(--sans);
+      cursor: pointer;
+    }
+    .filters-toggle[aria-expanded="true"] { color: var(--ink); border-color: var(--dim); }
+    .filters-toggle .n {
+      margin-left: 2px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      font: 11px var(--mono);
+      font-weight: 600;
+    }
+    #filterPanel[hidden] { display: none; }
+    .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .field { min-width: 0; }
+    .field select { flex: 1; min-width: 0; }
+    .checks { grid-column: 1 / -1; flex-wrap: wrap; }
+    .checks .check { flex: 1 1 150px; min-width: 0; height: 38px; justify-content: flex-start; }
+    .view-actions { grid-column: 1 / -1; margin-left: 0; }
 
     /* A wrapped chip row on a phone eats vertical space fast for a
        secondary filter. One horizontal rail instead, with chips tall
@@ -727,6 +793,7 @@
         </svg>
       </a>
       <h1>Ephemera</h1>
+      <p class="tagline">Films made to inform, sell and instruct</p>
     </div>
     <div class="search" id="searchWrap">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
@@ -737,14 +804,46 @@
         <output class="count" id="count" for="q" aria-live="polite">…</output>
       </div>
     </div>
-    <div class="view-actions">
+    <div class="bar-end">
       <a class="navlink" href="about.html">About</a>
-      <select id="sort" aria-label="Sort">
+    </div>
+  </div>
+
+  <button class="filters-toggle" id="filtersToggle" aria-expanded="false" aria-controls="filterPanel">
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+      <path d="M2 4h12M4.5 8h7M6.5 12h3"/>
+    </svg>
+    <span id="filtersLabel">Filters</span>
+  </button>
+
+  <div id="filterPanel">
+  <div class="chips-wrap">
+    <div class="chips" id="chips"></div>
+    <div class="chips-fade" id="chipsFade" aria-hidden="true"></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="field">
+      <label for="decade">Decade</label>
+      <select id="decade"><option value="">Any</option></select>
+    </div>
+    <div class="field">
+      <label for="sort">Sort</label>
+      <select id="sort">
         <option value="-n">Most viewed</option>
         <option value="-year">Newest</option>
         <option value="year">Oldest</option>
         <option value="title">Title A–Z</option>
       </select>
+    </div>
+    <div class="checks">
+      <label class="check" for="favOnly">
+        <input type="checkbox" id="favOnly">
+        <span>My list</span>
+      </label>
+    </div>
+    <button class="reset" id="reset" hidden>Clear filters</button>
+    <div class="view-actions">
       <div class="view-toggle">
         <button id="viewGrid" aria-pressed="true" aria-label="Grid view" title="Grid view">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -760,22 +859,10 @@
       </div>
     </div>
   </div>
+  </div>
 </header>
 
 <main>
-  <div class="chips-wrap">
-    <div class="chips" id="chips"></div>
-    <div class="chips-fade" id="chipsFade" aria-hidden="true"></div>
-  </div>
-  <div class="filters">
-    <select id="decade"><option value="">Any decade</option></select>
-    <label class="check" for="favOnly">
-      <input type="checkbox" id="favOnly">
-      <span>My list</span>
-    </label>
-    <button class="reset" id="reset" hidden>Clear filters</button>
-    <a class="navlink mobile-about" href="about.html">About</a>
-  </div>
   <div class="grid" id="grid"></div>
   <div class="sentinel" id="sentinel"></div>
   <div class="empty" id="empty" hidden>
@@ -1003,8 +1090,26 @@ window.__posterFailed = (img) => {
   img.remove();
 };
 
+// 27198976 -> "27.2M". Keeps the card's meta line to one readable row.
+function compact(n) {
+  // Round first, then pick the unit: rounding 999,999 to thousands yields
+  // 1000K, which should read 1M.
+  if (n >= 1e6 || Math.round(n / 1e3) >= 1e3) {
+    const m = n / 1e6;
+    return (m >= 10 ? Math.round(m) : +m.toFixed(1)) + "M";
+  }
+  if (n >= 1e3) return Math.round(n / 1e3) + "K";
+  return String(n);
+}
+
 function cardHTML(m, i) {
-  const sub = [m.y, m.n != null ? m.n.toLocaleString() + " views" : null].filter(Boolean).join(" · ");
+  // Only ~21% of items report a usable runtime, so it joins the line when
+  // present rather than reserving space that is usually empty. View counts
+  // are abbreviated because a full 27,198,976 alongside a year and a runtime
+  // overruns the card and clips the word "views" off the end.
+  const sub = [m.y, m.r ? m.r + "m" : null,
+               m.n != null ? compact(m.n) + " views" : null]
+              .filter(Boolean).join(" · ");
   return `<div class="card-wrap">` +
     `<button class="card" data-i="${i}" aria-label="Open ${esc(m.t)}"></button>` +
     posterHTML(m, true) +
@@ -1042,6 +1147,7 @@ function render() {
   $("viewGrid").setAttribute("aria-pressed", String(state.view === "grid"));
   $("viewList").setAttribute("aria-pressed", String(state.view === "list"));
   $("reset").hidden = !isFiltered();
+  if ($("filtersLabel")) syncPanel();
   syncChips();
 }
 
@@ -1078,6 +1184,27 @@ function updateChipsFade() {
 }
 $("chips").addEventListener("scroll", updateChipsFade, { passive: true });
 window.addEventListener("resize", updateChipsFade);
+
+// Collapsed by default on a phone, and the button says how many filters are
+// on so a hidden filter is never a mystery.
+const SMALL = window.matchMedia("(max-width: 760px)");
+function activeFilterCount() {
+  return [state.q, state.tags.size, state.decade, state.favOnly].filter(Boolean).length;
+}
+function syncPanel() {
+  const small = SMALL.matches;
+  const open = !small || $("filtersToggle").getAttribute("aria-expanded") === "true";
+  $("filterPanel").hidden = small && !open;
+  updateChipsFade();
+  const n = activeFilterCount();
+  $("filtersLabel").innerHTML = "Filters" + (n ? ` <span class="n">${n}</span>` : "");
+}
+$("filtersToggle").addEventListener("click", () => {
+  const t = $("filtersToggle");
+  t.setAttribute("aria-expanded", t.getAttribute("aria-expanded") === "true" ? "false" : "true");
+  syncPanel();
+});
+SMALL.addEventListener("change", syncPanel);
 
 function buildDecades() {
   const present = [...new Set(ALL.filter((m) => m.y).map((m) => Math.floor(m.y / 10) * 10))].sort();
@@ -1293,6 +1420,7 @@ fetch("data.json")
     syncControls();
     render();
     updateFavUI();
+    syncPanel();
     const startId = new URLSearchParams(location.hash.replace(/^#/, "")).get("item");
     const startItem = startId && ALL.find((m) => m.id === startId);
     if (startItem) openDrawer(startItem, { push: false });

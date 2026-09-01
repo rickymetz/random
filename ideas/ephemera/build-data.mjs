@@ -30,7 +30,7 @@ const DESC_CAP = 400;
 const scrapeUrl = (cursor) => {
   const p = new URLSearchParams({
     q: QUERY,
-    fields: "identifier,mediatype,title,year,date,subject,description,downloads",
+    fields: "identifier,mediatype,title,year,date,subject,description,downloads,runtime",
     count: "10000",
   });
   if (cursor) p.set("cursor", cursor);
@@ -69,6 +69,30 @@ function resolveYear(raw) {
     }
   }
   return null;
+}
+
+// Archive's runtime is free text and only ~21% of items carry it. Most are
+// mm:ss or hh:mm:ss, with a long tail of junk ("1 reel", "317 Feet",
+// "PA8087 Bacteria: Fri"). Parse only the shapes we can trust and drop the
+// rest -- a wrong length on a card is worse than no length.
+function resolveRuntime(raw) {
+  const v = String(raw ?? "").trim();
+  if (!v) return null;
+  let secs = null;
+  let m = v.match(/^(\d+):(\d{2}):(\d{2})$/);          // hh:mm:ss
+  if (m) secs = +m[1] * 3600 + +m[2] * 60 + +m[3];
+  if (secs === null && (m = v.match(/^(\d+):(\d{2})$/))) // mm:ss
+    secs = +m[1] * 60 + +m[2];
+  if (secs === null && (m = v.match(/^:(\d{2})$/)))       // :ss
+    secs = +m[1];
+  if (secs === null && (m = v.match(/^(\d+)\s*min\.?$/i)))
+    secs = +m[1] * 60;
+  if (secs === null && (m = v.match(/^(\d+)\s*sec\.?$/i)))
+    secs = +m[1];
+  if (secs === null || secs <= 0) return null;
+  // A day-long "runtime" is a data error, not a film.
+  if (secs > 6 * 3600) return null;
+  return Math.max(1, Math.round(secs / 60));
 }
 
 // "A Trip Down Market Street" sorts under T, matching the sibling app.
@@ -112,6 +136,8 @@ const items = movies.map((r) => {
   const g = [...new Set(subjects(r).map((t) => t.toLowerCase()).filter((t) => keep.has(t)))].sort();
   if (g.length) rec.g = g;
   if (r.downloads != null) rec.n = r.downloads;
+  const rt = resolveRuntime(r.runtime);
+  if (rt) rec.r = rt;
   return rec;
 }).sort((a, b) => a.sort.localeCompare(b.sort));
 
