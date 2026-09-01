@@ -242,8 +242,8 @@
     border-radius: 2px;
   }
   /* The shape of the collection behind the track. These are shorts: the mass
-     sits under twenty minutes, so the range tops out at 30 rather than the
-     sibling app's 120, where nine tenths of the track would have been empty. */
+     sits under twenty minutes, so the range tops out at 45 rather than the
+     sibling app's 120, where most of the track would have been empty. */
   .hist {
     position: absolute;
     left: 0; right: 0;
@@ -936,8 +936,8 @@
       <div class="range" id="rtWrap">
         <div class="hist" id="rtHist" aria-hidden="true"></div>
         <div class="rt-track"><div class="rt-fill" id="rtFill"></div></div>
-        <input type="range" id="rtMin" min="0" max="30" step="1" value="0" aria-label="Shortest length in minutes">
-        <input type="range" id="rtMax" min="0" max="30" step="1" value="30" aria-label="Longest length in minutes">
+        <input type="range" id="rtMin" min="0" max="45" step="1" value="0" aria-label="Shortest length in minutes">
+        <input type="range" id="rtMax" min="0" max="45" step="1" value="45" aria-label="Longest length in minutes">
       </div>
       <output id="rtLabel" for="rtMin rtMax">Any</output>
     </div>
@@ -994,7 +994,7 @@ const grid = $("grid"), countEl = $("count"), empty = $("empty");
 let ALL = [], TAGS = [], shown = [], drawn = 0;
 const PAGE = 120;
 const state = { q: "", tags: new Set(), decade: "", sort: "-n", view: "grid", favOnly: false,
-                rtMin: 0, rtMax: 30 };
+                rtMin: 0, rtMax: 45 };
 
 const SORTS = {
   "-n": (a, b) => (b.n || 0) - (a.n || 0),
@@ -1035,10 +1035,12 @@ function matches(m) {
   return true;
 }
 
-// Ephemera's films are shorts: median 12 minutes, ninety percent under 21.
-// A 0-120 track like the sibling app's would leave the data crammed into its
-// first quarter, so the range stops at 30 and the top handle means "and over".
-const RT_MAX = 30, RT_STEP = 1;
+// Sized to the data, not copied from the sibling app. These are shorts --
+// median 12 minutes, three quarters under 17 -- so a 0-120 track would leave
+// everything crammed into its first quarter. 45 is the 99th percentile: it
+// keeps the dense region readable while leaving only about seventy films in
+// the "and over" bucket, where a 30 ceiling would have flattened 328 of them.
+const RT_MAX = 45, RT_STEP = 1;
 const rangeActive = () => state.rtMin > 0 || state.rtMax < RT_MAX;
 
 const isFiltered = () => Boolean(state.q || state.tags.size || state.decade || state.favOnly);
