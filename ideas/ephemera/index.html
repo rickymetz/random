@@ -1128,7 +1128,13 @@ function readUrl() {
   state.rtMin = rt ? Math.min(+rt[1], RT_MAX) : 0;
   state.rtMax = rt ? Math.min(+rt[2], RT_MAX) : RT_MAX;
   if (state.rtMin > state.rtMax) [state.rtMin, state.rtMax] = [state.rtMax, state.rtMin];
-  state.sort = SORTS[p.get("sort")] ? p.get("sort") : "-n";
+  // Object.hasOwn, not SORTS[k] -- a plain object literal inherits from
+  // Object.prototype, so "__proto__", "toString", "constructor" and
+  // "valueOf" all read as truthy and pass a naive allowlist check. The
+  // first then reaches .sort(Object.prototype), which throws and kills
+  // the whole render from nothing but a crafted link.
+  const sortKey = p.get("sort");
+  state.sort = Object.hasOwn(SORTS, sortKey) ? sortKey : "-n";
   state.view = p.get("v") === "list" ? "list" : "grid";
   return had;
 }
@@ -1150,7 +1156,7 @@ function loadPrefs() {
   try {
     const v = JSON.parse(localStorage.getItem(PREFS) || "null");
     if (!v) return;
-    if (SORTS[v.sort]) state.sort = v.sort;
+    if (Object.hasOwn(SORTS, v.sort)) state.sort = v.sort;
     state.view = v.view === "list" ? "list" : "grid";
     state.favOnly = Boolean(v.favOnly);
     state.tags = new Set(Array.isArray(v.tags) ? v.tags.filter((t) => typeof t === "string") : []);
@@ -1670,7 +1676,15 @@ fetch("data.json")
     writeUrl(false);
   })
   .catch((err) => {
-    grid.innerHTML = `<p class="err">Could not load the catalogue (${esc(err.message)}).</p>`;
+    // Only the fetch and the parse are a catalogue problem. Anything thrown
+    // after the data is in hand is a bug in this file, and reporting it as
+    // "could not load the catalogue" sent one real defect looking for a
+    // network fault for far too long.
+    const loaded = Array.isArray(ALL) && ALL.length > 0;
+    grid.innerHTML = loaded
+      ? `<p class="err">Something went wrong displaying the catalogue (${esc(err.message)}). Reloading may help.</p>`
+      : `<p class="err">Could not load the catalogue (${esc(err.message)}).</p>`;
+    if (loaded) console.error(err);
   });
 </script>
 </body>
