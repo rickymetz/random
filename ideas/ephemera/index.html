@@ -648,6 +648,16 @@
     text-align: center;
     color: var(--muted);
   }
+  /* The failure message had no rule of its own and rendered as bare body
+     text, flush left under the toolbar. */
+  .err {
+    margin: 0;
+    padding: 70px 20px;
+    text-align: center;
+    color: var(--muted);
+    max-width: 46ch;
+    margin-inline: auto;
+  }
   .empty p { margin: 0; }
 
   .sentinel { height: 1px; }
@@ -1007,6 +1017,11 @@ const SITE = "https://rickymetz.github.io/random/ideas/ephemera/";
 const grid = $("grid"), countEl = $("count"), empty = $("empty");
 
 let ALL = [], TAGS = [], shown = [], drawn = 0;
+// Set when the catalogue never arrived. render() bails on it, because
+// otherwise the first click on any still-live control replaced "Could not
+// load the catalogue" with "Nothing matches your search." at 0 / 0 -- turning
+// a load failure into what looks like an ordinary empty result.
+let catalogueFailed = false;
 const PAGE = 120;
 const state = { q: "", tags: new Set(), decade: "", sort: "-n", view: "grid", favOnly: false,
                 rtMin: 0, rtMax: 45 };
@@ -1343,6 +1358,7 @@ function drawMore() {
 }
 
 function render() {
+  if (catalogueFailed) return;
   shown = ALL.filter(matches).sort(SORTS[state.sort]);
   grid.className = "grid" + (state.view === "list" ? " list" : "");
   grid.innerHTML = "";
@@ -1726,6 +1742,8 @@ fetch("data.json")
     // "could not load the catalogue" sent one real defect looking for a
     // network fault for far too long.
     const loaded = Array.isArray(ALL) && ALL.length > 0;
+    catalogueFailed = !loaded;
+    empty.hidden = true;
     grid.innerHTML = loaded
       ? `<p class="err">Something went wrong displaying the catalogue (${esc(err.message)}). Reloading may help.</p>`
       : `<p class="err">Could not load the catalogue (${esc(err.message)}).</p>`;
