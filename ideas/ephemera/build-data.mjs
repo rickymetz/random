@@ -2,7 +2,14 @@
 // Author-time scraper for Ephemera. NOT part of CI — the hub workflow only
 // runs scripts/build.js. Run by hand to refresh data.json:
 //
-//   node ideas/ephemera/build-data.mjs
+//   node ideas/ephemera/build-data.mjs            # bulk catalogue
+//   node ideas/ephemera/build-data.mjs --runtimes # fill the runtime gaps
+//
+// Both steps matter. The bulk endpoint names a runtime for only about a fifth
+// of the collection; the second pass takes it to ~91%. The first pass carries
+// any runtime already in data.json forward, so running it alone no longer
+// throws that work away -- but new items still arrive without one until the
+// second pass runs.
 //
 // One source: archive.org. Every item arrives with a stable identifier, so
 // unlike the sibling public-screening app there is no title matching here
@@ -122,7 +129,8 @@ const sortTitle = (t) => t.replace(/^(a|an|the)\s+/i, "").toLowerCase();
 async function runtimesPass() {
   const doc = JSON.parse(fs.readFileSync(outFile, "utf8"));
   const todo = doc.items.filter((m) => !m.r);
-  console.log(`${todo.length} items without a runtime`);
+  const beforeR = doc.items.length - todo.length;
+  console.log(`${todo.length} items without a runtime (${beforeR} have one)`);
 
   const rtDir = path.join(cacheDir, "meta");
   fs.mkdirSync(rtDir, { recursive: true });
@@ -164,7 +172,14 @@ async function runtimesPass() {
 
   const withR = doc.items.filter((m) => m.r).length;
   console.log(`recovered ${found}; ${withR}/${doc.items.length} now have a runtime (${Math.round(withR / doc.items.length * 100)}%)`);
-  if (withR < doc.items.filter((m) => m.r).length) { console.error("refusing to lose runtimes"); process.exit(1); }
+  // beforeR is captured before the workers run (see above). The first version
+  // of this guard compared withR against the same expression recomputed on the
+  // same already-mutated array, so it was always false -- a guard that could
+  // not fire no matter how much was lost.
+  if (withR < beforeR) {
+    console.error(`refusing to lose runtimes: ${withR} now vs ${beforeR} before`);
+    process.exit(1);
+  }
   doc.count = doc.items.length;
   fs.writeFileSync(outFile, JSON.stringify(doc));
   console.log("wrote data.json");
@@ -222,6 +237,24 @@ if (fs.existsSync(outFile)) {
   if (items.length < prev.count * 0.8 && !process.argv.includes("--force")) {
     console.error(`refusing to write: ${items.length} items vs ${prev.count} previously (>20% loss)`);
     console.error("re-run with --force if this is intentional");
+    process.exit(1);
+  }
+
+  // Carry forward runtimes this pass cannot see. The bulk search field names a
+  // runtime for only about a fifth of the collection; the rest were recovered
+  // by --runtimes, one metadata call at a time. Rebuilding items from the bulk
+  // scrape alone would silently drop coverage from 91% back to 21% -- and the
+  // count guard above would not notice, because the item count is unchanged.
+  const prevR = new Map(prev.items.filter((m) => m.r).map((m) => [m.id, m.r]));
+  let carried = 0;
+  for (const m of items) {
+    if (!m.r && prevR.has(m.id)) { m.r = prevR.get(m.id); carried++; }
+  }
+  const withR = items.filter((m) => m.r).length;
+  console.log(`runtimes: ${withR}/${items.length} (${carried} carried over from the previous file)`);
+  if (withR < prevR.size && !process.argv.includes("--force")) {
+    console.error(`refusing to write: ${withR} runtimes vs ${prevR.size} previously`);
+    console.error("re-run --runtimes to refill, or --force if this is intentional");
     process.exit(1);
   }
 }
