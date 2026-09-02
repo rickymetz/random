@@ -1446,9 +1446,17 @@ function buildDecades() {
 $("decade").addEventListener("change", (e) => { state.decade = e.target.value; apply(true); });
 
 // Length is a filter, not a setting: like the chips and the decade it goes in
-// the URL and pushes history, and it is deliberately NOT persisted to prefs --
-// prefs re-importing a value the URL had just cleared is what left stale state
-// behind the Back button once already.
+// the URL. It is also persisted, along with the ceiling it was chosen against
+// (see savePrefs), so a narrowed range survives a reload.
+//
+// One history entry per gesture, not per event. `input` fires on every pixel
+// of a drag and on every arrow press, and pushing each one put 19 entries
+// between the visitor and the page they arrived from -- Back was effectively
+// broken by touching this one control. The first event of a gesture pushes,
+// so the pre-drag URL is preserved as its own entry; everything after it
+// replaces, so the entry tracks the handle. A gesture ends after a short
+// idle, which covers both a mouse drag and a held-down arrow key.
+let rangeGesture = false, rangeSettle;
 function onRange(which, raw) {
   let lo = state.rtMin, hi = state.rtMax;
   const v = Math.min(Math.max(Math.round(+raw), 0), RT_MAX);
@@ -1457,7 +1465,11 @@ function onRange(which, raw) {
   state.rtMin = lo; state.rtMax = hi;
   $("rtMin").value = lo; $("rtMax").value = hi;
   paintRange();
-  apply(true);
+  const push = !rangeGesture;
+  rangeGesture = true;
+  clearTimeout(rangeSettle);
+  rangeSettle = setTimeout(() => { rangeGesture = false; }, 400);
+  apply(push);
 }
 $("rtMin").addEventListener("input", (e) => onRange("min", e.target.value));
 $("rtMax").addEventListener("input", (e) => onRange("max", e.target.value));
