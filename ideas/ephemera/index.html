@@ -1120,7 +1120,13 @@ function readUrl() {
   // An early return here left stale state (e.g. a leftover search term)
   // in place when back-navigation landed on a hash-less entry -- the box
   // and results kept showing the old query even though the URL had none.
-  const had = Boolean(p.toString());
+  // "Does this URL carry filter state?" -- which decides whether the caller
+  // seeds from the URL or from saved preferences. `item` must not count: every
+  // share page redirects to #item=<id>, so treating it as filter state made
+  // opening any shared link ignore the visitor's saved sort, view, chips and
+  // decade, and the next interaction then wrote those defaults back over their
+  // preferences for good.
+  const had = ["q", "g", "d", "rt", "sort", "v"].some((k) => p.has(k));
   state.q = p.get("q") || "";
   state.tags = new Set((p.get("g") || "").split(",").filter(Boolean));
   state.decade = p.get("d") || "";
