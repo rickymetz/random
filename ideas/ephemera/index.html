@@ -1114,6 +1114,19 @@ function writeUrl(push) {
   else history.replaceState(null, "", url);
 }
 
+// Drop tags the chip vocabulary no longer contains, the way buildDecades
+// already drops an unknown decade. TAG_THRESHOLD is applied per scrape, so a
+// refresh can retire a chip -- and an unknown tag was worse than a wrong one:
+// it filtered the grid to nothing with no chip pressed and nothing on screen
+// naming the cause, then restored itself from prefs on every later visit.
+// Falls back to trusting the list if TAGS has not loaded, so this can never
+// be the thing that empties a selection.
+function knownTags(list) {
+  if (!TAGS.length) return new Set(list);
+  const vocab = new Set(TAGS.map((t) => t.slug));
+  return new Set([...list].filter((g) => vocab.has(g)));
+}
+
 function readUrl() {
   const p = new URLSearchParams(location.hash.replace(/^#/, ""));
   // Always assign every URL-carried field, even when the hash is empty.
@@ -1128,7 +1141,7 @@ function readUrl() {
   // preferences for good.
   const had = ["q", "g", "d", "rt", "sort", "v"].some((k) => p.has(k));
   state.q = p.get("q") || "";
-  state.tags = new Set((p.get("g") || "").split(",").filter(Boolean));
+  state.tags = knownTags((p.get("g") || "").split(",").filter(Boolean));
   state.decade = p.get("d") || "";
   const rt = (p.get("rt") || "").match(/^(\d+)-(\d+)$/);
   state.rtMin = rt ? Math.min(+rt[1], RT_MAX) : 0;
@@ -1165,7 +1178,7 @@ function loadPrefs() {
     if (Object.hasOwn(SORTS, v.sort)) state.sort = v.sort;
     state.view = v.view === "list" ? "list" : "grid";
     state.favOnly = Boolean(v.favOnly);
-    state.tags = new Set(Array.isArray(v.tags) ? v.tags.filter((t) => typeof t === "string") : []);
+    state.tags = knownTags(Array.isArray(v.tags) ? v.tags.filter((t) => typeof t === "string") : []);
     state.decade = typeof v.decade === "string" ? v.decade : "";
     // Clamp rather than trust: a stored {rtMin: 999999} would otherwise sail
     // straight into the slider and the filter. The sibling app shipped that
