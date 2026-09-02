@@ -1502,6 +1502,18 @@ function resetAll() {
 $("reset").onclick = resetAll;
 
 const drawer = $("drawer"), scrim = $("scrim");
+
+// The panel was inert while closed, but nothing was inert while it was open,
+// so Tab and Shift+Tab walked straight out of it into the grid and toolbar
+// behind the scrim -- you could type in the search box and watch the grid
+// re-render under the open panel. Making the background inert traps focus and
+// hides it from assistive tech in one step, with no keydown bookkeeping.
+// Must be lifted before restoreFocus() reaches for a card inside main.
+function backgroundInert(on) {
+  for (const el of [document.querySelector("header"), document.querySelector("main")]) {
+    if (el) el.inert = on;
+  }
+}
 let currentItem = null;
 // Tracks whether the currently-open drawer actually pushed a history entry.
 // A deep link (#item=X) opens with push:false, so closeDrawer must not call
@@ -1592,6 +1604,7 @@ function openDrawer(m, { push = true } = {}) {
   drawer.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");
   drawer.inert = false;
+  backgroundInert(true);
   scrim.classList.add("open");
   $("dClose").focus();
   $("dClose").onclick = () => closeDrawer({ back: true });
@@ -1670,6 +1683,7 @@ function closeDrawer({ back = false } = {}) {
   drawer.classList.remove("open");
   drawer.setAttribute("aria-hidden", "true");
   drawer.inert = true;
+  backgroundInert(false);
   scrim.classList.remove("open");
   restoreFocus();
 }
