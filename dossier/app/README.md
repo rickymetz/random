@@ -54,9 +54,14 @@ loader, an in-memory object-URL cache cleared on lock
 graph nodes, a per-person gallery with avatar promotion, blob cascade on
 person delete, and export format v2 carrying photos in backups.
 
-Still to build: disguise selection, graph queries (mutual connections,
-paths), notifications, Argon2id, inbox triage affordance, chip-style tag
-input, decoy vault UI (v2).
+Slice 4 (graph queries, §4.4): a seeded "me" person (reassignable via
+"This is me" in the edit form, single-self invariant), BFS shortest-path
+"How you connect" chains on every dossier (`lib/graphQueries.ts`),
+mutual-connection lists against yourself or anyone, and path
+highlighting on the graph canvas via `?path=`.
+
+Still to build: disguise selection, notifications, Argon2id, inbox
+triage affordance, chip-style tag input, decoy vault UI (v2).
 
 ## Commands
 

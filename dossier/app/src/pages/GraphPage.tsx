@@ -9,6 +9,7 @@ import {
 } from 'd3-force'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { selectSelf, shortestPath } from '../lib/graphQueries'
 import type { Relationship } from '../lib/models'
 import { getPhotoUrl } from '../lib/photoCache'
 import type { UnlockedVault } from '../lib/vault'
@@ -32,6 +33,8 @@ interface GraphLink extends SimulationLinkDatum<GraphNode> {
   color: string
   dashed: boolean
   directed: boolean
+  /** Part of the highlighted "how you connect" path (§4.4). */
+  highlighted: boolean
 }
 
 type Tap = { kind: 'node'; id: string } | { kind: 'edge'; id: string } | null
@@ -63,6 +66,7 @@ export default function GraphPage() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const focusId = params.get('focus')
+  const pathTargetId = params.get('path')
   const [peek, setPeek] = useState<Tap>(null)
 
   const types = useMemo(
@@ -71,6 +75,19 @@ export default function GraphPage() {
   )
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set())
   const [showMentions, setShowMentions] = useState(true)
+
+  // "Show on graph" from a dossier's how-you-connect section (§4.4).
+  const pathInfo = useMemo(() => {
+    if (!pathTargetId) return null
+    const self = selectSelf(records)
+    if (!self) return null
+    const steps = shortestPath(records, self.id, pathTargetId)
+    if (!steps) return null
+    return {
+      edgeIds: new Set(steps.filter((s) => s.via).map((s) => s.via!.id)),
+      names: steps.map((s) => (s.person.isSelf ? 'You' : s.person.displayName)),
+    }
+  }, [records, pathTargetId])
 
   const { nodes, links } = useMemo(() => {
     const typeById = new Map(types.map((t) => [t.id, t]))
@@ -114,9 +131,10 @@ export default function GraphPage() {
         color: typeById.get(e.typeId)?.color ?? '#55555e',
         dashed: e.origin === 'mention',
         directed: (typeById.get(e.typeId)?.directed ?? false) && e.origin === 'explicit',
+        highlighted: pathInfo?.edgeIds.has(e.id) ?? false,
       }))
     return { nodes, links }
-  }, [records, types, hiddenTypes, showMentions, focusId])
+  }, [records, types, hiddenTypes, showMentions, focusId, pathInfo])
 
   const focusName = useMemo(() => {
     if (!focusId) return undefined
@@ -138,6 +156,17 @@ export default function GraphPage() {
               ×
             </button>
           </span>
+        )}
+        {pathInfo && (
+          <span className="chip focus-chip">
+            {pathInfo.names.join(' → ')}
+            <button className="subtle" onClick={() => setParams({})} aria-label="Clear path">
+              ×
+            </button>
+          </span>
+        )}
+        {pathTargetId && !pathInfo && (
+          <span className="chip focus-chip">no known path</span>
         )}
         {types
           .filter((t) => t.label !== 'mentioned')
@@ -409,7 +438,6 @@ function useCanvasGraph(
 
       const dash: [number, number] = [4 / k, 4 / k]
       const solid: never[] = []
-      ctx.lineWidth = 1.5 / k
       for (const link of simLinks) {
         const s = link.source as GraphNode
         const t = link.target as GraphNode
@@ -417,7 +445,8 @@ function useCanvasGraph(
         if (!inView(s.x, s.y!) && !inView(t.x, t.y!)) continue
         ctx.beginPath()
         ctx.strokeStyle = link.color
-        ctx.globalAlpha = link.dashed ? 0.5 : 0.8
+        ctx.globalAlpha = link.highlighted ? 1 : link.dashed ? 0.5 : 0.8
+        ctx.lineWidth = (link.highlighted ? 3.5 : 1.5) / k
         ctx.setLineDash(link.dashed ? dash : solid)
         ctx.moveTo(s.x, s.y!)
         ctx.lineTo(t.x!, t.y!)
@@ -440,6 +469,7 @@ function useCanvasGraph(
 
       ctx.globalAlpha = 1
       ctx.setLineDash(solid)
+      ctx.lineWidth = 1.5 / k
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       // Pass 1: circles with avatar or initials, one font for all nodes.

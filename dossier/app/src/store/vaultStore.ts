@@ -359,11 +359,27 @@ export const useVaultStore = create<VaultState>((set, get) => {
       const startEpoch = get().epoch
       const vault = await createVault(passphrase)
       const records = new Map<string, DomainRecord>()
-      const seed = missingBuiltInTypes(records)
+      const seed: DomainRecord[] = missingBuiltInTypes(records)
+      // The "me" node (§4.4, §11 Q2): graph queries like "how do I know
+      // X" need an anchor, so every vault starts with one.
+      const me: Person = {
+        kind: 'person',
+        id: crypto.randomUUID(),
+        displayName: 'Me',
+        nicknames: [],
+        likes: [],
+        dislikes: [],
+        tags: [],
+        isSelf: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      seed.push(me)
       await saveRecords(vault, seed)
       for (const t of seed) records.set(t.id, t)
       if (get().epoch !== startEpoch) return
       searchIndex = createIndex()
+      rebuildIndex(searchIndex, records)
       set({ status: 'unlocked', vault, records, corrupted: 0 })
     },
 
@@ -529,7 +545,16 @@ export const useVaultStore = create<VaultState>((set, get) => {
 
     updatePerson: (person) =>
       enqueue(async () => {
-      await apply([{ ...person, updatedAt: Date.now() }], [], [person.id])
+      const puts: DomainRecord[] = [{ ...person, updatedAt: Date.now() }]
+      // At most one self: claiming "this is me" demotes the previous one.
+      if (person.isSelf) {
+        for (const r of get().records.values()) {
+          if (r.kind === 'person' && r.isSelf && r.id !== person.id) {
+            puts.push({ ...r, isSelf: undefined })
+          }
+        }
+      }
+      await apply(puts, [], puts.map((p) => p.id))
     }),
 
     removePerson: (personId) =>

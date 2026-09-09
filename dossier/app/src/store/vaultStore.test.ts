@@ -26,6 +26,21 @@ describe('vault store', () => {
     await store().create('open sesame')
   })
 
+  it('seeds a self person on create and keeps at most one self', async () => {
+    const { selectSelf } = await import('../lib/graphQueries')
+    const me = selectSelf(store().records)
+    expect(me).toMatchObject({ displayName: 'Me', isSelf: true })
+
+    const ada = await store().addPerson('Ada')
+    await store().updatePerson({ ...ada, isSelf: true })
+    const self = selectSelf(store().records)
+    expect(self?.id).toBe(ada.id)
+    const selves = [...store().records.values()].filter(
+      (r) => r.kind === 'person' && r.isSelf,
+    )
+    expect(selves).toHaveLength(1)
+  })
+
   it('seeds built-in relationship types on create', () => {
     const types = selectRelationshipTypes(store().records)
     expect(types.some((t) => t.label === 'mentioned' && t.builtIn)).toBe(true)
@@ -151,7 +166,9 @@ describe('vault store', () => {
       { kind: 'note', id: crypto.randomUUID() }, // no personId/body
     ]
     await store().importRecords(hostile)
-    const people = [...store().records.values()].filter((r) => r.kind === 'person')
+    const people = [...store().records.values()].filter(
+      (r) => r.kind === 'person' && !r.isSelf,
+    )
     expect(people).toHaveLength(1)
     expect(people[0]).toMatchObject({ displayName: 'No Arrays', nicknames: [], tags: [] })
 

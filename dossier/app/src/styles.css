@@ -684,3 +684,30 @@ a.mention {
   top: calc(0.75rem + env(safe-area-inset-top));
   right: 0.75rem;
 }
+
+/* Self badge & connection paths */
+.you-badge {
+  font-size: 0.7rem;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  vertical-align: middle;
+  margin-left: 0.35rem;
+}
+
+.path {
+  line-height: 1.9;
+}
+
+.path a {
+  color: var(--text);
+}
+
+.path-graph-link {
+  display: inline-block;
+  margin-left: 0.75rem;
+  color: var(--accent) !important;
+  font-size: 0.875rem;
+  text-decoration: none;
+}

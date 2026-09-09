@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
+import { mutualConnections, selectSelf, shortestPath } from '../lib/graphQueries'
 import { GALLERY_MAX_DIM, downscaleImage } from '../lib/image'
 import { getPhotoUrl, peekPhotoUrl } from '../lib/photoCache'
 import type { Photo } from '../lib/models'
@@ -51,10 +52,14 @@ export default function PersonPage() {
           ←
         </button>
         <Avatar person={person} size={44} />
-        <h1>{person.displayName}</h1>
+        <h1>
+          {person.displayName}
+          {person.isSelf && <span className="you-badge"> you</span>}
+        </h1>
         <Link to={`/graph?focus=${person.id}`}>Their world →</Link>
       </header>
       <Facts person={person} />
+      <ConnectionSection person={person} />
       <RelationshipSection person={person} />
       <FollowUpSection personId={person.id} />
       <PhotoSection personId={person.id} />
@@ -128,6 +133,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     tags: csv(person.tags),
   }
   const [form, setForm] = useState(initial)
+  const [isSelf, setIsSelf] = useState(Boolean(person.isSelf))
   const [dateError, setDateError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const dirty = JSON.stringify(form) !== JSON.stringify(initial)
@@ -179,6 +185,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         likes: uncsv(form.likes),
         dislikes: uncsv(form.dislikes),
         tags: uncsv(form.tags),
+        isSelf: isSelf || undefined,
       })
       done()
     } finally {
@@ -211,6 +218,10 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
       {field('likes', 'Likes', 'comma-separated', { autoCapitalize: 'none' })}
       {field('dislikes', 'Dislikes', 'comma-separated', { autoCapitalize: 'none' })}
       {field('tags', 'Tags', 'comma-separated', { autoCapitalize: 'none' })}
+      <label className="inline-check">
+        <input type="checkbox" checked={isSelf} onChange={(e) => setIsSelf(e.target.checked)} />
+        This is me (anchors "how you connect" queries)
+      </label>
       <div className="row">
         <button type="submit" disabled={busy}>
           {busy ? '…' : 'Save'}
@@ -220,6 +231,124 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         </button>
       </div>
     </form>
+  )
+}
+
+/**
+ * Graph queries surfaced in prose (§4.4): "how do I know X" as the
+ * shortest path from the self person, plus mutual connections against
+ * the self person or anyone else.
+ */
+function ConnectionSection({ person }: { person: Person }) {
+  const records = useVaultStore((s) => s.records)
+  const self = useMemo(() => selectSelf(records), [records])
+  const typeById = useMemo(
+    () => new Map(selectRelationshipTypes(records).map((t) => [t.id, t])),
+    [records],
+  )
+  const [compareId, setCompareId] = useState<string>('')
+  const people = useMemo(
+    () =>
+      selectPeople(records)
+        .filter((p) => p.id !== person.id)
+        .sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    [records, person.id],
+  )
+
+  const selfId = self?.id ?? ''
+  const otherId = compareId || selfId
+  const path = useMemoPath(records, selfId, person.id)
+  const mutuals = useMemoMutuals(records, otherId, person.id)
+  if (!self || person.id === self.id) return null
+  const otherName =
+    otherId === self.id ? 'you' : (records.get(otherId) as Person | undefined)?.displayName
+
+  return (
+    <section>
+      <h2>How you connect</h2>
+      {path ? (
+        <p className="path">
+          {path.map((step, i) => (
+            <span key={step.person.id}>
+              {i > 0 && (
+                <span className="edge-type" style={{ color: typeById.get(step.via!.typeId)?.color }}>
+                  {' '}
+                  —{typeById.get(step.via!.typeId)?.label ?? 'linked'}→{' '}
+                </span>
+              )}
+              {step.person.id === person.id || step.person.isSelf ? (
+                <strong>{step.person.isSelf ? 'You' : step.person.displayName}</strong>
+              ) : (
+                <Link to={`/person/${step.person.id}`}>{step.person.displayName}</Link>
+              )}
+            </span>
+          ))}
+          <Link className="path-graph-link" to={`/graph?path=${person.id}`}>
+            show on graph →
+          </Link>
+        </p>
+      ) : (
+        <p className="hint">No known chain connects you yet.</p>
+      )}
+      <div className="row wrap">
+        <label className="inline-check">
+          Mutual connections with
+          <select
+            value={compareId}
+            onChange={(e) => setCompareId(e.target.value)}
+            aria-label="Compare mutual connections with"
+          >
+            <option value="">you</option>
+            {people
+              .filter((p) => !p.isSelf)
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.displayName}
+                </option>
+              ))}
+          </select>
+        </label>
+      </div>
+      {mutuals.length === 0 ? (
+        <p className="hint">
+          No mutual connections between {person.displayName} and {otherName}.
+        </p>
+      ) : (
+        <ul className="edges">
+          {mutuals.map((m) => (
+            <li key={m.person.id}>
+              <Link to={`/person/${m.person.id}`}>{m.person.displayName}</Link>
+              <span className="hint">
+                {typeById.get(m.edgeToB.typeId)?.label ?? 'linked'} of {person.displayName} ·{' '}
+                {typeById.get(m.edgeToA.typeId)?.label ?? 'linked'} of {otherName}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function useMemoPath(
+  records: ReturnType<typeof useVaultStore.getState>['records'],
+  fromId: string,
+  toId: string,
+) {
+  return useMemo(
+    () => (fromId ? shortestPath(records, fromId, toId) : null),
+    [records, fromId, toId],
+  )
+}
+
+function useMemoMutuals(
+  records: ReturnType<typeof useVaultStore.getState>['records'],
+  aId: string,
+  bId: string,
+) {
+  return useMemo(
+    () => (aId ? mutualConnections(records, aId, bId) : []),
+    [records, aId, bId],
   )
 }
 
