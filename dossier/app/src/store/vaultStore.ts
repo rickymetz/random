@@ -24,7 +24,15 @@ import {
   type Settings,
 } from '../lib/models'
 import { wipe } from '../lib/crypto'
-import { armPin, disarmPin, pinArmed, pinAttemptsLeft, tryPinUnlock } from '../lib/pin'
+import {
+  armPin,
+  disarmPin,
+  pinArmed,
+  pinAttemptsLeft,
+  pinLength,
+  takeFailedAttemptsReport,
+  tryPinUnlock,
+} from '../lib/pin'
 import { createIndex, rebuildIndex, reindexPerson, searchPeople } from '../lib/search'
 import { sanitizeRecords } from '../lib/validate'
 import {
@@ -42,6 +50,8 @@ import {
   biometricEnrollments,
   biometricUnlock,
   enrollBiometric as webAuthnEnroll,
+  isUserCancel,
+  removeBiometricEnrollment,
   removeBiometricEnrollments,
 } from '../lib/webauthn'
 
@@ -62,23 +72,39 @@ interface VaultState {
   /** Quick re-unlock PIN armed for this browser session (§6.3). */
   pinArmed: boolean
   pinAttemptsLeft: number
+  /** Armed PIN's digit count (memory only), for unlock auto-submit. */
+  pinDigits: number
+  /** The PIN was disarmed by too many wrong tries (shown at unlock). */
+  pinLockedOut: boolean
+  /** Failed PIN guesses since the previous successful unlock (tamper signal). */
+  pinFailureNotice: number
   /** At least one biometric (WebAuthn PRF) enrollment exists. */
   biometricEnrolled: boolean
 
   init: () => Promise<void>
   create: (passphrase: string) => Promise<void>
   unlock: (passphrase: string) => Promise<boolean>
-  unlockWithPin: (pin: string) => Promise<boolean>
+  unlockWithPin: (pin: string) => Promise<'ok' | 'wrong' | 'stale'>
   unlockWithBiometric: () => Promise<boolean>
+  /** Timer-driven lock: drops all decrypted state; the session PIN stays. */
   lock: () => void
+  /** Panic lock (§6.4): everything lock() drops PLUS the PIN session. */
+  panicLock: () => void
   /** Drop the session PIN so only passphrase/biometric unlock remain. */
   forgetPin: () => void
+  clearPinFailureNotice: () => void
   setPin: (pin: string, passphrase: string) => Promise<boolean>
-  enrollBiometric: (passphrase: string) => Promise<'ok' | 'unsupported' | 'wrong-passphrase'>
+  enrollBiometric: (
+    passphrase: string,
+  ) => Promise<'ok' | 'unsupported' | 'wrong-passphrase' | 'cancelled'>
   removeBiometric: () => Promise<void>
   updateSecurity: (
     patch: Partial<Pick<Settings, 'autoLockMinutes' | 'backgroundGraceSeconds'>>,
   ) => Promise<void>
+  /** Capture-draft registry: auto-locks flush drafts into notes first. */
+  registerDraft: (personId: string, read: () => string) => void
+  unregisterDraft: (personId: string) => void
+  flushDrafts: () => Promise<void>
   setHomeQuery: (query: string) => void
 
   addPerson: (displayName: string) => Promise<Person>
@@ -221,8 +247,13 @@ export const useVaultStore = create<VaultState>((set, get) => {
     for (const id of reindexIds) reindexPerson(searchIndex, next, id)
   }
 
-  /** Load + sanitize records and enter the unlocked state. */
-  async function finishUnlock(vault: UnlockedVault): Promise<void> {
+  /**
+   * Load + sanitize records and enter the unlocked state. Epoch-guarded
+   * like every other plaintext repopulation: a lock that lands mid-load
+   * wins, and the loaded records are discarded.
+   */
+  async function finishUnlock(vault: UnlockedVault): Promise<boolean> {
+    const startEpoch = get().epoch
     const { records: loaded, corrupted } = await loadAllRecords(vault)
     // Defense in depth: stored records went through sanitize on the way
     // in, but a bad row must not brick unlock (§5 T2 aftermath).
@@ -233,6 +264,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       await saveRecords(vault, seed)
       for (const t of seed) records.set(t.id, t)
     }
+    if (get().epoch !== startEpoch || get().status === 'unlocked') return false
     searchIndex = createIndex()
     rebuildIndex(searchIndex, records)
     set({
@@ -242,7 +274,29 @@ export const useVaultStore = create<VaultState>((set, get) => {
       corrupted,
       pinArmed: pinArmed(),
       pinAttemptsLeft: pinAttemptsLeft(),
+      pinDigits: pinLength(),
+      pinLockedOut: false,
+      // Tamper signal: failed PIN guesses while the owner was away (§6.3).
+      pinFailureNotice: takeFailedAttemptsReport(),
     })
+    return true
+  }
+
+  // Capture drafts to flush into notes before a timer-driven lock (§6.3).
+  const draftRegistry = new Map<string, () => string>()
+
+  function baseLock(): void {
+    searchIndex = createIndex()
+    set((state) => ({
+      status: state.status === 'no-vault' ? 'no-vault' : 'locked',
+      vault: null,
+      records: new Map(),
+      epoch: state.epoch + 1,
+      homeQuery: '',
+      pinArmed: pinArmed(),
+      pinAttemptsLeft: pinAttemptsLeft(),
+      pinDigits: pinLength(),
+    }))
   }
 
   return {
@@ -254,6 +308,9 @@ export const useVaultStore = create<VaultState>((set, get) => {
     homeQuery: '',
     pinArmed: false,
     pinAttemptsLeft: 0,
+    pinDigits: 0,
+    pinLockedOut: false,
+    pinFailureNotice: 0,
     biometricEnrolled: false,
 
     init: async () => {
@@ -263,85 +320,122 @@ export const useVaultStore = create<VaultState>((set, get) => {
         biometricEnrolled: enrollments.length > 0,
         pinArmed: pinArmed(),
         pinAttemptsLeft: pinAttemptsLeft(),
+        pinDigits: pinLength(),
       })
     },
 
     create: async (passphrase) => {
+      const startEpoch = get().epoch
       const vault = await createVault(passphrase)
       const records = new Map<string, DomainRecord>()
       const seed = missingBuiltInTypes(records)
       await saveRecords(vault, seed)
       for (const t of seed) records.set(t.id, t)
+      if (get().epoch !== startEpoch) return
       searchIndex = createIndex()
       set({ status: 'unlocked', vault, records, corrupted: 0 })
     },
 
     unlock: async (passphrase) => {
+      if (get().status === 'unlocked') return true
       const vault = await unlockVault(passphrase)
       if (!vault) return false
-      await finishUnlock(vault)
-      return true
+      return finishUnlock(vault)
     },
 
     unlockWithPin: async (pin) => {
+      if (get().status === 'unlocked') return 'ok'
       const result = await tryPinUnlock(pin)
       if (!result.ok) {
-        set({ pinArmed: pinArmed(), pinAttemptsLeft: result.attemptsLeft })
-        return false
+        set({
+          pinArmed: pinArmed(),
+          pinAttemptsLeft: result.attemptsLeft,
+          pinLockedOut: !pinArmed(),
+        })
+        return 'wrong'
       }
       const vault = await unlockWithRawDek(result.rawDek)
-      if (!vault) return false
-      await finishUnlock(vault)
-      return true
+      if (!vault) {
+        // The PIN was RIGHT but its DEK opens no slot (vault replaced by a
+        // restore, corrupted slots). Don't call it wrong, don't loop —
+        // drop the stale session so the passphrase path takes over.
+        disarmPin()
+        set({ pinArmed: false, pinAttemptsLeft: 0, pinDigits: 0 })
+        return 'stale'
+      }
+      return (await finishUnlock(vault)) ? 'ok' : 'stale'
     },
 
     unlockWithBiometric: async () => {
+      if (get().status === 'unlocked') return true
       const rawDek = await biometricUnlock()
       if (!rawDek) return false
       const vault = await unlockWithRawDek(rawDek)
       if (!vault) return false
-      await finishUnlock(vault)
-      return true
+      return finishUnlock(vault)
     },
 
     lock: () => {
-      searchIndex = createIndex()
-      // The session PIN stays armed — quick re-unlock is its purpose; the
-      // 5-attempt limit and tab lifetime bound the exposure (§6.3).
-      set((state) => ({
-        status: state.status === 'no-vault' ? 'no-vault' : 'locked',
-        vault: null,
-        records: new Map(),
-        epoch: state.epoch + 1,
-        homeQuery: '',
-        pinArmed: pinArmed(),
-        pinAttemptsLeft: pinAttemptsLeft(),
-      }))
+      // Timer-driven lock: the session PIN stays armed — quick re-unlock
+      // is its purpose; the attempt limit and tab lifetime bound the
+      // exposure (§6.3).
+      baseLock()
+    },
+
+    panicLock: () => {
+      // Panic (§6.4): nothing PIN-openable may remain in memory.
+      disarmPin()
+      baseLock()
     },
 
     forgetPin: () => {
       disarmPin()
-      set({ pinArmed: false, pinAttemptsLeft: 0 })
+      set({ pinArmed: false, pinAttemptsLeft: 0, pinDigits: 0 })
     },
 
+    clearPinFailureNotice: () => set({ pinFailureNotice: 0 }),
+
     setPin: async (pin, passphrase) => {
+      const vault = get().vault
+      if (!vault) return false
+      const startEpoch = get().epoch
       const unwrapped = await unwrapRawDek(passphrase)
       if (!unwrapped) return false
-      await armPin(pin, unwrapped.rawDek)
-      wipe(unwrapped.rawDek)
-      set({ pinArmed: true, pinAttemptsLeft: pinAttemptsLeft() })
-      return true
+      try {
+        // Bind to the OPEN vault only: accepting another slot's passphrase
+        // would silently arm quick-unlock for a different vault (§6.6).
+        if (unwrapped.slotId !== vault.slotId) return false
+        if (get().epoch !== startEpoch) return false
+        await armPin(pin, unwrapped.rawDek)
+        set({ pinArmed: true, pinAttemptsLeft: pinAttemptsLeft(), pinDigits: pinLength(), pinLockedOut: false })
+        return true
+      } finally {
+        wipe(unwrapped.rawDek)
+      }
     },
 
     enrollBiometric: async (passphrase) => {
+      const vault = get().vault
+      if (!vault) return 'wrong-passphrase'
+      const startEpoch = get().epoch
       const unwrapped = await unwrapRawDek(passphrase)
       if (!unwrapped) return 'wrong-passphrase'
       try {
-        const ok = await webAuthnEnroll(unwrapped.rawDek)
-        if (ok) set({ biometricEnrolled: true })
-        return ok ? 'ok' : 'unsupported'
-      } catch {
-        return 'unsupported'
+        // Same slot-binding rule as setPin (§6.6).
+        if (unwrapped.slotId !== vault.slotId) return 'wrong-passphrase'
+        const result = await webAuthnEnroll(unwrapped.rawDek)
+        if (result.status !== 'ok') return 'unsupported'
+        if (get().epoch !== startEpoch) {
+          // A panic lock happened while the platform sheet was up: a
+          // persistent unlock credential created after a panic must not
+          // survive it.
+          await removeBiometricEnrollment(result.credentialId)
+          return 'cancelled'
+        }
+        set({ biometricEnrolled: true })
+        return 'ok'
+      } catch (error) {
+        return isUserCancel(error) ? 'cancelled' : 'unsupported'
       } finally {
         wipe(unwrapped.rawDek)
       }
@@ -350,6 +444,25 @@ export const useVaultStore = create<VaultState>((set, get) => {
     removeBiometric: async () => {
       await removeBiometricEnrollments()
       set({ biometricEnrolled: false })
+    },
+
+    registerDraft: (personId, read) => {
+      draftRegistry.set(personId, read)
+    },
+
+    unregisterDraft: (personId) => {
+      draftRegistry.delete(personId)
+    },
+
+    flushDrafts: async () => {
+      const drafts = [...draftRegistry.entries()]
+      for (const [personId, read] of drafts) {
+        const body = read().trim()
+        if (body && get().records.has(personId)) {
+          await get().saveNote(personId, body)
+        }
+        draftRegistry.delete(personId)
+      }
     },
 
     updateSecurity: (patch) =>

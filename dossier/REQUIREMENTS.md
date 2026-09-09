@@ -233,6 +233,10 @@ WebAuthn PRF ──────▶ KEK'──unwraps──▶ DEK   (same DEK, s
 - Locking zeroizes the DEK reference and discards the in-memory store
   immediately; the UI drops to the unlock screen with no content flash
   (skeleton only).
+- The panic lock also discards the session PIN wrap (§6.3) — nothing
+  PIN-openable may remain in memory after a panic. Timer-driven
+  auto-locks keep the PIN armed (quick re-entry is their point) and
+  flush any in-progress capture draft into an encrypted note first.
 
 ### 6.5 Discretion / disguise
 

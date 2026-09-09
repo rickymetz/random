@@ -549,3 +549,36 @@ a.mention {
   color: var(--text);
   margin: 1rem 0 0.25rem;
 }
+
+/* Masked numeric PIN entry: type=text keeps the iOS numeric keypad,
+   -webkit-text-security provides the masking. */
+.pin-input {
+  -webkit-text-security: disc;
+  letter-spacing: 0.2em;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  flex: 1;
+  min-width: 8rem;
+}
+
+.field input {
+  width: 100%;
+}
+
+.lock-warning {
+  margin: 0.5rem 1rem 0;
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* Section headings outrank their subsections. */
+.settings h2 {
+  font-size: 1.1rem;
+  color: var(--text);
+}

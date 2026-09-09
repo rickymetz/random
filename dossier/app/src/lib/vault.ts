@@ -135,7 +135,8 @@ export async function unwrapRawDek(
         { iv: slot.wrappedDekIv, ciphertext: slot.wrappedDek },
         kek,
       )
-      result ??= { rawDek, slotId: slot.id }
+      if (result === null) result = { rawDek, slotId: slot.id }
+      else wipe(rawDek)
     } catch {
       // Not this slot.
     }

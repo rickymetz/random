@@ -35,8 +35,8 @@ export interface EncryptedRecordRow {
  * A biometric (WebAuthn PRF) enrollment: the DEK wrapped under a key
  * derived from the credential's PRF output. Carries NO reference to a
  * vault slot — unlock resolves the vault by trying the sealed prefixes,
- * same as passphrase unlock. (That an enrollment exists at all is
- * observable; which slot it opens is not.)
+ * same as passphrase unlock — and NO timestamps (§5 residual-metadata
+ * rule). That enrollments exist, and how many, is observable.
  */
 export interface AuthRow {
   /** Credential id, hex — doubles as the row key. */
@@ -45,7 +45,8 @@ export interface AuthRow {
   hkdfSalt: Uint8Array
   wrappedDekIv: Uint8Array
   wrappedDek: Uint8Array
-  createdAt: number
+  /** WebAuthn transport hints for cleaner unlock prompts. */
+  transports?: string[]
 }
 
 class DossierDb extends Dexie {

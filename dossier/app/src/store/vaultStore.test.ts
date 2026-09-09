@@ -165,23 +165,57 @@ describe('vault store', () => {
     // Correct passphrase arms it.
     expect(await store().setPin('1234', 'open sesame')).toBe(true)
     expect(store().pinArmed).toBe(true)
+    expect(store().pinDigits).toBe(4)
 
     store().lock()
     expect(store().pinArmed).toBe(true)
-    expect(await store().unlockWithPin('9999')).toBe(false)
+    expect(await store().unlockWithPin('9999')).toBe('wrong')
     expect(store().pinAttemptsLeft).toBe(4)
-    expect(await store().unlockWithPin('1234')).toBe(true)
+    expect(await store().unlockWithPin('1234')).toBe('ok')
     expect(store().records.get(ada.id)).toBeDefined()
+    // The owner is told about the failed guess made while they were away.
+    expect(store().pinFailureNotice).toBe(1)
+    store().clearPinFailureNotice()
 
-    // Exhausting attempts disarms the PIN entirely.
+    // Exhausting attempts disarms the PIN entirely and flags the lock-out.
     store().lock()
     for (let i = 0; i < 5; i++) {
-      expect(await store().unlockWithPin('0000')).toBe(false)
+      expect(await store().unlockWithPin('0000')).toBe('wrong')
     }
     expect(store().pinArmed).toBe(false)
-    expect(await store().unlockWithPin('1234')).toBe(false)
+    expect(store().pinLockedOut).toBe(true)
+    expect(await store().unlockWithPin('1234')).toBe('wrong')
     expect(await store().unlock('open sesame')).toBe(true)
+    expect(store().pinLockedOut).toBe(false)
     store().forgetPin()
+  })
+
+  it('panic lock disarms the PIN; timer lock keeps it', async () => {
+    await store().addPerson('Ada')
+    expect(await store().setPin('1234', 'open sesame')).toBe(true)
+
+    store().lock() // timer-driven
+    expect(store().pinArmed).toBe(true)
+    expect(await store().unlockWithPin('1234')).toBe('ok')
+
+    store().panicLock()
+    expect(store().pinArmed).toBe(false)
+    expect(await store().unlockWithPin('1234')).toBe('wrong')
+    expect(await store().unlock('open sesame')).toBe(true)
+  })
+
+  it('flushDrafts saves registered capture drafts as notes', async () => {
+    const ada = await store().addPerson('Ada')
+    let draft = 'half-typed fact about the sailboat'
+    store().registerDraft(ada.id, () => draft)
+    await store().flushDrafts()
+    const notes = selectNotes(store().records, ada.id)
+    expect(notes).toHaveLength(1)
+    expect(notes[0].body).toBe('half-typed fact about the sailboat')
+    // Registry is drained: flushing again adds nothing.
+    draft = 'other'
+    await store().flushDrafts()
+    expect(selectNotes(store().records, ada.id)).toHaveLength(1)
   })
 
   it('security settings persist through the encrypted settings record', async () => {

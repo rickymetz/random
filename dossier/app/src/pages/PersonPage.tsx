@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatPartialDate, parsePartialDate, timeAgo } from '../lib/dates'
@@ -219,9 +219,20 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
 function CaptureBar({ person }: { person: Person }) {
   const records = useVaultStore((s) => s.records)
   const saveNote = useVaultStore((s) => s.saveNote)
+  const registerDraft = useVaultStore((s) => s.registerDraft)
+  const unregisterDraft = useVaultStore((s) => s.unregisterDraft)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
+  const draftRef = useRef('')
+  draftRef.current = draft
+
+  // Timer-driven locks flush this draft into an encrypted note instead of
+  // eating it (the fix for auto-lock destroying in-progress captures).
+  useEffect(() => {
+    registerDraft(person.id, () => draftRef.current)
+    return () => unregisterDraft(person.id)
+  }, [person.id, registerDraft, unregisterDraft])
   const others = useMemo(
     () => selectPeople(records).filter((p) => p.id !== person.id),
     [records, person.id],

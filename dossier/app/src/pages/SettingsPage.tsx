@@ -5,6 +5,7 @@ import {
   DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_BACKGROUND_GRACE_SECONDS,
 } from '../lib/models'
+import { MAX_PIN_ATTEMPTS } from '../lib/pin'
 import { getStorageStatus } from '../lib/platform'
 import { unlockVault } from '../lib/vault'
 import { webAuthnAvailable } from '../lib/webauthn'
@@ -54,47 +55,66 @@ function SecuritySection() {
   const settings = selectSettings(records)
 
   const [pin, setPinValue] = useState('')
+  const [pinConfirm, setPinConfirm] = useState('')
   const [pinPass, setPinPass] = useState('')
   const [pinMsg, setPinMsg] = useState<string | null>(null)
+  const [pinBusy, setPinBusy] = useState(false)
   const [bioPass, setBioPass] = useState('')
   const [bioMsg, setBioMsg] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [bioBusy, setBioBusy] = useState(false)
+  const [lockMsg, setLockMsg] = useState<string | null>(null)
 
   const armPin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (busy) return
+    if (pinBusy) return
     setPinMsg(null)
     if (!/^\d{4,8}$/.test(pin)) {
       setPinMsg('PIN must be 4–8 digits.')
       return
     }
-    setBusy(true)
+    if (pin !== pinConfirm) {
+      setPinMsg('PINs do not match.')
+      return
+    }
+    setPinBusy(true)
     try {
-      setPinMsg(
-        (await setPin(pin, pinPass))
-          ? null
-          : 'Wrong passphrase.',
-      )
+      setPinMsg((await setPin(pin, pinPass)) ? null : 'Wrong passphrase.')
     } finally {
-      setBusy(false)
+      setPinBusy(false)
       setPinValue('')
+      setPinConfirm('')
       setPinPass('')
     }
   }
 
   const enroll = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (busy) return
+    if (bioBusy) return
     setBioMsg(null)
-    setBusy(true)
+    setBioBusy(true)
     try {
       const result = await enrollBiometric(bioPass)
       if (result === 'wrong-passphrase') setBioMsg('Wrong passphrase.')
+      else if (result === 'cancelled') setBioMsg(null)
       else if (result === 'unsupported')
-        setBioMsg('This device/browser does not support biometric (PRF) unlock.')
+        setBioMsg(
+          'This device/browser does not support biometric (PRF) unlock. If a "Ledger" passkey was created anyway, remove it in your system password settings.',
+        )
     } finally {
-      setBusy(false)
+      setBioBusy(false)
       setBioPass('')
+    }
+  }
+
+  const changeSecurity = async (
+    patch: Parameters<typeof updateSecurity>[0],
+  ): Promise<void> => {
+    setLockMsg(null)
+    try {
+      await updateSecurity(patch)
+      setLockMsg('Saved.')
+    } catch {
+      setLockMsg('Could not save — check storage and try again.')
     }
   }
 
@@ -105,36 +125,67 @@ function SecuritySection() {
       <h3>Quick unlock PIN</h3>
       {pinArmed ? (
         <div className="row">
-          <p className="hint">
-            PIN armed for this session — it is never stored, and 5 wrong tries fall back
-            to the passphrase.
+          <p className="hint" role="status">
+            PIN armed. It lives only in this app session — never on disk — and is gone
+            after the app fully closes or {MAX_PIN_ATTEMPTS} wrong tries; the passphrase
+            always works. The Lock button also discards it (panic); timed auto-locks
+            keep it.
           </p>
           <button className="subtle" onClick={forgetPin}>
             Disable
           </button>
         </div>
       ) : (
-        <form className="row wrap" onSubmit={armPin}>
-          <input
-            type="password"
-            inputMode="numeric"
-            value={pin}
-            onChange={(e) => setPinValue(e.target.value)}
-            placeholder="PIN (4–8 digits)"
-            aria-label="New PIN"
-            autoComplete="off"
-          />
-          <input
-            type="password"
-            value={pinPass}
-            onChange={(e) => setPinPass(e.target.value)}
-            placeholder="Passphrase"
-            aria-label="Passphrase to authorize PIN"
-            autoComplete="off"
-          />
-          <button type="submit" disabled={busy || !pin || !pinPass}>
-            Arm
-          </button>
+        <form className="pin-form" onSubmit={armPin}>
+          <div className="row wrap">
+            <label className="field">
+              <span>New PIN</span>
+              <input
+                type="text"
+                className="pin-input"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={8}
+                value={pin}
+                onChange={(e) => setPinValue(e.target.value.replace(/\D/g, ''))}
+                placeholder="4–8 digits"
+                aria-label="New PIN"
+                autoComplete="off"
+              />
+            </label>
+            <label className="field">
+              <span>Repeat PIN</span>
+              <input
+                type="text"
+                className="pin-input"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={8}
+                value={pinConfirm}
+                onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))}
+                placeholder="again"
+                aria-label="Repeat new PIN"
+                autoComplete="off"
+              />
+            </label>
+            <label className="field">
+              <span>Vault passphrase</span>
+              <input
+                type="password"
+                value={pinPass}
+                onChange={(e) => setPinPass(e.target.value)}
+                placeholder="authorizes the PIN"
+                aria-label="Vault passphrase to authorize the PIN"
+                autoComplete="off"
+              />
+            </label>
+            <button type="submit" disabled={pinBusy || !pin || !pinConfirm || !pinPass}>
+              {pinBusy ? '…' : 'Arm'}
+            </button>
+          </div>
+          <p className="hint">
+            Lasts until the app fully closes; re-arm here after a restart.
+          </p>
         </form>
       )}
       {pinMsg && (
@@ -148,23 +199,29 @@ function SecuritySection() {
         <p className="hint">Not available in this browser.</p>
       ) : biometricEnrolled ? (
         <div className="row">
-          <p className="hint">Enrolled — Face ID / fingerprint opens the vault.</p>
-          <button className="subtle" onClick={() => void removeBiometric()}>
+          <p className="hint" role="status">
+            Enrolled — Face ID / fingerprint opens the vault. Removing here deletes the
+            app's copy; the passkey itself lives in your system password settings.
+          </p>
+          <button className="subtle" onClick={() => void removeBiometric().catch(() => {})}>
             Remove
           </button>
         </div>
       ) : (
         <form className="row wrap" onSubmit={enroll}>
-          <input
-            type="password"
-            value={bioPass}
-            onChange={(e) => setBioPass(e.target.value)}
-            placeholder="Passphrase"
-            aria-label="Passphrase to authorize biometrics"
-            autoComplete="off"
-          />
-          <button type="submit" disabled={busy || !bioPass}>
-            Enroll
+          <label className="field">
+            <span>Vault passphrase</span>
+            <input
+              type="password"
+              value={bioPass}
+              onChange={(e) => setBioPass(e.target.value)}
+              placeholder="authorizes enrollment"
+              aria-label="Vault passphrase to authorize biometrics"
+              autoComplete="off"
+            />
+          </label>
+          <button type="submit" disabled={bioBusy || !bioPass}>
+            {bioBusy ? '…' : 'Enroll'}
           </button>
         </form>
       )}
@@ -180,7 +237,18 @@ function SecuritySection() {
           After inactivity
           <select
             value={settings?.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES}
-            onChange={(e) => void updateSecurity({ autoLockMinutes: Number(e.target.value) })}
+            onChange={(e) => {
+              const minutes = Number(e.target.value)
+              if (
+                minutes === 0 &&
+                !confirm(
+                  'Disable the inactivity lock? A borrowed or forgotten open phone would stay unlocked indefinitely.',
+                )
+              ) {
+                return
+              }
+              void changeSecurity({ autoLockMinutes: minutes })
+            }}
             aria-label="Inactivity auto-lock"
           >
             <option value={0}>never</option>
@@ -195,7 +263,7 @@ function SecuritySection() {
           <select
             value={settings?.backgroundGraceSeconds ?? DEFAULT_BACKGROUND_GRACE_SECONDS}
             onChange={(e) =>
-              void updateSecurity({ backgroundGraceSeconds: Number(e.target.value) })
+              void changeSecurity({ backgroundGraceSeconds: Number(e.target.value) })
             }
             aria-label="Background lock grace period"
           >
@@ -204,6 +272,11 @@ function SecuritySection() {
             <option value={120}>2 min</option>
           </select>
         </label>
+        {lockMsg && (
+          <span className={`hint ${lockMsg === 'Saved.' ? '' : 'error'}`} role="status">
+            {lockMsg}
+          </span>
+        )}
       </div>
     </section>
   )

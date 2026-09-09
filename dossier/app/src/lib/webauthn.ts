@@ -5,11 +5,19 @@
  * the PRF once, and wraps the raw DEK under an HKDF of the output. Unlock
  * re-evaluates the PRF (Face ID / fingerprint happens here) and unwraps.
  * The PRF output and raw DEK exist only transiently; the stored row holds
- * only wrapped material and carries no link to a vault slot.
+ * only wrapped material and carries no link to a vault slot and no
+ * timestamps.
+ *
+ * Documented residuals: that enrollments exist (and how many) is
+ * observable in the raw database, and the passkey itself lives in the OS
+ * credential store under this origin — the OS-side entry is outside our
+ * control and survives destroyAllData(); the Settings UI says so. The
+ * rp/user name is the app's neutral disguise name (§6.5).
  *
  * Availability varies (iOS 18+/recent Chrome, platform authenticator
  * required) — every caller must feature-detect and fall back cleanly to
- * the passphrase (§7).
+ * the passphrase (§7). User cancellation throws (NotAllowedError);
+ * callers must not report it as "unsupported".
  */
 import { deriveKeyFromPrf, randomBytes, unwrapDek, wipe, wrapDek } from './crypto'
 import { db, type AuthRow } from './db'
@@ -37,16 +45,21 @@ interface PrfResults {
 function prfOutputOf(credential: PublicKeyCredential): Uint8Array | null {
   const ext = credential.getClientExtensionResults() as PrfResults
   const first = ext.prf?.results?.first
-  if (!first) return null
-  return first instanceof Uint8Array ? new Uint8Array(first) : new Uint8Array(first)
+  return first ? new Uint8Array(first as ArrayBuffer) : null
 }
+
+export type EnrollResult =
+  | { status: 'ok'; credentialId: string }
+  | { status: 'unsupported' }
 
 /**
  * Enroll: create the passkey, evaluate its PRF, wrap the raw DEK.
- * Returns false when the authenticator lacks PRF support (caller keeps
- * passphrase-only unlock). Throws on user cancel/other failures.
+ * 'unsupported' when the authenticator lacks PRF; throws on user cancel
+ * (NotAllowedError) and other failures. NOTE: when creation succeeds but
+ * PRF is unsupported, the OS-side passkey cannot be deleted from JS — an
+ * orphan remains in the system credential manager (surfaced in the UI).
  */
-export async function enrollBiometric(rawDek: Uint8Array): Promise<boolean> {
+export async function enrollBiometric(rawDek: Uint8Array): Promise<EnrollResult> {
   const prfSalt = randomBytes(32)
   const userId = randomBytes(16)
   const created = (await navigator.credentials.create({
@@ -67,9 +80,18 @@ export async function enrollBiometric(rawDek: Uint8Array): Promise<boolean> {
       timeout: 60_000,
     },
   })) as PublicKeyCredential | null
-  if (!created) return false
+  if (!created) return { status: 'unsupported' }
 
   const credId = new Uint8Array(created.rawId)
+  const creationExt = created.getClientExtensionResults() as PrfResults
+  // An explicit "PRF not enabled" means a follow-up assertion cannot help;
+  // don't burn a second Face ID prompt on a lost cause.
+  if (creationExt.prf && creationExt.prf.enabled === false) return { status: 'unsupported' }
+
+  const response = created.response as AuthenticatorAttestationResponse
+  const transports =
+    typeof response.getTransports === 'function' ? response.getTransports() : []
+
   // Some authenticators return the PRF output at creation; others need a
   // follow-up assertion.
   let prfOutput = prfOutputOf(created)
@@ -77,7 +99,13 @@ export async function enrollBiometric(rawDek: Uint8Array): Promise<boolean> {
     const asserted = (await navigator.credentials.get({
       publicKey: {
         challenge: randomBytes(32) as BufferSource,
-        allowCredentials: [{ type: 'public-key', id: credId as BufferSource }],
+        allowCredentials: [
+          {
+            type: 'public-key',
+            id: credId as BufferSource,
+            transports: transports as AuthenticatorTransport[],
+          },
+        ],
         userVerification: 'required',
         extensions: { prf: { eval: { first: prfSalt as BufferSource } } } as AuthenticationExtensionsClientInputs,
         timeout: 60_000,
@@ -85,27 +113,32 @@ export async function enrollBiometric(rawDek: Uint8Array): Promise<boolean> {
     })) as PublicKeyCredential | null
     prfOutput = asserted ? prfOutputOf(asserted) : null
   }
-  if (!prfOutput) return false
+  if (!prfOutput) return { status: 'unsupported' }
 
   const hkdfSalt = randomBytes(32)
   const kek = await deriveKeyFromPrf(prfOutput, hkdfSalt)
   wipe(prfOutput)
   const wrapped = await wrapDek(rawDek, kek)
+  const credentialId = toHex(credId)
   await db.auth.put({
-    id: toHex(credId),
+    id: credentialId,
     prfSalt,
     hkdfSalt,
     wrappedDekIv: wrapped.iv,
     wrappedDek: wrapped.ciphertext,
-    createdAt: Date.now(),
+    transports,
   })
-  return true
+  return { status: 'ok', credentialId }
+}
+
+export async function removeBiometricEnrollment(credentialId: string): Promise<void> {
+  await db.auth.delete(credentialId)
 }
 
 /**
  * Authenticate and return the raw DEK bytes (caller passes them to
  * vault.unlockWithRawDek, which wipes them). Returns null when the
- * assertion fails or yields no PRF output.
+ * assertion yields no PRF output; throws on user cancel.
  */
 export async function biometricUnlock(): Promise<Uint8Array | null> {
   const rows = await db.auth.toArray()
@@ -117,10 +150,9 @@ export async function biometricUnlock(): Promise<Uint8Array | null> {
       allowCredentials: rows.map((r) => ({
         type: 'public-key' as const,
         id: fromHex(r.id) as BufferSource,
+        transports: (r.transports ?? []) as AuthenticatorTransport[],
       })),
       userVerification: 'required',
-      // A single eval salt only works when all rows share it; evaluate
-      // per-credential via evalByCredential.
       extensions: {
         prf: {
           evalByCredential: Object.fromEntries(
@@ -149,6 +181,11 @@ export async function biometricUnlock(): Promise<Uint8Array | null> {
 
 export async function removeBiometricEnrollments(): Promise<void> {
   await db.auth.clear()
+}
+
+/** True when the thrown error is the user dismissing the platform sheet. */
+export function isUserCancel(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'NotAllowedError'
 }
 
 function bufferToBase64Url(bytes: Uint8Array): string {
