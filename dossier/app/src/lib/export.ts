@@ -18,7 +18,18 @@ import {
 import type { DomainRecord } from './models'
 
 export const EXPORT_FORMAT = 'dossier-export'
-export const EXPORT_VERSION = 1
+// v1: records only. v2: adds photo blobs.
+export const EXPORT_VERSION = 2
+
+export interface ExportBlob {
+  id: string
+  bytes: Uint8Array
+}
+
+export interface ImportedBundle {
+  records: DomainRecord[]
+  blobs: ExportBlob[]
+}
 
 interface ExportHeader {
   format: typeof EXPORT_FORMAT
@@ -42,11 +53,16 @@ function fromBase64(text: string): Uint8Array {
 export async function exportBundle(
   passphrase: string,
   records: DomainRecord[],
+  blobs: ExportBlob[] = [],
 ): Promise<string> {
   const salt = randomBytes(16)
   const iv = randomBytes(12)
   const key = await deriveExportKey(passphrase, salt)
-  const plaintext = new TextEncoder().encode(JSON.stringify({ records }))
+  const payload = {
+    records,
+    blobs: blobs.map((b) => ({ id: b.id, b64: toBase64(b.bytes) })),
+  }
+  const plaintext = new TextEncoder().encode(JSON.stringify(payload))
   const ciphertext = await globalThis.crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: iv as BufferSource },
     key,
@@ -67,7 +83,7 @@ export async function exportBundle(
 export async function importBundle(
   passphrase: string,
   fileText: string,
-): Promise<DomainRecord[] | null> {
+): Promise<ImportedBundle | null> {
   let header: ExportHeader
   try {
     header = JSON.parse(fileText) as ExportHeader
@@ -105,8 +121,19 @@ export async function importBundle(
     )
     const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as {
       records: DomainRecord[]
+      blobs?: { id: string; b64: string }[]
     }
-    return parsed.records
+    const blobs: ExportBlob[] = []
+    for (const b of parsed.blobs ?? []) {
+      if (typeof b?.id === 'string' && typeof b?.b64 === 'string') {
+        try {
+          blobs.push({ id: b.id, bytes: fromBase64(b.b64) })
+        } catch {
+          // Skip undecodable blob entries.
+        }
+      }
+    }
+    return { records: parsed.records, blobs }
   } catch {
     return null
   }

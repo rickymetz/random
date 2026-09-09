@@ -19,6 +19,7 @@ import {
   type NoteEntry,
   type PartialDate,
   type Person,
+  type Photo,
   type Relationship,
   type RelationshipType,
   type Settings,
@@ -33,12 +34,15 @@ import {
   takeFailedAttemptsReport,
   tryPinUnlock,
 } from '../lib/pin'
+import { clearPhotoCache, evictPhoto } from '../lib/photoCache'
 import { createIndex, rebuildIndex, reindexPerson, searchPeople } from '../lib/search'
 import { sanitizeRecords } from '../lib/validate'
 import {
   createVault,
+  deleteBlobs,
   deleteRecords,
   loadAllRecords,
+  saveBlob,
   saveRecords,
   unlockVault,
   unlockWithRawDek,
@@ -128,7 +132,19 @@ interface VaultState {
     directed: boolean,
   ) => Promise<RelationshipType>
   markExported: () => Promise<void>
-  importRecords: (incoming: unknown) => Promise<number>
+  importRecords: (
+    incoming: unknown,
+    blobs?: { id: string; bytes: Uint8Array }[],
+  ) => Promise<number>
+
+  addPhotoBytes: (
+    personId: string,
+    bytes: Uint8Array,
+    mimeType: string,
+    isAvatar: boolean,
+  ) => Promise<void>
+  removePhoto: (photoId: string) => Promise<void>
+  setAvatarPhoto: (photoId: string) => Promise<void>
 }
 
 /** Built-in relationship types missing from the record set, ready to persist. */
@@ -287,6 +303,8 @@ export const useVaultStore = create<VaultState>((set, get) => {
 
   function baseLock(): void {
     searchIndex = createIndex()
+    // Decrypted image object-URLs are plaintext too (§6.1).
+    clearPhotoCache()
     set((state) => ({
       status: state.status === 'no-vault' ? 'no-vault' : 'locked',
       vault: null,
@@ -507,6 +525,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       const deletes = [personId]
       const puts: DomainRecord[] = []
       const touched = new Set<string>([personId])
+      const blobIds: string[] = []
       for (const r of records.values()) {
         if (
           ((r.kind === 'note' || r.kind === 'followUp' || r.kind === 'photo') &&
@@ -514,6 +533,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
           (r.kind === 'relationship' && (r.fromId === personId || r.toId === personId))
         ) {
           deletes.push(r.id)
+          if (r.kind === 'photo') blobIds.push(r.blobRecordId)
         } else if (r.kind === 'note' && r.mentions.includes(personId)) {
           // Rewrite dangling mention tokens in other people's notes to the
           // plain name, so no dead @links survive the delete.
@@ -526,6 +546,11 @@ export const useVaultStore = create<VaultState>((set, get) => {
         }
       }
       await apply(puts, deletes, [...touched])
+      const vault = get().vault
+      if (vault && blobIds.length > 0) {
+        await deleteBlobs(vault, blobIds)
+        for (const id of blobIds) evictPhoto(id)
+      }
     }),
 
     saveNote: (personId, body) =>
@@ -665,7 +690,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       await apply([settings])
     }),
 
-    importRecords: (incoming) =>
+    importRecords: (incoming, blobs = []) =>
       enqueue(async () => {
       const vault = get().vault
       if (!vault) return 0
@@ -698,6 +723,14 @@ export const useVaultStore = create<VaultState>((set, get) => {
         )
       }
       await saveRecords(vault, puts)
+      // Restore photo blobs — only those a sanitized photo record
+      // actually references (a hostile bundle can't stuff arbitrary data).
+      const referenced = new Set(
+        puts.filter((r): r is Photo => r.kind === 'photo').map((r) => r.blobRecordId),
+      )
+      for (const blob of blobs) {
+        if (referenced.has(blob.id)) await saveBlob(vault, blob.id, blob.bytes)
+      }
       if (get().epoch !== startEpoch || get().vault !== vault) return puts.length
       // Merge onto the CURRENT records — writes that landed during the
       // import must not be lost from memory.
@@ -707,6 +740,63 @@ export const useVaultStore = create<VaultState>((set, get) => {
       rebuildIndex(searchIndex, records)
       return puts.length
     }),
+
+    addPhotoBytes: (personId, bytes, mimeType, isAvatar) =>
+      enqueue(async () => {
+        const vault = get().vault
+        if (!vault) return
+        const blobRecordId = crypto.randomUUID()
+        await saveBlob(vault, blobRecordId, bytes)
+        const photo: Photo = {
+          kind: 'photo',
+          id: crypto.randomUUID(),
+          personId,
+          isAvatar,
+          mimeType,
+          blobRecordId,
+          createdAt: Date.now(),
+        }
+        // Only one avatar per person: demote any existing one.
+        const puts: DomainRecord[] = [photo]
+        if (isAvatar) {
+          for (const r of get().records.values()) {
+            if (r.kind === 'photo' && r.personId === personId && r.isAvatar) {
+              puts.push({ ...r, isAvatar: false })
+            }
+          }
+        }
+        await apply(puts)
+      }),
+
+    removePhoto: (photoId) =>
+      enqueue(async () => {
+        const photo = get().records.get(photoId)
+        if (!photo || photo.kind !== 'photo') return
+        await apply([], [photoId])
+        const vault = get().vault
+        if (vault) {
+          await deleteBlobs(vault, [photo.blobRecordId])
+          evictPhoto(photo.blobRecordId)
+        }
+      }),
+
+    setAvatarPhoto: (photoId) =>
+      enqueue(async () => {
+        const photo = get().records.get(photoId)
+        if (!photo || photo.kind !== 'photo') return
+        const puts: DomainRecord[] = [{ ...photo, isAvatar: true }]
+        for (const r of get().records.values()) {
+          if (
+            r.kind === 'photo' &&
+            r.personId === photo.personId &&
+            r.isAvatar &&
+            r.id !== photoId
+          ) {
+            puts.push({ ...r, isAvatar: false })
+          }
+        }
+        await apply(puts)
+      }),
   }
 })
 
@@ -730,6 +820,22 @@ export function selectNotes(records: Map<string, DomainRecord>, personId: string
   return [...records.values()]
     .filter((r): r is NoteEntry => r.kind === 'note' && r.personId === personId)
     .sort((a, b) => b.createdAt - a.createdAt)
+}
+
+export function selectPhotos(records: Map<string, DomainRecord>, personId: string): Photo[] {
+  return [...records.values()]
+    .filter((r): r is Photo => r.kind === 'photo' && r.personId === personId)
+    .sort((a, b) => Number(b.isAvatar) - Number(a.isAvatar) || a.createdAt - b.createdAt)
+}
+
+export function selectAvatar(
+  records: Map<string, DomainRecord>,
+  personId: string,
+): Photo | undefined {
+  for (const r of records.values()) {
+    if (r.kind === 'photo' && r.personId === personId && r.isAvatar) return r
+  }
+  return undefined
 }
 
 export function selectFollowUps(

@@ -212,3 +212,49 @@ export async function deleteRecords(
 ): Promise<void> {
   await db.records.bulkDelete(recordIds.map((id) => `${vault.dataPrefix}:${id}`))
 }
+
+/** Encrypted binary payloads (photos). Same envelope, separate table. */
+export async function saveBlob(
+  vault: UnlockedVault,
+  blobId: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  const { iv, blob } = await encryptBlob(vault.dek, bytes)
+  await db.blobs.put({ id: `${vault.dataPrefix}:${blobId}`, iv, blob })
+}
+
+export async function loadBlob(
+  vault: UnlockedVault,
+  blobId: string,
+): Promise<Uint8Array | null> {
+  const row = await db.blobs.get(`${vault.dataPrefix}:${blobId}`)
+  if (!row) return null
+  try {
+    return await decryptBlob(vault.dek, { iv: row.iv, blob: row.blob })
+  } catch {
+    return null
+  }
+}
+
+export async function deleteBlobs(vault: UnlockedVault, blobIds: string[]): Promise<void> {
+  await db.blobs.bulkDelete(blobIds.map((id) => `${vault.dataPrefix}:${id}`))
+}
+
+/** All decryptable blobs, for export. Corrupted rows are skipped. */
+export async function loadAllBlobs(
+  vault: UnlockedVault,
+): Promise<{ id: string; bytes: Uint8Array }[]> {
+  const rows = await db.blobs.where('id').startsWith(`${vault.dataPrefix}:`).toArray()
+  const out: { id: string; bytes: Uint8Array }[] = []
+  for (const row of rows) {
+    try {
+      out.push({
+        id: row.id.slice(vault.dataPrefix.length + 1),
+        bytes: await decryptBlob(vault.dek, { iv: row.iv, blob: row.blob }),
+      })
+    } catch {
+      // Skip corrupted blob rows.
+    }
+  }
+  return out
+}

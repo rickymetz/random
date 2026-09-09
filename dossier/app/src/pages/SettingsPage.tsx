@@ -7,7 +7,7 @@ import {
 } from '../lib/models'
 import { MAX_PIN_ATTEMPTS } from '../lib/pin'
 import { getStorageStatus } from '../lib/platform'
-import { unlockVault } from '../lib/vault'
+import { loadAllBlobs, unlockVault } from '../lib/vault'
 import { webAuthnAvailable } from '../lib/webauthn'
 import { selectSettings, useVaultStore } from '../store/vaultStore'
 
@@ -305,7 +305,8 @@ function ExportSection() {
         setState('wrong')
         return
       }
-      const text = await exportBundle(passphrase, [...records.values()])
+      const blobs = await loadAllBlobs(vault)
+      const text = await exportBundle(passphrase, [...records.values()], blobs)
       const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
       const a = document.createElement('a')
       a.href = url
@@ -384,7 +385,7 @@ function ImportSection() {
         setError('Wrong passphrase for this backup.')
         return
       }
-      const count = await importRecords(restored)
+      const count = await importRecords(restored.records, restored.blobs)
       setMessage(`Restored ${count} records.`)
       if (fileRef.current) fileRef.current.value = ''
     } catch (err) {

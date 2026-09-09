@@ -10,7 +10,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Relationship } from '../lib/models'
+import { getPhotoUrl } from '../lib/photoCache'
+import type { UnlockedVault } from '../lib/vault'
 import {
+  selectAvatar,
   selectPeople,
   selectRelationships,
   selectRelationshipTypes,
@@ -21,6 +24,7 @@ interface GraphNode extends SimulationNodeDatum {
   id: string
   name: string
   initials: string
+  avatar?: { blobRecordId: string; mimeType: string }
 }
 
 interface GraphLink extends SimulationLinkDatum<GraphNode> {
@@ -90,11 +94,17 @@ export default function GraphPage() {
     }
 
     const ids = new Set(visiblePeople.map((p) => p.id))
-    const nodes: GraphNode[] = visiblePeople.map((p) => ({
-      id: p.id,
-      name: p.displayName,
-      initials: initialsOf(p.displayName),
-    }))
+    const nodes: GraphNode[] = visiblePeople.map((p) => {
+      const avatar = selectAvatar(records, p.id)
+      return {
+        id: p.id,
+        name: p.displayName,
+        initials: initialsOf(p.displayName),
+        avatar: avatar
+          ? { blobRecordId: avatar.blobRecordId, mimeType: avatar.mimeType }
+          : undefined,
+      }
+    })
     const links: GraphLink[] = edges
       .filter((e) => ids.has(e.fromId) && ids.has(e.toId))
       .map((e) => ({
@@ -114,8 +124,9 @@ export default function GraphPage() {
     return p?.kind === 'person' ? p.displayName : undefined
   }, [records, focusId])
 
+  const vault = useVaultStore((s) => s.vault)
   const onTap = useCallback((tap: Tap) => setPeek(tap), [])
-  const canvasRef = useCanvasGraph(nodes, links, focusId, onTap)
+  const canvasRef = useCanvasGraph(nodes, links, focusId, onTap, vault)
 
   return (
     <div className="graph">
@@ -295,12 +306,15 @@ function useCanvasGraph(
   links: GraphLink[],
   focusId: string | null,
   onTap: (tap: Tap) => void,
+  vault: UnlockedVault | null,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  // Both survive effect re-runs so a filter toggle or record edit neither
-  // explodes the layout nor resets the viewport.
+  // All three survive effect re-runs so a filter toggle or record edit
+  // neither explodes the layout, resets the viewport, nor re-decodes
+  // avatar images.
   const positionsRef = useRef(new Map<string, { x: number; y: number }>())
   const transformRef = useRef({ x: 0, y: 0, k: 1 })
+  const avatarImagesRef = useRef(new Map<string, HTMLImageElement | 'loading' | 'failed'>())
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -347,6 +361,30 @@ function useCanvasGraph(
       }
       scheduleRender()
     })
+
+    // Kick off avatar decodes; each finished image triggers a re-render.
+    const avatarImages = avatarImagesRef.current
+    if (vault) {
+      for (const node of simNodes) {
+        if (!node.avatar || avatarImages.has(node.id)) continue
+        avatarImages.set(node.id, 'loading')
+        void getPhotoUrl(vault, node.avatar.blobRecordId, node.avatar.mimeType)
+          .then((url) => {
+            if (!url) {
+              avatarImages.set(node.id, 'failed')
+              return
+            }
+            const image = new Image()
+            image.onload = () => {
+              avatarImages.set(node.id, image)
+              scheduleRender()
+            }
+            image.onerror = () => avatarImages.set(node.id, 'failed')
+            image.src = url
+          })
+          .catch(() => avatarImages.set(node.id, 'failed'))
+      }
+    }
 
     function render() {
       if (!ctx || !canvas) return
@@ -399,21 +437,36 @@ function useCanvasGraph(
       ctx.setLineDash(solid)
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      // Pass 1: circles + initials, one font for all nodes.
+      // Pass 1: circles with avatar or initials, one font for all nodes.
       ctx.font = '11px system-ui'
       const visibleNodes: GraphNode[] = []
+      const avatarImages = avatarImagesRef.current
       for (const node of simNodes) {
         if (node.x == null || node.y == null || !inView(node.x, node.y)) continue
         visibleNodes.push(node)
         const isFocus = node.id === focusId
-        ctx.beginPath()
-        ctx.arc(node.x, node.y, NODE_R, 0, Math.PI * 2)
-        ctx.fillStyle = isFocus ? '#4f9cf9' : '#2c2c34'
-        ctx.fill()
-        ctx.strokeStyle = isFocus ? '#e8e8ec' : '#4f9cf9'
-        ctx.stroke()
-        ctx.fillStyle = '#e8e8ec'
-        ctx.fillText(node.initials, node.x, node.y)
+        const image = node.avatar ? avatarImages.get(node.id) : undefined
+        if (image instanceof HTMLImageElement) {
+          ctx.save()
+          ctx.beginPath()
+          ctx.arc(node.x, node.y, NODE_R, 0, Math.PI * 2)
+          ctx.clip()
+          ctx.drawImage(image, node.x - NODE_R, node.y - NODE_R, NODE_R * 2, NODE_R * 2)
+          ctx.restore()
+          ctx.beginPath()
+          ctx.arc(node.x, node.y, NODE_R, 0, Math.PI * 2)
+          ctx.strokeStyle = isFocus ? '#e8e8ec' : '#4f9cf9'
+          ctx.stroke()
+        } else {
+          ctx.beginPath()
+          ctx.arc(node.x, node.y, NODE_R, 0, Math.PI * 2)
+          ctx.fillStyle = isFocus ? '#4f9cf9' : '#2c2c34'
+          ctx.fill()
+          ctx.strokeStyle = isFocus ? '#e8e8ec' : '#4f9cf9'
+          ctx.stroke()
+          ctx.fillStyle = '#e8e8ec'
+          ctx.fillText(node.initials, node.x, node.y)
+        }
       }
       // Pass 2: name labels — thinned out on big graphs (§4.3 degradation).
       const labelZoom = simNodes.length > LABEL_MAX_NODES ? 1.2 : LABEL_ZOOM
@@ -637,7 +690,7 @@ function useCanvasGraph(
       canvas.removeEventListener('wheel', onWheel)
       canvas.removeEventListener('keydown', onKeyDown)
     }
-  }, [nodes, links, focusId, onTap])
+  }, [nodes, links, focusId, onTap, vault])
 
   return canvasRef
 }

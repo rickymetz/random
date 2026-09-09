@@ -17,11 +17,20 @@ function makePerson(name: string): Person {
 }
 
 describe('encrypted export', () => {
-  it('round-trips records through export/import', async () => {
+  it('round-trips records and photo blobs through export/import', async () => {
     const records = [makePerson('Ada'), makePerson('Grace')]
-    const bundle = await exportBundle('open sesame', records)
+    const blobs = [{ id: 'blob-1', bytes: new Uint8Array([1, 2, 3, 255, 0, 42]) }]
+    const bundle = await exportBundle('open sesame', records, blobs)
     const restored = await importBundle('open sesame', bundle)
-    expect(restored).toEqual(records)
+    expect(restored?.records).toEqual(records)
+    expect(restored?.blobs).toEqual(blobs)
+  })
+
+  it('accepts v1 bundles without blobs', async () => {
+    const bundle = await exportBundle('pw', [makePerson('Ada')])
+    const parsed = JSON.parse(bundle)
+    const restored = await importBundle('pw', JSON.stringify(parsed))
+    expect(restored?.blobs).toEqual([])
   })
 
   it('returns null for a wrong passphrase', async () => {

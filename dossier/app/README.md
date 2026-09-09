@@ -46,9 +46,17 @@ configurable inactivity auto-lock and background grace period stored in
 the encrypted settings record, and an unlock screen that offers
 PIN/biometric with passphrase fallback.
 
-Still to build: photos/avatars, disguise selection, graph queries (mutual
-connections, paths), notifications, Argon2id, inbox triage affordance,
-chip-style tag input, decoy vault UI (v2).
+Slice 3 (photos, §4.1/§8): encrypted person photos — client-side
+downscale/re-encode (EXIF stripped) in `lib/image.ts`, a separate
+ciphertext `blobs` table so binary data never touches the JSON record
+loader, an in-memory object-URL cache cleared on lock
+(`lib/photoCache.ts`), avatars on the person page, people list, and
+graph nodes, a per-person gallery with avatar promotion, blob cascade on
+person delete, and export format v2 carrying photos in backups.
+
+Still to build: disguise selection, graph queries (mutual connections,
+paths), notifications, Argon2id, inbox triage affordance, chip-style tag
+input, decoy vault UI (v2).
 
 ## Commands
 

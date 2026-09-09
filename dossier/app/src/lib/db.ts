@@ -49,10 +49,19 @@ export interface AuthRow {
   transports?: string[]
 }
 
+/** Encrypted binary payloads (photos) — same shape as records. */
+export interface EncryptedBlobRow {
+  /** `${dataPrefix}:${uuid}` like record rows. */
+  id: string
+  iv: Uint8Array
+  blob: Uint8Array
+}
+
 class DossierDb extends Dexie {
   slots!: Table<VaultSlotRow, string>
   records!: Table<EncryptedRecordRow, string>
   auth!: Table<AuthRow, string>
+  blobs!: Table<EncryptedBlobRow, string>
 
   constructor() {
     // Neutral database name: part of the disguise posture (§6.5).
@@ -63,6 +72,11 @@ class DossierDb extends Dexie {
     })
     this.version(2).stores({
       auth: 'id',
+    })
+    // Binary payloads live apart from JSON records so the record loader
+    // never tries to JSON-parse an image.
+    this.version(3).stores({
+      blobs: 'id',
     })
   }
 }

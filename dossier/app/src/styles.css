@@ -582,3 +582,64 @@ a.mention {
   font-size: 1.1rem;
   color: var(--text);
 }
+
+/* Avatars & photos */
+.avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #2c2c34;
+}
+
+.avatar-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  border: 1px solid #3a3a44;
+}
+
+.person-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.person-row-text {
+  min-width: 0;
+}
+
+.person-header .avatar {
+  align-self: center;
+}
+
+.photo-grid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 0.5rem;
+  padding: 0;
+  margin: 0 0 0.5rem;
+}
+
+.photo-thumb img,
+.photo-loading {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  background: var(--surface);
+  display: block;
+}
+
+.photo-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.15rem;
+}
+
+.photo-actions .subtle {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.8rem;
+}

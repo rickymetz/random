@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
+import { GALLERY_MAX_DIM, downscaleImage } from '../lib/image'
+import { getPhotoUrl } from '../lib/photoCache'
+import type { Photo } from '../lib/models'
 import { formatPartialDate, parsePartialDate, timeAgo } from '../lib/dates'
 import { segmentBody } from '../lib/mentions'
 import { CUSTOM_TYPE_COLORS, type Person, type Relationship } from '../lib/models'
@@ -8,6 +12,7 @@ import {
   selectFollowUps,
   selectNotes,
   selectPeople,
+  selectPhotos,
   selectRelationships,
   selectRelationshipTypes,
   useVaultStore,
@@ -45,12 +50,14 @@ export default function PersonPage() {
         <button className="subtle back" onClick={() => navigate(-1)} aria-label="Back">
           ←
         </button>
+        <Avatar person={person} size={44} />
         <h1>{person.displayName}</h1>
         <Link to={`/graph?focus=${person.id}`}>Their world →</Link>
       </header>
       <Facts person={person} />
       <RelationshipSection person={person} />
       <FollowUpSection personId={person.id} />
+      <PhotoSection personId={person.id} />
       <NotesSection personId={person.id} />
       <footer className="person-footer">
         <button
@@ -545,6 +552,111 @@ function RelationshipSection({ person }: { person: Person }) {
         </button>
       </form>
     </section>
+  )
+}
+
+function PhotoSection({ personId }: { personId: string }) {
+  const records = useVaultStore((s) => s.records)
+  const addPhotoBytes = useVaultStore((s) => s.addPhotoBytes)
+  const removePhoto = useVaultStore((s) => s.removePhoto)
+  const setAvatarPhoto = useVaultStore((s) => s.setAvatarPhoto)
+  const photos = useMemo(() => selectPhotos(records, personId), [records, personId])
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const { bytes, mimeType } = await downscaleImage(file, GALLERY_MAX_DIM)
+      // The first photo becomes the avatar automatically.
+      await addPhotoBytes(personId, bytes, mimeType, photos.length === 0)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add that image.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section>
+      <h2>Photos</h2>
+      {photos.length > 0 && (
+        <ul className="photo-grid">
+          {photos.map((photo) => (
+            <PhotoThumb
+              key={photo.id}
+              photo={photo}
+              onMakeAvatar={() => void setAvatarPhoto(photo.id)}
+              onRemove={() => {
+                if (confirm('Delete this photo?')) void removePhoto(photo.id)
+              }}
+            />
+          ))}
+        </ul>
+      )}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => void onPick(e)}
+        aria-label="Add photo"
+      />
+      <button className="subtle" disabled={busy} onClick={() => fileRef.current?.click()}>
+        {busy ? '…' : '+ Add photo'}
+      </button>
+      {error && (
+        <p className="hint error" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
+  )
+}
+
+function PhotoThumb({
+  photo,
+  onMakeAvatar,
+  onRemove,
+}: {
+  photo: Photo
+  onMakeAvatar: () => void
+  onRemove: () => void
+}) {
+  const vault = useVaultStore((s) => s.vault)
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    if (vault) {
+      void getPhotoUrl(vault, photo.blobRecordId, photo.mimeType).then((u) => {
+        if (!cancelled) setUrl(u)
+      })
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [vault, photo.blobRecordId, photo.mimeType])
+  return (
+    <li className="photo-thumb">
+      {url ? <img src={url} alt="" draggable={false} /> : <span className="photo-loading" />}
+      <div className="photo-actions">
+        {photo.isAvatar ? (
+          <span className="hint">avatar</span>
+        ) : (
+          <button className="subtle" onClick={onMakeAvatar}>
+            avatar
+          </button>
+        )}
+        <button className="subtle icon" onClick={onRemove} aria-label="Delete photo">
+          ×
+        </button>
+      </div>
+    </li>
   )
 }
 

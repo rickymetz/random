@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import Avatar from '../components/Avatar'
 import { daysUntilDue, daysUntilNext, formatPartialDate } from '../lib/dates'
 import type { Person } from '../lib/models'
 import { matchSnippet } from '../lib/search'
@@ -115,10 +116,13 @@ function PersonRow({ person, query }: { person: Person; query: string }) {
 
   return (
     <li>
-      <Link to={`/person/${person.id}`}>
-        <strong>{person.displayName}</strong>
-        {detail && <span className="hint"> {detail}</span>}
-        {snippet && <span className="snippet">{snippet}</span>}
+      <Link to={`/person/${person.id}`} className="person-row">
+        <Avatar person={person} size={36} />
+        <span className="person-row-text">
+          <strong>{person.displayName}</strong>
+          {detail && <span className="hint"> {detail}</span>}
+          {snippet && <span className="snippet">{snippet}</span>}
+        </span>
       </Link>
     </li>
   )

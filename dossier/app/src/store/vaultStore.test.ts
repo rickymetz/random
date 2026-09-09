@@ -226,6 +226,64 @@ describe('vault store', () => {
     expect(settings).toMatchObject({ autoLockMinutes: 5, backgroundGraceSeconds: 120 })
   })
 
+  it('photos: add, avatar handoff, delete, and cascade with the person', async () => {
+    const ada = await store().addPerson('Ada')
+    const bytes = new Uint8Array([255, 216, 255, 224, 1, 2, 3]) // jpeg-ish
+    await store().addPhotoBytes(ada.id, bytes, 'image/jpeg', true)
+    await store().addPhotoBytes(ada.id, new Uint8Array([9, 9, 9]), 'image/jpeg', false)
+
+    const { selectPhotos, selectAvatar } = await import('./vaultStore')
+    let photos = selectPhotos(store().records, ada.id)
+    expect(photos).toHaveLength(2)
+    expect(selectAvatar(store().records, ada.id)?.id).toBe(photos[0].id)
+
+    // Round-trip the blob through the encrypted blob store.
+    const { loadBlob } = await import('../lib/vault')
+    const loaded = await loadBlob(store().vault!, photos[0].blobRecordId)
+    expect([...loaded!]).toEqual([...bytes])
+
+    // Promote the second photo; exactly one avatar remains.
+    await store().setAvatarPhoto(photos[1].id)
+    photos = selectPhotos(store().records, ada.id)
+    expect(photos.filter((p) => p.isAvatar)).toHaveLength(1)
+    expect(selectAvatar(store().records, ada.id)?.id).toBe(photos[0].id) // sorted avatar-first
+
+    // Deleting the person removes photo records AND their blobs.
+    const blobIds = photos.map((p) => p.blobRecordId)
+    await store().removePerson(ada.id)
+    expect(selectPhotos(store().records, ada.id)).toHaveLength(0)
+    const { db } = await import('../lib/db')
+    expect(await db.blobs.count()).toBe(0)
+    void blobIds
+  })
+
+  it('import restores only blobs referenced by sanitized photo records', async () => {
+    const ada = await store().addPerson('Ada')
+    const photoId = crypto.randomUUID()
+    const blobId = crypto.randomUUID()
+    await store().importRecords(
+      [
+        {
+          kind: 'photo',
+          id: photoId,
+          personId: ada.id,
+          isAvatar: true,
+          mimeType: 'image/jpeg',
+          blobRecordId: blobId,
+          createdAt: Date.now(),
+        },
+      ],
+      [
+        { id: blobId, bytes: new Uint8Array([4, 5, 6]) },
+        { id: crypto.randomUUID(), bytes: new Uint8Array([7, 7, 7]) }, // unreferenced
+      ],
+    )
+    const { db } = await import('../lib/db')
+    expect(await db.blobs.count()).toBe(1)
+    const { loadBlob } = await import('../lib/vault')
+    expect([...(await loadBlob(store().vault!, blobId))!]).toEqual([4, 5, 6])
+  })
+
   it('locking drops everything and unlock restores it', async () => {
     const ada = await store().addPerson('Ada')
     store().lock()
