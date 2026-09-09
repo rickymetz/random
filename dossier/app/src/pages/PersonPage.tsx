@@ -54,13 +54,17 @@ export default function PersonPage() {
         <Avatar person={person} size={44} />
         <h1>
           {person.displayName}
-          {person.isSelf && <span className="you-badge"> you</span>}
+          {person.isSelf && (
+            <span className="you-badge" aria-label="This is you">
+              you
+            </span>
+          )}
         </h1>
         <Link to={`/graph?focus=${person.id}`}>Their world →</Link>
       </header>
       <Facts person={person} />
-      <ConnectionSection person={person} />
       <RelationshipSection person={person} />
+      <ConnectionSection person={person} />
       <FollowUpSection personId={person.id} />
       <PhotoSection personId={person.id} />
       <NotesSection personId={person.id} />
@@ -68,7 +72,10 @@ export default function PersonPage() {
         <button
           className="danger"
           onClick={async () => {
-            if (!confirm(`Delete ${person.displayName} and everything about them?`)) return
+            const warning = person.isSelf
+              ? `Delete ${person.displayName}? This is your “me” person — connection queries stop working until you mark someone else as you.`
+              : `Delete ${person.displayName} and everything about them?`
+            if (!confirm(warning)) return
             await useVaultStore.getState().removePerson(person.id)
             navigate('/')
           }}
@@ -256,12 +263,46 @@ function ConnectionSection({ person }: { person: Person }) {
   )
 
   const selfId = self?.id ?? ''
-  const otherId = compareId || selfId
+  const otherId = compareId && records.has(compareId) ? compareId : selfId
   const path = useMemoPath(records, selfId, person.id)
   const mutuals = useMemoMutuals(records, otherId, person.id)
-  if (!self || person.id === self.id) return null
+  const hasAnyEdge = useMemo(
+    () =>
+      [...records.values()].some(
+        (r) => r.kind === 'relationship' && (r.fromId === person.id || r.toId === person.id),
+      ),
+    [records, person.id],
+  )
+  if (person.id === selfId) return null
+  if (!self) {
+    return (
+      <section>
+        <h2>How you connect</h2>
+        <p className="hint">
+          No “me” set — tick “This is me” in someone's Edit details to enable
+          connection queries.
+        </p>
+      </section>
+    )
+  }
+  // Nothing to say yet: stay out of the way of the lookup scenario.
+  if (!path && mutuals.length === 0 && !hasAnyEdge) return null
   const otherName =
-    otherId === self.id ? 'you' : (records.get(otherId) as Person | undefined)?.displayName
+    otherId === self.id
+      ? 'you'
+      : ((records.get(otherId) as Person | undefined)?.displayName ?? 'them')
+
+  // The BFS treats edges as undirected; render each label with the arrow
+  // matching the STORED direction so "mentioned" never reads backwards.
+  const edgeLabel = (stepIndex: number) => {
+    const step = path![stepIndex]
+    const prev = path![stepIndex - 1]
+    const type = typeById.get(step.via!.typeId)
+    const label = type?.label ?? 'linked'
+    if (!type?.directed && step.via!.origin !== 'mention') return ` —${label}— `
+    const forward = step.via!.fromId === prev.person.id
+    return forward ? ` —${label}→ ` : ` ←${label}— `
+  }
 
   return (
     <section>
@@ -272,8 +313,7 @@ function ConnectionSection({ person }: { person: Person }) {
             <span key={step.person.id}>
               {i > 0 && (
                 <span className="edge-type" style={{ color: typeById.get(step.via!.typeId)?.color }}>
-                  {' '}
-                  —{typeById.get(step.via!.typeId)?.label ?? 'linked'}→{' '}
+                  {edgeLabel(i)}
                 </span>
               )}
               {step.person.id === person.id || step.person.isSelf ? (

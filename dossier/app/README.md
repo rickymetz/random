@@ -60,8 +60,17 @@ Slice 4 (graph queries, §4.4): a seeded "me" person (reassignable via
 mutual-connection lists against yourself or anyone, and path
 highlighting on the graph canvas via `?path=`.
 
-Still to build: disguise selection, notifications, Argon2id, inbox
-triage affordance, chip-style tag input, decoy vault UI (v2).
+Slice 5 (hardening + discretion): Argon2id KDF (hash-wasm) for new
+vaults and export bundles, with transparent migration of legacy PBKDF2
+slots at unlock (dummy slot regenerated so KDF metadata stays
+indistinguishable); shake-to-lock (three jolts → panic lock, iOS motion
+permission handled); an opt-in daily reminder notification that is
+always generic ("You have a reminder" — §6.5); CSP gains
+`wasm-unsafe-eval` for the Argon2id module.
+
+Still to build (deferred, tracked in REQUIREMENTS v1.x/v2): disguise
+icon selection, inbox triage affordance, chip-style tag input, decoy
+vault UI (v2).
 
 ## Commands
 

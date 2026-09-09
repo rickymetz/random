@@ -10,38 +10,75 @@
  * import), and the CryptoKey the app holds is always non-extractable, so
  * a debugger on an unlocked session cannot exportKey() the vault's root.
  *
- * KDF is PBKDF2-SHA-256 for the scaffold; Argon2id (WASM) replaces it in
- * v1.x. Parameters are recorded per vault slot so they can be migrated.
+ * KDF: Argon2id (hash-wasm) for new material (§6.2); PBKDF2-SHA-256
+ * remains readable for vaults and backups created before the migration.
+ * Parameters are recorded per vault slot / export header and are bounded
+ * when they come from untrusted sources.
  */
+import { argon2id } from 'hash-wasm'
 
 const subtle = globalThis.crypto.subtle
 
-export interface KdfParams {
-  algorithm: 'PBKDF2-SHA-256'
-  iterations: number
+export type KdfParams =
+  | { algorithm: 'PBKDF2-SHA-256'; iterations: number }
+  | { algorithm: 'Argon2id'; memoryKiB: number; passes: number; parallelism: number }
+
+/** Tuned for ~250 ms on a mid-range phone (§6.2). */
+export const DEFAULT_KDF_PARAMS: KdfParams = {
+  algorithm: 'Argon2id',
+  memoryKiB: 48 * 1024,
+  passes: 3,
+  parallelism: 1,
 }
 
-export const DEFAULT_KDF_PARAMS: KdfParams = {
+export const LEGACY_PBKDF2_PARAMS: KdfParams = {
   algorithm: 'PBKDF2-SHA-256',
   iterations: 600_000,
 }
 
 /** Bounds accepted from untrusted sources (import headers, stored slots). */
 export const KDF_ITERATION_BOUNDS = { min: 100_000, max: 5_000_000 }
+export const ARGON2_BOUNDS = {
+  minMemoryKiB: 8 * 1024,
+  maxMemoryKiB: 512 * 1024,
+  minPasses: 1,
+  maxPasses: 16,
+  maxParallelism: 4,
+}
 
 export function validateKdfParams(params: unknown): KdfParams {
-  const p = params as Partial<KdfParams> | null
-  if (
-    !p ||
-    p.algorithm !== 'PBKDF2-SHA-256' ||
-    typeof p.iterations !== 'number' ||
-    !Number.isInteger(p.iterations) ||
-    p.iterations < KDF_ITERATION_BOUNDS.min ||
-    p.iterations > KDF_ITERATION_BOUNDS.max
-  ) {
-    throw new Error('Unsupported key-derivation parameters.')
+  const p = params as Record<string, unknown> | null
+  if (p && p.algorithm === 'PBKDF2-SHA-256') {
+    const iterations = p.iterations
+    if (
+      typeof iterations === 'number' &&
+      Number.isInteger(iterations) &&
+      iterations >= KDF_ITERATION_BOUNDS.min &&
+      iterations <= KDF_ITERATION_BOUNDS.max
+    ) {
+      return { algorithm: 'PBKDF2-SHA-256', iterations }
+    }
   }
-  return { algorithm: p.algorithm, iterations: p.iterations }
+  if (p && p.algorithm === 'Argon2id') {
+    const { memoryKiB, passes, parallelism } = p
+    if (
+      typeof memoryKiB === 'number' &&
+      Number.isInteger(memoryKiB) &&
+      memoryKiB >= ARGON2_BOUNDS.minMemoryKiB &&
+      memoryKiB <= ARGON2_BOUNDS.maxMemoryKiB &&
+      typeof passes === 'number' &&
+      Number.isInteger(passes) &&
+      passes >= ARGON2_BOUNDS.minPasses &&
+      passes <= ARGON2_BOUNDS.maxPasses &&
+      typeof parallelism === 'number' &&
+      Number.isInteger(parallelism) &&
+      parallelism >= 1 &&
+      parallelism <= ARGON2_BOUNDS.maxParallelism
+    ) {
+      return { algorithm: 'Argon2id', memoryKiB, passes, parallelism }
+    }
+  }
+  throw new Error('Unsupported key-derivation parameters.')
 }
 
 export interface WrappedKey {
@@ -66,6 +103,20 @@ async function derivePassphraseKey(
   params: KdfParams,
   usages: KeyUsage[],
 ): Promise<CryptoKey> {
+  if (params.algorithm === 'Argon2id') {
+    const derived = await argon2id({
+      password: passphrase,
+      salt,
+      memorySize: params.memoryKiB,
+      iterations: params.passes,
+      parallelism: params.parallelism,
+      hashLength: 32,
+      outputType: 'binary',
+    })
+    const key = await subtle.importKey('raw', derived as BufferSource, { name: 'AES-GCM' }, false, usages)
+    wipe(derived)
+    return key
+  }
   const material = await subtle.importKey(
     'raw',
     new TextEncoder().encode(passphrase),

@@ -95,6 +95,12 @@ export interface Settings {
   autoLockMinutes?: number
   /** Grace period before backgrounding locks, in seconds. Default 30. */
   backgroundGraceSeconds?: number
+  /** Shake the device to panic-lock (§6.4). Default off. */
+  shakeToLock?: boolean
+  /** Generic "You have a reminder" notifications (§4.4/§6.5). Default off. */
+  remindersEnabled?: boolean
+  /** Day-stamp (yyyy-mm-dd) of the last reminder notification shown. */
+  lastReminderDay?: string
 }
 
 export const DEFAULT_AUTO_LOCK_MINUTES = 2

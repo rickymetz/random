@@ -109,7 +109,16 @@ interface VaultState {
   ) => Promise<'ok' | 'unsupported' | 'wrong-passphrase' | 'cancelled'>
   removeBiometric: () => Promise<void>
   updateSecurity: (
-    patch: Partial<Pick<Settings, 'autoLockMinutes' | 'backgroundGraceSeconds'>>,
+    patch: Partial<
+      Pick<
+        Settings,
+        | 'autoLockMinutes'
+        | 'backgroundGraceSeconds'
+        | 'shakeToLock'
+        | 'remindersEnabled'
+        | 'lastReminderDay'
+      >
+    >,
   ) => Promise<void>
   /** Capture-draft registry: auto-locks flush drafts into notes first. */
   registerDraft: (personId: string, read: () => string) => void
@@ -795,6 +804,32 @@ export const useVaultStore = create<VaultState>((set, get) => {
         if (avatarSeen.has(record.personId) && !isIncoming) {
           puts.push({ ...record, isAvatar: false })
           merged.set(rid, { ...record, isAvatar: false })
+        }
+      }
+      // Same for the single-self invariant (§4.4): restoring your backup
+      // into a fresh vault must not leave both the seeded "Me" and your
+      // real self flagged. The incoming self wins; existing ones demote.
+      const incomingSelf = puts.find((r) => r.kind === 'person' && r.isSelf)
+      if (incomingSelf) {
+        for (const [rid, record] of merged) {
+          if (
+            record.kind === 'person' &&
+            record.isSelf &&
+            rid !== incomingSelf.id &&
+            !puts.some((p) => p.id === rid)
+          ) {
+            const demoted = { ...record, isSelf: undefined }
+            puts.push(demoted)
+            merged.set(rid, demoted)
+          }
+        }
+        // A bundle with multiple selves keeps only the first.
+        let kept = false
+        for (const record of puts) {
+          if (record.kind === 'person' && record.isSelf) {
+            if (kept) record.isSelf = undefined
+            kept = true
+          }
         }
       }
       await saveRecords(vault, puts)

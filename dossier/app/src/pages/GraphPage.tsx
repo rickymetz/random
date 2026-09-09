@@ -80,19 +80,33 @@ export default function GraphPage() {
   const pathInfo = useMemo(() => {
     if (!pathTargetId) return null
     const self = selectSelf(records)
-    if (!self) return null
+    if (!self) return { edgeIds: new Set<string>(), names: [], nodeIds: [], reason: 'no-self' as const }
     const steps = shortestPath(records, self.id, pathTargetId)
-    if (!steps) return null
+    if (!steps) return { edgeIds: new Set<string>(), names: [], nodeIds: [], reason: 'no-path' as const }
     return {
       edgeIds: new Set(steps.filter((s) => s.via).map((s) => s.via!.id)),
       names: steps.map((s) => (s.person.isSelf ? 'You' : s.person.displayName)),
+      nodeIds: steps.map((s) => s.person.id),
+      reason: 'ok' as const,
     }
   }, [records, pathTargetId])
+
+  const clearParam = useCallback(
+    (name: string) => {
+      const next = new URLSearchParams(params)
+      next.delete(name)
+      setParams(next)
+    },
+    [params, setParams],
+  )
 
   const { nodes, links } = useMemo(() => {
     const typeById = new Map(types.map((t) => [t.id, t]))
     const people = selectPeople(records)
     let edges = selectRelationships(records).filter((e) => {
+      // Path edges bypass filters — hiding part of a highlighted chain
+      // while its breadcrumb chip stays up would be a lie.
+      if (pathInfo?.edgeIds.has(e.id)) return true
       if (hiddenTypes.has(e.typeId)) return false
       if (!showMentions && e.origin === 'mention') return false
       return true
@@ -144,7 +158,8 @@ export default function GraphPage() {
 
   const vault = useVaultStore((s) => s.vault)
   const onTap = useCallback((tap: Tap) => setPeek(tap), [])
-  const canvasRef = useCanvasGraph(nodes, links, focusId, onTap, vault)
+  const pathNodeIds = pathInfo?.reason === 'ok' ? pathInfo.nodeIds : null
+  const canvasRef = useCanvasGraph(nodes, links, focusId, onTap, vault, pathNodeIds)
 
   return (
     <div className="graph">
@@ -152,21 +167,30 @@ export default function GraphPage() {
         {focusName && (
           <span className="chip focus-chip">
             {focusName}’s world
-            <button className="subtle" onClick={() => setParams({})} aria-label="Show everyone">
+            <button
+              className="subtle"
+              onClick={() => clearParam('focus')}
+              aria-label="Show everyone"
+            >
               ×
             </button>
           </span>
         )}
         {pathInfo && (
           <span className="chip focus-chip">
-            {pathInfo.names.join(' → ')}
-            <button className="subtle" onClick={() => setParams({})} aria-label="Clear path">
+            {pathInfo.reason === 'ok'
+              ? pathInfo.names.join(' → ')
+              : pathInfo.reason === 'no-self'
+                ? 'no “me” set — mark yourself in Edit details'
+                : 'no known path'}
+            <button
+              className="subtle"
+              onClick={() => clearParam('path')}
+              aria-label="Clear path"
+            >
               ×
             </button>
           </span>
-        )}
-        {pathTargetId && !pathInfo && (
-          <span className="chip focus-chip">no known path</span>
         )}
         {types
           .filter((t) => t.label !== 'mentioned')
@@ -196,7 +220,7 @@ export default function GraphPage() {
           mentions
         </button>
       </div>
-      {nodes.length === 0 ? (
+      {nodes.length === 0 || (links.length === 0 && nodes.length <= 1) ? (
         <p className="hint">
           No people yet — <Link to="/">add someone</Link> and connect them.
         </p>
@@ -336,6 +360,7 @@ function useCanvasGraph(
   focusId: string | null,
   onTap: (tap: Tap) => void,
   vault: UnlockedVault | null,
+  pathNodeIds: string[] | null,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // All three survive effect re-runs so a filter toggle or record edit
@@ -344,6 +369,8 @@ function useCanvasGraph(
   const positionsRef = useRef(new Map<string, { x: number; y: number }>())
   const transformRef = useRef({ x: 0, y: 0, k: 1 })
   const avatarImagesRef = useRef(new Map<string, HTMLImageElement | 'loading' | 'failed'>())
+  // Fit-to-path camera runs once per distinct path, not on every re-render.
+  const lastFitKeyRef = useRef<string>('')
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -543,6 +570,32 @@ function useCanvasGraph(
     observer.observe(canvas.parentElement!)
     resize()
 
+    // "Show on graph" should actually show it: once the layout has had a
+    // moment to settle, center and zoom the viewport onto the path.
+    let fitTimer: ReturnType<typeof setTimeout> | undefined
+    const fitKey = pathNodeIds?.join(',') ?? ''
+    if (pathNodeIds && pathNodeIds.length > 0 && lastFitKeyRef.current !== fitKey) {
+      lastFitKeyRef.current = fitKey
+      fitTimer = setTimeout(() => {
+        const points = pathNodeIds
+          .map((id) => positions.get(id))
+          .filter((p): p is { x: number; y: number } => Boolean(p))
+        if (points.length === 0) return
+        const minX = Math.min(...points.map((p) => p.x))
+        const maxX = Math.max(...points.map((p) => p.x))
+        const minY = Math.min(...points.map((p) => p.y))
+        const maxY = Math.max(...points.map((p) => p.y))
+        const pad = NODE_R * 6
+        const spanX = maxX - minX + pad * 2
+        const spanY = maxY - minY + pad * 2
+        const k = Math.min(2, Math.max(0.3, Math.min(width / spanX, height / spanY)))
+        transform.k = k
+        transform.x = -((minX + maxX) / 2) * k
+        transform.y = -((minY + maxY) / 2) * k
+        scheduleRender()
+      }, 700)
+    }
+
     const toGraphCoords = (clientX: number, clientY: number) => {
       const rect = canvas.getBoundingClientRect()
       return {
@@ -731,6 +784,7 @@ function useCanvasGraph(
 
     return () => {
       alive = false
+      if (fitTimer !== undefined) clearTimeout(fitTimer)
       simulation.stop()
       observer.disconnect()
       canvas.removeEventListener('pointerdown', onPointerDown)
@@ -740,7 +794,7 @@ function useCanvasGraph(
       canvas.removeEventListener('wheel', onWheel)
       canvas.removeEventListener('keydown', onKeyDown)
     }
-  }, [nodes, links, focusId, onTap, vault])
+  }, [nodes, links, focusId, onTap, vault, pathNodeIds])
 
   return canvasRef
 }

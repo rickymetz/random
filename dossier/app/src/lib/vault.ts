@@ -29,6 +29,7 @@ import {
   wipe,
   wrapDek,
 } from './crypto'
+import type { KdfParams } from './crypto'
 import { db, type VaultSlotRow } from './db'
 import type { DomainRecord } from './models'
 
@@ -47,11 +48,11 @@ const PREFIX_CT_LENGTH = 24
 // wrappedDek is AES-GCM over 32 key bytes: 32 + 16-byte tag.
 const WRAPPED_DEK_LENGTH = 48
 
-function makeDummySlot(): VaultSlotRow {
+function makeDummySlot(kdfParams: KdfParams = DEFAULT_KDF_PARAMS): VaultSlotRow {
   return {
     id: toHex(randomBytes(16)),
     salt: randomBytes(16),
-    kdfParams: DEFAULT_KDF_PARAMS,
+    kdfParams,
     wrappedDekIv: randomBytes(12),
     wrappedDek: randomBytes(WRAPPED_DEK_LENGTH),
     prefixIv: randomBytes(12),
@@ -64,9 +65,12 @@ export async function vaultExists(): Promise<boolean> {
   return (await db.slots.count()) > 0
 }
 
-export async function createVault(passphrase: string): Promise<UnlockedVault> {
+export async function createVault(
+  passphrase: string,
+  kdfParams: KdfParams = DEFAULT_KDF_PARAMS,
+): Promise<UnlockedVault> {
   const salt = randomBytes(16)
-  const kek = await deriveKek(passphrase, salt)
+  const kek = await deriveKek(passphrase, salt, kdfParams)
   const rawDek = generateDekBytes()
   const wrapped = await wrapDek(rawDek, kek)
   const dek = await importDek(rawDek)
@@ -79,14 +83,14 @@ export async function createVault(passphrase: string): Promise<UnlockedVault> {
   const slot: VaultSlotRow = {
     id: toHex(randomBytes(16)),
     salt,
-    kdfParams: DEFAULT_KDF_PARAMS,
+    kdfParams,
     wrappedDekIv: wrapped.iv,
     wrappedDek: wrapped.ciphertext,
     prefixIv: prefixSealed.iv,
     prefixCt: prefixSealed.blob,
     schemaVersion: 1,
   }
-  await db.slots.bulkAdd([slot, makeDummySlot()])
+  await db.slots.bulkAdd([slot, makeDummySlot(kdfParams)])
   return { slotId: slot.id, dataPrefix, dek }
 }
 
@@ -94,10 +98,18 @@ export async function createVault(passphrase: string): Promise<UnlockedVault> {
  * Returns null on failure — deliberately silent about *why* (§6.6).
  * Every slot is tried to completion regardless of earlier matches, so
  * unlock latency is the same for a hit on any slot and for a miss.
+ *
+ * A successful unlock of a legacy PBKDF2 slot migrates it to Argon2id
+ * (§6.2: "parameters are versioned … so they can be raised later") by
+ * re-wrapping the DEK — records are untouched. The dummy slot is
+ * regenerated alongside so KDF metadata can't tell the two apart. (In a
+ * two-real-slot v2 store the second real slot can't be migrated without
+ * its passphrase, so migration only runs on two-slot stores.)
  */
 export async function unlockVault(passphrase: string): Promise<UnlockedVault | null> {
   const slots = await db.slots.toArray()
   let result: UnlockedVault | null = null
+  let matched: { slot: VaultSlotRow; rawDek: Uint8Array } | null = null
   for (const slot of slots) {
     try {
       const kek = await deriveKek(passphrase, slot.salt, validateKdfParams(slot.kdfParams))
@@ -106,14 +118,54 @@ export async function unlockVault(passphrase: string): Promise<UnlockedVault | n
         kek,
       )
       const dek = await importDek(rawDek)
-      wipe(rawDek)
       const prefixBytes = await decryptBlob(dek, { iv: slot.prefixIv, blob: slot.prefixCt })
-      result ??= { slotId: slot.id, dataPrefix: toHex(prefixBytes), dek }
+      if (result === null) {
+        result = { slotId: slot.id, dataPrefix: toHex(prefixBytes), dek }
+        matched = { slot, rawDek }
+      } else {
+        wipe(rawDek)
+      }
     } catch {
       // Not this slot (or wrong passphrase) — indistinguishable by design.
     }
   }
+  if (matched) {
+    try {
+      if (matched.slot.kdfParams.algorithm !== DEFAULT_KDF_PARAMS.algorithm && slots.length === 2) {
+        await migrateSlotKdf(matched.slot, matched.rawDek, passphrase, slots)
+      }
+    } catch {
+      // Migration is best-effort; the old wrap still works.
+    } finally {
+      wipe(matched.rawDek)
+    }
+  }
   return result
+}
+
+async function migrateSlotKdf(
+  slot: VaultSlotRow,
+  rawDek: Uint8Array,
+  passphrase: string,
+  slots: VaultSlotRow[],
+): Promise<void> {
+  const salt = randomBytes(16)
+  const kek = await deriveKek(passphrase, salt, DEFAULT_KDF_PARAMS)
+  const wrapped = await wrapDek(rawDek, kek)
+  await db.slots.put({
+    ...slot,
+    salt,
+    kdfParams: DEFAULT_KDF_PARAMS,
+    wrappedDekIv: wrapped.iv,
+    wrappedDek: wrapped.ciphertext,
+  })
+  // Refresh the dummy so its KDF metadata matches the migrated slot.
+  for (const other of slots) {
+    if (other.id !== slot.id) {
+      await db.slots.delete(other.id)
+      await db.slots.put(makeDummySlot())
+    }
+  }
 }
 
 /**

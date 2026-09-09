@@ -120,7 +120,11 @@ function PersonRow({ person, query }: { person: Person; query: string }) {
         <Avatar person={person} size={36} />
         <span className="person-row-text">
           <strong>{person.displayName}</strong>
-          {person.isSelf && <span className="you-badge"> you</span>}
+          {person.isSelf && (
+            <span className="you-badge" aria-label="This is you">
+              you
+            </span>
+          )}
           {detail && <span className="hint"> {detail}</span>}
           {snippet && <span className="snippet">{snippet}</span>}
         </span>
@@ -150,8 +154,9 @@ function useToday(): Date {
 function BackupNag() {
   const records = useVaultStore((s) => s.records)
   const settings = selectSettings(records)
+  // The seeded "Me" person alone is not content worth nagging about.
   const hasContent = useMemo(
-    () => selectPeople(records).length > 0,
+    () => selectPeople(records).some((p) => !p.isSelf),
     [records],
   )
   if (!hasContent) return null

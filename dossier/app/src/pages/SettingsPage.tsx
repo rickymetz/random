@@ -12,6 +12,7 @@ import {
 } from '../lib/models'
 import { MAX_PIN_ATTEMPTS } from '../lib/pin'
 import { getStorageStatus } from '../lib/platform'
+import { requestNotificationPermission } from '../lib/reminders'
 import { loadAllBlobs, unlockVault } from '../lib/vault'
 import { webAuthnAvailable } from '../lib/webauthn'
 import { selectSettings, useVaultStore } from '../store/vaultStore'
@@ -282,6 +283,48 @@ function SecuritySection() {
             {lockMsg}
           </span>
         )}
+      </div>
+
+      <h3>Discretion</h3>
+      <div className="column">
+        <label className="inline-check">
+          <input
+            type="checkbox"
+            checked={settings?.shakeToLock ?? false}
+            onChange={async (e) => {
+              const enable = e.target.checked
+              if (enable) {
+                // iOS gates motion events behind a permission prompt that
+                // must come from a user gesture — this is that gesture.
+                const dme = DeviceMotionEvent as unknown as {
+                  requestPermission?: () => Promise<string>
+                }
+                if (typeof dme?.requestPermission === 'function') {
+                  try {
+                    if ((await dme.requestPermission()) !== 'granted') return
+                  } catch {
+                    return
+                  }
+                }
+              }
+              void changeSecurity({ shakeToLock: enable })
+            }}
+          />
+          Shake to lock (three hard jolts panic-lock the vault)
+        </label>
+        <label className="inline-check">
+          <input
+            type="checkbox"
+            checked={settings?.remindersEnabled ?? false}
+            onChange={async (e) => {
+              const enable = e.target.checked
+              if (enable && !(await requestNotificationPermission())) return
+              void changeSecurity({ remindersEnabled: enable })
+            }}
+          />
+          Daily reminder notification — always generic (“You have a reminder”), never a
+          name
+        </label>
       </div>
     </section>
   )

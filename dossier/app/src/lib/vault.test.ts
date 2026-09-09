@@ -82,6 +82,28 @@ describe('vault', () => {
     expect(records).toHaveLength(1)
   })
 
+  it('migrates a legacy PBKDF2 slot to Argon2id on unlock, dummy included', async () => {
+    const { LEGACY_PBKDF2_PARAMS, DEFAULT_KDF_PARAMS } = await import('./crypto')
+    const vault = await createVault('open sesame', LEGACY_PBKDF2_PARAMS)
+    await saveRecord(vault, makePerson('Ada'))
+    let slots = await db.slots.toArray()
+    expect(slots.every((s) => s.kdfParams.algorithm === 'PBKDF2-SHA-256')).toBe(true)
+
+    const reopened = await unlockVault('open sesame')
+    expect(reopened).not.toBeNull()
+    slots = await db.slots.toArray()
+    expect(slots).toHaveLength(2)
+    // Real AND dummy slot both carry Argon2id metadata after migration —
+    // the KDF must not become a real-vs-dummy tell.
+    expect(slots.every((s) => s.kdfParams.algorithm === DEFAULT_KDF_PARAMS.algorithm)).toBe(
+      true,
+    )
+    // Records still open under the migrated wrap.
+    const again = await unlockVault('open sesame')
+    const { records } = await loadAllRecords(again!)
+    expect(records.map((r) => (r as Person).displayName)).toEqual(['Ada'])
+  })
+
   it('persists only ciphertext', async () => {
     const vault = await createVault('open sesame')
     await saveRecord(vault, makePerson('Ada Lovelace'))

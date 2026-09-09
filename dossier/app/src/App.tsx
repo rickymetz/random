@@ -1,9 +1,15 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
-import { NavLink, Route, Routes } from 'react-router-dom'
+import { NavLink, Route, Routes, useParams } from 'react-router-dom'
 import {
   DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_BACKGROUND_GRACE_SECONDS,
 } from './lib/models'
+import {
+  hasDueItems,
+  notificationsGranted,
+  showGenericReminder,
+  todayStamp,
+} from './lib/reminders'
 import { selectSettings, useVaultStore } from './store/vaultStore'
 import UnlockPage from './pages/UnlockPage'
 import PeoplePage from './pages/PeoplePage'
@@ -12,6 +18,16 @@ import SettingsPage from './pages/SettingsPage'
 
 // The graph pulls in d3-force; keep it out of the unlock-screen bundle.
 const GraphPage = lazy(() => import('./pages/GraphPage'))
+
+/**
+ * Remount PersonPage per person: without the key, navigating from one
+ * dossier to another keeps component state alive — an open edit form
+ * would carry the previous person's fields (and isSelf!) onto the next.
+ */
+function KeyedPersonPage() {
+  const { id } = useParams()
+  return <PersonPage key={id} />
+}
 
 /** Warn this long before the inactivity lock fires (when the timer allows). */
 const LOCK_WARNING_MS = 15_000
@@ -104,6 +120,41 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlocked, autoLockMinutes])
 
+  // Shake-to-lock (§6.4): three hard jolts within a second panic-lock.
+  const shakeToLock = settings?.shakeToLock ?? false
+  useEffect(() => {
+    if (!unlocked || !shakeToLock || typeof DeviceMotionEvent === 'undefined') return
+    let spikes: number[] = []
+    const onMotion = (e: DeviceMotionEvent) => {
+      const a = e.accelerationIncludingGravity
+      if (!a) return
+      const magnitude = Math.abs(a.x ?? 0) + Math.abs(a.y ?? 0) + Math.abs(a.z ?? 0)
+      const now = Date.now()
+      if (magnitude > 45) {
+        spikes = spikes.filter((t) => now - t < 1000)
+        spikes.push(now)
+        if (spikes.length >= 3) panicLock()
+      }
+    }
+    window.addEventListener('devicemotion', onMotion)
+    return () => window.removeEventListener('devicemotion', onMotion)
+  }, [unlocked, shakeToLock, panicLock])
+
+  // Daily generic reminder notification (§4.4/§6.5): at most one per
+  // day, fired at unlock when something is due; text never names anyone.
+  const remindersEnabled = settings?.remindersEnabled ?? false
+  const lastReminderDay = settings?.lastReminderDay
+  const updateSecurity = useVaultStore((s) => s.updateSecurity)
+  useEffect(() => {
+    if (!unlocked || !remindersEnabled || !notificationsGranted()) return
+    const today = todayStamp()
+    if (lastReminderDay === today) return
+    const { records } = useVaultStore.getState()
+    if (!hasDueItems(records)) return
+    void showGenericReminder().then(() => updateSecurity({ lastReminderDay: today }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unlocked, remindersEnabled, lastReminderDay])
+
   if (status === 'unknown') return null
   if (status !== 'unlocked') return <UnlockPage mode={status === 'no-vault' ? 'create' : 'unlock'} />
 
@@ -136,7 +187,7 @@ export default function App() {
         <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<PeoplePage />} />
-            <Route path="/person/:id" element={<PersonPage />} />
+            <Route path="/person/:id" element={<KeyedPersonPage />} />
             <Route path="/graph" element={<GraphPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>

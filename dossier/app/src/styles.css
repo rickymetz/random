@@ -711,3 +711,13 @@ a.mention {
   font-size: 0.875rem;
   text-decoration: none;
 }
+
+.you-badge {
+  margin-left: 0.35rem;
+}
+
+.path a {
+  color: var(--accent);
+  text-decoration: underline dotted;
+  text-underline-offset: 0.2em;
+}

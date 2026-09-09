@@ -88,6 +88,7 @@ export function mutualConnections(
   aId: string,
   bId: string,
 ): MutualConnection[] {
+  if (aId === bId) return []
   const { neighbors, people } = buildAdjacency(records)
   const aEdges = new Map<string, Relationship>()
   for (const { otherId, edge } of neighbors.get(aId) ?? []) {

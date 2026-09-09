@@ -276,6 +276,31 @@ describe('vault store', () => {
     void blobIds
   })
 
+  it('restoring a backup with a self person demotes the seeded "Me"', async () => {
+    const { selectSelf } = await import('../lib/graphQueries')
+    const seeded = selectSelf(store().records)!
+    await store().importRecords([
+      {
+        kind: 'person',
+        id: crypto.randomUUID(),
+        displayName: 'Real Me',
+        nicknames: [],
+        likes: [],
+        dislikes: [],
+        tags: [],
+        isSelf: true,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ])
+    const selves = [...store().records.values()].filter(
+      (r) => r.kind === 'person' && r.isSelf,
+    )
+    expect(selves).toHaveLength(1)
+    expect((selves[0] as { displayName: string }).displayName).toBe('Real Me')
+    expect((store().records.get(seeded.id) as { isSelf?: boolean }).isSelf).toBeUndefined()
+  })
+
   it('import never overwrites device-local settings', async () => {
     await store().updateSecurity({ autoLockMinutes: 2 })
     await store().importRecords([

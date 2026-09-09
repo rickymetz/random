@@ -170,6 +170,12 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
         lastExportAt: finite(r.lastExportAt, 0, Number.MAX_SAFE_INTEGER),
         autoLockMinutes: finite(r.autoLockMinutes, 0, 24 * 60),
         backgroundGraceSeconds: finite(r.backgroundGraceSeconds, 0, 3600),
+        shakeToLock: r.shakeToLock === true || undefined,
+        remindersEnabled: r.remindersEnabled === true || undefined,
+        lastReminderDay:
+          typeof r.lastReminderDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.lastReminderDay)
+            ? r.lastReminderDay
+            : undefined,
       }
       return settings
     }
