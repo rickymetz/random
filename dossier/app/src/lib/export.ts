@@ -8,7 +8,13 @@
  * re-entering the passphrase, which doubles as proof the user still knows
  * it. There is deliberately no plaintext export path.
  */
-import { DEFAULT_KDF_PARAMS, deriveExportKey, randomBytes, type KdfParams } from './crypto'
+import {
+  DEFAULT_KDF_PARAMS,
+  deriveExportKey,
+  randomBytes,
+  validateKdfParams,
+  type KdfParams,
+} from './crypto'
 import type { DomainRecord } from './models'
 
 export const EXPORT_FORMAT = 'dossier-export'
@@ -74,12 +80,28 @@ export async function importBundle(
   if (header.version > EXPORT_VERSION) {
     throw new Error('Backup was made by a newer version of the app.')
   }
-  const key = await deriveExportKey(passphrase, fromBase64(header.salt), header.kdf)
+  // The header is attacker-controlled: bound the KDF params (a crafted
+  // 2-billion-iteration header would otherwise hang the device) and turn
+  // malformed base64/fields into the friendly error, not a raw TypeError.
+  let key: CryptoKey
+  let salt: Uint8Array
+  let iv: Uint8Array
+  let data: Uint8Array
+  try {
+    const kdf = validateKdfParams(header.kdf)
+    salt = fromBase64(header.salt)
+    iv = fromBase64(header.iv)
+    data = fromBase64(header.data)
+    if (salt.length < 8 || iv.length !== 12) throw new Error('bad header')
+    key = await deriveExportKey(passphrase, salt, kdf)
+  } catch {
+    throw new Error('Not a backup file.')
+  }
   try {
     const plaintext = await globalThis.crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: fromBase64(header.iv) as BufferSource },
+      { name: 'AES-GCM', iv: iv as BufferSource },
       key,
-      fromBase64(header.data) as BufferSource,
+      data as BufferSource,
     )
     const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as {
       records: DomainRecord[]

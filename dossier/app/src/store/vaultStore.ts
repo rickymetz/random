@@ -3,13 +3,17 @@
  *
  * Everything here exists only while unlocked. `lock()` is the panic path
  * too: it drops the DEK reference, all decrypted records, and the search
- * index synchronously. Nothing in this store is persisted directly —
- * writes go through vault.saveRecord(s) and are mirrored here.
+ * index synchronously, and bumps a session epoch so any async write that
+ * was in flight when the lock happened discards its result instead of
+ * re-populating the store with plaintext. Nothing in this store is
+ * persisted directly — writes go through vault.saveRecord(s) and are
+ * mirrored here.
  */
 import { create } from 'zustand'
-import { extractMentions } from '../lib/mentions'
+import { extractMentions, stripMentionsOf } from '../lib/mentions'
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
+  SETTINGS_ID,
   type DomainRecord,
   type FollowUp,
   type NoteEntry,
@@ -17,11 +21,13 @@ import {
   type Person,
   type Relationship,
   type RelationshipType,
+  type Settings,
 } from '../lib/models'
 import { createIndex, rebuildIndex, reindexPerson, searchPeople } from '../lib/search'
+import { sanitizeRecords } from '../lib/validate'
 import {
   createVault,
-  deleteRecord,
+  deleteRecords,
   loadAllRecords,
   saveRecords,
   unlockVault,
@@ -36,11 +42,18 @@ interface VaultState {
   status: 'unknown' | 'no-vault' | 'locked' | 'unlocked'
   vault: UnlockedVault | null
   records: Map<string, DomainRecord>
+  /** Bumped on every lock; async work from an older epoch discards itself. */
+  epoch: number
+  /** Rows that failed to decrypt at unlock — surfaced, not fatal. */
+  corrupted: number
+  /** Home-screen search query, preserved across navigation (memory only). */
+  homeQuery: string
 
   init: () => Promise<void>
   create: (passphrase: string) => Promise<void>
   unlock: (passphrase: string) => Promise<boolean>
   lock: () => void
+  setHomeQuery: (query: string) => void
 
   addPerson: (displayName: string) => Promise<Person>
   updatePerson: (person: Person) => Promise<void>
@@ -57,13 +70,13 @@ interface VaultState {
     note?: string,
   ) => Promise<void>
   removeRelationship: (relationshipId: string) => Promise<void>
-  addRelationshipType: (label: string, color: string, directed: boolean) => Promise<void>
-  importRecords: (incoming: DomainRecord[]) => Promise<number>
-}
-
-function requireVault(vault: UnlockedVault | null): UnlockedVault {
-  if (!vault) throw new Error('locked')
-  return vault
+  addRelationshipType: (
+    label: string,
+    color: string,
+    directed: boolean,
+  ) => Promise<RelationshipType>
+  markExported: () => Promise<void>
+  importRecords: (incoming: unknown) => Promise<number>
 }
 
 /** Built-in relationship types missing from the record set, ready to persist. */
@@ -88,10 +101,11 @@ function mentionTypeId(records: Map<string, DomainRecord>): string {
 
 /**
  * Mention-derived edges (§4.2): after person A's notes change, A should
- * have a mention-origin edge to exactly the people their notes mention and
- * who aren't already related to A some other way. Upgraded (explicit)
- * edges are never touched; stale mention edges are dropped.
- * Returns the puts/deletes to apply, without touching state.
+ * have an outgoing mention-origin edge to exactly the people their notes
+ * mention who aren't connected to A by an EXPLICIT edge. Only A's own
+ * outgoing mention edges are managed here — an incoming mention edge
+ * (B→A) belongs to B's notes and neither blocks A's edge nor gets
+ * touched. Returns the puts/deletes to apply, without touching state.
  */
 function diffMentionEdges(
   records: Map<string, DomainRecord>,
@@ -105,25 +119,31 @@ function diffMentionEdges(
   }
   mentioned.delete(personId)
 
-  const relatedIds = new Set<string>()
-  const mentionEdges: Relationship[] = []
+  const explicitlyRelated = new Set<string>()
+  const ownMentionEdges: Relationship[] = []
   for (const r of records.values()) {
     if (r.kind !== 'relationship') continue
-    if (r.fromId === personId || r.toId === personId) {
-      const other = r.fromId === personId ? r.toId : r.fromId
-      if (r.origin === 'mention' && r.fromId === personId) mentionEdges.push(r)
-      else relatedIds.add(other)
+    if (r.origin === 'mention') {
+      if (r.fromId === personId) ownMentionEdges.push(r)
+    } else if (r.fromId === personId || r.toId === personId) {
+      explicitlyRelated.add(r.fromId === personId ? r.toId : r.fromId)
     }
   }
 
-  const deletes = mentionEdges
-    .filter((e) => !mentioned.has(e.toId) || relatedIds.has(e.toId))
-    .map((e) => e.id)
-  const covered = new Set(mentionEdges.map((e) => e.toId))
+  const deletes: string[] = []
+  const covered = new Set<string>()
+  for (const edge of ownMentionEdges) {
+    if (!mentioned.has(edge.toId) || explicitlyRelated.has(edge.toId) || covered.has(edge.toId)) {
+      deletes.push(edge.id)
+    } else {
+      covered.add(edge.toId)
+    }
+  }
   const puts: Relationship[] = []
   for (const id of mentioned) {
-    if (relatedIds.has(id) || covered.has(id)) continue
-    if (!records.has(id)) continue
+    if (explicitlyRelated.has(id) || covered.has(id)) continue
+    const target = records.get(id)
+    if (!target || target.kind !== 'person') continue
     puts.push({
       kind: 'relationship',
       id: crypto.randomUUID(),
@@ -138,16 +158,36 @@ function diffMentionEdges(
   return { puts, deletes }
 }
 
+// All mutations run through one chain so two in-flight actions can never
+// diff against the same stale snapshot (double-tap → duplicate edges).
+let writeChain: Promise<unknown> = Promise.resolve()
+function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+  const run = writeChain.then(fn, fn)
+  writeChain = run.catch(() => undefined)
+  return run
+}
+
 export const useVaultStore = create<VaultState>((set, get) => {
-  /** Persist and mirror a batch of puts/deletes, then refresh search docs. */
+  /**
+   * Persist and mirror a batch of puts/deletes, then refresh search docs.
+   * If a lock happened while the encrypted write was in flight (epoch
+   * changed), the decrypted result is discarded — the store must stay
+   * empty after lock (§6.4). Disk writes that already landed are
+   * ciphertext, so they are safe either way.
+   */
   async function apply(
     puts: DomainRecord[],
     deletes: string[] = [],
     reindexIds: string[] = [],
   ): Promise<void> {
-    const vault = requireVault(get().vault)
+    // A write that starts after a lock is a silent no-op: the panic path
+    // wins, and nothing may throw or repopulate memory.
+    const vault = get().vault
+    if (!vault) return
+    const startEpoch = get().epoch
     if (puts.length > 0) await saveRecords(vault, puts)
-    for (const id of deletes) await deleteRecord(vault, id)
+    if (deletes.length > 0) await deleteRecords(vault, deletes)
+    if (get().epoch !== startEpoch || get().vault !== vault) return
     const next = new Map(get().records)
     for (const record of puts) next.set(record.id, record)
     for (const id of deletes) next.delete(id)
@@ -159,6 +199,9 @@ export const useVaultStore = create<VaultState>((set, get) => {
     status: 'unknown',
     vault: null,
     records: new Map(),
+    epoch: 0,
+    corrupted: 0,
+    homeQuery: '',
 
     init: async () => {
       set({ status: (await vaultExists()) ? 'locked' : 'no-vault' })
@@ -171,13 +214,17 @@ export const useVaultStore = create<VaultState>((set, get) => {
       await saveRecords(vault, seed)
       for (const t of seed) records.set(t.id, t)
       searchIndex = createIndex()
-      set({ status: 'unlocked', vault, records })
+      set({ status: 'unlocked', vault, records, corrupted: 0 })
     },
 
     unlock: async (passphrase) => {
       const vault = await unlockVault(passphrase)
       if (!vault) return false
-      const records = new Map((await loadAllRecords(vault)).map((r) => [r.id, r]))
+      const { records: loaded, corrupted } = await loadAllRecords(vault)
+      // Defense in depth: stored records went through sanitize on the way
+      // in, but a bad row must not brick unlock (§5 T2 aftermath).
+      const { records: clean } = sanitizeRecords(loaded)
+      const records = new Map(clean.map((r) => [r.id, r]))
       const seed = missingBuiltInTypes(records)
       if (seed.length > 0) {
         await saveRecords(vault, seed)
@@ -185,16 +232,25 @@ export const useVaultStore = create<VaultState>((set, get) => {
       }
       searchIndex = createIndex()
       rebuildIndex(searchIndex, records)
-      set({ status: 'unlocked', vault, records })
+      set({ status: 'unlocked', vault, records, corrupted })
       return true
     },
 
     lock: () => {
       searchIndex = createIndex()
-      set({ status: 'locked', vault: null, records: new Map() })
+      set((state) => ({
+        status: state.status === 'no-vault' ? 'no-vault' : 'locked',
+        vault: null,
+        records: new Map(),
+        epoch: state.epoch + 1,
+        homeQuery: '',
+      }))
     },
 
-    addPerson: async (displayName) => {
+    setHomeQuery: (homeQuery) => set({ homeQuery }),
+
+    addPerson: (displayName) =>
+      enqueue(async () => {
       const person: Person = {
         kind: 'person',
         id: crypto.randomUUID(),
@@ -208,15 +264,19 @@ export const useVaultStore = create<VaultState>((set, get) => {
       }
       await apply([person], [], [person.id])
       return person
-    },
+    }),
 
-    updatePerson: async (person) => {
+    updatePerson: (person) =>
+      enqueue(async () => {
       await apply([{ ...person, updatedAt: Date.now() }], [], [person.id])
-    },
+    }),
 
-    removePerson: async (personId) => {
+    removePerson: (personId) =>
+      enqueue(async () => {
       const { records } = get()
       const deletes = [personId]
+      const puts: DomainRecord[] = []
+      const touched = new Set<string>([personId])
       for (const r of records.values()) {
         if (
           ((r.kind === 'note' || r.kind === 'followUp' || r.kind === 'photo') &&
@@ -224,12 +284,22 @@ export const useVaultStore = create<VaultState>((set, get) => {
           (r.kind === 'relationship' && (r.fromId === personId || r.toId === personId))
         ) {
           deletes.push(r.id)
+        } else if (r.kind === 'note' && r.mentions.includes(personId)) {
+          // Rewrite dangling mention tokens in other people's notes to the
+          // plain name, so no dead @links survive the delete.
+          puts.push({
+            ...r,
+            body: stripMentionsOf(r.body, personId),
+            mentions: r.mentions.filter((m) => m !== personId),
+          })
+          touched.add(r.personId)
         }
       }
-      await apply([], deletes, [personId])
-    },
+      await apply(puts, deletes, [...touched])
+    }),
 
-    saveNote: async (personId, body) => {
+    saveNote: (personId, body) =>
+      enqueue(async () => {
       const note: NoteEntry = {
         kind: 'note',
         id: crypto.randomUUID(),
@@ -242,18 +312,20 @@ export const useVaultStore = create<VaultState>((set, get) => {
       withNote.set(note.id, note)
       const { puts, deletes } = diffMentionEdges(withNote, personId)
       await apply([note, ...puts], deletes, [personId])
-    },
+    }),
 
-    removeNote: async (noteId) => {
+    removeNote: (noteId) =>
+      enqueue(async () => {
       const note = get().records.get(noteId)
       if (!note || note.kind !== 'note') return
       const without = new Map(get().records)
       without.delete(noteId)
       const { puts, deletes } = diffMentionEdges(without, note.personId)
       await apply(puts, [noteId, ...deletes], [note.personId])
-    },
+    }),
 
-    addFollowUp: async (personId, text, dueDate) => {
+    addFollowUp: (personId, text, dueDate) =>
+      enqueue(async () => {
       const followUp: FollowUp = {
         kind: 'followUp',
         id: crypto.randomUUID(),
@@ -264,19 +336,22 @@ export const useVaultStore = create<VaultState>((set, get) => {
         createdAt: Date.now(),
       }
       await apply([followUp])
-    },
+    }),
 
-    toggleFollowUp: async (followUpId) => {
+    toggleFollowUp: (followUpId) =>
+      enqueue(async () => {
       const f = get().records.get(followUpId)
       if (!f || f.kind !== 'followUp') return
       await apply([{ ...f, done: !f.done }])
-    },
+    }),
 
-    removeFollowUp: async (followUpId) => {
+    removeFollowUp: (followUpId) =>
+      enqueue(async () => {
       await apply([], [followUpId])
-    },
+    }),
 
-    addRelationship: async (fromId, toId, typeId, note) => {
+    addRelationship: (fromId, toId, typeId, note) =>
+      enqueue(async () => {
       const { records } = get()
       const type = records.get(typeId)
       if (!type || type.kind !== 'relationshipType') throw new Error('unknown type')
@@ -302,44 +377,83 @@ export const useVaultStore = create<VaultState>((set, get) => {
         origin: 'explicit',
         createdAt: Date.now(),
       }
-      await apply([edge], deletes)
-    },
+      await apply([edge], deletes, [fromId, toId])
+    }),
 
-    removeRelationship: async (relationshipId) => {
+    removeRelationship: (relationshipId) =>
+      enqueue(async () => {
       const edge = get().records.get(relationshipId)
       if (!edge || edge.kind !== 'relationship') return
-      // If notes still mention the pair, the derived edge comes back.
+      // If notes still mention the pair, derived edges come back — for
+      // BOTH endpoints, since either side's notes may hold the mention.
       const without = new Map(get().records)
       without.delete(relationshipId)
-      const { puts, deletes } = diffMentionEdges(without, edge.fromId)
-      await apply(puts, [relationshipId, ...deletes])
-    },
+      const fromDiff = diffMentionEdges(without, edge.fromId)
+      for (const p of fromDiff.puts) without.set(p.id, p)
+      const toDiff = diffMentionEdges(without, edge.toId)
+      await apply(
+        [...fromDiff.puts, ...toDiff.puts],
+        [relationshipId, ...fromDiff.deletes, ...toDiff.deletes],
+        [edge.fromId, edge.toId],
+      )
+    }),
 
-    addRelationshipType: async (label, color, directed) => {
+    addRelationshipType: (label, color, directed) =>
+      enqueue(async () => {
+      const trimmed = label.trim()
+      // Reuse an existing type with the same label instead of silently
+      // creating an indistinguishable duplicate.
+      for (const r of get().records.values()) {
+        if (
+          r.kind === 'relationshipType' &&
+          r.label.toLowerCase() === trimmed.toLowerCase()
+        ) {
+          return r
+        }
+      }
       const type: RelationshipType = {
         kind: 'relationshipType',
         id: crypto.randomUUID(),
-        label: label.trim(),
+        label: trimmed,
         color,
         directed,
         builtIn: false,
       }
       await apply([type])
-    },
+      return type
+    }),
 
-    importRecords: async (incoming) => {
-      const vault = requireVault(get().vault)
-      // Merge by id, incoming wins. Imported built-in types are matched by
-      // label so a restore doesn't duplicate the seeded vocabulary.
-      const records = new Map(get().records)
+    markExported: () =>
+      enqueue(async () => {
+      const existing = get().records.get(SETTINGS_ID)
+      const settings: Settings = {
+        ...(existing?.kind === 'settings' ? existing : {}),
+        kind: 'settings',
+        id: SETTINGS_ID,
+        lastExportAt: Date.now(),
+      }
+      await apply([settings])
+    }),
+
+    importRecords: (incoming) =>
+      enqueue(async () => {
+      const vault = get().vault
+      if (!vault) return 0
+      const startEpoch = get().epoch
+      const { records: sanitized } = sanitizeRecords(incoming)
+
+      // Imported built-in types are matched by label so a restore doesn't
+      // duplicate the seeded vocabulary. Records are cloned before any
+      // remap so the caller's array is never mutated.
+      const current = get().records
       const builtInByLabel = new Map(
-        [...records.values()]
+        [...current.values()]
           .filter((r): r is RelationshipType => r.kind === 'relationshipType' && r.builtIn)
           .map((r) => [r.label, r.id]),
       )
       const idRemap = new Map<string, string>()
       const puts: DomainRecord[] = []
-      for (const record of incoming) {
+      for (const record of sanitized) {
         if (record.kind === 'relationshipType' && record.builtIn) {
           const existingId = builtInByLabel.get(record.label)
           if (existingId && existingId !== record.id) {
@@ -347,19 +461,22 @@ export const useVaultStore = create<VaultState>((set, get) => {
             continue
           }
         }
-        puts.push(record)
-      }
-      for (const record of puts) {
-        if (record.kind === 'relationship') {
-          record.typeId = idRemap.get(record.typeId) ?? record.typeId
-        }
-        records.set(record.id, record)
+        puts.push(
+          record.kind === 'relationship'
+            ? { ...record, typeId: idRemap.get(record.typeId) ?? record.typeId }
+            : { ...record },
+        )
       }
       await saveRecords(vault, puts)
+      if (get().epoch !== startEpoch || get().vault !== vault) return puts.length
+      // Merge onto the CURRENT records — writes that landed during the
+      // import must not be lost from memory.
+      const records = new Map(get().records)
+      for (const record of puts) records.set(record.id, record)
       set({ records })
       rebuildIndex(searchIndex, records)
       return puts.length
-    },
+    }),
   }
 })
 
@@ -392,6 +509,11 @@ export function selectFollowUps(
   return [...records.values()]
     .filter((r): r is FollowUp => r.kind === 'followUp' && r.personId === personId)
     .sort((a, b) => Number(a.done) - Number(b.done) || a.createdAt - b.createdAt)
+}
+
+export function selectSettings(records: Map<string, DomainRecord>): Settings | undefined {
+  const r = records.get(SETTINGS_ID)
+  return r?.kind === 'settings' ? r : undefined
 }
 
 /** Search the in-memory index; returns person ids ranked by relevance. */

@@ -27,9 +27,21 @@ Real already:
 - Tests: crypto round-trip, vault slots, mentions, export, and store
   behaviors (mention-edge sync, cascade delete, lock/unlock).
 
+Hardened in review round 0 (multi-persona review, ~60 fixes): import
+sanitization (a crafted backup can't brick the vault), sealed slot→prefix
+mapping and constant-work unlock (dummy slot is unlinkable), non-extractable
+DEK, lock-epoch guards + serialized writes (no plaintext after a racing
+lock), export verified against the open vault's own slot, KDF bounds on
+untrusted headers, corrupted-row tolerance, cache+SW wipe on destroy,
+date-parse round-trip + validation, reciprocal mention edges, overdue
+follow-ups, PWA icons + iOS metas, SW auto-update, persistent-storage
+surfacing + backup nag, graph layout/viewport persistence, pinch anchoring,
+culled rAF rendering, peek cards + edge editing, keyboard graph controls.
+
 Still to build: photos/avatars, biometric (WebAuthn PRF) and PIN unlock,
 inactivity auto-lock timer, disguise selection, graph queries (mutual
-connections, paths), notifications, Argon2id, decoy vault UI (v2).
+connections, paths), notifications, Argon2id, inbox triage affordance,
+chip-style tag input, decoy vault UI (v2).
 
 ## Commands
 

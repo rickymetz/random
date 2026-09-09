@@ -166,6 +166,12 @@ Out of scope: forensic adversaries with the device *and* the passphrase,
 compromised OS/browser, malware with memory access, and coerced unlock
 (the v2 decoy vault addresses the last one).
 
+**Residual metadata (accepted, documented):** a raw dump of the encrypted
+store reveals the total record-row count and each row's ciphertext size —
+but no timestamps, no record kinds, and no mapping from vault slots to
+rows (the per-vault row prefix is itself sealed under the DEK). Padding
+rows/sizes to hide counts is a possible v2 hardening, not a v1 goal.
+
 ## 6. Security architecture
 
 ### 6.1 Storage and encryption at rest
@@ -213,8 +219,12 @@ WebAuthn PRF ──────▶ KEK'──unwraps──▶ DEK   (same DEK, s
    unsupported.
 3. **PIN + auto-lock** — a short PIN for re-unlock within a session window,
    wrapping a session copy of the DEK with strict attempt limits (5 tries →
-   full lock, passphrase required). Auto-lock fires on backgrounding and on
-   a configurable inactivity timer (default 2 min).
+   full lock, passphrase required). Auto-lock fires on a configurable
+   inactivity timer (default 2 min) and on backgrounding — after a short
+   grace period (~30 s), because an instant background-lock destroys
+   in-progress capture drafts on every notification tap and breaks the OS
+   file picker, which backgrounds the page. The one-tap panic lock (§6.4)
+   remains the instant path.
 
 ### 6.4 Instant lock / panic
 
@@ -331,8 +341,11 @@ encrypted export/import · disguise install · destroy-all-data.
 
 ### v1.x hardening
 
-Argon2id replaces PBKDF2 · notification delivery where supported · graph
-performance pass · export nagging heuristics.
+Argon2id replaces PBKDF2 (CSP gains `wasm-unsafe-eval` then) · notification
+delivery where supported · quick-capture inbox triage affordance (promote
+note lines to structured fields — §4.1) · chip-style tag/likes input
+replacing comma-separated text · store-level render optimization if real
+vaults approach the 500-person scale.
 
 ### v2 candidates
 

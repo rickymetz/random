@@ -85,6 +85,16 @@ export interface Photo {
   createdAt: number
 }
 
+/** Singleton per-vault preferences, stored as an encrypted record. */
+export interface Settings {
+  kind: 'settings'
+  id: string
+  /** When the user last exported an encrypted backup (§4.5 nagging). */
+  lastExportAt?: number
+}
+
+export const SETTINGS_ID = 'settings'
+
 export type DomainRecord =
   | Person
   | NoteEntry
@@ -92,16 +102,30 @@ export type DomainRecord =
   | Relationship
   | RelationshipType
   | Photo
+  | Settings
 
+// Hues chosen to stay distinguishable from one another under the common
+// color-vision deficiencies; chips pair each color with its label as the
+// legend, so color is never the only signal.
 export const BUILT_IN_RELATIONSHIP_TYPES: Omit<RelationshipType, 'id'>[] = [
   { kind: 'relationshipType', label: 'friend', color: '#4f9cf9', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'partner', color: '#e2567a', directed: false, builtIn: true },
-  { kind: 'relationshipType', label: 'married', color: '#c04868', directed: false, builtIn: true },
+  { kind: 'relationshipType', label: 'married', color: '#c23d3d', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'ex', color: '#8a8a94', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'sibling', color: '#4fbf8b', directed: false, builtIn: true },
-  { kind: 'relationshipType', label: 'parent of', color: '#3d9970', directed: true, builtIn: true },
+  { kind: 'relationshipType', label: 'parent of', color: '#2aa8b8', directed: true, builtIn: true },
   { kind: 'relationshipType', label: 'coworker', color: '#c9a23f', directed: false, builtIn: true },
-  { kind: 'relationshipType', label: 'boss of', color: '#a8842c', directed: true, builtIn: true },
+  { kind: 'relationshipType', label: 'boss of', color: '#e0763c', directed: true, builtIn: true },
   { kind: 'relationshipType', label: 'roommate', color: '#9a6fd0', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'mentioned', color: '#55555e', directed: true, builtIn: true },
+]
+
+/** Swatches offered when creating a custom relationship type (§4.2). */
+export const CUSTOM_TYPE_COLORS = [
+  '#d84f9f',
+  '#5fd04f',
+  '#4fd0c3',
+  '#d0c34f',
+  '#7a8ff0',
+  '#f08f7a',
 ]

@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db'
 import type { Person } from './models'
-import { createVault, loadAllRecords, saveRecord, unlockVault, vaultExists } from './vault'
+import {
+  createVault,
+  loadAllRecords,
+  saveRecord,
+  unlockVault,
+  vaultExists,
+} from './vault'
 
 function makePerson(name: string): Person {
   return {
@@ -30,7 +36,9 @@ describe('vault', () => {
 
     const reopened = await unlockVault('open sesame')
     expect(reopened).not.toBeNull()
-    const records = await loadAllRecords(reopened!)
+    expect(reopened!.dataPrefix).toBe(vault.dataPrefix)
+    const { records, corrupted } = await loadAllRecords(reopened!)
+    expect(corrupted).toBe(0)
     expect(records.map((r) => (r as Person).displayName).sort()).toEqual(['Ada', 'Grace'])
   })
 
@@ -45,6 +53,35 @@ describe('vault', () => {
     expect(await db.slots.count()).toBe(2)
   })
 
+  it('never maps a slot to its records in cleartext', async () => {
+    const vault = await createVault('open sesame')
+    await saveRecord(vault, makePerson('Ada'))
+    // The record keys carry the prefix, but no slot row may contain it —
+    // otherwise a forensic dump identifies the dummy slot (§6.6).
+    const slots = await db.slots.toArray()
+    for (const slot of slots) {
+      const dump = JSON.stringify(slot, (_k, v) =>
+        v instanceof Uint8Array ? Array.from(v).join(',') : v,
+      )
+      expect(dump).not.toContain(vault.dataPrefix)
+    }
+  })
+
+  it('skips a corrupted row instead of bricking unlock', async () => {
+    const vault = await createVault('open sesame')
+    await saveRecord(vault, makePerson('Ada'))
+    await db.records.put({
+      id: `${vault.dataPrefix}:${crypto.randomUUID()}`,
+      iv: crypto.getRandomValues(new Uint8Array(12)),
+      blob: crypto.getRandomValues(new Uint8Array(64)),
+    })
+
+    const reopened = await unlockVault('open sesame')
+    const { records, corrupted } = await loadAllRecords(reopened!)
+    expect(corrupted).toBe(1)
+    expect(records).toHaveLength(1)
+  })
+
   it('persists only ciphertext', async () => {
     const vault = await createVault('open sesame')
     await saveRecord(vault, makePerson('Ada Lovelace'))
@@ -54,5 +91,7 @@ describe('vault', () => {
     const raw = String.fromCharCode(...rows[0].blob)
     expect(raw).not.toContain('Ada')
     expect(raw).not.toContain('person')
+    // No cleartext timestamps on rows (activity-timeline leak).
+    expect(Object.keys(rows[0]).sort()).toEqual(['blob', 'id', 'iv'])
   })
-}, 30_000)
+}, 60_000)

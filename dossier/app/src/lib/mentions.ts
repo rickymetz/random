@@ -46,3 +46,14 @@ export function segmentBody(body: string): NoteSegment[] {
 export function plainText(body: string): string {
   return body.replace(MENTION_RE, (_m, name: string) => `@${name}`)
 }
+
+/**
+ * Flatten mention tokens pointing at one person into their plain name —
+ * used when that person is deleted, so surviving notes keep the readable
+ * name instead of a dead link (§4.2).
+ */
+export function stripMentionsOf(body: string, personId: string): string {
+  return body.replace(MENTION_RE, (match, name: string, id: string) =>
+    id.toLowerCase() === personId.toLowerCase() ? name : match,
+  )
+}

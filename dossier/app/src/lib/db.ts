@@ -1,10 +1,12 @@
 /**
  * Persistence layer (REQUIREMENTS.md §6.1, §6.6).
  *
- * IndexedDB holds only ciphertext. Vault slots carry the KDF salt/params and
- * the wrapped DEK; `records` holds every domain object as an opaque
- * AES-GCM blob namespaced by an opaque per-vault prefix, so a future decoy
- * vault's records are indistinguishable from the primary's.
+ * IndexedDB holds only ciphertext. Vault slots carry the KDF salt/params,
+ * the wrapped DEK, and the vault's data prefix SEALED under the DEK, so
+ * the raw database never maps a slot to its records. Record rows are
+ * `{id, iv, blob}` with no timestamps, kinds, or sizes beyond the
+ * unavoidable ciphertext length — a forensic dump learns row count and
+ * per-row size, nothing else.
  */
 import Dexie, { type Table } from 'dexie'
 import type { KdfParams } from './crypto'
@@ -16,18 +18,17 @@ export interface VaultSlotRow {
   kdfParams: KdfParams
   wrappedDekIv: Uint8Array
   wrappedDek: Uint8Array
-  /** Opaque prefix namespacing this vault's rows in `records`. */
-  dataPrefix: string
+  /** The vault's record-key prefix, AES-GCM sealed under the DEK. */
+  prefixIv: Uint8Array
+  prefixCt: Uint8Array
   schemaVersion: number
 }
 
 export interface EncryptedRecordRow {
   /** `${dataPrefix}:${uuid}` — reveals vault membership only via the opaque prefix. */
   id: string
-  /** Record kind is inside the ciphertext; rows are shape-indistinguishable. */
   iv: Uint8Array
   blob: Uint8Array
-  updatedAt: number
 }
 
 class DossierDb extends Dexie {
@@ -39,14 +40,28 @@ class DossierDb extends Dexie {
     super('ledger')
     this.version(1).stores({
       slots: 'id',
-      records: 'id, updatedAt',
+      records: 'id',
     })
   }
 }
 
 export const db = new DossierDb()
 
-/** Full local wipe — backs the "destroy all data" action (§6.7). */
+/**
+ * Full local wipe — backs the "destroy all data" action (§6.7): the
+ * database, the service-worker caches, and the SW registration itself,
+ * so nothing recoverable remains in browser storage.
+ */
 export async function destroyAllData(): Promise<void> {
   await db.delete()
+  try {
+    if ('caches' in globalThis) {
+      const names = await caches.keys()
+      await Promise.all(names.map((name) => caches.delete(name)))
+    }
+    const registrations = (await navigator.serviceWorker?.getRegistrations?.()) ?? []
+    await Promise.all(registrations.map((r) => r.unregister()))
+  } catch {
+    // Cache/SW cleanup is best-effort; the vault data itself is gone.
+  }
 }

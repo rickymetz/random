@@ -2,9 +2,10 @@
  * In-memory full-text search (REQUIREMENTS.md §4.4).
  *
  * One MiniSearch document per person, aggregating every searchable string
- * about them — identity, structured fields, tags, likes/dislikes, and the
- * plain text of all their notes — so "the guy with the sailboat" finds the
- * person, not a note. Built at unlock, updated per change, never persisted.
+ * about them — identity, structured fields, tags, likes/dislikes, the
+ * plain text of all their notes, and the notes on their relationship
+ * edges — so "the guy with the sailboat" finds the person, not a note.
+ * Built at unlock, updated per change, never persisted.
  */
 import MiniSearch from 'minisearch'
 import { plainText } from './mentions'
@@ -29,7 +30,27 @@ export function createIndex(): MiniSearch<PersonDoc> {
   })
 }
 
-function toDoc(person: Person, notes: NoteEntry[]): PersonDoc {
+function personTexts(records: Map<string, DomainRecord>, personId: string) {
+  const notes: NoteEntry[] = []
+  const edgeNotes: string[] = []
+  for (const r of records.values()) {
+    if (r.kind === 'note' && r.personId === personId) notes.push(r)
+    else if (
+      r.kind === 'relationship' &&
+      r.note &&
+      (r.fromId === personId || r.toId === personId)
+    ) {
+      edgeNotes.push(r.note)
+    }
+  }
+  return { notes, edgeNotes }
+}
+
+function toDoc(
+  person: Person,
+  notes: NoteEntry[],
+  edgeNotes: string[],
+): PersonDoc {
   return {
     id: person.id,
     name: [person.displayName, ...person.nicknames].join(' '),
@@ -48,7 +69,7 @@ function toDoc(person: Person, notes: NoteEntry[]): PersonDoc {
       .filter(Boolean)
       .join(' '),
     tags: person.tags.join(' '),
-    notes: notes.map((n) => plainText(n.body)).join(' '),
+    notes: [...notes.map((n) => plainText(n.body)), ...edgeNotes].join(' '),
   }
 }
 
@@ -57,20 +78,15 @@ export function rebuildIndex(
   records: Map<string, DomainRecord>,
 ): void {
   index.removeAll()
-  const notesByPerson = new Map<string, NoteEntry[]>()
   for (const r of records.values()) {
-    if (r.kind === 'note') {
-      const list = notesByPerson.get(r.personId) ?? []
-      list.push(r)
-      notesByPerson.set(r.personId, list)
+    if (r.kind === 'person') {
+      const { notes, edgeNotes } = personTexts(records, r.id)
+      index.add(toDoc(r, notes, edgeNotes))
     }
-  }
-  for (const r of records.values()) {
-    if (r.kind === 'person') index.add(toDoc(r, notesByPerson.get(r.id) ?? []))
   }
 }
 
-/** Re-index one person after they or their notes changed. */
+/** Re-index one person after they, their notes, or their edges changed. */
 export function reindexPerson(
   index: MiniSearch<PersonDoc>,
   records: Map<string, DomainRecord>,
@@ -79,12 +95,35 @@ export function reindexPerson(
   const person = records.get(personId)
   if (index.has(personId)) index.discard(personId)
   if (!person || person.kind !== 'person') return
-  const notes = [...records.values()].filter(
-    (r): r is NoteEntry => r.kind === 'note' && r.personId === personId,
-  )
-  index.add(toDoc(person, notes))
+  const { notes, edgeNotes } = personTexts(records, personId)
+  index.add(toDoc(person, notes, edgeNotes))
 }
 
 export function searchPeople(index: MiniSearch<PersonDoc>, query: string): string[] {
   return index.search(query).map((result) => result.id as string)
+}
+
+/**
+ * A short plain-text snippet from a person's notes containing the first
+ * query term, for showing WHY a search matched (§4.4: "the guy with the
+ * sailboat" needs the sailboat visible in the result row).
+ */
+export function matchSnippet(
+  records: Map<string, DomainRecord>,
+  personId: string,
+  query: string,
+): string | null {
+  const term = query.trim().toLowerCase().split(/\s+/)[0]
+  if (!term) return null
+  for (const r of records.values()) {
+    if (r.kind !== 'note' || r.personId !== personId) continue
+    const text = plainText(r.body)
+    const at = text.toLowerCase().indexOf(term)
+    if (at >= 0) {
+      const start = Math.max(0, at - 24)
+      const end = Math.min(text.length, at + term.length + 40)
+      return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`
+    }
+  }
+  return null
 }

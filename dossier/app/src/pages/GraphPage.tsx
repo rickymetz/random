@@ -4,12 +4,12 @@ import {
   forceLink,
   forceManyBody,
   forceSimulation,
-  type Simulation,
   type SimulationLinkDatum,
   type SimulationNodeDatum,
 } from 'd3-force'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import type { Relationship } from '../lib/models'
 import {
   selectPeople,
   selectRelationships,
@@ -20,27 +20,46 @@ import {
 interface GraphNode extends SimulationNodeDatum {
   id: string
   name: string
+  initials: string
 }
 
 interface GraphLink extends SimulationLinkDatum<GraphNode> {
+  edgeId: string
   color: string
   dashed: boolean
   directed: boolean
 }
 
+type Tap = { kind: 'node'; id: string } | { kind: 'edge'; id: string } | null
+
 const NODE_R = 14
 const LABEL_ZOOM = 0.7
+// Degradation ladder (§4.3): labels thin out first as the graph grows.
+const LABEL_MAX_NODES = 250
+
+function initialsOf(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
+}
 
 /**
  * The relationship graph (§4.3): force-directed canvas with pan/zoom/drag,
  * relationship-type filters, mention-edge toggle, ego view via ?focus=,
- * and tap-through to dossiers.
+ * a peek card on node tap, and edge tap-to-edit. Layout positions and the
+ * viewport survive data/filter changes; keyboard: arrows pan, +/- zoom,
+ * 0 resets.
  */
 export default function GraphPage() {
   const records = useVaultStore((s) => s.records)
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const focusId = params.get('focus')
+  const [peek, setPeek] = useState<Tap>(null)
 
   const types = useMemo(
     () => selectRelationshipTypes(records).sort((a, b) => a.label.localeCompare(b.label)),
@@ -71,10 +90,15 @@ export default function GraphPage() {
     }
 
     const ids = new Set(visiblePeople.map((p) => p.id))
-    const nodes: GraphNode[] = visiblePeople.map((p) => ({ id: p.id, name: p.displayName }))
+    const nodes: GraphNode[] = visiblePeople.map((p) => ({
+      id: p.id,
+      name: p.displayName,
+      initials: initialsOf(p.displayName),
+    }))
     const links: GraphLink[] = edges
       .filter((e) => ids.has(e.fromId) && ids.has(e.toId))
       .map((e) => ({
+        edgeId: e.id,
         source: e.fromId,
         target: e.toId,
         color: typeById.get(e.typeId)?.color ?? '#55555e',
@@ -84,15 +108,14 @@ export default function GraphPage() {
     return { nodes, links }
   }, [records, types, hiddenTypes, showMentions, focusId])
 
-  const focusName = focusId
-    ? selectPeople(records).find((p) => p.id === focusId)?.displayName
-    : undefined
+  const focusName = useMemo(() => {
+    if (!focusId) return undefined
+    const p = records.get(focusId)
+    return p?.kind === 'person' ? p.displayName : undefined
+  }, [records, focusId])
 
-  const onTapNode = useCallback(
-    (personId: string) => navigate(`/person/${personId}`),
-    [navigate],
-  )
-  const canvasRef = useCanvasGraph(nodes, links, focusId, onTapNode)
+  const onTap = useCallback((tap: Tap) => setPeek(tap), [])
+  const canvasRef = useCanvasGraph(nodes, links, focusId, onTap)
 
   return (
     <div className="graph">
@@ -112,6 +135,7 @@ export default function GraphPage() {
               key={t.id}
               className={`chip ${hiddenTypes.has(t.id) ? 'off' : ''}`}
               style={{ borderColor: t.color }}
+              aria-pressed={!hiddenTypes.has(t.id)}
               onClick={() =>
                 setHiddenTypes((prev) => {
                   const next = new Set(prev)
@@ -126,6 +150,7 @@ export default function GraphPage() {
           ))}
         <button
           className={`chip ${showMentions ? '' : 'off'}`}
+          aria-pressed={showMentions}
           onClick={() => setShowMentions((v) => !v)}
         >
           mentions
@@ -136,8 +161,131 @@ export default function GraphPage() {
           No people yet — <Link to="/">add someone</Link> and connect them.
         </p>
       ) : (
-        <canvas ref={canvasRef} className="graph-canvas" />
+        <div className="graph-canvas-wrap">
+          <canvas
+            ref={canvasRef}
+            className="graph-canvas"
+            tabIndex={0}
+            role="application"
+            aria-label={`Relationship graph: ${nodes.length} people, ${links.length} connections. Arrow keys pan, plus and minus zoom, 0 resets. Person pages list the same relationships as text.`}
+          />
+          {peek?.kind === 'node' && (
+            <NodePeek
+              personId={peek.id}
+              onClose={() => setPeek(null)}
+              onOpen={() => navigate(`/person/${peek.id}`)}
+              onFocus={() => {
+                setParams({ focus: peek.id })
+                setPeek(null)
+              }}
+            />
+          )}
+          {peek?.kind === 'edge' && <EdgePeek edgeId={peek.id} onClose={() => setPeek(null)} />}
+        </div>
       )}
+    </div>
+  )
+}
+
+/** Tap a node → peek card → through to the full dossier (§4.3). */
+function NodePeek({
+  personId,
+  onClose,
+  onOpen,
+  onFocus,
+}: {
+  personId: string
+  onClose: () => void
+  onOpen: () => void
+  onFocus: () => void
+}) {
+  const records = useVaultStore((s) => s.records)
+  const person = records.get(personId)
+  if (!person || person.kind !== 'person') return null
+  const detail = [person.jobTitle, person.employer].filter(Boolean).join(' @ ')
+  return (
+    <div className="peek-card" role="dialog" aria-label={person.displayName}>
+      <div className="peek-body">
+        <strong>{person.displayName}</strong>
+        {detail && <span className="hint">{detail}</span>}
+      </div>
+      <div className="row">
+        <button onClick={onOpen}>Open</button>
+        <button className="subtle" onClick={onFocus}>
+          Their world
+        </button>
+        <button className="subtle icon" onClick={onClose} aria-label="Close">
+          ×
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** Tap an edge → edit its type or remove it (§4.3, §4.2 upgrade-in-one-tap). */
+function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) {
+  const records = useVaultStore((s) => s.records)
+  const addRelationship = useVaultStore((s) => s.addRelationship)
+  const removeRelationship = useVaultStore((s) => s.removeRelationship)
+  const edge = records.get(edgeId)
+  const types = useMemo(
+    () =>
+      selectRelationshipTypes(records)
+        .filter((t) => t.label !== 'mentioned')
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [records],
+  )
+  if (!edge || edge.kind !== 'relationship') return null
+  const rel = edge as Relationship
+  const from = records.get(rel.fromId)
+  const to = records.get(rel.toId)
+  if (from?.kind !== 'person' || to?.kind !== 'person') return null
+  const currentType = records.get(rel.typeId)
+
+  const retype = async (typeId: string) => {
+    if (!typeId) return
+    // addRelationship replaces any mention edge between the pair, so this
+    // is the one-tap upgrade path for dashed edges.
+    await removeRelationship(rel.id)
+    await addRelationship(rel.fromId, rel.toId, typeId)
+    onClose()
+  }
+
+  return (
+    <div className="peek-card" role="dialog" aria-label="Edit relationship">
+      <div className="peek-body">
+        <strong>
+          {from.displayName} — {to.displayName}
+        </strong>
+        <span className="hint">
+          {currentType?.kind === 'relationshipType' ? currentType.label : 'link'}
+          {rel.origin === 'mention' ? ' (from a mention)' : ''}
+        </span>
+      </div>
+      <div className="row">
+        <select defaultValue="" onChange={(e) => void retype(e.target.value)} aria-label="Change type">
+          <option value="">change type…</option>
+          {types.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <button
+          className="danger"
+          onClick={() => {
+            if (confirm('Remove this link?')) {
+              void removeRelationship(rel.id)
+              onClose()
+            }
+          }}
+        >
+          Remove
+        </button>
+        <button className="subtle icon" onClick={onClose} aria-label="Close">
+          ×
+        </button>
+      </div>
     </div>
   )
 }
@@ -146,9 +294,13 @@ function useCanvasGraph(
   nodes: GraphNode[],
   links: GraphLink[],
   focusId: string | null,
-  onTapNode: (id: string) => void,
+  onTap: (tap: Tap) => void,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // Both survive effect re-runs so a filter toggle or record edit neither
+  // explodes the layout nor resets the viewport.
+  const positionsRef = useRef(new Map<string, { x: number; y: number }>())
+  const transformRef = useRef({ x: 0, y: 0, k: 1 })
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -156,26 +308,17 @@ function useCanvasGraph(
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Positions persist per mount; d3 mutates these copies, not the store.
-    const simNodes: GraphNode[] = nodes.map((n) => ({ ...n }))
+    const positions = positionsRef.current
+    const transform = transformRef.current
+    const simNodes: GraphNode[] = nodes.map((n) => ({ ...n, ...positions.get(n.id) }))
     const simLinks: GraphLink[] = links.map((l) => ({ ...l }))
+    const hasCachedPositions = simNodes.some((n) => n.x !== undefined)
 
     let width = 0
     let height = 0
-    const transform = { x: 0, y: 0, k: 1 }
-    const dpr = window.devicePixelRatio || 1
+    let dpr = 1
 
-    const resize = () => {
-      const rect = canvas.parentElement!.getBoundingClientRect()
-      width = rect.width
-      height = Math.max(320, window.innerHeight - rect.top - 24)
-      canvas.width = width * dpr
-      canvas.height = height * dpr
-      canvas.style.height = `${height}px`
-      render()
-    }
-
-    const simulation: Simulation<GraphNode, GraphLink> = forceSimulation(simNodes)
+    const simulation = forceSimulation(simNodes)
       .force(
         'link',
         forceLink<GraphNode, GraphLink>(simLinks)
@@ -185,115 +328,189 @@ function useCanvasGraph(
       .force('charge', forceManyBody().strength(-180))
       .force('center', forceCenter(0, 0))
       .force('collide', forceCollide(NODE_R * 1.6))
-      .on('tick', () => render())
+      // A warm layout barely stirs; a cold one settles from scratch.
+      .alpha(hasCachedPositions ? 0.08 : 1)
+
+    let rafPending = false
+    const scheduleRender = () => {
+      if (rafPending) return
+      rafPending = true
+      requestAnimationFrame(() => {
+        rafPending = false
+        render()
+      })
+    }
+
+    simulation.on('tick', () => {
+      for (const n of simNodes) {
+        if (n.x !== undefined && n.y !== undefined) positions.set(n.id, { x: n.x, y: n.y })
+      }
+      scheduleRender()
+    })
 
     function render() {
-      ctx!.save()
-      ctx!.clearRect(0, 0, canvas!.width, canvas!.height)
-      ctx!.scale(dpr, dpr)
-      ctx!.translate(width / 2 + transform.x, height / 2 + transform.y)
-      ctx!.scale(transform.k, transform.k)
+      if (!ctx || !canvas) return
+      const k = transform.k
+      ctx.save()
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.scale(dpr, dpr)
+      ctx.translate(width / 2 + transform.x, height / 2 + transform.y)
+      ctx.scale(k, k)
 
+      // Viewport bounds in graph coordinates, with margin, for culling.
+      const minX = (-width / 2 - transform.x) / k - NODE_R * 2
+      const maxX = (width / 2 - transform.x) / k + NODE_R * 2
+      const minY = (-height / 2 - transform.y) / k - NODE_R * 2
+      const maxY = (height / 2 - transform.y) / k + NODE_R * 2
+      const inView = (x: number, y: number) => x >= minX && x <= maxX && y >= minY && y <= maxY
+
+      const dash: [number, number] = [4 / k, 4 / k]
+      const solid: never[] = []
+      ctx.lineWidth = 1.5 / k
       for (const link of simLinks) {
         const s = link.source as GraphNode
         const t = link.target as GraphNode
         if (s.x == null || t.x == null) continue
-        ctx!.beginPath()
-        ctx!.strokeStyle = link.color
-        ctx!.globalAlpha = link.dashed ? 0.5 : 0.8
-        ctx!.lineWidth = 1.5 / transform.k
-        ctx!.setLineDash(link.dashed ? [4 / transform.k, 4 / transform.k] : [])
-        ctx!.moveTo(s.x!, s.y!)
-        ctx!.lineTo(t.x!, t.y!)
-        ctx!.stroke()
+        if (!inView(s.x, s.y!) && !inView(t.x, t.y!)) continue
+        ctx.beginPath()
+        ctx.strokeStyle = link.color
+        ctx.globalAlpha = link.dashed ? 0.5 : 0.8
+        ctx.setLineDash(link.dashed ? dash : solid)
+        ctx.moveTo(s.x, s.y!)
+        ctx.lineTo(t.x!, t.y!)
+        ctx.stroke()
         if (link.directed) {
-          // Arrowhead just outside the target node.
           const angle = Math.atan2(t.y! - s.y!, t.x! - s.x!)
           const ax = t.x! - Math.cos(angle) * (NODE_R + 4)
           const ay = t.y! - Math.sin(angle) * (NODE_R + 4)
-          const size = 6 / Math.sqrt(transform.k)
-          ctx!.setLineDash([])
-          ctx!.beginPath()
-          ctx!.moveTo(ax, ay)
-          ctx!.lineTo(ax - size * Math.cos(angle - 0.5), ay - size * Math.sin(angle - 0.5))
-          ctx!.lineTo(ax - size * Math.cos(angle + 0.5), ay - size * Math.sin(angle + 0.5))
-          ctx!.closePath()
-          ctx!.fillStyle = link.color
-          ctx!.fill()
+          const size = 6 / Math.sqrt(k)
+          ctx.setLineDash(solid)
+          ctx.beginPath()
+          ctx.moveTo(ax, ay)
+          ctx.lineTo(ax - size * Math.cos(angle - 0.5), ay - size * Math.sin(angle - 0.5))
+          ctx.lineTo(ax - size * Math.cos(angle + 0.5), ay - size * Math.sin(angle + 0.5))
+          ctx.closePath()
+          ctx.fillStyle = link.color
+          ctx.fill()
         }
       }
 
-      ctx!.globalAlpha = 1
-      ctx!.setLineDash([])
+      ctx.globalAlpha = 1
+      ctx.setLineDash(solid)
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      // Pass 1: circles + initials, one font for all nodes.
+      ctx.font = '11px system-ui'
+      const visibleNodes: GraphNode[] = []
       for (const node of simNodes) {
-        if (node.x == null) continue
+        if (node.x == null || node.y == null || !inView(node.x, node.y)) continue
+        visibleNodes.push(node)
         const isFocus = node.id === focusId
-        ctx!.beginPath()
-        ctx!.arc(node.x!, node.y!, NODE_R, 0, Math.PI * 2)
-        ctx!.fillStyle = isFocus ? '#4f9cf9' : '#2c2c34'
-        ctx!.fill()
-        ctx!.strokeStyle = isFocus ? '#e8e8ec' : '#4f9cf9'
-        ctx!.lineWidth = 1.5 / transform.k
-        ctx!.stroke()
-        const initials = node.name
-          .split(/\s+/)
-          .map((w) => w[0])
-          .slice(0, 2)
-          .join('')
-          .toUpperCase()
-        ctx!.fillStyle = '#e8e8ec'
-        ctx!.font = `${11}px system-ui`
-        ctx!.textAlign = 'center'
-        ctx!.textBaseline = 'middle'
-        ctx!.fillText(initials, node.x!, node.y!)
-        if (transform.k >= LABEL_ZOOM) {
-          ctx!.font = `${11 / transform.k}px system-ui`
-          ctx!.fillStyle = '#8a8a94'
-          ctx!.fillText(node.name, node.x!, node.y! + NODE_R + 12 / transform.k)
+        ctx.beginPath()
+        ctx.arc(node.x, node.y, NODE_R, 0, Math.PI * 2)
+        ctx.fillStyle = isFocus ? '#4f9cf9' : '#2c2c34'
+        ctx.fill()
+        ctx.strokeStyle = isFocus ? '#e8e8ec' : '#4f9cf9'
+        ctx.stroke()
+        ctx.fillStyle = '#e8e8ec'
+        ctx.fillText(node.initials, node.x, node.y)
+      }
+      // Pass 2: name labels — thinned out on big graphs (§4.3 degradation).
+      const labelZoom = simNodes.length > LABEL_MAX_NODES ? 1.2 : LABEL_ZOOM
+      if (k >= labelZoom) {
+        ctx.font = `${11 / k}px system-ui`
+        ctx.fillStyle = '#8a8a94'
+        for (const node of visibleNodes) {
+          ctx.fillText(node.name, node.x!, node.y! + NODE_R + 12 / k)
         }
       }
-      ctx!.restore()
+      ctx.restore()
     }
 
+    const resize = () => {
+      const wrap = canvas.parentElement
+      if (!wrap) return
+      dpr = window.devicePixelRatio || 1
+      width = wrap.clientWidth
+      height = wrap.clientHeight
+      canvas.width = Math.max(1, Math.round(width * dpr))
+      canvas.height = Math.max(1, Math.round(height * dpr))
+      scheduleRender()
+    }
+    const observer = new ResizeObserver(resize)
+    observer.observe(canvas.parentElement!)
+    resize()
+
     const toGraphCoords = (clientX: number, clientY: number) => {
-      const rect = canvas!.getBoundingClientRect()
+      const rect = canvas.getBoundingClientRect()
       return {
         x: (clientX - rect.left - width / 2 - transform.x) / transform.k,
         y: (clientY - rect.top - height / 2 - transform.y) / transform.k,
       }
     }
 
-    const hitNode = (clientX: number, clientY: number): GraphNode | null => {
+    // Nearest node within a screen-space floor, so zoomed-out nodes stay
+    // tappable; then nearest edge segment.
+    const hitTest = (clientX: number, clientY: number): Tap | GraphNode | null => {
       const p = toGraphCoords(clientX, clientY)
+      const hitR = Math.max(NODE_R, 18 / transform.k)
+      let best: GraphNode | null = null
+      let bestDist = hitR * hitR
       for (const node of simNodes) {
-        if (node.x == null) continue
-        const dx = p.x - node.x!
-        const dy = p.y - node.y!
-        if (dx * dx + dy * dy <= NODE_R * NODE_R * 1.4) return node
+        if (node.x == null || node.y == null) continue
+        const dx = p.x - node.x
+        const dy = p.y - node.y
+        const d = dx * dx + dy * dy
+        if (d <= bestDist) {
+          best = node
+          bestDist = d
+        }
       }
-      return null
+      if (best) return best
+      const edgeR = 10 / transform.k
+      let bestEdge: GraphLink | null = null
+      let bestEdgeDist = edgeR * edgeR
+      for (const link of simLinks) {
+        const s = link.source as GraphNode
+        const t = link.target as GraphNode
+        if (s.x == null || t.x == null) continue
+        const d = pointSegmentDistSq(p.x, p.y, s.x, s.y!, t.x!, t.y!)
+        if (d <= bestEdgeDist) {
+          bestEdge = link
+          bestEdgeDist = d
+        }
+      }
+      return bestEdge ? { kind: 'edge', id: bestEdge.edgeId } : null
     }
 
-    // Pointer state: one pointer pans or drags a node; two pinch-zoom.
     const pointers = new Map<number, { x: number; y: number }>()
     let dragNode: GraphNode | null = null
+    let dragging = false
     let moved = 0
     let pinchDist = 0
 
+    const releaseDrag = () => {
+      if (dragNode) {
+        dragNode.fx = null
+        dragNode.fy = null
+      }
+      if (dragging) simulation.alphaTarget(0)
+      dragNode = null
+      dragging = false
+    }
+
     const onPointerDown = (e: PointerEvent) => {
-      canvas!.setPointerCapture(e.pointerId)
+      canvas.setPointerCapture(e.pointerId)
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
       moved = 0
       if (pointers.size === 1) {
-        dragNode = hitNode(e.clientX, e.clientY)
-        if (dragNode) {
-          simulation.alphaTarget(0.3).restart()
-          const p = toGraphCoords(e.clientX, e.clientY)
-          dragNode.fx = p.x
-          dragNode.fy = p.y
-        }
+        const hit = hitTest(e.clientX, e.clientY)
+        dragNode = hit && 'name' in hit ? (hit as GraphNode) : null
+        dragging = false
       } else if (pointers.size === 2) {
-        dragNode = null
+        // Second finger means pinch — cleanly release any node drag so it
+        // isn't pinned with the simulation reheated forever.
+        releaseDrag()
         const [a, b] = [...pointers.values()]
         pinchDist = Math.hypot(a.x - b.x, a.y - b.y)
       }
@@ -310,32 +527,49 @@ function useCanvasGraph(
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()]
         const dist = Math.hypot(a.x - b.x, a.y - b.y)
-        if (pinchDist > 0) {
-          const factor = dist / pinchDist
-          transform.k = Math.min(4, Math.max(0.15, transform.k * factor))
+        const rect = canvas.getBoundingClientRect()
+        const mx = (a.x + b.x) / 2 - rect.left - width / 2
+        const my = (a.y + b.y) / 2 - rect.top - height / 2
+        if (pinchDist > 0 && dist > 0) {
+          const next = Math.min(4, Math.max(0.15, transform.k * (dist / pinchDist)))
+          // Anchor the zoom to the pinch midpoint, not the canvas center.
+          transform.x = mx - ((mx - transform.x) / transform.k) * next
+          transform.y = my - ((my - transform.y) / transform.k) * next
+          transform.k = next
         }
+        // Two-finger pan follows the midpoint.
+        transform.x += dx / 2
+        transform.y += dy / 2
         pinchDist = dist
-        render()
+        scheduleRender()
       } else if (dragNode) {
-        const p = toGraphCoords(e.clientX, e.clientY)
-        dragNode.fx = p.x
-        dragNode.fy = p.y
+        // Reheat only once an actual drag starts, so a plain tap doesn't
+        // shift the layout.
+        if (!dragging && moved > 6) {
+          dragging = true
+          simulation.alphaTarget(0.3).restart()
+        }
+        if (dragging) {
+          const p = toGraphCoords(e.clientX, e.clientY)
+          dragNode.fx = p.x
+          dragNode.fy = p.y
+        }
       } else {
         transform.x += dx
         transform.y += dy
-        render()
+        scheduleRender()
       }
     }
 
     const onPointerUp = (e: PointerEvent) => {
       pointers.delete(e.pointerId)
-      if (dragNode) {
-        simulation.alphaTarget(0)
-        dragNode.fx = null
-        dragNode.fy = null
-        if (moved < 6) onTapNode(dragNode.id)
-        dragNode = null
+      if (moved < 6 && pointers.size === 0) {
+        const hit = hitTest(e.clientX, e.clientY)
+        if (hit && 'name' in hit) onTap({ kind: 'node', id: (hit as GraphNode).id })
+        else if (hit) onTap(hit as Tap)
+        else onTap(null)
       }
+      releaseDrag()
       pinchDist = 0
     }
 
@@ -343,14 +577,47 @@ function useCanvasGraph(
       e.preventDefault()
       const factor = Math.exp(-e.deltaY * 0.002)
       const next = Math.min(4, Math.max(0.15, transform.k * factor))
-      // Zoom around the cursor.
-      const rect = canvas!.getBoundingClientRect()
+      const rect = canvas.getBoundingClientRect()
       const cx = e.clientX - rect.left - width / 2
       const cy = e.clientY - rect.top - height / 2
       transform.x = cx - ((cx - transform.x) / transform.k) * next
       transform.y = cy - ((cy - transform.y) / transform.k) * next
       transform.k = next
-      render()
+      scheduleRender()
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const pan = 40
+      switch (e.key) {
+        case 'ArrowLeft':
+          transform.x += pan
+          break
+        case 'ArrowRight':
+          transform.x -= pan
+          break
+        case 'ArrowUp':
+          transform.y += pan
+          break
+        case 'ArrowDown':
+          transform.y -= pan
+          break
+        case '+':
+        case '=':
+          transform.k = Math.min(4, transform.k * 1.2)
+          break
+        case '-':
+          transform.k = Math.max(0.15, transform.k / 1.2)
+          break
+        case '0':
+          transform.x = 0
+          transform.y = 0
+          transform.k = 1
+          break
+        default:
+          return
+      }
+      e.preventDefault()
+      scheduleRender()
     }
 
     canvas.addEventListener('pointerdown', onPointerDown)
@@ -358,19 +625,38 @@ function useCanvasGraph(
     canvas.addEventListener('pointerup', onPointerUp)
     canvas.addEventListener('pointercancel', onPointerUp)
     canvas.addEventListener('wheel', onWheel, { passive: false })
-    window.addEventListener('resize', resize)
-    resize()
+    canvas.addEventListener('keydown', onKeyDown)
 
     return () => {
       simulation.stop()
+      observer.disconnect()
       canvas.removeEventListener('pointerdown', onPointerDown)
       canvas.removeEventListener('pointermove', onPointerMove)
       canvas.removeEventListener('pointerup', onPointerUp)
       canvas.removeEventListener('pointercancel', onPointerUp)
       canvas.removeEventListener('wheel', onWheel)
-      window.removeEventListener('resize', resize)
+      canvas.removeEventListener('keydown', onKeyDown)
     }
-  }, [nodes, links, focusId, onTapNode])
+  }, [nodes, links, focusId, onTap])
 
   return canvasRef
+}
+
+function pointSegmentDistSq(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const abx = bx - ax
+  const aby = by - ay
+  const lenSq = abx * abx + aby * aby
+  const t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / lenSq))
+  const cx = ax + t * abx
+  const cy = ay + t * aby
+  const dx = px - cx
+  const dy = py - cy
+  return dx * dx + dy * dy
 }

@@ -7,6 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      includeAssets: ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
       // The disguise choice (REQUIREMENTS.md §6.5) will eventually select
       // among a small set of neutral names/icons; this is the default.
       manifest: {
