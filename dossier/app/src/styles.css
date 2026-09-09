@@ -108,3 +108,280 @@ button.danger {
   text-decoration: none;
   display: block;
 }
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.5rem 0;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.row input.due {
+  flex: 0 1 9rem;
+}
+
+button.subtle {
+  background: transparent;
+  border: 1px solid #2c2c34;
+  color: var(--muted);
+}
+
+select {
+  font: inherit;
+  border-radius: 0.5rem;
+  border: 1px solid #2c2c34;
+  padding: 0.6rem 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  max-width: 11rem;
+}
+
+section {
+  margin: 1.25rem 0;
+}
+
+section h2 {
+  font-size: 1rem;
+  color: var(--muted);
+  margin: 0 0 0.5rem;
+}
+
+/* Person page */
+.person-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.person-header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.person-header a {
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.fact {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+}
+
+.fact dt {
+  color: var(--muted);
+  min-width: 6.5rem;
+}
+
+.fact dd {
+  margin: 0;
+}
+
+.facts-form label {
+  display: block;
+  margin: 0.4rem 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.facts-form input {
+  margin-top: 0.15rem;
+}
+
+.capture textarea {
+  width: 100%;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid #2c2c34;
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  font: inherit;
+  resize: vertical;
+}
+
+.capture button {
+  margin-top: 0.4rem;
+}
+
+.mention-box {
+  position: relative;
+}
+
+.mention-suggestions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid #2c2c34;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.mention-suggestions button {
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  border-radius: 0;
+}
+
+.mention-suggestions button:hover {
+  background: #2c2c34;
+}
+
+.notes,
+.follow-ups,
+.edges {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.notes li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #2c2c34;
+}
+
+.notes time {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.notes p {
+  margin: 0.15rem 0 0;
+  white-space: pre-wrap;
+}
+
+.notes .mention,
+a.mention {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.follow-ups li,
+.edges li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+}
+
+.follow-ups li span {
+  flex: 1;
+}
+
+.follow-ups li.done span {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.follow-ups input[type='checkbox'] {
+  width: auto;
+}
+
+.edges a {
+  color: var(--text);
+}
+
+.edges .edge-type {
+  font-size: 0.875rem;
+}
+
+.edges li button,
+.follow-ups li button,
+.notes li button {
+  padding: 0.1rem 0.5rem;
+  margin-left: auto;
+}
+
+.person-footer {
+  margin-top: 2.5rem;
+  border-top: 1px solid #2c2c34;
+  padding-top: 1rem;
+}
+
+/* Upcoming strip */
+.upcoming ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.upcoming li {
+  padding: 0.25rem 0;
+}
+
+.upcoming .days {
+  display: inline-block;
+  min-width: 3rem;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.upcoming a {
+  color: var(--text);
+  text-decoration: none;
+  border-bottom: none;
+}
+
+/* Graph */
+.graph-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.chip {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid #2c2c34;
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.chip.off {
+  opacity: 0.35;
+}
+
+.chip.focus-chip {
+  border-color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.chip.focus-chip button {
+  padding: 0 0.3rem;
+  border: none;
+}
+
+.graph-canvas {
+  width: 100%;
+  display: block;
+  touch-action: none;
+  border-radius: 0.5rem;
+  background: var(--surface);
+}

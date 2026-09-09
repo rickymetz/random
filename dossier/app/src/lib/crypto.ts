@@ -60,6 +60,32 @@ export async function deriveKek(
   )
 }
 
+/**
+ * Derive a direct encryption key from a passphrase. Used for export
+ * bundles (§4.5), which must be openable with the passphrase alone —
+ * independent of any vault slot on the exporting device.
+ */
+export async function deriveExportKey(
+  passphrase: string,
+  salt: Uint8Array,
+  params: KdfParams = DEFAULT_KDF_PARAMS,
+): Promise<CryptoKey> {
+  const material = await subtle.importKey(
+    'raw',
+    new TextEncoder().encode(passphrase),
+    'PBKDF2',
+    false,
+    ['deriveKey'],
+  )
+  return subtle.deriveKey(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: salt as BufferSource, iterations: params.iterations },
+    material,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  )
+}
+
 /** Generate a fresh DEK. Non-extractable except through wrapKey. */
 export async function generateDek(): Promise<CryptoKey> {
   return subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, [

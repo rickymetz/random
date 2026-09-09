@@ -14,11 +14,22 @@ Real already:
   layout, ciphertext-only IndexedDB persistence, dummy slot on creation.
 - **Lock behavior**: unlock gate around all routes, one-tap lock,
   auto-lock on backgrounding, in-memory-only decrypted state.
-- Tests for the crypto round-trip and vault slot behavior.
+- **Dossiers** (`src/pages/PersonPage.tsx`): structured fields + free
+  notes with `@mention` tokens, follow-ups, quick capture.
+- **Relationships**: typed directed edges, custom types, mention-derived
+  edges that upgrade to explicit ones (`src/store/vaultStore.ts`).
+- **Graph** (`src/pages/GraphPage.tsx`): d3-force canvas with pan, zoom,
+  pinch, node drag, type filters, ego view (`?focus=`), tap-through.
+- **Search** (`src/lib/search.ts`): in-memory MiniSearch over names,
+  fields, tags, and note text; upcoming strip for birthdays/follow-ups.
+- **Encrypted export/import** (`src/lib/export.ts`): passphrase-keyed
+  bundles, the only way data leaves the device.
+- Tests: crypto round-trip, vault slots, mentions, export, and store
+  behaviors (mention-edge sync, cascade delete, lock/unlock).
 
-Stubbed (pages exist, features don't): dossier detail view, notes with
-@mentions, relationships, the graph canvas, search index, follow-ups,
-encrypted export/import, biometric/PIN unlock, disguise selection.
+Still to build: photos/avatars, biometric (WebAuthn PRF) and PIN unlock,
+inactivity auto-lock timer, disguise selection, graph queries (mutual
+connections, paths), notifications, Argon2id, decoy vault UI (v2).
 
 ## Commands
 

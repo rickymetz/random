@@ -1,0 +1,98 @@
+/**
+ * Encrypted export/import (REQUIREMENTS.md §4.5, threat T2).
+ *
+ * The only way data leaves the device. The bundle is a small JSON header
+ * (format, KDF params, salt, iv — nothing sensitive) around an AES-GCM
+ * ciphertext of all records, keyed from the passphrase alone so a backup
+ * opens on a fresh device with no other material. Exporting requires
+ * re-entering the passphrase, which doubles as proof the user still knows
+ * it. There is deliberately no plaintext export path.
+ */
+import { DEFAULT_KDF_PARAMS, deriveExportKey, randomBytes, type KdfParams } from './crypto'
+import type { DomainRecord } from './models'
+
+export const EXPORT_FORMAT = 'dossier-export'
+export const EXPORT_VERSION = 1
+
+interface ExportHeader {
+  format: typeof EXPORT_FORMAT
+  version: number
+  kdf: KdfParams
+  salt: string
+  iv: string
+  data: string
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary)
+}
+
+function fromBase64(text: string): Uint8Array {
+  return Uint8Array.from(atob(text), (c) => c.charCodeAt(0))
+}
+
+export async function exportBundle(
+  passphrase: string,
+  records: DomainRecord[],
+): Promise<string> {
+  const salt = randomBytes(16)
+  const iv = randomBytes(12)
+  const key = await deriveExportKey(passphrase, salt)
+  const plaintext = new TextEncoder().encode(JSON.stringify({ records }))
+  const ciphertext = await globalThis.crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource },
+    key,
+    plaintext as BufferSource,
+  )
+  const header: ExportHeader = {
+    format: EXPORT_FORMAT,
+    version: EXPORT_VERSION,
+    kdf: DEFAULT_KDF_PARAMS,
+    salt: toBase64(salt),
+    iv: toBase64(iv),
+    data: toBase64(new Uint8Array(ciphertext)),
+  }
+  return JSON.stringify(header)
+}
+
+/** Throws on a bad file; returns null on a wrong passphrase. */
+export async function importBundle(
+  passphrase: string,
+  fileText: string,
+): Promise<DomainRecord[] | null> {
+  let header: ExportHeader
+  try {
+    header = JSON.parse(fileText) as ExportHeader
+  } catch {
+    throw new Error('Not a backup file.')
+  }
+  if (header.format !== EXPORT_FORMAT || typeof header.data !== 'string') {
+    throw new Error('Not a backup file.')
+  }
+  if (header.version > EXPORT_VERSION) {
+    throw new Error('Backup was made by a newer version of the app.')
+  }
+  const key = await deriveExportKey(passphrase, fromBase64(header.salt), header.kdf)
+  try {
+    const plaintext = await globalThis.crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: fromBase64(header.iv) as BufferSource },
+      key,
+      fromBase64(header.data) as BufferSource,
+    )
+    const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as {
+      records: DomainRecord[]
+    }
+    return parsed.records
+  } catch {
+    return null
+  }
+}
+
+/** Nondescript filename (§6.5): no product name, no hint at contents. */
+export function exportFileName(): string {
+  const d = new Date()
+  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+  return `backup-${stamp}.ledger`
+}

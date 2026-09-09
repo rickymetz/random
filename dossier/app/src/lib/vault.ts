@@ -104,6 +104,20 @@ export async function loadAllRecords(vault: UnlockedVault): Promise<DomainRecord
   )
 }
 
+export async function saveRecords(
+  vault: UnlockedVault,
+  records: DomainRecord[],
+): Promise<void> {
+  const now = Date.now()
+  const rows = await Promise.all(
+    records.map(async (record) => {
+      const { iv, blob } = await encryptJson(vault.dek, record)
+      return { id: `${vault.dataPrefix}:${record.id}`, iv, blob, updatedAt: now }
+    }),
+  )
+  await db.records.bulkPut(rows)
+}
+
 export async function deleteRecord(vault: UnlockedVault, recordId: string): Promise<void> {
   await db.records.delete(`${vault.dataPrefix}:${recordId}`)
 }
