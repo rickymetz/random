@@ -31,9 +31,27 @@ export interface EncryptedRecordRow {
   blob: Uint8Array
 }
 
+/**
+ * A biometric (WebAuthn PRF) enrollment: the DEK wrapped under a key
+ * derived from the credential's PRF output. Carries NO reference to a
+ * vault slot — unlock resolves the vault by trying the sealed prefixes,
+ * same as passphrase unlock. (That an enrollment exists at all is
+ * observable; which slot it opens is not.)
+ */
+export interface AuthRow {
+  /** Credential id, hex — doubles as the row key. */
+  id: string
+  prfSalt: Uint8Array
+  hkdfSalt: Uint8Array
+  wrappedDekIv: Uint8Array
+  wrappedDek: Uint8Array
+  createdAt: number
+}
+
 class DossierDb extends Dexie {
   slots!: Table<VaultSlotRow, string>
   records!: Table<EncryptedRecordRow, string>
+  auth!: Table<AuthRow, string>
 
   constructor() {
     // Neutral database name: part of the disguise posture (§6.5).
@@ -41,6 +59,9 @@ class DossierDb extends Dexie {
     this.version(1).stores({
       slots: 'id',
       records: 'id',
+    })
+    this.version(2).stores({
+      auth: 'id',
     })
   }
 }

@@ -91,7 +91,14 @@ export interface Settings {
   id: string
   /** When the user last exported an encrypted backup (§4.5 nagging). */
   lastExportAt?: number
+  /** Inactivity auto-lock in minutes; 0 disables (§6.3). Default 2. */
+  autoLockMinutes?: number
+  /** Grace period before backgrounding locks, in seconds. Default 30. */
+  backgroundGraceSeconds?: number
 }
+
+export const DEFAULT_AUTO_LOCK_MINUTES = 2
+export const DEFAULT_BACKGROUND_GRACE_SECONDS = 30
 
 export const SETTINGS_ID = 'settings'
 

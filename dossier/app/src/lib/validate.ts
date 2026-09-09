@@ -157,13 +157,14 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
       return photo
     }
     case 'settings': {
+      const finite = (v: unknown, min: number, max: number): number | undefined =>
+        typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : undefined
       const settings: Settings = {
         kind: 'settings',
         id: rid,
-        lastExportAt:
-          typeof r.lastExportAt === 'number' && Number.isFinite(r.lastExportAt)
-            ? r.lastExportAt
-            : undefined,
+        lastExportAt: finite(r.lastExportAt, 0, Number.MAX_SAFE_INTEGER),
+        autoLockMinutes: finite(r.autoLockMinutes, 0, 24 * 60),
+        backgroundGraceSeconds: finite(r.backgroundGraceSeconds, 0, 3600),
       }
       return settings
     }

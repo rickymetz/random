@@ -104,6 +104,43 @@ export async function deriveExportKey(
   return derivePassphraseKey(passphrase, salt, params, ['encrypt', 'decrypt'])
 }
 
+/**
+ * Turn a WebAuthn PRF output into a KEK for wrapping the DEK (§6.2,
+ * biometric unlock). HKDF-SHA-256 with a stored random salt; the PRF
+ * output itself never persists.
+ */
+export async function deriveKeyFromPrf(
+  prfOutput: Uint8Array,
+  salt: Uint8Array,
+): Promise<CryptoKey> {
+  const material = await subtle.importKey('raw', prfOutput as BufferSource, 'HKDF', false, [
+    'deriveKey',
+  ])
+  return subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: salt as BufferSource,
+      info: new TextEncoder().encode('dossier-biometric-kek-v1'),
+    },
+    material,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  )
+}
+
+/**
+ * PIN session key (§6.3). Deliberately lighter than the passphrase KDF:
+ * the PIN wrap lives only in memory with a 5-attempt limit — it is never
+ * persisted, so offline brute force gets nothing to attack.
+ */
+export const PIN_KDF_PARAMS: KdfParams = { algorithm: 'PBKDF2-SHA-256', iterations: 100_000 }
+
+export async function derivePinKey(pin: string, salt: Uint8Array): Promise<CryptoKey> {
+  return derivePassphraseKey(pin, salt, PIN_KDF_PARAMS, ['encrypt', 'decrypt'])
+}
+
 /** Fresh raw DEK bytes. Callers must wipe() after wrapping + importing. */
 export function generateDekBytes(): Uint8Array {
   return randomBytes(32)

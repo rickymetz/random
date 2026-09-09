@@ -1,8 +1,13 @@
 import { useRef, useState } from 'react'
 import { destroyAllData } from '../lib/db'
 import { exportBundle, exportFileName, importBundle } from '../lib/export'
+import {
+  DEFAULT_AUTO_LOCK_MINUTES,
+  DEFAULT_BACKGROUND_GRACE_SECONDS,
+} from '../lib/models'
 import { getStorageStatus } from '../lib/platform'
 import { unlockVault } from '../lib/vault'
+import { webAuthnAvailable } from '../lib/webauthn'
 import { selectSettings, useVaultStore } from '../store/vaultStore'
 
 export default function SettingsPage() {
@@ -18,6 +23,7 @@ export default function SettingsPage() {
 
   return (
     <div className="settings">
+      <SecuritySection />
       <ExportSection />
       <ImportSection />
       <StorageSection />
@@ -32,6 +38,174 @@ export default function SettingsPage() {
         </p>
       </section>
     </div>
+  )
+}
+
+/** Unlock methods and lock timers (§6.3). */
+function SecuritySection() {
+  const records = useVaultStore((s) => s.records)
+  const pinArmed = useVaultStore((s) => s.pinArmed)
+  const biometricEnrolled = useVaultStore((s) => s.biometricEnrolled)
+  const setPin = useVaultStore((s) => s.setPin)
+  const forgetPin = useVaultStore((s) => s.forgetPin)
+  const enrollBiometric = useVaultStore((s) => s.enrollBiometric)
+  const removeBiometric = useVaultStore((s) => s.removeBiometric)
+  const updateSecurity = useVaultStore((s) => s.updateSecurity)
+  const settings = selectSettings(records)
+
+  const [pin, setPinValue] = useState('')
+  const [pinPass, setPinPass] = useState('')
+  const [pinMsg, setPinMsg] = useState<string | null>(null)
+  const [bioPass, setBioPass] = useState('')
+  const [bioMsg, setBioMsg] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const armPin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (busy) return
+    setPinMsg(null)
+    if (!/^\d{4,8}$/.test(pin)) {
+      setPinMsg('PIN must be 4–8 digits.')
+      return
+    }
+    setBusy(true)
+    try {
+      setPinMsg(
+        (await setPin(pin, pinPass))
+          ? null
+          : 'Wrong passphrase.',
+      )
+    } finally {
+      setBusy(false)
+      setPinValue('')
+      setPinPass('')
+    }
+  }
+
+  const enroll = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (busy) return
+    setBioMsg(null)
+    setBusy(true)
+    try {
+      const result = await enrollBiometric(bioPass)
+      if (result === 'wrong-passphrase') setBioMsg('Wrong passphrase.')
+      else if (result === 'unsupported')
+        setBioMsg('This device/browser does not support biometric (PRF) unlock.')
+    } finally {
+      setBusy(false)
+      setBioPass('')
+    }
+  }
+
+  return (
+    <section>
+      <h2>Security</h2>
+
+      <h3>Quick unlock PIN</h3>
+      {pinArmed ? (
+        <div className="row">
+          <p className="hint">
+            PIN armed for this session — it is never stored, and 5 wrong tries fall back
+            to the passphrase.
+          </p>
+          <button className="subtle" onClick={forgetPin}>
+            Disable
+          </button>
+        </div>
+      ) : (
+        <form className="row wrap" onSubmit={armPin}>
+          <input
+            type="password"
+            inputMode="numeric"
+            value={pin}
+            onChange={(e) => setPinValue(e.target.value)}
+            placeholder="PIN (4–8 digits)"
+            aria-label="New PIN"
+            autoComplete="off"
+          />
+          <input
+            type="password"
+            value={pinPass}
+            onChange={(e) => setPinPass(e.target.value)}
+            placeholder="Passphrase"
+            aria-label="Passphrase to authorize PIN"
+            autoComplete="off"
+          />
+          <button type="submit" disabled={busy || !pin || !pinPass}>
+            Arm
+          </button>
+        </form>
+      )}
+      {pinMsg && (
+        <p className="hint error" role="alert">
+          {pinMsg}
+        </p>
+      )}
+
+      <h3>Biometric unlock</h3>
+      {!webAuthnAvailable() ? (
+        <p className="hint">Not available in this browser.</p>
+      ) : biometricEnrolled ? (
+        <div className="row">
+          <p className="hint">Enrolled — Face ID / fingerprint opens the vault.</p>
+          <button className="subtle" onClick={() => void removeBiometric()}>
+            Remove
+          </button>
+        </div>
+      ) : (
+        <form className="row wrap" onSubmit={enroll}>
+          <input
+            type="password"
+            value={bioPass}
+            onChange={(e) => setBioPass(e.target.value)}
+            placeholder="Passphrase"
+            aria-label="Passphrase to authorize biometrics"
+            autoComplete="off"
+          />
+          <button type="submit" disabled={busy || !bioPass}>
+            Enroll
+          </button>
+        </form>
+      )}
+      {bioMsg && (
+        <p className="hint error" role="alert">
+          {bioMsg}
+        </p>
+      )}
+
+      <h3>Auto-lock</h3>
+      <div className="row wrap">
+        <label className="inline-check">
+          After inactivity
+          <select
+            value={settings?.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES}
+            onChange={(e) => void updateSecurity({ autoLockMinutes: Number(e.target.value) })}
+            aria-label="Inactivity auto-lock"
+          >
+            <option value={0}>never</option>
+            <option value={1}>1 min</option>
+            <option value={2}>2 min</option>
+            <option value={5}>5 min</option>
+            <option value={15}>15 min</option>
+          </select>
+        </label>
+        <label className="inline-check">
+          After backgrounding
+          <select
+            value={settings?.backgroundGraceSeconds ?? DEFAULT_BACKGROUND_GRACE_SECONDS}
+            onChange={(e) =>
+              void updateSecurity({ backgroundGraceSeconds: Number(e.target.value) })
+            }
+            aria-label="Background lock grace period"
+          >
+            <option value={5}>5 s</option>
+            <option value={30}>30 s</option>
+            <option value={120}>2 min</option>
+          </select>
+        </label>
+      </div>
+    </section>
   )
 }
 

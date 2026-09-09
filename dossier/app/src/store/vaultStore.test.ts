@@ -157,6 +157,41 @@ describe('vault store', () => {
     await expect(store().unlock('open sesame')).resolves.toBe(true)
   })
 
+  it('PIN quick unlock: arm, lock, wrong tries, unlock, lock-out', async () => {
+    const ada = await store().addPerson('Ada')
+    // Wrong passphrase cannot arm a PIN.
+    expect(await store().setPin('1234', 'not the passphrase')).toBe(false)
+    expect(store().pinArmed).toBe(false)
+    // Correct passphrase arms it.
+    expect(await store().setPin('1234', 'open sesame')).toBe(true)
+    expect(store().pinArmed).toBe(true)
+
+    store().lock()
+    expect(store().pinArmed).toBe(true)
+    expect(await store().unlockWithPin('9999')).toBe(false)
+    expect(store().pinAttemptsLeft).toBe(4)
+    expect(await store().unlockWithPin('1234')).toBe(true)
+    expect(store().records.get(ada.id)).toBeDefined()
+
+    // Exhausting attempts disarms the PIN entirely.
+    store().lock()
+    for (let i = 0; i < 5; i++) {
+      expect(await store().unlockWithPin('0000')).toBe(false)
+    }
+    expect(store().pinArmed).toBe(false)
+    expect(await store().unlockWithPin('1234')).toBe(false)
+    expect(await store().unlock('open sesame')).toBe(true)
+    store().forgetPin()
+  })
+
+  it('security settings persist through the encrypted settings record', async () => {
+    await store().updateSecurity({ autoLockMinutes: 5, backgroundGraceSeconds: 120 })
+    store().lock()
+    await store().unlock('open sesame')
+    const settings = [...store().records.values()].find((r) => r.kind === 'settings')
+    expect(settings).toMatchObject({ autoLockMinutes: 5, backgroundGraceSeconds: 120 })
+  })
+
   it('locking drops everything and unlock restores it', async () => {
     const ada = await store().addPerson('Ada')
     store().lock()

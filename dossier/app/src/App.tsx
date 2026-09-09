@@ -1,6 +1,10 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { NavLink, Route, Routes } from 'react-router-dom'
-import { useVaultStore } from './store/vaultStore'
+import {
+  DEFAULT_AUTO_LOCK_MINUTES,
+  DEFAULT_BACKGROUND_GRACE_SECONDS,
+} from './lib/models'
+import { selectSettings, useVaultStore } from './store/vaultStore'
 import UnlockPage from './pages/UnlockPage'
 import PeoplePage from './pages/PeoplePage'
 import PersonPage from './pages/PersonPage'
@@ -9,30 +13,31 @@ import SettingsPage from './pages/SettingsPage'
 // The graph pulls in d3-force; keep it out of the unlock-screen bundle.
 const GraphPage = lazy(() => import('./pages/GraphPage'))
 
-/**
- * Backgrounding starts a short grace timer before locking (§6.3): an
- * immediate lock would destroy in-progress capture drafts on every
- * notification tap and break the OS file picker (which backgrounds the
- * page). Returning within the grace window cancels the lock. The one-tap
- * Lock button remains the instant path (§6.4). Slice 2 makes the timer
- * configurable alongside PIN/biometric unlock.
- */
-const BACKGROUND_LOCK_GRACE_MS = 30_000
-
 export default function App() {
   const status = useVaultStore((s) => s.status)
   const init = useVaultStore((s) => s.init)
   const lock = useVaultStore((s) => s.lock)
+  const settings = useVaultStore((s) =>
+    s.status === 'unlocked' ? selectSettings(s.records) : undefined,
+  )
+  const autoLockMinutes = settings?.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES
+  const graceSeconds = settings?.backgroundGraceSeconds ?? DEFAULT_BACKGROUND_GRACE_SECONDS
+  const unlocked = status === 'unlocked'
 
   useEffect(() => {
     void init()
   }, [init])
 
+  // Backgrounding starts a grace timer before locking (§6.3): an instant
+  // lock would destroy capture drafts on every notification tap and break
+  // the OS file picker. Returning within the window cancels it. The
+  // one-tap Lock button remains the instant path (§6.4).
   useEffect(() => {
+    if (!unlocked) return
     let timer: ReturnType<typeof setTimeout> | undefined
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
-        timer ??= setTimeout(() => lock(), BACKGROUND_LOCK_GRACE_MS)
+        timer ??= setTimeout(() => lock(), Math.max(1, graceSeconds) * 1000)
       } else if (timer !== undefined) {
         clearTimeout(timer)
         timer = undefined
@@ -43,7 +48,24 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVisibility)
       if (timer !== undefined) clearTimeout(timer)
     }
-  }, [lock])
+  }, [lock, unlocked, graceSeconds])
+
+  // Inactivity auto-lock (§6.3): any interaction resets the countdown.
+  useEffect(() => {
+    if (!unlocked || autoLockMinutes <= 0) return
+    let timer: ReturnType<typeof setTimeout>
+    const reset = () => {
+      clearTimeout(timer)
+      timer = setTimeout(() => lock(), autoLockMinutes * 60_000)
+    }
+    reset()
+    const events: (keyof DocumentEventMap)[] = ['pointerdown', 'keydown', 'wheel']
+    for (const ev of events) document.addEventListener(ev, reset, { passive: true })
+    return () => {
+      clearTimeout(timer)
+      for (const ev of events) document.removeEventListener(ev, reset)
+    }
+  }, [lock, unlocked, autoLockMinutes])
 
   if (status === 'unknown') return null
   if (status !== 'unlocked') return <UnlockPage mode={status === 'no-vault' ? 'create' : 'unlock'} />

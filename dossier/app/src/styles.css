@@ -543,3 +543,9 @@ a.mention {
 .person-header .back {
   min-width: 2.5rem;
 }
+
+.settings h3 {
+  font-size: 0.9rem;
+  color: var(--text);
+  margin: 1rem 0 0.25rem;
+}

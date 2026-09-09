@@ -38,8 +38,15 @@ follow-ups, PWA icons + iOS metas, SW auto-update, persistent-storage
 surfacing + backup nag, graph layout/viewport persistence, pinch anchoring,
 culled rAF rendering, peek cards + edge editing, keyboard graph controls.
 
-Still to build: photos/avatars, biometric (WebAuthn PRF) and PIN unlock,
-inactivity auto-lock timer, disguise selection, graph queries (mutual
+Slice 2 (unlock methods, §6.3): biometric unlock via WebAuthn PRF
+(`lib/webauthn.ts` — passkey with the PRF extension wraps the DEK; no
+slot linkage stored; passphrase required to enroll), a session PIN
+(`lib/pin.ts` — memory-only wrap, 5 attempts then passphrase), a
+configurable inactivity auto-lock and background grace period stored in
+the encrypted settings record, and an unlock screen that offers
+PIN/biometric with passphrase fallback.
+
+Still to build: photos/avatars, disguise selection, graph queries (mutual
 connections, paths), notifications, Argon2id, inbox triage affordance,
 chip-style tag input, decoy vault UI (v2).
 

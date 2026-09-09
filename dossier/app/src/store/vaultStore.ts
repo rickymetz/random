@@ -23,6 +23,8 @@ import {
   type RelationshipType,
   type Settings,
 } from '../lib/models'
+import { wipe } from '../lib/crypto'
+import { armPin, disarmPin, pinArmed, pinAttemptsLeft, tryPinUnlock } from '../lib/pin'
 import { createIndex, rebuildIndex, reindexPerson, searchPeople } from '../lib/search'
 import { sanitizeRecords } from '../lib/validate'
 import {
@@ -31,9 +33,17 @@ import {
   loadAllRecords,
   saveRecords,
   unlockVault,
+  unlockWithRawDek,
+  unwrapRawDek,
   vaultExists,
   type UnlockedVault,
 } from '../lib/vault'
+import {
+  biometricEnrollments,
+  biometricUnlock,
+  enrollBiometric as webAuthnEnroll,
+  removeBiometricEnrollments,
+} from '../lib/webauthn'
 
 // Module-level so it never renders and dies with lock(); rebuilt on unlock.
 let searchIndex = createIndex()
@@ -49,10 +59,26 @@ interface VaultState {
   /** Home-screen search query, preserved across navigation (memory only). */
   homeQuery: string
 
+  /** Quick re-unlock PIN armed for this browser session (§6.3). */
+  pinArmed: boolean
+  pinAttemptsLeft: number
+  /** At least one biometric (WebAuthn PRF) enrollment exists. */
+  biometricEnrolled: boolean
+
   init: () => Promise<void>
   create: (passphrase: string) => Promise<void>
   unlock: (passphrase: string) => Promise<boolean>
+  unlockWithPin: (pin: string) => Promise<boolean>
+  unlockWithBiometric: () => Promise<boolean>
   lock: () => void
+  /** Drop the session PIN so only passphrase/biometric unlock remain. */
+  forgetPin: () => void
+  setPin: (pin: string, passphrase: string) => Promise<boolean>
+  enrollBiometric: (passphrase: string) => Promise<'ok' | 'unsupported' | 'wrong-passphrase'>
+  removeBiometric: () => Promise<void>
+  updateSecurity: (
+    patch: Partial<Pick<Settings, 'autoLockMinutes' | 'backgroundGraceSeconds'>>,
+  ) => Promise<void>
   setHomeQuery: (query: string) => void
 
   addPerson: (displayName: string) => Promise<Person>
@@ -195,6 +221,30 @@ export const useVaultStore = create<VaultState>((set, get) => {
     for (const id of reindexIds) reindexPerson(searchIndex, next, id)
   }
 
+  /** Load + sanitize records and enter the unlocked state. */
+  async function finishUnlock(vault: UnlockedVault): Promise<void> {
+    const { records: loaded, corrupted } = await loadAllRecords(vault)
+    // Defense in depth: stored records went through sanitize on the way
+    // in, but a bad row must not brick unlock (§5 T2 aftermath).
+    const { records: clean } = sanitizeRecords(loaded)
+    const records = new Map(clean.map((r) => [r.id, r]))
+    const seed = missingBuiltInTypes(records)
+    if (seed.length > 0) {
+      await saveRecords(vault, seed)
+      for (const t of seed) records.set(t.id, t)
+    }
+    searchIndex = createIndex()
+    rebuildIndex(searchIndex, records)
+    set({
+      status: 'unlocked',
+      vault,
+      records,
+      corrupted,
+      pinArmed: pinArmed(),
+      pinAttemptsLeft: pinAttemptsLeft(),
+    })
+  }
+
   return {
     status: 'unknown',
     vault: null,
@@ -202,9 +252,18 @@ export const useVaultStore = create<VaultState>((set, get) => {
     epoch: 0,
     corrupted: 0,
     homeQuery: '',
+    pinArmed: false,
+    pinAttemptsLeft: 0,
+    biometricEnrolled: false,
 
     init: async () => {
-      set({ status: (await vaultExists()) ? 'locked' : 'no-vault' })
+      const [exists, enrollments] = await Promise.all([vaultExists(), biometricEnrollments()])
+      set({
+        status: exists ? 'locked' : 'no-vault',
+        biometricEnrolled: enrollments.length > 0,
+        pinArmed: pinArmed(),
+        pinAttemptsLeft: pinAttemptsLeft(),
+      })
     },
 
     create: async (passphrase) => {
@@ -220,32 +279,90 @@ export const useVaultStore = create<VaultState>((set, get) => {
     unlock: async (passphrase) => {
       const vault = await unlockVault(passphrase)
       if (!vault) return false
-      const { records: loaded, corrupted } = await loadAllRecords(vault)
-      // Defense in depth: stored records went through sanitize on the way
-      // in, but a bad row must not brick unlock (§5 T2 aftermath).
-      const { records: clean } = sanitizeRecords(loaded)
-      const records = new Map(clean.map((r) => [r.id, r]))
-      const seed = missingBuiltInTypes(records)
-      if (seed.length > 0) {
-        await saveRecords(vault, seed)
-        for (const t of seed) records.set(t.id, t)
+      await finishUnlock(vault)
+      return true
+    },
+
+    unlockWithPin: async (pin) => {
+      const result = await tryPinUnlock(pin)
+      if (!result.ok) {
+        set({ pinArmed: pinArmed(), pinAttemptsLeft: result.attemptsLeft })
+        return false
       }
-      searchIndex = createIndex()
-      rebuildIndex(searchIndex, records)
-      set({ status: 'unlocked', vault, records, corrupted })
+      const vault = await unlockWithRawDek(result.rawDek)
+      if (!vault) return false
+      await finishUnlock(vault)
+      return true
+    },
+
+    unlockWithBiometric: async () => {
+      const rawDek = await biometricUnlock()
+      if (!rawDek) return false
+      const vault = await unlockWithRawDek(rawDek)
+      if (!vault) return false
+      await finishUnlock(vault)
       return true
     },
 
     lock: () => {
       searchIndex = createIndex()
+      // The session PIN stays armed — quick re-unlock is its purpose; the
+      // 5-attempt limit and tab lifetime bound the exposure (§6.3).
       set((state) => ({
         status: state.status === 'no-vault' ? 'no-vault' : 'locked',
         vault: null,
         records: new Map(),
         epoch: state.epoch + 1,
         homeQuery: '',
+        pinArmed: pinArmed(),
+        pinAttemptsLeft: pinAttemptsLeft(),
       }))
     },
+
+    forgetPin: () => {
+      disarmPin()
+      set({ pinArmed: false, pinAttemptsLeft: 0 })
+    },
+
+    setPin: async (pin, passphrase) => {
+      const unwrapped = await unwrapRawDek(passphrase)
+      if (!unwrapped) return false
+      await armPin(pin, unwrapped.rawDek)
+      wipe(unwrapped.rawDek)
+      set({ pinArmed: true, pinAttemptsLeft: pinAttemptsLeft() })
+      return true
+    },
+
+    enrollBiometric: async (passphrase) => {
+      const unwrapped = await unwrapRawDek(passphrase)
+      if (!unwrapped) return 'wrong-passphrase'
+      try {
+        const ok = await webAuthnEnroll(unwrapped.rawDek)
+        if (ok) set({ biometricEnrolled: true })
+        return ok ? 'ok' : 'unsupported'
+      } catch {
+        return 'unsupported'
+      } finally {
+        wipe(unwrapped.rawDek)
+      }
+    },
+
+    removeBiometric: async () => {
+      await removeBiometricEnrollments()
+      set({ biometricEnrolled: false })
+    },
+
+    updateSecurity: (patch) =>
+      enqueue(async () => {
+        const existing = get().records.get(SETTINGS_ID)
+        const settings: Settings = {
+          ...(existing?.kind === 'settings' ? existing : {}),
+          kind: 'settings',
+          id: SETTINGS_ID,
+          ...patch,
+        }
+        await apply([settings])
+      }),
 
     setHomeQuery: (homeQuery) => set({ homeQuery }),
 

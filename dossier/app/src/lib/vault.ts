@@ -116,6 +116,54 @@ export async function unlockVault(passphrase: string): Promise<UnlockedVault | n
   return result
 }
 
+/**
+ * Recover the RAW DEK bytes with the passphrase — needed when enrolling
+ * another unlock method (biometric wrap, PIN session wrap), since the
+ * working CryptoKey is deliberately non-extractable. Callers must wipe()
+ * the result as soon as it is re-wrapped. Tries every slot like
+ * unlockVault does.
+ */
+export async function unwrapRawDek(
+  passphrase: string,
+): Promise<{ rawDek: Uint8Array; slotId: string } | null> {
+  const slots = await db.slots.toArray()
+  let result: { rawDek: Uint8Array; slotId: string } | null = null
+  for (const slot of slots) {
+    try {
+      const kek = await deriveKek(passphrase, slot.salt, validateKdfParams(slot.kdfParams))
+      const rawDek = await unwrapDek(
+        { iv: slot.wrappedDekIv, ciphertext: slot.wrappedDek },
+        kek,
+      )
+      result ??= { rawDek, slotId: slot.id }
+    } catch {
+      // Not this slot.
+    }
+  }
+  return result
+}
+
+/**
+ * Open the vault from raw DEK bytes (biometric/PIN paths): import the key
+ * non-extractable, then resolve which slot it belongs to by decrypting
+ * sealed prefixes. Wipes the raw bytes before returning.
+ */
+export async function unlockWithRawDek(rawDek: Uint8Array): Promise<UnlockedVault | null> {
+  const dek = await importDek(rawDek)
+  wipe(rawDek)
+  const slots = await db.slots.toArray()
+  let result: UnlockedVault | null = null
+  for (const slot of slots) {
+    try {
+      const prefixBytes = await decryptBlob(dek, { iv: slot.prefixIv, blob: slot.prefixCt })
+      result ??= { slotId: slot.id, dataPrefix: toHex(prefixBytes), dek }
+    } catch {
+      // Not this slot.
+    }
+  }
+  return result
+}
+
 export async function saveRecord(vault: UnlockedVault, record: DomainRecord): Promise<void> {
   const { iv, blob } = await encryptJson(vault.dek, record)
   await db.records.put({ id: `${vault.dataPrefix}:${record.id}`, iv, blob })
