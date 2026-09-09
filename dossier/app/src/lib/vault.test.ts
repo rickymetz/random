@@ -91,7 +91,12 @@ describe('vault', () => {
 
     const reopened = await unlockVault('open sesame')
     expect(reopened).not.toBeNull()
-    slots = await db.slots.toArray()
+    // Migration is fire-and-forget — poll briefly for it to land.
+    for (let i = 0; i < 50; i++) {
+      slots = await db.slots.toArray()
+      if (slots.every((s) => s.kdfParams.algorithm === DEFAULT_KDF_PARAMS.algorithm)) break
+      await new Promise((r) => setTimeout(r, 100))
+    }
     expect(slots).toHaveLength(2)
     // Real AND dummy slot both carry Argon2id metadata after migration —
     // the KDF must not become a real-vs-dummy tell.

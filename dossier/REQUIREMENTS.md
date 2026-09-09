@@ -206,11 +206,14 @@ WebAuthn PRF ──────▶ KEK'──unwraps──▶ DEK   (same DEK, s
   passphrase, and optionally again by a key from **WebAuthn PRF** for
   biometric unlock. Adding/removing unlock methods and changing the
   passphrase re-wraps the DEK; the data is never re-encrypted.
-- **KDF:** Argon2id (via a WASM implementation, e.g. `hash-wasm`) with
-  parameters tuned to ~250 ms on a mid-range phone; PBKDF2-SHA-256 with
-  ≥600k iterations is the acceptable scaffold-stage placeholder until the
-  WASM path is wired in. Parameters are versioned in the vault header so
-  they can be raised later.
+- **KDF:** Argon2id (`hash-wasm`, 48 MiB / 3 passes / p=1, ~250 ms on a
+  mid-range phone) for new vaults and export bundles; legacy
+  PBKDF2-SHA-256 (600k) wraps migrate transparently on the next
+  passphrase unlock. Parameters are versioned per slot/header and
+  bounded wherever they arrive from untrusted sources. Known trade: the
+  WASM module's working memory can't be zeroized from JS, so Argon2id
+  leaves more transient key-derivation residue in memory than the
+  WebCrypto PBKDF2 path did — accepted for its GPU-resistance.
 - The raw DEK exists only in memory while unlocked, held as a
   non-extractable WebCrypto `CryptoKey` wherever the API allows.
 

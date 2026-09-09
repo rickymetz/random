@@ -294,6 +294,10 @@ function SecuritySection() {
             onChange={async (e) => {
               const enable = e.target.checked
               if (enable) {
+                if (typeof DeviceMotionEvent === 'undefined') {
+                  setLockMsg('This browser has no motion sensor access.')
+                  return
+                }
                 // iOS gates motion events behind a permission prompt that
                 // must come from a user gesture — this is that gesture.
                 const dme = DeviceMotionEvent as unknown as {

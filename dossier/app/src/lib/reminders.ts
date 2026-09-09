@@ -11,7 +11,14 @@ export function todayStamp(now: Date = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
-/** Anything due today (or overdue): birthdays and dated follow-ups. */
+/**
+ * Overdue follow-ups only count for a week — a follow-up abandoned in
+ * 2024 must not produce a daily notification forever (a recurring banner
+ * is itself the persistent signal §6.5 avoids).
+ */
+const OVERDUE_WINDOW_DAYS = 7
+
+/** Anything due today (or recently overdue): birthdays and follow-ups. */
 export function hasDueItems(records: Map<string, DomainRecord>, now: Date = new Date()): boolean {
   const people = new Map<string, Person>()
   for (const r of records.values()) {
@@ -21,7 +28,7 @@ export function hasDueItems(records: Map<string, DomainRecord>, now: Date = new 
     if (r.kind === 'person' && r.birthday && daysUntilNext(r.birthday, now) === 0) return true
     if (r.kind === 'followUp' && !r.done && r.dueDate && people.has(r.personId)) {
       const days = daysUntilDue(r.dueDate, now)
-      if (days !== null && days <= 0) return true
+      if (days !== null && days <= 0 && days >= -OVERDUE_WINDOW_DAYS) return true
     }
   }
   return false
@@ -40,19 +47,31 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return (await Notification.requestPermission()) === 'granted'
 }
 
-/** Fire the one generic notification. Best-effort; failures are silent. */
-export async function showGenericReminder(): Promise<void> {
+/**
+ * Fire the one generic notification. Returns whether it was actually
+ * shown, so the caller only stamps the day on success. serviceWorker.ready
+ * never rejects and can hang forever with no active SW, so it races a
+ * short timeout before falling back to a plain Notification.
+ */
+export async function showGenericReminder(): Promise<boolean> {
   try {
-    const registration = await navigator.serviceWorker?.ready
+    const registration = navigator.serviceWorker
+      ? await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+        ])
+      : null
     if (registration?.showNotification) {
       await registration.showNotification('Ledger', {
         body: 'You have a reminder.',
         tag: 'ledger-reminder',
       })
-      return
+      return true
     }
     new Notification('Ledger', { body: 'You have a reminder.', tag: 'ledger-reminder' })
+    return true
   } catch {
     // The in-app Upcoming view is the reliable fallback.
+    return false
   }
 }

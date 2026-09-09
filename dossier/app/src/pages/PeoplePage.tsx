@@ -81,6 +81,8 @@ export default function PeoplePage() {
           skipped. Restore from a backup if something is missing.
         </p>
       )}
+      <KdfUpgradeNag />
+      <PinFailureNotice />
       {!trimmed && <BackupNag />}
       {!trimmed && <Upcoming />}
       {trimmed && (
@@ -130,6 +132,33 @@ function PersonRow({ person, query }: { person: Person; query: string }) {
         </span>
       </Link>
     </li>
+  )
+}
+
+/** Biometric/PIN unlocks can't migrate a legacy KDF wrap (§6.2). */
+function KdfUpgradeNag() {
+  const kdfLegacy = useVaultStore((s) => s.kdfLegacy)
+  if (!kdfLegacy) return null
+  return (
+    <p className="banner">
+      Security upgrade pending — lock and unlock once with your <em>passphrase</em> to
+      finish upgrading the vault's key protection.
+    </p>
+  )
+}
+
+/** Tamper signal (§6.3): wrong PIN guesses made while the owner was away. */
+function PinFailureNotice() {
+  const count = useVaultStore((s) => s.pinFailureNotice)
+  const clear = useVaultStore((s) => s.clearPinFailureNotice)
+  if (count === 0) return null
+  return (
+    <p className="banner" role="alert">
+      {count} failed PIN attempt{count === 1 ? '' : 's'} since your last unlock.{' '}
+      <button className="subtle" onClick={clear}>
+        Dismiss
+      </button>
+    </p>
   )
 }
 

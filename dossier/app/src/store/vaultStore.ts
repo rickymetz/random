@@ -76,6 +76,11 @@ interface VaultState {
   epoch: number
   /** Rows that failed to decrypt at unlock — surfaced, not fatal. */
   corrupted: number
+  /**
+   * The vault opened via a biometric/PIN path but still carries the
+   * legacy PBKDF2 wrap — only a passphrase unlock can migrate it (§6.2).
+   */
+  kdfLegacy: boolean
   /** Home-screen search query, preserved across navigation (memory only). */
   homeQuery: string
 
@@ -310,6 +315,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       vault,
       records,
       corrupted,
+      kdfLegacy: vault.kdfLegacy ?? false,
       pinArmed: pinArmed(),
       pinAttemptsLeft: pinAttemptsLeft(),
       pinDigits: pinLength(),
@@ -345,6 +351,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
     records: new Map(),
     epoch: 0,
     corrupted: 0,
+    kdfLegacy: false,
     homeQuery: '',
     pinArmed: false,
     pinAttemptsLeft: 0,

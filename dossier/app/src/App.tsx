@@ -120,38 +120,61 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlocked, autoLockMinutes])
 
-  // Shake-to-lock (§6.4): three hard jolts within a second panic-lock.
+  // Shake-to-lock (§6.4): three distinct hard jolts within a second.
+  // Gravity-free acceleration where available; the threshold (~2.2 g of
+  // true magnitude) plus 120 ms spike spacing keeps walking, jogging,
+  // and putting the phone down from panic-locking the vault. A shake is
+  // accident-prone, so unlike the deliberate Lock button it DOES flush
+  // the capture draft before locking.
   const shakeToLock = settings?.shakeToLock ?? false
   useEffect(() => {
     if (!unlocked || !shakeToLock || typeof DeviceMotionEvent === 'undefined') return
     let spikes: number[] = []
+    let fired = false
     const onMotion = (e: DeviceMotionEvent) => {
-      const a = e.accelerationIncludingGravity
+      if (fired) return
+      const a = e.acceleration ?? e.accelerationIncludingGravity
       if (!a) return
-      const magnitude = Math.abs(a.x ?? 0) + Math.abs(a.y ?? 0) + Math.abs(a.z ?? 0)
+      const gravityBias = e.acceleration ? 0 : 9.81
+      const magnitude = Math.sqrt((a.x ?? 0) ** 2 + (a.y ?? 0) ** 2 + (a.z ?? 0) ** 2)
       const now = Date.now()
-      if (magnitude > 45) {
+      if (magnitude - gravityBias > 22) {
         spikes = spikes.filter((t) => now - t < 1000)
-        spikes.push(now)
-        if (spikes.length >= 3) panicLock()
+        if (spikes.length === 0 || now - spikes[spikes.length - 1] > 120) spikes.push(now)
+        if (spikes.length >= 3) {
+          fired = true
+          spikes = []
+          void flushDrafts().finally(() => panicLock())
+        }
       }
     }
     window.addEventListener('devicemotion', onMotion)
     return () => window.removeEventListener('devicemotion', onMotion)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlocked, shakeToLock, panicLock])
 
   // Daily generic reminder notification (§4.4/§6.5): at most one per
-  // day, fired at unlock when something is due; text never names anyone.
+  // day; text never names anyone. Re-checked hourly so a session left
+  // open across midnight still fires. Background delivery needs a push
+  // service (v2) — the in-app Upcoming view is the guaranteed path.
   const remindersEnabled = settings?.remindersEnabled ?? false
   const lastReminderDay = settings?.lastReminderDay
   const updateSecurity = useVaultStore((s) => s.updateSecurity)
   useEffect(() => {
     if (!unlocked || !remindersEnabled || !notificationsGranted()) return
-    const today = todayStamp()
-    if (lastReminderDay === today) return
-    const { records } = useVaultStore.getState()
-    if (!hasDueItems(records)) return
-    void showGenericReminder().then(() => updateSecurity({ lastReminderDay: today }))
+    const check = () => {
+      const today = todayStamp()
+      const state = useVaultStore.getState()
+      if (selectSettings(state.records)?.lastReminderDay === today) return
+      if (!hasDueItems(state.records)) return
+      // Stamp the day only when the notification actually showed.
+      void showGenericReminder().then((shown) => {
+        if (shown) void updateSecurity({ lastReminderDay: today }).catch(() => undefined)
+      })
+    }
+    check()
+    const timer = setInterval(check, 60 * 60 * 1000)
+    return () => clearInterval(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlocked, remindersEnabled, lastReminderDay])
 

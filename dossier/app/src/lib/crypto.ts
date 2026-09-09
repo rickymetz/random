@@ -38,11 +38,14 @@ export const LEGACY_PBKDF2_PARAMS: KdfParams = {
 
 /** Bounds accepted from untrusted sources (import headers, stored slots). */
 export const KDF_ITERATION_BOUNDS = { min: 100_000, max: 5_000_000 }
+// Upper bounds keep a hostile export header from being its own DoS: the
+// WASM heap grows to memoryKiB BEFORE any work, so the ceiling is ~4× the
+// default rather than "anything Argon2 supports".
 export const ARGON2_BOUNDS = {
   minMemoryKiB: 8 * 1024,
-  maxMemoryKiB: 512 * 1024,
+  maxMemoryKiB: 192 * 1024,
   minPasses: 1,
-  maxPasses: 16,
+  maxPasses: 6,
   maxParallelism: 4,
 }
 
@@ -114,6 +117,10 @@ async function derivePassphraseKey(
       outputType: 'binary',
     })
     const key = await subtle.importKey('raw', derived as BufferSource, { name: 'AES-GCM' }, false, usages)
+    // Best-effort: this zeroes hash-wasm's returned copy, but the WASM
+    // module's internal working memory (Argon2 blocks, input buffer) is
+    // not reachable from here — a documented §6.2 trade against PBKDF2's
+    // GPU-friendliness. Same class of residue as any JS string passphrase.
     wipe(derived)
     return key
   }

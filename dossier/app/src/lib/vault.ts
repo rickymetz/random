@@ -37,6 +37,13 @@ export interface UnlockedVault {
   slotId: string
   dataPrefix: string
   dek: CryptoKey
+  /**
+   * The matched slot still uses the legacy PBKDF2 wrap. Only a
+   * passphrase unlock can migrate it (re-wrapping needs a new
+   * passphrase-derived KEK) — biometric/PIN unlocks surface this so the
+   * UI can nudge for one passphrase unlock.
+   */
+  kdfLegacy?: boolean
 }
 
 function toHex(bytes: Uint8Array): string {
@@ -101,44 +108,50 @@ export async function createVault(
  *
  * A successful unlock of a legacy PBKDF2 slot migrates it to Argon2id
  * (§6.2: "parameters are versioned … so they can be raised later") by
- * re-wrapping the DEK — records are untouched. The dummy slot is
- * regenerated alongside so KDF metadata can't tell the two apart. (In a
- * two-real-slot v2 store the second real slot can't be migrated without
- * its passphrase, so migration only runs on two-slot stores.)
+ * re-wrapping the DEK — records are untouched. The migration runs
+ * fire-and-forget after the result is decided (so it adds little to the
+ * hit-vs-miss latency difference) and atomically, with the dummy slot
+ * regenerated in the same transaction so KDF metadata can't tell the two
+ * apart. (In a two-real-slot v2 store the second real slot can't be
+ * migrated without its passphrase, so migration only runs on two-slot
+ * stores.)
  */
 export async function unlockVault(passphrase: string): Promise<UnlockedVault | null> {
   const slots = await db.slots.toArray()
   let result: UnlockedVault | null = null
   let matched: { slot: VaultSlotRow; rawDek: Uint8Array } | null = null
   for (const slot of slots) {
+    let rawDek: Uint8Array | null = null
     try {
       const kek = await deriveKek(passphrase, slot.salt, validateKdfParams(slot.kdfParams))
-      const rawDek = await unwrapDek(
-        { iv: slot.wrappedDekIv, ciphertext: slot.wrappedDek },
-        kek,
-      )
+      rawDek = await unwrapDek({ iv: slot.wrappedDekIv, ciphertext: slot.wrappedDek }, kek)
       const dek = await importDek(rawDek)
       const prefixBytes = await decryptBlob(dek, { iv: slot.prefixIv, blob: slot.prefixCt })
       if (result === null) {
         result = { slotId: slot.id, dataPrefix: toHex(prefixBytes), dek }
         matched = { slot, rawDek }
-      } else {
-        wipe(rawDek)
+        rawDek = null // ownership moved to `matched`
       }
     } catch {
       // Not this slot (or wrong passphrase) — indistinguishable by design.
+    } finally {
+      // Covers the unwrap-succeeded-but-prefix-decrypt-threw path too.
+      if (rawDek) wipe(rawDek)
     }
   }
   if (matched) {
-    try {
-      if (matched.slot.kdfParams.algorithm !== DEFAULT_KDF_PARAMS.algorithm && slots.length === 2) {
-        await migrateSlotKdf(matched.slot, matched.rawDek, passphrase, slots)
-      }
-    } catch {
-      // Migration is best-effort; the old wrap still works.
-    } finally {
-      wipe(matched.rawDek)
+    const needsMigration =
+      matched.slot.kdfParams.algorithm !== DEFAULT_KDF_PARAMS.algorithm && slots.length === 2
+    if (needsMigration) {
+      // Fire-and-forget with a private copy of the key bytes: the unlock
+      // returns immediately (keeping success/failure latency close), and
+      // the migration wipes its copy when done.
+      const rawCopy = new Uint8Array(matched.rawDek)
+      void migrateSlotKdf(matched.slot, rawCopy, passphrase)
+        .catch(() => undefined) // best-effort; the old wrap still works
+        .finally(() => wipe(rawCopy))
     }
+    wipe(matched.rawDek)
   }
   return result
 }
@@ -147,25 +160,27 @@ async function migrateSlotKdf(
   slot: VaultSlotRow,
   rawDek: Uint8Array,
   passphrase: string,
-  slots: VaultSlotRow[],
 ): Promise<void> {
   const salt = randomBytes(16)
   const kek = await deriveKek(passphrase, salt, DEFAULT_KDF_PARAMS)
   const wrapped = await wrapDek(rawDek, kek)
-  await db.slots.put({
-    ...slot,
-    salt,
-    kdfParams: DEFAULT_KDF_PARAMS,
-    wrappedDekIv: wrapped.iv,
-    wrappedDek: wrapped.ciphertext,
+  const dummy = makeDummySlot()
+  // One atomic transaction: a crash must never leave mismatched KDF
+  // metadata (a real-vs-dummy tell) or a single-slot store (which would
+  // prove there is no decoy).
+  await db.transaction('rw', db.slots, async () => {
+    const others = (await db.slots.toArray()).filter((s) => s.id !== slot.id)
+    await db.slots.put({
+      ...slot,
+      salt,
+      kdfParams: DEFAULT_KDF_PARAMS,
+      wrappedDekIv: wrapped.iv,
+      wrappedDek: wrapped.ciphertext,
+    })
+    // Refresh the dummy so its KDF metadata matches the migrated slot.
+    await db.slots.bulkDelete(others.map((s) => s.id))
+    await db.slots.put(dummy)
   })
-  // Refresh the dummy so its KDF metadata matches the migrated slot.
-  for (const other of slots) {
-    if (other.id !== slot.id) {
-      await db.slots.delete(other.id)
-      await db.slots.put(makeDummySlot())
-    }
-  }
 }
 
 /**
@@ -209,7 +224,13 @@ export async function unlockWithRawDek(rawDek: Uint8Array): Promise<UnlockedVaul
   for (const slot of slots) {
     try {
       const prefixBytes = await decryptBlob(dek, { iv: slot.prefixIv, blob: slot.prefixCt })
-      result ??= { slotId: slot.id, dataPrefix: toHex(prefixBytes), dek }
+      result ??= {
+        slotId: slot.id,
+        dataPrefix: toHex(prefixBytes),
+        dek,
+        // This path cannot migrate the wrap (no passphrase) — surface it.
+        kdfLegacy: slot.kdfParams.algorithm !== DEFAULT_KDF_PARAMS.algorithm,
+      }
     } catch {
       // Not this slot.
     }

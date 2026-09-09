@@ -39,13 +39,21 @@ describe('reminders', () => {
     expect(hasDueItems(recordsOf(person('a', { month: 9, day: 10 })), now)).toBe(false)
     expect(
       hasDueItems(
-        recordsOf(person('a'), followUp('a', { year: 2026, month: 9, day: 1 })),
+        recordsOf(person('a'), followUp('a', { year: 2026, month: 9, day: 5 })),
         now,
       ),
     ).toBe(true)
     expect(
       hasDueItems(
-        recordsOf(person('a'), followUp('a', { year: 2026, month: 9, day: 1 }, true)),
+        recordsOf(person('a'), followUp('a', { year: 2026, month: 9, day: 5 }, true)),
+        now,
+      ),
+    ).toBe(false)
+    // Long-overdue items age out of the notification (7-day window) —
+    // a forgotten follow-up must not ring every day forever.
+    expect(
+      hasDueItems(
+        recordsOf(person('a'), followUp('a', { year: 2026, month: 9, day: 1 })),
         now,
       ),
     ).toBe(false)
@@ -59,7 +67,7 @@ describe('reminders', () => {
 
   it('ignores follow-ups whose person was deleted', () => {
     expect(
-      hasDueItems(recordsOf(followUp('ghost', { year: 2026, month: 9, day: 1 })), now),
+      hasDueItems(recordsOf(followUp('ghost', { year: 2026, month: 9, day: 5 })), now),
     ).toBe(false)
   })
 

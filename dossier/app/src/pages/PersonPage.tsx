@@ -404,10 +404,16 @@ function CaptureBar({ person }: { person: Person }) {
   draftRef.current = draft
 
   // Timer-driven locks flush this draft into an encrypted note instead of
-  // eating it (the fix for auto-lock destroying in-progress captures).
+  // eating it, and so does navigating away (tapping an @mention link
+  // remounts the page — the fact you just typed must not vanish).
   useEffect(() => {
     registerDraft(person.id, () => draftRef.current)
-    return () => unregisterDraft(person.id)
+    return () => {
+      const leftover = draftRef.current.trim()
+      if (leftover) void saveNote(person.id, leftover)
+      unregisterDraft(person.id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [person.id, registerDraft, unregisterDraft])
   const others = useMemo(
     () => selectPeople(records).filter((p) => p.id !== person.id),
@@ -421,11 +427,16 @@ function CaptureBar({ person }: { person: Person }) {
     const body = draft.trim()
     if (!body || busy) return
     setBusy(true)
+    // Zero the ref synchronously so an unmount during the await can't
+    // double-save this draft through the cleanup flush.
+    draftRef.current = ''
+    setDraft('')
     try {
       await saveNote(person.id, body)
-      setDraft('')
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 2000)
+    } catch {
+      setDraft(body) // restore on failure
     } finally {
       setBusy(false)
     }
