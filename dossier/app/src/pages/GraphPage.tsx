@@ -363,26 +363,31 @@ function useCanvasGraph(
     })
 
     // Kick off avatar decodes; each finished image triggers a re-render.
+    // Keyed by blobRecordId so replacing an avatar never keeps drawing
+    // the old (possibly deleted) photo. `alive` stops repaints from a
+    // superseded effect run drawing a stale graph over the current one.
+    let alive = true
     const avatarImages = avatarImagesRef.current
     if (vault) {
       for (const node of simNodes) {
-        if (!node.avatar || avatarImages.has(node.id)) continue
-        avatarImages.set(node.id, 'loading')
-        void getPhotoUrl(vault, node.avatar.blobRecordId, node.avatar.mimeType)
+        const key = node.avatar?.blobRecordId
+        if (!key || avatarImages.has(key)) continue
+        avatarImages.set(key, 'loading')
+        void getPhotoUrl(vault, node.avatar!.blobRecordId, node.avatar!.mimeType)
           .then((url) => {
             if (!url) {
-              avatarImages.set(node.id, 'failed')
+              avatarImages.set(key, 'failed')
               return
             }
             const image = new Image()
             image.onload = () => {
-              avatarImages.set(node.id, image)
-              scheduleRender()
+              avatarImages.set(key, image)
+              if (alive) scheduleRender()
             }
-            image.onerror = () => avatarImages.set(node.id, 'failed')
+            image.onerror = () => avatarImages.set(key, 'failed')
             image.src = url
           })
-          .catch(() => avatarImages.set(node.id, 'failed'))
+          .catch(() => avatarImages.set(key, 'failed'))
       }
     }
 
@@ -445,13 +450,27 @@ function useCanvasGraph(
         if (node.x == null || node.y == null || !inView(node.x, node.y)) continue
         visibleNodes.push(node)
         const isFocus = node.id === focusId
-        const image = node.avatar ? avatarImages.get(node.id) : undefined
+        const image = node.avatar ? avatarImages.get(node.avatar.blobRecordId) : undefined
         if (image instanceof HTMLImageElement) {
           ctx.save()
           ctx.beginPath()
           ctx.arc(node.x, node.y, NODE_R, 0, Math.PI * 2)
           ctx.clip()
-          ctx.drawImage(image, node.x - NODE_R, node.y - NODE_R, NODE_R * 2, NODE_R * 2)
+          // Cover-crop from a centered square so faces aren't stretched.
+          const side = Math.min(image.naturalWidth, image.naturalHeight)
+          const sx = (image.naturalWidth - side) / 2
+          const sy = (image.naturalHeight - side) / 2
+          ctx.drawImage(
+            image,
+            sx,
+            sy,
+            side,
+            side,
+            node.x - NODE_R,
+            node.y - NODE_R,
+            NODE_R * 2,
+            NODE_R * 2,
+          )
           ctx.restore()
           ctx.beginPath()
           ctx.arc(node.x, node.y, NODE_R, 0, Math.PI * 2)
@@ -681,6 +700,7 @@ function useCanvasGraph(
     canvas.addEventListener('keydown', onKeyDown)
 
     return () => {
+      alive = false
       simulation.stop()
       observer.disconnect()
       canvas.removeEventListener('pointerdown', onPointerDown)

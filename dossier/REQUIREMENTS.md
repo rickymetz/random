@@ -168,9 +168,14 @@ compromised OS/browser, malware with memory access, and coerced unlock
 
 **Residual metadata (accepted, documented):** a raw dump of the encrypted
 store reveals the total record-row count and each row's ciphertext size —
-but no timestamps, no record kinds, and no mapping from vault slots to
-rows (the per-vault row prefix is itself sealed under the DEK). Padding
-rows/sizes to hide counts is a possible v2 hardening, not a v1 goal.
+but no timestamps, no mapping from vault slots to rows (the per-vault row
+prefix is itself sealed under the DEK), and no record kinds within the
+text-record store. Two coarse kind distinctions are visible from table
+names alone: photo payloads live in a separate `blobs` store (so photo
+count and per-photo ciphertext size are observable — a known-image size
+fingerprint is possible), and biometric enrollments live in an `auth`
+store (so their existence and count are observable). Padding rows/sizes
+to hide counts is a possible v2 hardening, not a v1 goal.
 
 ## 6. Security architecture
 

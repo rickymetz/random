@@ -145,12 +145,17 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
       const personId = id(r.personId)
       const blobRecordId = id(r.blobRecordId)
       if (!personId || !blobRecordId) return null
+      // Strict image allowlist: the mimeType becomes the Blob type of a
+      // rendered object URL, so text/html or svg here would hand an
+      // imported bundle a script-capable document.
+      const SAFE_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+      const mime = str(r.mimeType, 100)
       const photo: Photo = {
         kind: 'photo',
         id: rid,
         personId,
         isAvatar: bool(r.isAvatar),
-        mimeType: str(r.mimeType, 100) ?? 'image/jpeg',
+        mimeType: mime && SAFE_IMAGE_TYPES.includes(mime) ? mime : 'image/jpeg',
         blobRecordId,
         createdAt: num(r.createdAt),
       }

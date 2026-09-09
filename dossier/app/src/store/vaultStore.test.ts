@@ -14,6 +14,8 @@ describe('vault store', () => {
   beforeEach(async () => {
     await db.slots.clear()
     await db.records.clear()
+    await db.blobs.clear()
+    await db.auth.clear()
     useVaultStore.setState({
       status: 'unknown',
       vault: null,
@@ -257,6 +259,94 @@ describe('vault store', () => {
     void blobIds
   })
 
+  it('import never overwrites device-local settings', async () => {
+    await store().updateSecurity({ autoLockMinutes: 2 })
+    await store().importRecords([
+      { kind: 'settings', id: 'settings', autoLockMinutes: 0, backgroundGraceSeconds: 3600 },
+    ])
+    const settings = [...store().records.values()].find((r) => r.kind === 'settings')
+    expect(settings).toMatchObject({ autoLockMinutes: 2 })
+  })
+
+  it('import remaps blob ids so a bundle cannot overwrite existing photo bytes', async () => {
+    const ada = await store().addPerson('Ada')
+    await store().addPhotoBytes(ada.id, new Uint8Array([1, 1, 1]), 'image/jpeg', true)
+    const { selectPhotos } = await import('./vaultStore')
+    const existing = selectPhotos(store().records, ada.id)[0]
+
+    // Hostile bundle targets the existing blob id with different bytes.
+    await store().importRecords(
+      [
+        {
+          kind: 'photo',
+          id: crypto.randomUUID(),
+          personId: ada.id,
+          isAvatar: false,
+          mimeType: 'text/html', // must be coerced to a safe image type
+          blobRecordId: existing.blobRecordId,
+          createdAt: Date.now(),
+        },
+      ],
+      [{ id: existing.blobRecordId, bytes: new Uint8Array([66, 66]) }],
+    )
+    const { loadBlob } = await import('../lib/vault')
+    // Original bytes intact; imported photo got a fresh blob id + jpeg type.
+    expect([...(await loadBlob(store().vault!, existing.blobRecordId))!]).toEqual([1, 1, 1])
+    const photos = selectPhotos(store().records, ada.id)
+    expect(photos).toHaveLength(2)
+    const imported = photos.find((p) => p.id !== existing.id)!
+    expect(imported.blobRecordId).not.toBe(existing.blobRecordId)
+    expect(imported.mimeType).toBe('image/jpeg')
+    expect([...(await loadBlob(store().vault!, imported.blobRecordId))!]).toEqual([66, 66])
+  })
+
+  it('import preserves the one-avatar-per-person invariant', async () => {
+    const ada = await store().addPerson('Ada')
+    await store().addPhotoBytes(ada.id, new Uint8Array([1]), 'image/jpeg', true)
+    const blobId = crypto.randomUUID()
+    await store().importRecords(
+      [
+        {
+          kind: 'photo',
+          id: crypto.randomUUID(),
+          personId: ada.id,
+          isAvatar: true,
+          mimeType: 'image/jpeg',
+          blobRecordId: blobId,
+          createdAt: Date.now(),
+        },
+      ],
+      [{ id: blobId, bytes: new Uint8Array([2]) }],
+    )
+    const { selectPhotos } = await import('./vaultStore')
+    const avatars = selectPhotos(store().records, ada.id).filter((p) => p.isAvatar)
+    expect(avatars).toHaveLength(1)
+  })
+
+  it('deleting the avatar photo promotes the next one', async () => {
+    const ada = await store().addPerson('Ada')
+    await store().addPhotoBytes(ada.id, new Uint8Array([1]), 'image/jpeg', true)
+    await store().addPhotoBytes(ada.id, new Uint8Array([2]), 'image/jpeg', false)
+    const { selectPhotos, selectAvatar } = await import('./vaultStore')
+    const avatar = selectAvatar(store().records, ada.id)!
+    await store().removePhoto(avatar.id)
+    const photos = selectPhotos(store().records, ada.id)
+    expect(photos).toHaveLength(1)
+    expect(photos[0].isAvatar).toBe(true)
+  })
+
+  it('unlock sweeps orphaned blob rows', async () => {
+    const ada = await store().addPerson('Ada')
+    await store().addPhotoBytes(ada.id, new Uint8Array([1]), 'image/jpeg', true)
+    const { saveBlob } = await import('../lib/vault')
+    await saveBlob(store().vault!, crypto.randomUUID(), new Uint8Array([9, 9]))
+    const { db } = await import('../lib/db')
+    expect(await db.blobs.count()).toBe(2)
+    store().lock()
+    await store().unlock('open sesame')
+    expect(await db.blobs.count()).toBe(1)
+  })
+
   it('import restores only blobs referenced by sanitized photo records', async () => {
     const ada = await store().addPerson('Ada')
     const photoId = crypto.randomUUID()
@@ -280,8 +370,13 @@ describe('vault store', () => {
     )
     const { db } = await import('../lib/db')
     expect(await db.blobs.count()).toBe(1)
+    // Blob ids are remapped on import — read through the photo record.
+    const { selectPhotos } = await import('./vaultStore')
+    const photo = selectPhotos(store().records, ada.id)[0]
     const { loadBlob } = await import('../lib/vault')
-    expect([...(await loadBlob(store().vault!, blobId))!]).toEqual([4, 5, 6])
+    expect([...(await loadBlob(store().vault!, photo.blobRecordId))!]).toEqual([4, 5, 6])
+    void photoId
+    void blobId
   })
 
   it('locking drops everything and unlock restores it', async () => {

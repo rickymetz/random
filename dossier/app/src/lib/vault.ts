@@ -240,6 +240,23 @@ export async function deleteBlobs(vault: UnlockedVault, blobIds: string[]): Prom
   await db.blobs.bulkDelete(blobIds.map((id) => `${vault.dataPrefix}:${id}`))
 }
 
+/**
+ * Delete blob rows this vault owns that no photo record references —
+ * failed writes and lock-raced deletes can strand encrypted blobs, which
+ * would otherwise bloat storage and every future export forever.
+ */
+export async function sweepOrphanBlobs(
+  vault: UnlockedVault,
+  referencedBlobIds: Set<string>,
+): Promise<number> {
+  const rows = await db.blobs.where('id').startsWith(`${vault.dataPrefix}:`).toArray()
+  const orphans = rows
+    .map((row) => row.id)
+    .filter((rowId) => !referencedBlobIds.has(rowId.slice(vault.dataPrefix.length + 1)))
+  if (orphans.length > 0) await db.blobs.bulkDelete(orphans)
+  return orphans.length
+}
+
 /** All decryptable blobs, for export. Corrupted rows are skipped. */
 export async function loadAllBlobs(
   vault: UnlockedVault,

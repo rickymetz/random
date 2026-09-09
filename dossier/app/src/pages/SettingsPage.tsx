@@ -1,6 +1,11 @@
 import { useRef, useState } from 'react'
 import { destroyAllData } from '../lib/db'
-import { exportBundle, exportFileName, importBundle } from '../lib/export'
+import {
+  MAX_IMPORT_FILE_BYTES,
+  exportBundle,
+  exportFileName,
+  importBundle,
+} from '../lib/export'
 import {
   DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_BACKGROUND_GRACE_SECONDS,
@@ -344,10 +349,15 @@ function ExportSection() {
           aria-label="Confirm passphrase"
           autoComplete="off"
         />
-        <button type="submit" disabled={!passphrase || state === 'busy'}>
+        <button type="submit" disabled={!passphrase || state === 'busy'} aria-busy={state === 'busy'}>
           {state === 'busy' ? '…' : 'Export'}
         </button>
       </form>
+      {state === 'busy' && (
+        <p className="hint" role="status">
+          Preparing encrypted backup — large photo collections take a moment…
+        </p>
+      )}
       {state === 'wrong' && (
         <p className="hint error" role="alert">
           That's not this vault's passphrase.
@@ -378,6 +388,10 @@ function ImportSection() {
     setError(null)
     const file = fileRef.current?.files?.[0]
     if (!file) return
+    if (file.size > MAX_IMPORT_FILE_BYTES) {
+      setError('That file is too large to be a valid backup.')
+      return
+    }
     setBusy(true)
     try {
       const restored = await importBundle(passphrase, await file.text())

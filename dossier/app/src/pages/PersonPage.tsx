@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
 import { GALLERY_MAX_DIM, downscaleImage } from '../lib/image'
-import { getPhotoUrl } from '../lib/photoCache'
+import { getPhotoUrl, peekPhotoUrl } from '../lib/photoCache'
 import type { Photo } from '../lib/models'
 import { formatPartialDate, parsePartialDate, timeAgo } from '../lib/dates'
 import { segmentBody } from '../lib/mentions'
@@ -565,16 +565,22 @@ function PhotoSection({ personId }: { personId: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [lightbox, setLightbox] = useState<string | null>(null)
+
   const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+    const files = [...(e.target.files ?? [])]
     e.target.value = ''
-    if (!file || busy) return
+    if (files.length === 0 || busy) return
     setBusy(true)
     setError(null)
     try {
-      const { bytes, mimeType } = await downscaleImage(file, GALLERY_MAX_DIM)
-      // The first photo becomes the avatar automatically.
-      await addPhotoBytes(personId, bytes, mimeType, photos.length === 0)
+      let hasPhotos = photos.length > 0
+      for (const file of files) {
+        const { bytes, mimeType } = await downscaleImage(file, GALLERY_MAX_DIM)
+        // The first photo ever becomes the avatar automatically.
+        await addPhotoBytes(personId, bytes, mimeType, !hasPhotos)
+        hasPhotos = true
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add that image.')
     } finally {
@@ -591,9 +597,13 @@ function PhotoSection({ personId }: { personId: string }) {
             <PhotoThumb
               key={photo.id}
               photo={photo}
+              onOpen={(url) => setLightbox(url)}
               onMakeAvatar={() => void setAvatarPhoto(photo.id)}
               onRemove={() => {
-                if (confirm('Delete this photo?')) void removePhoto(photo.id)
+                const warning = photo.isAvatar
+                  ? 'Delete this photo? It is the avatar — the next photo takes over.'
+                  : 'Delete this photo?'
+                if (confirm(warning)) void removePhoto(photo.id)
               }}
             />
           ))}
@@ -603,17 +613,35 @@ function PhotoSection({ personId }: { personId: string }) {
         ref={fileRef}
         type="file"
         accept="image/*"
+        multiple
         hidden
         onChange={(e) => void onPick(e)}
-        aria-label="Add photo"
       />
-      <button className="subtle" disabled={busy} onClick={() => fileRef.current?.click()}>
-        {busy ? '…' : '+ Add photo'}
+      <button
+        className="subtle"
+        disabled={busy}
+        aria-busy={busy}
+        onClick={() => fileRef.current?.click()}
+      >
+        {busy ? 'Processing…' : '+ Add photos'}
       </button>
       {error && (
         <p className="hint error" role="alert">
           {error}
         </p>
+      )}
+      {lightbox && (
+        <div
+          className="lightbox"
+          role="dialog"
+          aria-label="Photo"
+          onClick={() => setLightbox(null)}
+        >
+          <img src={lightbox} alt="" />
+          <button className="subtle icon" aria-label="Close photo">
+            ×
+          </button>
+        </div>
       )}
     </section>
   )
@@ -621,34 +649,52 @@ function PhotoSection({ personId }: { personId: string }) {
 
 function PhotoThumb({
   photo,
+  onOpen,
   onMakeAvatar,
   onRemove,
 }: {
   photo: Photo
+  onOpen: (url: string) => void
   onMakeAvatar: () => void
   onRemove: () => void
 }) {
   const vault = useVaultStore((s) => s.vault)
-  const [url, setUrl] = useState<string | null>(null)
+  const [url, setUrl] = useState<string | null>(() =>
+    peekPhotoUrl(photo.blobRecordId, photo.mimeType),
+  )
+  const [failed, setFailed] = useState(false)
   useEffect(() => {
     let cancelled = false
-    if (vault) {
+    if (vault && !url) {
       void getPhotoUrl(vault, photo.blobRecordId, photo.mimeType).then((u) => {
-        if (!cancelled) setUrl(u)
+        if (cancelled) return
+        if (u) setUrl(u)
+        else setFailed(true)
       })
     }
     return () => {
       cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vault, photo.blobRecordId, photo.mimeType])
   return (
     <li className="photo-thumb">
-      {url ? <img src={url} alt="" draggable={false} /> : <span className="photo-loading" />}
+      {url ? (
+        <button className="photo-open" onClick={() => onOpen(url)} aria-label="View photo">
+          <img src={url} alt="" draggable={false} />
+        </button>
+      ) : failed ? (
+        <span className="photo-loading photo-missing">unavailable</span>
+      ) : (
+        <span className="photo-loading" />
+      )}
       <div className="photo-actions">
         {photo.isAvatar ? (
-          <span className="hint">avatar</span>
+          <span className="hint" aria-label="Current avatar">
+            avatar ✓
+          </span>
         ) : (
-          <button className="subtle" onClick={onMakeAvatar}>
+          <button className="subtle" onClick={onMakeAvatar} aria-label="Use as avatar">
             avatar
           </button>
         )}

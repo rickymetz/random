@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getPhotoUrl } from '../lib/photoCache'
+import { getPhotoUrl, peekPhotoUrl } from '../lib/photoCache'
 import type { Person } from '../lib/models'
 import { selectAvatar, useVaultStore } from '../store/vaultStore'
 
@@ -14,15 +14,23 @@ export default function Avatar({
   const records = useVaultStore((s) => s.records)
   const vault = useVaultStore((s) => s.vault)
   const avatar = selectAvatar(records, person.id)
-  const [url, setUrl] = useState<string | null>(null)
+  // Synchronous cache peek avoids an initials flash on every mount.
+  const [url, setUrl] = useState<string | null>(() =>
+    avatar ? peekPhotoUrl(avatar.blobRecordId, avatar.mimeType) : null,
+  )
 
   useEffect(() => {
     let cancelled = false
-    setUrl(null)
     if (avatar && vault) {
-      void getPhotoUrl(vault, avatar.blobRecordId, avatar.mimeType).then((u) => {
-        if (!cancelled) setUrl(u)
-      })
+      const cached = peekPhotoUrl(avatar.blobRecordId, avatar.mimeType)
+      setUrl(cached)
+      if (!cached) {
+        void getPhotoUrl(vault, avatar.blobRecordId, avatar.mimeType).then((u) => {
+          if (!cancelled) setUrl(u)
+        })
+      }
+    } else {
+      setUrl(null)
     }
     return () => {
       cancelled = true

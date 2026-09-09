@@ -44,6 +44,7 @@ import {
   loadAllRecords,
   saveBlob,
   saveRecords,
+  sweepOrphanBlobs,
   unlockVault,
   unlockWithRawDek,
   unwrapRawDek,
@@ -61,6 +62,11 @@ import {
 
 // Module-level so it never renders and dies with lock(); rebuilt on unlock.
 let searchIndex = createIndex()
+
+// Import caps: photos bypass the local downscale pipeline, so a hostile
+// bundle must not be able to store decompression bombs or eat the quota.
+const MAX_IMPORT_BLOB_BYTES = 8 * 1024 * 1024
+const MAX_IMPORT_BLOB_TOTAL = 100 * 1024 * 1024
 
 interface VaultState {
   status: 'unknown' | 'no-vault' | 'locked' | 'unlocked'
@@ -280,6 +286,13 @@ export const useVaultStore = create<VaultState>((set, get) => {
       await saveRecords(vault, seed)
       for (const t of seed) records.set(t.id, t)
     }
+    if (get().epoch !== startEpoch || get().status === 'unlocked') return false
+    // Sweep blob rows stranded by lock-raced photo writes/deletes.
+    const referencedBlobs = new Set<string>()
+    for (const r of records.values()) {
+      if (r.kind === 'photo') referencedBlobs.add(r.blobRecordId)
+    }
+    await sweepOrphanBlobs(vault, referencedBlobs)
     if (get().epoch !== startEpoch || get().status === 'unlocked') return false
     searchIndex = createIndex()
     rebuildIndex(searchIndex, records)
@@ -545,10 +558,11 @@ export const useVaultStore = create<VaultState>((set, get) => {
           touched.add(r.personId)
         }
       }
+      // Capture before apply: a lock mid-write must not strand blobs.
+      const vaultForBlobs = get().vault
       await apply(puts, deletes, [...touched])
-      const vault = get().vault
-      if (vault && blobIds.length > 0) {
-        await deleteBlobs(vault, blobIds)
+      if (vaultForBlobs && blobIds.length > 0) {
+        await deleteBlobs(vaultForBlobs, blobIds)
         for (const id of blobIds) evictPhoto(id)
       }
     }),
@@ -708,7 +722,14 @@ export const useVaultStore = create<VaultState>((set, get) => {
       )
       const idRemap = new Map<string, string>()
       const puts: DomainRecord[] = []
+      const blobBytesById = new Map(blobs.map((b) => [b.id, b.bytes]))
+      const blobWrites: { id: string; bytes: Uint8Array }[] = []
+      let blobBudget = MAX_IMPORT_BLOB_TOTAL
       for (const record of sanitized) {
+        // Settings are device-local preferences; a bundle must never be
+        // able to rewrite them (a crafted backup could otherwise disable
+        // the auto-lock — the primary T1 mitigation).
+        if (record.kind === 'settings') continue
         if (record.kind === 'relationshipType' && record.builtIn) {
           const existingId = builtInByLabel.get(record.label)
           if (existingId && existingId !== record.id) {
@@ -716,21 +737,43 @@ export const useVaultStore = create<VaultState>((set, get) => {
             continue
           }
         }
+        if (record.kind === 'photo') {
+          // Photos import only when their bytes came along, under fresh
+          // blob ids — an imported id can never overwrite an existing
+          // blob or be shared between records — and within size caps.
+          const bytes = blobBytesById.get(record.blobRecordId)
+          if (!bytes || bytes.length > MAX_IMPORT_BLOB_BYTES) continue
+          if (blobBudget - bytes.length < 0) continue
+          blobBudget -= bytes.length
+          const freshBlobId = crypto.randomUUID()
+          blobWrites.push({ id: freshBlobId, bytes })
+          puts.push({ ...record, blobRecordId: freshBlobId })
+          continue
+        }
         puts.push(
           record.kind === 'relationship'
             ? { ...record, typeId: idRemap.get(record.typeId) ?? record.typeId }
             : { ...record },
         )
       }
-      await saveRecords(vault, puts)
-      // Restore photo blobs — only those a sanitized photo record
-      // actually references (a hostile bundle can't stuff arbitrary data).
-      const referenced = new Set(
-        puts.filter((r): r is Photo => r.kind === 'photo').map((r) => r.blobRecordId),
-      )
-      for (const blob of blobs) {
-        if (referenced.has(blob.id)) await saveBlob(vault, blob.id, blob.bytes)
+      // One avatar per person, even when the bundle disagrees with the
+      // existing records: keep the incoming avatar, demote the rest.
+      const merged = new Map(get().records)
+      for (const record of puts) merged.set(record.id, record)
+      const avatarSeen = new Set<string>()
+      for (const record of puts) {
+        if (record.kind === 'photo' && record.isAvatar) avatarSeen.add(record.personId)
       }
+      for (const [rid, record] of merged) {
+        if (record.kind !== 'photo' || !record.isAvatar) continue
+        const isIncoming = puts.some((p) => p.id === rid)
+        if (avatarSeen.has(record.personId) && !isIncoming) {
+          puts.push({ ...record, isAvatar: false })
+          merged.set(rid, { ...record, isAvatar: false })
+        }
+      }
+      await saveRecords(vault, puts)
+      for (const blob of blobWrites) await saveBlob(vault, blob.id, blob.bytes)
       if (get().epoch !== startEpoch || get().vault !== vault) return puts.length
       // Merge onto the CURRENT records — writes that landed during the
       // import must not be lost from memory.
@@ -772,12 +815,23 @@ export const useVaultStore = create<VaultState>((set, get) => {
       enqueue(async () => {
         const photo = get().records.get(photoId)
         if (!photo || photo.kind !== 'photo') return
-        await apply([], [photoId])
+        // Capture the vault now: a lock during apply must not strand the
+        // blob on disk (encrypted deletes are safe post-lock).
         const vault = get().vault
-        if (vault) {
-          await deleteBlobs(vault, [photo.blobRecordId])
-          evictPhoto(photo.blobRecordId)
+        if (!vault) return
+        // Deleting the avatar hands the role to the oldest remaining
+        // photo — a person with photos should never silently lose their
+        // face everywhere.
+        const puts: DomainRecord[] = []
+        if (photo.isAvatar) {
+          const successor = selectPhotos(get().records, photo.personId).find(
+            (p) => p.id !== photoId,
+          )
+          if (successor) puts.push({ ...successor, isAvatar: true })
         }
+        await apply(puts, [photoId])
+        await deleteBlobs(vault, [photo.blobRecordId])
+        evictPhoto(photo.blobRecordId)
       }),
 
     setAvatarPhoto: (photoId) =>

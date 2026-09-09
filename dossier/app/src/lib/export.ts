@@ -41,10 +41,18 @@ interface ExportHeader {
 }
 
 function toBase64(bytes: Uint8Array): string {
-  let binary = ''
-  for (const b of bytes) binary += String.fromCharCode(b)
-  return btoa(binary)
+  // Chunked fromCharCode: orders of magnitude faster than byte-at-a-time
+  // string concatenation on photo-sized payloads.
+  const CHUNK = 0x8000
+  const parts: string[] = []
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    parts.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)))
+  }
+  return btoa(parts.join(''))
 }
+
+/** Reject absurd files before any decode work (memory-bomb defense). */
+export const MAX_IMPORT_FILE_BYTES = 256 * 1024 * 1024
 
 function fromBase64(text: string): Uint8Array {
   return Uint8Array.from(atob(text), (c) => c.charCodeAt(0))
