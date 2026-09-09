@@ -1,0 +1,110 @@
+:root {
+  color-scheme: dark;
+  --bg: #101014;
+  --surface: #1a1a20;
+  --text: #e8e8ec;
+  --muted: #8a8a94;
+  --accent: #4f9cf9;
+  --danger: #e2567a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: env(safe-area-inset-top) 1rem 0.5rem;
+  background: var(--surface);
+}
+
+.app-bar nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.app-bar a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+main {
+  padding: 1rem;
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+input,
+button {
+  font: inherit;
+  border-radius: 0.5rem;
+  border: 1px solid #2c2c34;
+  padding: 0.6rem 0.9rem;
+}
+
+input {
+  width: 100%;
+  background: var(--surface);
+  color: var(--text);
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+button.lock-button {
+  background: transparent;
+  border: 1px solid #2c2c34;
+  color: var(--muted);
+}
+
+button.danger {
+  background: var(--danger);
+}
+
+.unlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 20rem;
+  margin: 30vh auto 0;
+  padding: 0 1rem;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.hint.error {
+  color: var(--danger);
+}
+
+.people ul {
+  list-style: none;
+  padding: 0;
+}
+
+.people li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #2c2c34;
+}
+
+.people a {
+  color: var(--text);
+  text-decoration: none;
+  display: block;
+}

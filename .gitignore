@@ -12,6 +12,7 @@ ideas/public-screening/.cache/
 # and no build step, so a dependency manifest must never enter a commit --
 # a subagent running `npm install playwright` in the repo root created these
 # once already. node_modules/ is ignored above; these are the committable half.
-package.json
-package-lock.json
+# (Anchored to the repo root: dossier/app/ is a real project with a manifest.)
+/package.json
+/package-lock.json
 ideas/ephemera/.cache/
