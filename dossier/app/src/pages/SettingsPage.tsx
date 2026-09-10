@@ -10,6 +10,7 @@ import {
   DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_BACKGROUND_GRACE_SECONDS,
 } from '../lib/models'
+import { DISGUISES, currentDisguise, setDisguise } from '../lib/disguise'
 import { MAX_PIN_ATTEMPTS } from '../lib/pin'
 import { getStorageStatus } from '../lib/platform'
 import { requestNotificationPermission } from '../lib/reminders'
@@ -31,6 +32,7 @@ export default function SettingsPage() {
   return (
     <div className="settings">
       <SecuritySection />
+      <DisguiseSection />
       <ExportSection />
       <ImportSection />
       <StorageSection />
@@ -329,6 +331,38 @@ function SecuritySection() {
           Daily reminder notification — always generic (“You have a reminder”), never a
           name
         </label>
+      </div>
+    </section>
+  )
+}
+
+/** Neutral install name/icon (§6.5). The choice is the public face. */
+function DisguiseSection() {
+  const [selected, setSelected] = useState(() => currentDisguise().id)
+  const base = import.meta.env.BASE_URL
+  return (
+    <section>
+      <h2>Appearance</h2>
+      <p className="hint">
+        The name and icon this app installs under — pick whatever blends into your home
+        screen. On iOS, re-add to the Home Screen after changing to update the icon.
+      </p>
+      <div className="row wrap">
+        {DISGUISES.map((d) => (
+          <button
+            key={d.id}
+            type="button"
+            className={`disguise-option ${selected === d.id ? 'selected' : ''}`}
+            aria-pressed={selected === d.id}
+            onClick={() => {
+              setDisguise(d.id)
+              setSelected(d.id)
+            }}
+          >
+            <img src={`${base}${d.icon}`} alt="" width={40} height={40} />
+            {d.name}
+          </button>
+        ))}
       </div>
     </section>
   )

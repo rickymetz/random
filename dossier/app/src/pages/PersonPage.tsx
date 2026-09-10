@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import ChipInput from '../components/ChipInput'
 import MentionTextarea from '../components/MentionTextarea'
 import { mutualConnections, selectSelf, shortestPath } from '../lib/graphQueries'
 import { GALLERY_MAX_DIM, downscaleImage } from '../lib/image'
 import { getPhotoUrl, peekPhotoUrl } from '../lib/photoCache'
 import type { Photo } from '../lib/models'
 import { formatPartialDate, parsePartialDate, timeAgo } from '../lib/dates'
-import { segmentBody } from '../lib/mentions'
+import { plainText, segmentBody } from '../lib/mentions'
 import { CUSTOM_TYPE_COLORS, type Person, type Relationship } from '../lib/models'
 import {
   selectFollowUps,
@@ -20,11 +21,6 @@ import {
 } from '../store/vaultStore'
 
 const csv = (list: string[]) => list.join(', ')
-const uncsv = (text: string) =>
-  text
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
 
 /**
  * The dossier (§4.1), ordered for scenario S2 — facts, relationships, and
@@ -124,9 +120,10 @@ function Facts({ person }: { person: Person }) {
 
 function FactsForm({ person, done }: { person: Person; done: () => void }) {
   const updatePerson = useVaultStore((s) => s.updatePerson)
+  const records = useVaultStore((s) => s.records)
   const initial = {
     displayName: person.displayName,
-    nicknames: csv(person.nicknames),
+    nicknames: person.nicknames,
     pronouns: person.pronouns ?? '',
     jobTitle: person.jobTitle ?? '',
     employer: person.employer ?? '',
@@ -135,18 +132,43 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     howWeMet: person.howWeMet ?? '',
     phone: person.contact?.phone ?? '',
     email: person.contact?.email ?? '',
-    likes: csv(person.likes),
-    dislikes: csv(person.dislikes),
-    tags: csv(person.tags),
+    likes: person.likes,
+    dislikes: person.dislikes,
+    tags: person.tags,
   }
   const [form, setForm] = useState(initial)
+  // Shared vocabulary across all people, so spellings converge (§4.1).
+  const vocab = useMemo(() => {
+    const collect = (pick: (p: Person) => string[]) => {
+      const seen = new Map<string, string>()
+      for (const p of selectPeople(records)) {
+        for (const v of pick(p)) seen.set(v.toLowerCase(), v)
+      }
+      return [...seen.values()].sort()
+    }
+    return {
+      tags: collect((p) => p.tags),
+      likes: collect((p) => p.likes),
+      dislikes: collect((p) => p.dislikes),
+    }
+  }, [records])
   const [isSelf, setIsSelf] = useState(Boolean(person.isSelf))
   const [dateError, setDateError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const dirty = JSON.stringify(form) !== JSON.stringify(initial)
 
+  type TextKey =
+    | 'displayName'
+    | 'pronouns'
+    | 'jobTitle'
+    | 'employer'
+    | 'location'
+    | 'birthday'
+    | 'howWeMet'
+    | 'phone'
+    | 'email'
   const field = (
-    key: keyof typeof form,
+    key: TextKey,
     label: string,
     placeholder = '',
     extra: Record<string, unknown> = {},
@@ -158,6 +180,22 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         placeholder={placeholder}
         onChange={(e) => setForm({ ...form, [key]: e.target.value })}
         {...extra}
+      />
+    </label>
+  )
+  const chips = (
+    key: 'nicknames' | 'likes' | 'dislikes' | 'tags',
+    label: string,
+    suggestions: string[] = [],
+  ) => (
+    <label>
+      {label}
+      <ChipInput
+        label={label}
+        values={form[key]}
+        onChange={(values) => setForm({ ...form, [key]: values })}
+        suggestions={suggestions}
+        placeholder="type and press enter"
       />
     </label>
   )
@@ -178,7 +216,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
       await updatePerson({
         ...person,
         displayName: form.displayName.trim() || person.displayName,
-        nicknames: uncsv(form.nicknames),
+        nicknames: form.nicknames,
         pronouns: form.pronouns.trim() || undefined,
         jobTitle: form.jobTitle.trim() || undefined,
         employer: form.employer.trim() || undefined,
@@ -189,9 +227,9 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
           form.phone.trim() || form.email.trim()
             ? { phone: form.phone.trim() || undefined, email: form.email.trim() || undefined }
             : undefined,
-        likes: uncsv(form.likes),
-        dislikes: uncsv(form.dislikes),
-        tags: uncsv(form.tags),
+        likes: form.likes,
+        dislikes: form.dislikes,
+        tags: form.tags,
         isSelf: isSelf || undefined,
       })
       done()
@@ -208,7 +246,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
   return (
     <form className="facts-form" onSubmit={save}>
       {field('displayName', 'Name')}
-      {field('nicknames', 'Nicknames', 'comma-separated', { autoCapitalize: 'none' })}
+      {chips('nicknames', 'Nicknames')}
       {field('pronouns', 'Pronouns')}
       {field('jobTitle', 'Job title')}
       {field('employer', 'Employer')}
@@ -222,9 +260,9 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
       {field('howWeMet', 'How we met')}
       {field('phone', 'Phone', '', { inputMode: 'tel', autoComplete: 'off' })}
       {field('email', 'Email', '', { inputMode: 'email', autoComplete: 'off' })}
-      {field('likes', 'Likes', 'comma-separated', { autoCapitalize: 'none' })}
-      {field('dislikes', 'Dislikes', 'comma-separated', { autoCapitalize: 'none' })}
-      {field('tags', 'Tags', 'comma-separated', { autoCapitalize: 'none' })}
+      {chips('likes', 'Likes', vocab.likes)}
+      {chips('dislikes', 'Dislikes', vocab.dislikes)}
+      {chips('tags', 'Tags', vocab.tags)}
       <label className="inline-check">
         <input type="checkbox" checked={isSelf} onChange={(e) => setIsSelf(e.target.checked)} />
         This is me (anchors "how you connect" queries)
@@ -886,10 +924,26 @@ function PhotoThumb({
   )
 }
 
+/** Promotable targets for note triage (§4.1 inbox model). */
+const PROMOTE_TARGETS = [
+  { id: 'jobTitle', label: 'Job title' },
+  { id: 'employer', label: 'Employer' },
+  { id: 'location', label: 'Location' },
+  { id: 'birthday', label: 'Birthday' },
+  { id: 'howWeMet', label: 'How we met' },
+  { id: 'phone', label: 'Phone' },
+  { id: 'email', label: 'Email' },
+  { id: 'like', label: 'Like' },
+  { id: 'dislike', label: 'Dislike' },
+  { id: 'tag', label: 'Tag' },
+] as const
+type PromoteTarget = (typeof PROMOTE_TARGETS)[number]['id']
+
 function NotesSection({ personId }: { personId: string }) {
   const records = useVaultStore((s) => s.records)
   const removeNote = useVaultStore((s) => s.removeNote)
   const notes = useMemo(() => selectNotes(records, personId), [records, personId])
+  const [promotingId, setPromotingId] = useState<string | null>(null)
 
   return (
     <section>
@@ -912,18 +966,154 @@ function NotesSection({ personId }: { personId: string }) {
                 ),
               )}
             </p>
-            <button
-              className="subtle icon"
-              onClick={() => {
-                if (confirm('Delete this note?')) void removeNote(note.id)
-              }}
-              aria-label="Delete note"
-            >
-              ×
-            </button>
+            <div className="note-actions">
+              <button
+                className="subtle"
+                onClick={() => setPromotingId(promotingId === note.id ? null : note.id)}
+                aria-expanded={promotingId === note.id}
+              >
+                → field
+              </button>
+              <button
+                className="subtle icon"
+                onClick={() => {
+                  if (confirm('Delete this note?')) void removeNote(note.id)
+                }}
+                aria-label="Delete note"
+              >
+                ×
+              </button>
+            </div>
+            {promotingId === note.id && (
+              <PromotePanel
+                personId={personId}
+                noteId={note.id}
+                noteBody={note.body}
+                onDone={() => setPromotingId(null)}
+              />
+            )}
           </li>
         ))}
       </ul>
     </section>
+  )
+}
+
+/**
+ * Triage a hurried note into a structured field (§4.1: "a later triage
+ * affordance suggests promoting them to structured fields"). The text is
+ * prefilled from the note and editable, so "works at anthropic, hates
+ * cilantro" can be trimmed down per promotion.
+ */
+function PromotePanel({
+  personId,
+  noteId,
+  noteBody,
+  onDone,
+}: {
+  personId: string
+  noteId: string
+  noteBody: string
+  onDone: () => void
+}) {
+  const records = useVaultStore((s) => s.records)
+  const updatePerson = useVaultStore((s) => s.updatePerson)
+  const removeNote = useVaultStore((s) => s.removeNote)
+  const [target, setTarget] = useState<PromoteTarget>('jobTitle')
+  const [text, setText] = useState(plainText(noteBody))
+  const [deleteAfter, setDeleteAfter] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const promote = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const person = records.get(personId)
+    if (!person || person.kind !== 'person' || busy) return
+    const value = text.trim()
+    if (!value) return
+    setError(null)
+    const next: Person = { ...person }
+    switch (target) {
+      case 'birthday': {
+        const parsed = parsePartialDate(value)
+        if (!parsed) {
+          setError('Date not understood — try "Jun 21" or "1984-06-21".')
+          return
+        }
+        next.birthday = parsed
+        break
+      }
+      case 'jobTitle':
+      case 'employer':
+      case 'location':
+      case 'howWeMet':
+        next[target] = value
+        break
+      case 'phone':
+        next.contact = { ...next.contact, phone: value }
+        break
+      case 'email':
+        next.contact = { ...next.contact, email: value }
+        break
+      case 'like':
+        if (!next.likes.some((v) => v.toLowerCase() === value.toLowerCase()))
+          next.likes = [...next.likes, value]
+        break
+      case 'dislike':
+        if (!next.dislikes.some((v) => v.toLowerCase() === value.toLowerCase()))
+          next.dislikes = [...next.dislikes, value]
+        break
+      case 'tag':
+        if (!next.tags.some((v) => v.toLowerCase() === value.toLowerCase()))
+          next.tags = [...next.tags, value]
+        break
+    }
+    setBusy(true)
+    try {
+      await updatePerson(next)
+      if (deleteAfter) await removeNote(noteId)
+      onDone()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="promote-panel" onSubmit={promote}>
+      <div className="row wrap">
+        <select
+          value={target}
+          onChange={(e) => setTarget(e.target.value as PromoteTarget)}
+          aria-label="Promote to field"
+        >
+          {PROMOTE_TARGETS.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          aria-label="Value to save"
+        />
+        <button type="submit" disabled={busy || !text.trim()}>
+          Save
+        </button>
+      </div>
+      <label className="inline-check">
+        <input
+          type="checkbox"
+          checked={deleteAfter}
+          onChange={(e) => setDeleteAfter(e.target.checked)}
+        />
+        delete the note after
+      </label>
+      {error && (
+        <p className="hint error" role="alert">
+          {error}
+        </p>
+      )}
+    </form>
   )
 }

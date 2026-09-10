@@ -1,0 +1,55 @@
+name: Deploy Dossier app
+
+# Pages serves the main branch directly, so the built app is committed to
+# /ledger/ (the app's neutral disguise name — the URL should be as
+# inconspicuous as the icon) and served at /random/ledger/. Rebuilds on
+# every change under dossier/ and commits back only when the output
+# changed, so the loop terminates immediately.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dossier/**'
+      - '.github/workflows/dossier-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dossier-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dossier/app/package-lock.json
+      - name: Build app for /random/ledger/
+        working-directory: dossier/app
+        env:
+          DOSSIER_BASE: /random/ledger/
+        run: |
+          npm ci
+          npm run build
+      - name: Stage built app at /ledger/
+        run: |
+          rm -rf ledger
+          cp -r dossier/app/dist ledger
+      - name: Commit deployed app if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A ledger
+          if git diff --cached --quiet; then
+            echo "Deployed app unchanged"
+          else
+            git commit -m "Deploy Dossier app to /ledger/"
+            git push
+          fi
