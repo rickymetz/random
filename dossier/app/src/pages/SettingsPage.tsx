@@ -14,6 +14,7 @@ import { DISGUISES, currentDisguise, setDisguise } from '../lib/disguise'
 import { MAX_PIN_ATTEMPTS } from '../lib/pin'
 import { getStorageStatus } from '../lib/platform'
 import { requestNotificationPermission } from '../lib/reminders'
+import { loadSampleData } from '../lib/sampleData'
 import { loadAllBlobs, unlockVault } from '../lib/vault'
 import { webAuthnAvailable } from '../lib/webauthn'
 import { selectSettings, useVaultStore } from '../store/vaultStore'
@@ -36,6 +37,7 @@ export default function SettingsPage() {
       <ExportSection />
       <ImportSection />
       <StorageSection />
+      <SampleDataSection />
       <section className="danger-zone">
         <h2>Danger</h2>
         <p className="hint">
@@ -543,6 +545,59 @@ function ImportSection() {
         </p>
       )}
       {message && <p className="hint">{message}</p>}
+    </section>
+  )
+}
+
+/**
+ * Seed a fictional, interconnected cast so the graph view has something
+ * to show before real people accumulate. Everything it adds is ordinary
+ * vault data — edit or delete any of them like a real entry.
+ */
+function SampleDataSection() {
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const seed = async () => {
+    if (busy) return
+    if (
+      !confirm(
+        'Add 14 fictional people with interconnected relationships to explore the graph? You can delete them individually later.',
+      )
+    ) {
+      return
+    }
+    setBusy(true)
+    setMessage(null)
+    try {
+      const { peopleAdded, edgesAdded } = await loadSampleData()
+      setMessage(
+        peopleAdded === 0 && edgesAdded === 0
+          ? 'Sample cast is already here.'
+          : `Added ${peopleAdded} people and ${edgesAdded} relationships — open the Graph tab.`,
+      )
+    } catch {
+      setMessage('Could not load the sample data — try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section>
+      <h2>Sample data</h2>
+      <p className="hint">
+        Load a small fictional cast — overlapping work, family, and climbing circles —
+        to see what the relationship graph can do. Running it again only fills gaps.
+      </p>
+      <button onClick={() => void seed()} disabled={busy} aria-busy={busy}>
+        {busy ? 'Adding…' : 'Load sample people'}
+      </button>
+      {message && (
+        <p className="hint" role="status">
+          {message}
+        </p>
+      )}
     </section>
   )
 }
