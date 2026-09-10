@@ -221,8 +221,9 @@ export default function GraphPage() {
         </button>
       </div>
       {nodes.length === 0 || (links.length === 0 && nodes.length <= 1) ? (
-        <p className="hint">
-          No people yet — <Link to="/">add someone</Link> and connect them.
+        <p className="empty">
+          No people yet — <Link to="/">add someone</Link> and connect them, or load the
+          sample cast from <Link to="/settings">Settings</Link> to see the graph in action.
         </p>
       ) : (
         <div className="graph-canvas-wrap">
