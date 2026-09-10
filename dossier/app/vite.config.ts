@@ -3,11 +3,14 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  // The hub's Pages deployment serves the app under /random/ledger/
+  // (set by the deploy workflow); local dev stays at /.
+  base: process.env.DOSSIER_BASE || '/',
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
+      includeAssets: ['*.png', '*.webmanifest'],
       // The disguise choice (REQUIREMENTS.md §6.5) will eventually select
       // among a small set of neutral names/icons; this is the default.
       manifest: {

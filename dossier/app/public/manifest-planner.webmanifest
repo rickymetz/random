@@ -1,0 +1,14 @@
+{
+  "name": "Planner",
+  "short_name": "Planner",
+  "description": "A personal notebook.",
+  "display": "standalone",
+  "background_color": "#101014",
+  "theme_color": "#101014",
+  "start_url": "./",
+  "scope": "./",
+  "icons": [
+    { "src": "icon-planner-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-planner-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

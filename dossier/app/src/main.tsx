@@ -3,8 +3,13 @@ import ReactDOM from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App'
+import { applyDisguise } from './lib/disguise'
 import { requestPersistentStorage } from './lib/platform'
 import './styles.css'
+
+// Swap manifest/title/icons to the chosen disguise before anything —
+// including an install prompt — reads them (§6.5).
+applyDisguise()
 
 // Durability, not privacy (§7): ask the browser not to evict IndexedDB;
 // the result is surfaced on the Settings page.
