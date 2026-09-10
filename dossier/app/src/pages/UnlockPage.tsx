@@ -7,8 +7,9 @@ const MIN_PASSPHRASE_LENGTH = 8
 
 /**
  * Deliberately bland (REQUIREMENTS.md §6.5): no vault metadata, no counts,
- * no product branding. autoComplete="off" keeps the vault passphrase out
- * of browser/OS password managers (§6.2: key material never leaves the
+ * no product branding — the mark is an abstract shape and the heading says
+ * only what to do. autoComplete="off" keeps the vault passphrase out of
+ * browser/OS password managers (§6.2: key material never leaves the
  * device). When a session PIN is armed it is the default quick path;
  * biometric unlock shows when an enrollment exists (§6.3). Both screens
  * link to each other.
@@ -28,6 +29,14 @@ export default function UnlockPage({ mode }: { mode: 'create' | 'unlock' }) {
   )
 }
 
+function UnlockMark() {
+  return (
+    <span className="unlock-mark" aria-hidden="true">
+      {'◈'}
+    </span>
+  )
+}
+
 function BiometricButton({ onError }: { onError: (message: string | null) => void }) {
   const biometricEnrolled = useVaultStore((s) => s.biometricEnrolled)
   const unlockWithBiometric = useVaultStore((s) => s.unlockWithBiometric)
@@ -36,6 +45,7 @@ function BiometricButton({ onError }: { onError: (message: string | null) => voi
   return (
     <button
       type="button"
+      className="subtle"
       disabled={busy}
       onClick={async () => {
         setBusy(true)
@@ -95,42 +105,56 @@ function PinUnlock({ onUsePassphrase }: { onUsePassphrase: () => void }) {
         void submit(pin)
       }}
     >
-      <input
-        // A masked field that still gets the numeric keypad on iOS:
-        // type=password forces QWERTY there, so mask via CSS instead.
-        type="text"
-        className="pin-input"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        maxLength={8}
-        autoFocus
-        value={pin}
-        onChange={(e) => {
-          const digits = e.target.value.replace(/\D/g, '')
-          setPin(digits)
-          // Auto-submit when the armed PIN's length is reached — the whole
-          // point of a PIN is not reaching for another button.
-          if (pinDigits > 0 && digits.length === pinDigits) void submit(digits)
-        }}
-        placeholder="PIN"
-        aria-label="PIN"
-        autoComplete="off"
-      />
-      {error && (
-        <p className="hint error" role="alert">
-          {error}
-        </p>
-      )}
-      {pinAttemptsLeft > 0 && pinAttemptsLeft < MAX_PIN_ATTEMPTS && !error && (
-        <p className="hint">{pinAttemptsLeft} tries left.</p>
-      )}
-      <button type="submit" disabled={busy || !pin}>
-        {busy ? '…' : 'Open'}
-      </button>
-      <BiometricButton onError={setError} />
-      <button type="button" className="subtle" onClick={onUsePassphrase}>
-        Use passphrase
-      </button>
+      <div className="unlock-card">
+        <UnlockMark />
+        <h1>Enter PIN</h1>
+        {/* Filled dots echo typed digits without revealing them. */}
+        {pinDigits > 0 && (
+          <div className="pin-dots" aria-hidden="true">
+            {Array.from({ length: pinDigits }, (_, i) => (
+              <span key={i} className={i < pin.length ? 'on' : undefined} />
+            ))}
+          </div>
+        )}
+        <input
+          // A masked field that still gets the numeric keypad on iOS:
+          // type=password forces QWERTY there, so mask via CSS instead.
+          type="text"
+          className="pin-input"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={8}
+          autoFocus
+          value={pin}
+          onChange={(e) => {
+            const digits = e.target.value.replace(/\D/g, '')
+            setPin(digits)
+            // Auto-submit when the armed PIN's length is reached — the whole
+            // point of a PIN is not reaching for another button.
+            if (pinDigits > 0 && digits.length === pinDigits) void submit(digits)
+          }}
+          placeholder="PIN"
+          aria-label="PIN"
+          autoComplete="off"
+        />
+        {error && (
+          <p className="hint error" role="alert">
+            {error}
+          </p>
+        )}
+        {pinAttemptsLeft > 0 && pinAttemptsLeft < MAX_PIN_ATTEMPTS && !error && (
+          <p className="hint">{pinAttemptsLeft} tries left.</p>
+        )}
+        <button type="submit" className="primary" disabled={busy || !pin}>
+          {busy ? '…' : 'Open'}
+        </button>
+      </div>
+      <div className="alt">
+        <BiometricButton onError={setError} />
+        <button type="button" className="quiet" onClick={onUsePassphrase}>
+          Use passphrase
+        </button>
+      </div>
     </form>
   )
 }
@@ -182,49 +206,63 @@ function PassphraseForm({
 
   return (
     <form className="unlock" onSubmit={submit}>
-      {mode === 'unlock' && pinLockedOut && (
-        <p className="hint" role="status">
-          The quick-unlock PIN was disabled after too many wrong tries. Unlock with your
-          passphrase, then re-arm a PIN in Settings if you want one.
-        </p>
-      )}
-      <input
-        type="password"
-        autoFocus
-        value={passphrase}
-        onChange={(e) => setPassphrase(e.target.value)}
-        placeholder={mode === 'create' ? 'Choose a passphrase' : 'Passphrase'}
-        aria-label={mode === 'create' ? 'Choose a passphrase' : 'Passphrase'}
-        autoComplete="off"
-      />
-      {mode === 'create' && (
-        <>
+      <div className="unlock-card">
+        <UnlockMark />
+        <h1>{mode === 'create' ? 'Set a passphrase' : 'Enter passphrase'}</h1>
+        {mode === 'unlock' && pinLockedOut && (
+          <p className="notice-warn" role="status">
+            The quick-unlock PIN was disabled after too many wrong tries. Unlock with
+            your passphrase, then re-arm a PIN in Settings if you want one.
+          </p>
+        )}
+        <label>
+          Passphrase
           <input
             type="password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            placeholder="Repeat passphrase"
-            aria-label="Repeat passphrase"
+            autoFocus
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value)}
+            placeholder={mode === 'create' ? 'Choose a passphrase' : 'Passphrase'}
+            aria-label={mode === 'create' ? 'Choose a passphrase' : 'Passphrase'}
             autoComplete="off"
           />
-          <p className="hint">
-            There is no recovery. If you forget this passphrase, the data is gone.
+        </label>
+        {mode === 'create' && (
+          <>
+            <label>
+              Repeat it
+              <input
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                placeholder="Repeat passphrase"
+                aria-label="Repeat passphrase"
+                autoComplete="off"
+              />
+            </label>
+            <p className="hint">
+              There is no recovery. If you forget this passphrase, the data is gone.
+            </p>
+          </>
+        )}
+        {error && (
+          <p className="hint error" role="alert">
+            {error}
           </p>
-        </>
-      )}
-      {error && (
-        <p className="hint error" role="alert">
-          {error}
-        </p>
-      )}
-      <button type="submit" disabled={busy || !passphrase}>
-        {busy ? '…' : mode === 'create' ? 'Create' : 'Open'}
-      </button>
-      {mode === 'unlock' && <BiometricButton onError={setError} />}
-      {onUsePin && (
-        <button type="button" className="subtle" onClick={onUsePin}>
-          Use PIN
+        )}
+        <button type="submit" className="primary" disabled={busy || !passphrase}>
+          {busy ? '…' : mode === 'create' ? 'Create' : 'Open'}
         </button>
+      </div>
+      {(mode === 'unlock' || onUsePin) && (
+        <div className="alt">
+          {mode === 'unlock' && <BiometricButton onError={setError} />}
+          {onUsePin && (
+            <button type="button" className="quiet" onClick={onUsePin}>
+              Use PIN
+            </button>
+          )}
+        </div>
       )}
     </form>
   )

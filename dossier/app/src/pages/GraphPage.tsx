@@ -142,7 +142,7 @@ export default function GraphPage() {
         edgeId: e.id,
         source: e.fromId,
         target: e.toId,
-        color: typeById.get(e.typeId)?.color ?? '#55555e',
+        color: typeById.get(e.typeId)?.color ?? '#5a554c',
         dashed: e.origin === 'mention',
         directed: (typeById.get(e.typeId)?.directed ?? false) && e.origin === 'explicit',
         highlighted: pathInfo?.edgeIds.has(e.id) ?? false,
@@ -165,7 +165,7 @@ export default function GraphPage() {
     <div className="graph">
       <div className="graph-controls">
         {focusName && (
-          <span className="chip focus-chip">
+          <span className="chip focus-chip no-dot">
             {focusName}’s world
             <button
               className="subtle"
@@ -177,7 +177,7 @@ export default function GraphPage() {
           </span>
         )}
         {pathInfo && (
-          <span className="chip focus-chip">
+          <span className="chip focus-chip no-dot">
             {pathInfo.reason === 'ok'
               ? pathInfo.names.join(' → ')
               : pathInfo.reason === 'no-self'
@@ -198,7 +198,7 @@ export default function GraphPage() {
             <button
               key={t.id}
               className={`chip ${hiddenTypes.has(t.id) ? 'off' : ''}`}
-              style={{ borderColor: t.color }}
+              style={{ '--chip-color': t.color } as React.CSSProperties}
               aria-pressed={!hiddenTypes.has(t.id)}
               onClick={() =>
                 setHiddenTypes((prev) => {
@@ -531,16 +531,16 @@ function useCanvasGraph(
           ctx.restore()
           ctx.beginPath()
           ctx.arc(node.x, node.y, NODE_R, 0, Math.PI * 2)
-          ctx.strokeStyle = isFocus ? '#e8e8ec' : '#4f9cf9'
+          ctx.strokeStyle = isFocus ? '#d8a657' : '#4a463f'
           ctx.stroke()
         } else {
           ctx.beginPath()
           ctx.arc(node.x, node.y, NODE_R, 0, Math.PI * 2)
-          ctx.fillStyle = isFocus ? '#4f9cf9' : '#2c2c34'
+          ctx.fillStyle = isFocus ? '#d8a657' : '#2b2926'
           ctx.fill()
-          ctx.strokeStyle = isFocus ? '#e8e8ec' : '#4f9cf9'
+          ctx.strokeStyle = isFocus ? '#d8a657' : '#4a463f'
           ctx.stroke()
-          ctx.fillStyle = '#e8e8ec'
+          ctx.fillStyle = isFocus ? '#17140f' : '#ece8e1'
           ctx.fillText(node.initials, node.x, node.y)
         }
       }
@@ -548,7 +548,7 @@ function useCanvasGraph(
       const labelZoom = simNodes.length > LABEL_MAX_NODES ? 1.2 : LABEL_ZOOM
       if (k >= labelZoom) {
         ctx.font = `${11 / k}px system-ui`
-        ctx.fillStyle = '#8a8a94'
+        ctx.fillStyle = '#8b857a'
         for (const node of visibleNodes) {
           ctx.fillText(node.name, node.x!, node.y! + NODE_R + 12 / k)
         }

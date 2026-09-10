@@ -3,8 +3,8 @@
   "short_name": "Grid",
   "description": "A personal notebook.",
   "display": "standalone",
-  "background_color": "#101014",
-  "theme_color": "#101014",
+  "background_color": "#121110",
+  "theme_color": "#1a1918",
   "start_url": "./",
   "scope": "./",
   "icons": [

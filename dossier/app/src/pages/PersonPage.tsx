@@ -32,6 +32,9 @@ export default function PersonPage() {
   const navigate = useNavigate()
   const records = useVaultStore((s) => s.records)
   const person = id ? records.get(id) : undefined
+  // Lifted so the sticky capture bar yields the bottom edge to the facts
+  // form's sticky Save/Cancel while editing.
+  const [editing, setEditing] = useState(false)
 
   if (!person || person.kind !== 'person') {
     return (
@@ -41,6 +44,13 @@ export default function PersonPage() {
     )
   }
 
+  const meta = [
+    [person.jobTitle, person.employer].filter(Boolean).join(' @ '),
+    person.location,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
   return (
     <article className="person">
       <header className="person-header">
@@ -48,17 +58,19 @@ export default function PersonPage() {
           ←
         </button>
         <Avatar person={person} size={44} />
-        <h1>
-          {person.displayName}
-          {person.isSelf && (
-            <span className="you-badge" aria-label="This is you">
-              you
-            </span>
-          )}
-        </h1>
-        <Link to={`/graph?focus=${person.id}`}>Their world →</Link>
+        <div className="person-title">
+          <h1>
+            {person.displayName}
+            {person.isSelf && (
+              <span className="you-badge" aria-label="This is you">
+                you
+              </span>
+            )}
+          </h1>
+          {meta && <p className="person-meta">{meta}</p>}
+        </div>
       </header>
-      <Facts person={person} />
+      <Facts person={person} editing={editing} setEditing={setEditing} />
       <RelationshipSection person={person} />
       <ConnectionSection person={person} />
       <FollowUpSection personId={person.id} />
@@ -79,13 +91,20 @@ export default function PersonPage() {
           Delete person
         </button>
       </footer>
-      <CaptureBar person={person} />
+      {!editing && <CaptureBar person={person} />}
     </article>
   )
 }
 
-function Facts({ person }: { person: Person }) {
-  const [editing, setEditing] = useState(false)
+function Facts({
+  person,
+  editing,
+  setEditing,
+}: {
+  person: Person
+  editing: boolean
+  setEditing: (v: boolean) => void
+}) {
   if (editing) return <FactsForm person={person} done={() => setEditing(false)} />
 
   const rows: [string, string | undefined][] = [
@@ -99,21 +118,31 @@ function Facts({ person }: { person: Person }) {
     ['Dislikes', person.dislikes.length ? csv(person.dislikes) : undefined],
     ['Tags', person.tags.length ? csv(person.tags) : undefined],
   ]
+  const filled = rows.filter(([, v]) => v)
   return (
     <section>
-      <dl>
-        {rows
-          .filter(([, v]) => v)
-          .map(([label, v]) => (
-            <div key={label} className="fact">
-              <dt>{label}</dt>
-              <dd>{v}</dd>
-            </div>
-          ))}
-      </dl>
-      <button className="subtle" onClick={() => setEditing(true)}>
-        Edit details
-      </button>
+      <div className="section-head">
+        <h2>Details</h2>
+        <button className="quiet" onClick={() => setEditing(true)}>
+          Edit
+        </button>
+      </div>
+      {filled.length === 0 ? (
+        <p className="empty">
+          Nothing recorded yet — Edit adds job, birthday, likes, and more.
+        </p>
+      ) : (
+        <div className="facts-card">
+          <dl>
+            {filled.map(([label, v]) => (
+              <div key={label} className="fact">
+                <dt>{label}</dt>
+                <dd>{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
     </section>
   )
 }
@@ -172,8 +201,9 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     label: string,
     placeholder = '',
     extra: Record<string, unknown> = {},
+    className?: string,
   ) => (
-    <label>
+    <label className={className}>
       {label}
       <input
         value={form[key]}
@@ -188,7 +218,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     label: string,
     suggestions: string[] = [],
   ) => (
-    <label>
+    <label className="span-2">
       {label}
       <ChipInput
         label={label}
@@ -245,30 +275,61 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
 
   return (
     <form className="facts-form" onSubmit={save}>
-      {field('displayName', 'Name')}
-      {chips('nicknames', 'Nicknames')}
-      {field('pronouns', 'Pronouns')}
-      {field('jobTitle', 'Job title')}
-      {field('employer', 'Employer')}
-      {field('location', 'Location')}
-      {field('birthday', 'Birthday', 'e.g. Jun 21, 1984-06-21, or June')}
-      {dateError && (
-        <p className="hint error" role="alert">
-          {dateError}
-        </p>
-      )}
-      {field('howWeMet', 'How we met')}
-      {field('phone', 'Phone', '', { inputMode: 'tel', autoComplete: 'off' })}
-      {field('email', 'Email', '', { inputMode: 'email', autoComplete: 'off' })}
-      {chips('likes', 'Likes', vocab.likes)}
-      {chips('dislikes', 'Dislikes', vocab.dislikes)}
-      {chips('tags', 'Tags', vocab.tags)}
-      <label className="inline-check">
+      <h2 className="form-title">Edit details</h2>
+      <fieldset className="field-group">
+        <legend>Identity</legend>
+        <div className="field-grid">
+          {field('displayName', 'Name', '', {}, 'span-2')}
+          {chips('nicknames', 'Nicknames')}
+          {field('pronouns', 'Pronouns')}
+          {field('birthday', 'Birthday', 'e.g. Jun 21 or 1984-06-21', {
+            'aria-invalid': dateError ? true : undefined,
+          })}
+          {dateError && (
+            <p className="field-error span-2" role="alert">
+              {dateError}
+            </p>
+          )}
+        </div>
+      </fieldset>
+      <fieldset className="field-group">
+        <legend>Work & life</legend>
+        <div className="field-grid">
+          {field('jobTitle', 'Job title')}
+          {field('employer', 'Employer')}
+          {field('location', 'Location', '', {}, 'span-2')}
+          <label className="span-2">
+            How we met
+            <textarea
+              rows={2}
+              value={form.howWeMet}
+              onChange={(e) => setForm({ ...form, howWeMet: e.target.value })}
+              placeholder="the story, in a line or two"
+            />
+          </label>
+        </div>
+      </fieldset>
+      <fieldset className="field-group">
+        <legend>Contact</legend>
+        <div className="field-grid">
+          {field('phone', 'Phone', '', { inputMode: 'tel', autoComplete: 'off' })}
+          {field('email', 'Email', '', { inputMode: 'email', autoComplete: 'off' })}
+        </div>
+      </fieldset>
+      <fieldset className="field-group">
+        <legend>Preferences</legend>
+        <div className="field-grid">
+          {chips('likes', 'Likes', vocab.likes)}
+          {chips('dislikes', 'Dislikes', vocab.dislikes)}
+          {chips('tags', 'Tags', vocab.tags)}
+        </div>
+      </fieldset>
+      <label className="toggle-row">
         <input type="checkbox" checked={isSelf} onChange={(e) => setIsSelf(e.target.checked)} />
         This is me (anchors "how you connect" queries)
       </label>
-      <div className="row">
-        <button type="submit" disabled={busy}>
+      <div className="form-actions">
+        <button type="submit" className="primary" disabled={busy}>
           {busy ? '…' : 'Save'}
         </button>
         <button type="button" className="subtle" onClick={cancel}>
@@ -350,7 +411,7 @@ function ConnectionSection({ person }: { person: Person }) {
           {path.map((step, i) => (
             <span key={step.person.id}>
               {i > 0 && (
-                <span className="edge-type" style={{ color: typeById.get(step.via!.typeId)?.color }}>
+                <span className="path-rel" style={{ color: typeById.get(step.via!.typeId)?.color }}>
                   {edgeLabel(i)}
                 </span>
               )}
@@ -489,7 +550,7 @@ function CaptureBar({ person }: { person: Person }) {
         autoFocus={isFresh}
       />
       <div className="row">
-        <button onClick={save} disabled={!draft.trim() || busy}>
+        <button className="primary" onClick={save} disabled={!draft.trim() || busy}>
           {busy ? '…' : 'Save note'}
         </button>
         {savedFlash && (
@@ -539,10 +600,11 @@ function FollowUpSection({ personId }: { personId: string }) {
   return (
     <section>
       <h2>Follow-ups</h2>
+      {items.length === 0 && <p className="empty-inline">Nothing to chase.</p>}
       <ul className="follow-ups">
         {items.map((f) => (
           <li key={f.id} className={f.done ? 'done' : ''}>
-            <label>
+            <label className="check">
               <input type="checkbox" checked={f.done} onChange={() => toggleFollowUp(f.id)} />
               <span>
                 {f.text}
@@ -560,33 +622,40 @@ function FollowUpSection({ personId }: { personId: string }) {
         ))}
       </ul>
       {doneItems.length > 0 && (
-        <button className="subtle" onClick={() => setShowDone((v) => !v)}>
+        <button className="quiet" onClick={() => setShowDone((v) => !v)}>
           {showDone ? 'Hide done' : `Show done (${doneItems.length})`}
         </button>
       )}
-      <form className="row" onSubmit={add}>
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Ask about…"
-          aria-label="New follow-up"
-        />
-        <input
-          className="due"
-          value={due}
-          onChange={(e) => setDue(e.target.value)}
-          placeholder="due, e.g. Sep 20"
-          aria-label="Due date (optional)"
-        />
+      <form className="add-form" onSubmit={add}>
+        <label className="span-2">
+          New follow-up
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Ask about…"
+            aria-label="New follow-up"
+          />
+        </label>
+        <label>
+          Due <span className="optional">— optional</span>
+          <input
+            className="due"
+            value={due}
+            onChange={(e) => setDue(e.target.value)}
+            placeholder="e.g. Sep 20"
+            aria-label="Due date (optional)"
+            aria-invalid={dueError ? true : undefined}
+          />
+        </label>
         <button type="submit" disabled={!text.trim() || busy}>
           Add
         </button>
+        {dueError && (
+          <p className="field-error span-2" role="alert">
+            {dueError}
+          </p>
+        )}
       </form>
-      {dueError && (
-        <p className="hint error" role="alert">
-          {dueError}
-        </p>
-      )}
     </section>
   )
 }
@@ -690,84 +759,99 @@ function RelationshipSection({ person }: { person: Person }) {
 
   return (
     <section>
-      <h2>Relationships</h2>
+      <div className="section-head">
+        <h2>Relationships</h2>
+        <Link to={`/graph?focus=${person.id}`}>Their world →</Link>
+      </div>
+      {edges.length === 0 && <p className="empty-inline">No links yet.</p>}
       <ul className="edges">{edges.map(describe)}</ul>
-      <form className="row wrap" onSubmit={add}>
-        <select
-          value={typeId}
-          onChange={(e) => setTypeId(e.target.value)}
-          aria-label="Relationship type"
-        >
-          <option value="">type…</option>
-          {types.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.label}
-            </option>
-          ))}
-          <option value="new">+ new type…</option>
-        </select>
-        {typeId === 'new' && (
-          <>
-            <input
-              value={newType}
-              onChange={(e) => setNewType(e.target.value)}
-              placeholder="type name"
-              aria-label="New type name"
-            />
-            <span className="swatches" role="radiogroup" aria-label="Type color">
-              {CUSTOM_TYPE_COLORS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  className={`swatch ${color === newTypeColor ? 'selected' : ''}`}
-                  style={{ background: color }}
-                  aria-label={`Color ${color}`}
-                  aria-pressed={color === newTypeColor}
-                  onClick={() => setNewTypeColor(color)}
-                />
-              ))}
-            </span>
-            <label className="inline-check">
-              <input
-                type="checkbox"
-                checked={newTypeDirected}
-                onChange={(e) => setNewTypeDirected(e.target.checked)}
-              />
-              directed
-            </label>
-          </>
-        )}
-        {selectedDirected && (
-          <button
-            type="button"
-            className="subtle"
-            onClick={() => setOutward((v) => !v)}
-            aria-label="Swap direction"
+      <form className="add-form" onSubmit={add}>
+        <label className="span-2">
+          Link to someone
+          <select
+            value={otherId}
+            onChange={(e) => setOtherId(e.target.value)}
+            aria-label="Person"
           >
-            {outward ? `${person.displayName.split(' ')[0]} → them` : `them → ${person.displayName.split(' ')[0]}`}
-          </button>
-        )}
-        <select
-          value={otherId}
-          onChange={(e) => setOtherId(e.target.value)}
-          aria-label="Person"
-        >
-          <option value="">person…</option>
-          {people
-            .filter((p) => p.id !== person.id)
-            .sort((a, b) => a.displayName.localeCompare(b.displayName))
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.displayName}
+            <option value="">person…</option>
+            {people
+              .filter((p) => p.id !== person.id)
+              .sort((a, b) => a.displayName.localeCompare(b.displayName))
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.displayName}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          As
+          <select
+            value={typeId}
+            onChange={(e) => setTypeId(e.target.value)}
+            aria-label="Relationship type"
+          >
+            <option value="">type…</option>
+            {types.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
               </option>
             ))}
-        </select>
+            <option value="new">+ new type…</option>
+          </select>
+        </label>
         <button
           type="submit"
           disabled={busy || !otherId || !typeId || (typeId === 'new' && !newType.trim())}
         >
           Add
         </button>
+        {typeId === 'new' && (
+          <div className="subform">
+            <label>
+              New type name
+              <input
+                value={newType}
+                onChange={(e) => setNewType(e.target.value)}
+                placeholder="e.g. neighbor"
+                aria-label="New type name"
+              />
+            </label>
+            <div className="row wrap">
+              <span className="swatches" role="radiogroup" aria-label="Type color">
+                {CUSTOM_TYPE_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`swatch ${color === newTypeColor ? 'selected' : ''}`}
+                    style={{ background: color }}
+                    aria-label={`Color ${color}`}
+                    aria-pressed={color === newTypeColor}
+                    onClick={() => setNewTypeColor(color)}
+                  />
+                ))}
+              </span>
+              <label className="inline-check">
+                <input
+                  type="checkbox"
+                  checked={newTypeDirected}
+                  onChange={(e) => setNewTypeDirected(e.target.checked)}
+                />
+                directed
+              </label>
+            </div>
+          </div>
+        )}
+        {selectedDirected && (
+          <button
+            type="button"
+            className="subtle span-2"
+            onClick={() => setOutward((v) => !v)}
+            aria-label="Swap direction"
+          >
+            {outward ? `${person.displayName.split(' ')[0]} → them` : `them → ${person.displayName.split(' ')[0]}`}
+          </button>
+        )}
       </form>
     </section>
   )
@@ -809,24 +893,32 @@ function PhotoSection({ personId }: { personId: string }) {
   return (
     <section>
       <h2>Photos</h2>
-      {photos.length > 0 && (
-        <ul className="photo-grid">
-          {photos.map((photo) => (
-            <PhotoThumb
-              key={photo.id}
-              photo={photo}
-              onOpen={(url) => setLightbox(url)}
-              onMakeAvatar={() => void setAvatarPhoto(photo.id)}
-              onRemove={() => {
-                const warning = photo.isAvatar
-                  ? 'Delete this photo? It is the avatar — the next photo takes over.'
-                  : 'Delete this photo?'
-                if (confirm(warning)) void removePhoto(photo.id)
-              }}
-            />
-          ))}
-        </ul>
-      )}
+      <ul className="photo-grid">
+        {photos.map((photo) => (
+          <PhotoThumb
+            key={photo.id}
+            photo={photo}
+            onOpen={(url) => setLightbox(url)}
+            onMakeAvatar={() => void setAvatarPhoto(photo.id)}
+            onRemove={() => {
+              const warning = photo.isAvatar
+                ? 'Delete this photo? It is the avatar — the next photo takes over.'
+                : 'Delete this photo?'
+              if (confirm(warning)) void removePhoto(photo.id)
+            }}
+          />
+        ))}
+        <li>
+          <button
+            className="photo-add-tile"
+            disabled={busy}
+            aria-busy={busy}
+            onClick={() => fileRef.current?.click()}
+          >
+            {busy ? 'Processing…' : '+ Add photos'}
+          </button>
+        </li>
+      </ul>
       <input
         ref={fileRef}
         type="file"
@@ -835,14 +927,6 @@ function PhotoSection({ personId }: { personId: string }) {
         hidden
         onChange={(e) => void onPick(e)}
       />
-      <button
-        className="subtle"
-        disabled={busy}
-        aria-busy={busy}
-        onClick={() => fileRef.current?.click()}
-      >
-        {busy ? 'Processing…' : '+ Add photos'}
-      </button>
       {error && (
         <p className="hint error" role="alert">
           {error}
@@ -856,7 +940,7 @@ function PhotoSection({ personId }: { personId: string }) {
           onClick={() => setLightbox(null)}
         >
           <img src={lightbox} alt="" />
-          <button className="subtle icon" aria-label="Close photo">
+          <button className="subtle icon close" aria-label="Close photo">
             ×
           </button>
         </div>
@@ -948,7 +1032,9 @@ function NotesSection({ personId }: { personId: string }) {
   return (
     <section>
       <h2>Notes</h2>
-      {notes.length === 0 && <p className="hint">Nothing yet — jot something below.</p>}
+      {notes.length === 0 && (
+        <p className="empty">Nothing yet — jot something below.</p>
+      )}
       <ul className="notes">
         {notes.map((note) => (
           <li key={note.id}>
@@ -1080,7 +1166,9 @@ function PromotePanel({
 
   return (
     <form className="promote-panel" onSubmit={promote}>
-      <div className="row wrap">
+      <p className="panel-title">Save to a field</p>
+      <label>
+        Field
         <select
           value={target}
           onChange={(e) => setTarget(e.target.value as PromoteTarget)}
@@ -1092,16 +1180,22 @@ function PromotePanel({
             </option>
           ))}
         </select>
+      </label>
+      <label>
+        Value
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           aria-label="Value to save"
+          aria-invalid={error ? true : undefined}
         />
-        <button type="submit" disabled={busy || !text.trim()}>
-          Save
-        </button>
-      </div>
-      <label className="inline-check">
+      </label>
+      {error && (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      )}
+      <label className="toggle-row">
         <input
           type="checkbox"
           checked={deleteAfter}
@@ -1109,11 +1203,14 @@ function PromotePanel({
         />
         delete the note after
       </label>
-      {error && (
-        <p className="hint error" role="alert">
-          {error}
-        </p>
-      )}
+      <div className="row">
+        <button type="submit" className="primary" disabled={busy || !text.trim()}>
+          Save
+        </button>
+        <button type="button" className="quiet" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
     </form>
   )
 }

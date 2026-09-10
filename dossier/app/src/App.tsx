@@ -4,6 +4,7 @@ import {
   DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_BACKGROUND_GRACE_SECONDS,
 } from './lib/models'
+import { currentDisguise } from './lib/disguise'
 import {
   hasDueItems,
   notificationsGranted,
@@ -184,6 +185,8 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-bar">
+        {/* The brand echoes the disguise, not the product (§6.5). */}
+        <span className="brand">{currentDisguise().name}</span>
         <nav aria-label="Main">
           <NavLink to="/" end>
             People
@@ -216,6 +219,37 @@ export default function App() {
           </Routes>
         </Suspense>
       </main>
+      {/* Mobile-only bottom tabs (hidden ≥48rem): nav where the thumb
+          lives, with Lock as the most reachable control in the app. */}
+      <nav className="tabbar" aria-label="Main">
+        <NavLink to="/" end>
+          <span className="glyph" aria-hidden="true">
+            {'☰'}
+          </span>
+          People
+        </NavLink>
+        <NavLink to="/graph">
+          <span className="glyph" aria-hidden="true">
+            {'⁂'}
+          </span>
+          Graph
+        </NavLink>
+        <NavLink to="/settings">
+          <span className="glyph" aria-hidden="true">
+            {'⚙︎'}
+          </span>
+          Settings
+        </NavLink>
+        <button
+          onClick={panicLock}
+          aria-label="Lock now (PIN is discarded; passphrase or biometrics to reopen)"
+        >
+          <span className="glyph" aria-hidden="true">
+            {'◉'}
+          </span>
+          Lock
+        </button>
+      </nav>
     </div>
   )
 }
