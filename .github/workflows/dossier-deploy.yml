@@ -51,5 +51,13 @@ jobs:
             echo "Deployed app unchanged"
           else
             git commit -m "Deploy Dossier app to /ledger/"
+            # The homepage workflow pushes to main from the same trigger;
+            # rebase-and-retry so losing that race doesn't fail the deploy.
+            for attempt in 1 2 3; do
+              if git push; then
+                exit 0
+              fi
+              git pull --rebase
+            done
             git push
           fi
