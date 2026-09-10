@@ -18,8 +18,8 @@ export default defineConfig({
         short_name: 'Ledger',
         description: 'A personal notebook.',
         display: 'standalone',
-        background_color: '#101014',
-        theme_color: '#101014',
+        background_color: '#121110',
+        theme_color: '#1a1918',
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },

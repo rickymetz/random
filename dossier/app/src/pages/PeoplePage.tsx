@@ -96,8 +96,13 @@ export default function PeoplePage() {
         ))}
       </ul>
       {!trimmed && (
-        <button className="add-person" onClick={create} disabled={busy}>
-          + New person
+        <button
+          className="add-person fab"
+          onClick={create}
+          disabled={busy}
+          aria-label="New person"
+        >
+          + <span className="fab-label">New person</span>
         </button>
       )}
     </div>
@@ -129,6 +134,9 @@ function PersonRow({ person, query }: { person: Person; query: string }) {
           )}
           {detail && <span className="hint"> {detail}</span>}
           {snippet && <span className="snippet">{snippet}</span>}
+        </span>
+        <span className="chev" aria-hidden="true">
+          {'›'}
         </span>
       </Link>
     </li>
@@ -267,7 +275,7 @@ function Upcoming() {
                   : `${item.days}d`}
             </span>
             <Link to={`/person/${item.personId}`}>{item.personName}</Link>
-            <span className="hint"> — {item.label}</span>
+            <span className="hint">{item.label}</span>
           </li>
         ))}
       </ul>

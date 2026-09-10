@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { destroyAllData } from '../lib/db'
 import {
   MAX_IMPORT_FILE_BYTES,
@@ -36,15 +36,15 @@ export default function SettingsPage() {
       <ExportSection />
       <ImportSection />
       <StorageSection />
-      <section>
+      <section className="danger-zone">
         <h2>Danger</h2>
-        <button className="danger" onClick={destroy}>
-          Destroy all data
-        </button>
         <p className="hint">
           Nothing ever leaves this device except encrypted backups, so this is the whole
           story: wipe here, and it's gone.
         </p>
+        <button className="danger" onClick={destroy}>
+          Destroy all data
+        </button>
       </section>
     </div>
   )
@@ -71,6 +71,14 @@ function SecuritySection() {
   const [bioMsg, setBioMsg] = useState<string | null>(null)
   const [bioBusy, setBioBusy] = useState(false)
   const [lockMsg, setLockMsg] = useState<string | null>(null)
+
+  // "Saved." is a transient confirmation, not state to leave on screen;
+  // errors stay until the next attempt.
+  useEffect(() => {
+    if (lockMsg !== 'Saved.') return
+    const timer = setTimeout(() => setLockMsg(null), 2500)
+    return () => clearTimeout(timer)
+  }, [lockMsg])
 
   const armPin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -280,11 +288,12 @@ function SecuritySection() {
             <option value={120}>2 min</option>
           </select>
         </label>
-        {lockMsg && (
-          <span className={`hint ${lockMsg === 'Saved.' ? '' : 'error'}`} role="status">
-            {lockMsg}
-          </span>
-        )}
+        <span
+          className={`status-slot hint ${lockMsg === 'Saved.' ? '' : 'error'}`}
+          role="status"
+        >
+          {lockMsg}
+        </span>
       </div>
 
       <h3>Discretion</h3>
@@ -422,14 +431,17 @@ function ExportSection() {
         )}
       </p>
       <form className="row" onSubmit={doExport}>
-        <input
-          type="password"
-          value={passphrase}
-          onChange={(e) => setPassphrase(e.target.value)}
-          placeholder="Confirm passphrase"
-          aria-label="Confirm passphrase"
-          autoComplete="off"
-        />
+        <label className="field">
+          <span>Confirm passphrase</span>
+          <input
+            type="password"
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value)}
+            placeholder="unlocks the export"
+            aria-label="Confirm passphrase"
+            autoComplete="off"
+          />
+        </label>
         <button type="submit" disabled={!passphrase || state === 'busy'} aria-busy={state === 'busy'}>
           {state === 'busy' ? '…' : 'Export'}
         </button>
@@ -499,21 +511,27 @@ function ImportSection() {
         create a vault, then restore here.
       </p>
       <form className="column" onSubmit={doImport}>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".ledger,application/json"
-          aria-label="Backup file"
-        />
-        <div className="row">
+        <label className="field">
+          <span>Backup file</span>
           <input
-            type="password"
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-            placeholder="Backup passphrase"
-            aria-label="Backup passphrase"
-            autoComplete="off"
+            ref={fileRef}
+            type="file"
+            accept=".ledger,application/json"
+            aria-label="Backup file"
           />
+        </label>
+        <div className="row">
+          <label className="field">
+            <span>Backup passphrase</span>
+            <input
+              type="password"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              placeholder="the passphrase it was made with"
+              aria-label="Backup passphrase"
+              autoComplete="off"
+            />
+          </label>
           <button type="submit" disabled={!passphrase || busy}>
             {busy ? '…' : 'Restore'}
           </button>
