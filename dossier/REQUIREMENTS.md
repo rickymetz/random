@@ -151,6 +151,46 @@ The graph is a **core feature** and gets real engineering investment:
 - Export is also the backup story: the app nags (gently, locally) when the
   vault has changed materially since the last export.
 
+### 4.6 Circles
+
+A **circle** is a named group of people — "college friends", "DC polycule",
+"Meridian Labs" — drawn as a translucent bubble on the graph. Decided in the
+circles interview (Appendix A):
+
+- **First-class entity**, separate from tags: `name`, `color`, `memberIds`.
+  Tags stay lightweight words; a circle can later grow a description or
+  events without a migration.
+- **Many-to-many, flat.** A person may be in any number of circles; circles
+  never nest. Overlaps are the point (a person in two circles sits between
+  them).
+- **Graph rendering:** a soft convex hull (padded, rounded) behind the
+  members with the name floating above it. A weak layout force pulls
+  members toward their circle's centroid so bubbles stay compact; edges
+  still dominate. Bubbles draw beneath edges and nodes.
+- **Graph controls:** a chip per circle shows/hides its bubble (members stay
+  on the graph); tapping a bubble opens a circle card (members, rename,
+  color swatches, Focus, Delete); Focus shows only that circle's members
+  and the edges among them (`?circle=<id>`), like the ego view for people.
+- **Colors:** auto-assigned from a muted palette (next unused hue); the
+  card's swatches override.
+- **Managed from the person page:** a "Circles" chip field on the edit
+  form (existing names suggested; a new name creates the circle). Each
+  circle chip on the details card links to the People list filtered to
+  that circle; People rows show small membership dots; circle names are
+  searchable.
+- **Lifecycle:** removing the last member leaves an empty circle (no
+  bubble; still offered as a suggestion). Deleting a circle removes only
+  the grouping — people are untouched. Deleting a person removes them
+  from every circle.
+- **Discretion:** circle names never appear on the lock screen or in
+  notifications (§6.5); they are ordinary encrypted records (§6.1) and
+  travel in backups.
+- **Sample cast** seeds three overlapping circles so the demo shows
+  intersecting bubbles.
+
+Deferred: circles as filters in "How you connect", nested circles, a
+dedicated Circles screen, lasso-to-circle on the canvas.
+
 ## 5. Threat model
 
 In scope, in priority order:
@@ -397,6 +437,7 @@ From the requirements interview (2026-09-09):
 | Threats prioritized | Borrowed phone, export leakage, future server (zero-knowledge by design) |
 | Media | Person photos only in v1 |
 | Graph UX | Core feature, fully interactive |
+| Circles (§4.6) | First-class entity (not tags); many-to-many, flat; hull bubbles + gentle clustering; chips to show/hide + tap-to-focus; auto color with override; managed from the person page; empty circles persist, delete is explicit; name + color + members only; seeded in the sample cast |
 | Discretion | Instant lock/panic, neutral disguise, decoy vault (designed now, built v2) |
 | Platform | Mobile-first, desktop works |
 | Legal/ethics section | Skipped for now (revisit before public release) |

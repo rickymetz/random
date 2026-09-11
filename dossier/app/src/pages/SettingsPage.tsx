@@ -578,13 +578,14 @@ function SampleDataSection() {
     setBusy(true)
     setMessage(null)
     try {
-      const { peopleAdded, edgesAdded, skippedNoSelf } = await loadSampleData()
-      if (peopleAdded === 0 && edgesAdded === 0) {
+      const { peopleAdded, edgesAdded, skippedNoSelf, circlesAdded } = await loadSampleData()
+      if (peopleAdded === 0 && edgesAdded === 0 && circlesAdded === 0) {
         setMessage('Sample cast is already here.')
       } else {
         setMessage(
           <>
-            Added {peopleAdded} people and {edgesAdded} relationships — open the{' '}
+            Added {peopleAdded} people, {edgesAdded} relationships, and {circlesAdded} circles —
+            open the{' '}
             <Link to="/graph">Graph</Link>.
             {skippedNoSelf > 0 &&
               ` ${skippedNoSelf} relationships to you were skipped because no person is marked "This is me" — mark one and load again.`}

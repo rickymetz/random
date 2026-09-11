@@ -13,6 +13,7 @@ import { selectSelf } from './graphQueries'
 import { mentionToken } from './mentions'
 import type { Person } from './models'
 import {
+  selectCircles,
   selectPeople,
   selectRelationships,
   selectRelationshipTypes,
@@ -105,11 +106,19 @@ const MENTION_NOTES: [string, string, (token: string) => string, string][] = [
  * cast easy to find and clean up. */
 export const SAMPLE_TAG = 'sample'
 
+/** Circles (§4.6) — overlapping groups so bubbles visibly intersect. */
+const CIRCLES: [string, string[]][] = [
+  ['Meridian Labs', ['Priya Raman', 'Marcus Webb', 'Elena Sofia', 'me']],
+  ['Webb family', ['June Webb', 'Harold Webb', 'Marcus Webb', 'Nadia Osei']],
+  ['Climbing crew', ['Theo Martins', 'Sam Kim', 'Bruno Costa', 'me']],
+]
+
 export interface SampleDataResult {
   peopleAdded: number
   edgesAdded: number
   /** 'me'-anchored edges skipped because no person is marked as self. */
   skippedNoSelf: number
+  circlesAdded: number
 }
 
 export async function loadSampleData(): Promise<SampleDataResult> {
@@ -212,5 +221,26 @@ export async function loadSampleData(): Promise<SampleDataResult> {
       .saveNote(authorId, body(mentionToken({ id: mentionedId, displayName: mentionedName })))
   }
 
-  return { peopleAdded, edgesAdded, skippedNoSelf }
+  let circlesAdded = 0
+  for (const [name, memberNames] of CIRCLES) {
+    const memberIds = memberNames
+      .map((n) => resolve(n))
+      .filter((id): id is string => Boolean(id))
+    const st = useVaultStore.getState()
+    const existing = selectCircles(st.records).find(
+      (c) => c.name.toLowerCase() === name.toLowerCase(),
+    )
+    if (existing) {
+      const merged = [...new Set([...existing.memberIds, ...memberIds])]
+      if (merged.length !== existing.memberIds.length) {
+        await st.updateCircle({ ...existing, memberIds: merged })
+      }
+      continue
+    }
+    const created = await st.addCircle(name)
+    await useVaultStore.getState().updateCircle({ ...created, memberIds })
+    circlesAdded += 1
+  }
+
+  return { peopleAdded, edgesAdded, skippedNoSelf, circlesAdded }
 }

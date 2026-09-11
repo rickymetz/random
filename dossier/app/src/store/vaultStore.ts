@@ -11,6 +11,7 @@
  */
 import { create } from 'zustand'
 import { extractMentions, renameMentionsOf, stripMentionsOf } from '../lib/mentions'
+import { CIRCLE_COLORS, type Circle } from '../lib/models'
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
   SETTINGS_ID,
@@ -137,6 +138,12 @@ interface VaultState {
   saveNote: (personId: string, body: string) => Promise<void>
   removeNote: (noteId: string) => Promise<void>
   updateNote: (noteId: string, body: string) => Promise<void>
+  /** Circles (§4.6): named, colored groups drawn as bubbles on the graph. */
+  addCircle: (name: string, color?: string) => Promise<Circle>
+  updateCircle: (circle: Circle) => Promise<void>
+  removeCircle: (circleId: string) => Promise<void>
+  /** Replace the set of circles a person belongs to. */
+  setPersonCircles: (personId: string, circleIds: string[]) => Promise<void>
   addFollowUp: (personId: string, text: string, dueDate?: PartialDate) => Promise<void>
   toggleFollowUp: (followUpId: string) => Promise<void>
   removeFollowUp: (followUpId: string) => Promise<void>
@@ -602,6 +609,8 @@ export const useVaultStore = create<VaultState>((set, get) => {
         ) {
           deletes.push(r.id)
           if (r.kind === 'photo') blobIds.push(r.blobRecordId)
+        } else if (r.kind === 'circle' && r.memberIds.includes(personId)) {
+          puts.push({ ...r, memberIds: r.memberIds.filter((m) => m !== personId) })
         } else if (r.kind === 'note' && r.mentions.includes(personId)) {
           // Rewrite dangling mention tokens in other people's notes to the
           // plain name, so no dead @links survive the delete.
@@ -762,6 +771,72 @@ export const useVaultStore = create<VaultState>((set, get) => {
       await apply([type])
       return type
     }),
+
+    addCircle: (name, color) =>
+      enqueue(async () => {
+        const trimmed = name.trim()
+        const all = selectCircles(get().records)
+        const existing = all.find((c) => c.name.toLowerCase() === trimmed.toLowerCase())
+        if (existing) return existing
+        // Next unused hue, wrapping once the palette is exhausted.
+        const used = new Set(all.map((c) => c.color))
+        const auto =
+          CIRCLE_COLORS.find((c) => !used.has(c)) ?? CIRCLE_COLORS[all.length % CIRCLE_COLORS.length]
+        const circle: Circle = {
+          kind: 'circle',
+          id: crypto.randomUUID(),
+          name: trimmed,
+          color: color ?? auto,
+          memberIds: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }
+        await apply([circle], [], [])
+        return circle
+      }),
+
+    updateCircle: (circle) =>
+      enqueue(async () => {
+        const before = get().records.get(circle.id)
+        if (before?.kind !== 'circle') return
+        const next: Circle = {
+          ...circle,
+          name: circle.name.trim() || before.name,
+          memberIds: [...new Set(circle.memberIds)].filter((id) => get().records.has(id)),
+          updatedAt: Date.now(),
+        }
+        // Circle names are searchable: reindex anyone whose membership or
+        // circle name changed.
+        await apply([next], [], [...new Set([...before.memberIds, ...next.memberIds])])
+      }),
+
+    removeCircle: (circleId) =>
+      enqueue(async () => {
+        const circle = get().records.get(circleId)
+        if (circle?.kind !== 'circle') return
+        // Only the grouping goes; the people are untouched.
+        await apply([], [circleId], [...circle.memberIds])
+      }),
+
+    setPersonCircles: (personId, circleIds) =>
+      enqueue(async () => {
+        if (!get().records.has(personId)) return
+        const want = new Set(circleIds)
+        const puts: DomainRecord[] = []
+        for (const c of selectCircles(get().records)) {
+          const has = c.memberIds.includes(personId)
+          if (want.has(c.id) && !has) {
+            puts.push({ ...c, memberIds: [...c.memberIds, personId], updatedAt: Date.now() })
+          } else if (!want.has(c.id) && has) {
+            puts.push({
+              ...c,
+              memberIds: c.memberIds.filter((m) => m !== personId),
+              updatedAt: Date.now(),
+            })
+          }
+        }
+        if (puts.length > 0) await apply(puts, [], [personId])
+      }),
 
     markExported: () =>
       enqueue(async () => {
@@ -1006,4 +1081,17 @@ export function selectSettings(records: Map<string, DomainRecord>): Settings | u
 /** Search the in-memory index; returns person ids ranked by relevance. */
 export function searchPeopleIds(query: string): string[] {
   return searchPeople(searchIndex, query)
+}
+
+export function selectCircles(records: Map<string, DomainRecord>): Circle[] {
+  return [...records.values()]
+    .filter((r): r is Circle => r.kind === 'circle')
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export function selectCirclesOf(
+  records: Map<string, DomainRecord>,
+  personId: string,
+): Circle[] {
+  return selectCircles(records).filter((c) => c.memberIds.includes(personId))
 }

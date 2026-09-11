@@ -6,6 +6,7 @@ import type { Person } from '../lib/models'
 import { matchSnippet } from '../lib/search'
 import {
   searchPeopleIds,
+  selectCirclesOf,
   selectPeople,
   selectSettings,
   useVaultStore,
@@ -32,6 +33,18 @@ export default function PeoplePage() {
   // query, then drop the param so back/forward stays clean.
   const [params, setParams] = useSearchParams()
   const linkedQuery = params.get('q')
+  // ?circle=<id> lists one circle's members (from a chip on a dossier or
+  // the graph's bubble card).
+  const circleId = params.get('circle')
+  const circle = useMemo(() => {
+    const c = circleId ? records.get(circleId) : undefined
+    return c?.kind === 'circle' ? c : undefined
+  }, [records, circleId])
+  // A circle link means "show me this circle" — not this circle narrowed
+  // by whatever was last typed in the search box.
+  useEffect(() => {
+    if (circleId) setQuery('')
+  }, [circleId, setQuery])
   useEffect(() => {
     if (linkedQuery === null) return
     setQuery(linkedQuery)
@@ -39,7 +52,9 @@ export default function PeoplePage() {
   }, [linkedQuery, setQuery, setParams])
 
   const people = useMemo(() => {
-    const all = selectPeople(records)
+    const all = circle
+      ? selectPeople(records).filter((p) => circle.memberIds.includes(p.id))
+      : selectPeople(records)
     const trimmed = query.trim()
     if (!trimmed) return all.sort((a, b) => a.displayName.localeCompare(b.displayName))
     const byId = new Map(all.map((p) => [p.id, p]))
@@ -53,7 +68,7 @@ export default function PeoplePage() {
       if (!seen.has(p.id) && p.displayName.toLowerCase().includes(q)) ranked.push(p)
     }
     return ranked
-  }, [records, query])
+  }, [records, query, circle])
 
   const create = async () => {
     if (busy) return
@@ -93,7 +108,17 @@ export default function PeoplePage() {
           aria-label="Search names, details, and notes"
         />
       </form>
-      {!trimmed && !people.some((p) => !p.isSelf) && (
+      {circle && (
+        <p className="banner circle-banner" style={{ '--chip-color': circle.color } as React.CSSProperties}>
+          <span className="circle-chip">{circle.name}</span> — {circle.memberIds.length}{' '}
+          {circle.memberIds.length === 1 ? 'person' : 'people'} ·{' '}
+          <Link to={`/graph?circle=${circle.id}`}>see on graph</Link>
+          <button className="subtle" onClick={() => setParams({}, { replace: true })}>
+            Show everyone
+          </button>
+        </p>
+      )}
+      {!trimmed && !circle && !people.some((p) => !p.isSelf) && (
         <p className="empty">
           No one here yet. Type a name above and tap <strong>Add</strong>, or tap{' '}
           <strong>+</strong>.
@@ -143,6 +168,7 @@ export default function PeoplePage() {
 
 function PersonRow({ person, query }: { person: Person; query: string }) {
   const records = useVaultStore((s) => s.records)
+  const circles = useMemo(() => selectCirclesOf(records, person.id), [records, person.id])
   const detail = [person.jobTitle, person.employer].filter(Boolean).join(' @ ')
   // Show WHY a result matched when the hit came from note text (§4.4).
   const snippet = useMemo(() => {
@@ -162,6 +188,13 @@ function PersonRow({ person, query }: { person: Person; query: string }) {
           {person.isSelf && (
             <span className="you-badge" title="This is you">
               you
+            </span>
+          )}
+          {circles.length > 0 && (
+            <span className="circle-dots" title={circles.map((c) => c.name).join(', ')}>
+              {circles.map((c) => (
+                <i key={c.id} style={{ background: c.color }} />
+              ))}
             </span>
           )}
           {detail && <span className="hint"> {detail}</span>}

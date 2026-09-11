@@ -108,7 +108,24 @@ export const DEFAULT_BACKGROUND_GRACE_SECONDS = 30
 
 export const SETTINGS_ID = 'settings'
 
+/**
+ * A named group of people ("college friends", "DC polycule") drawn as a
+ * translucent bubble on the graph (§4.6). Many-to-many and flat: a person
+ * can be in any number of circles; circles never nest. Empty circles
+ * persist until deleted explicitly.
+ */
+export interface Circle {
+  kind: 'circle'
+  id: string
+  name: string
+  color: string
+  memberIds: string[]
+  createdAt: number
+  updatedAt: number
+}
+
 export type DomainRecord =
+  | Circle
   | Person
   | NoteEntry
   | FollowUp
@@ -131,6 +148,19 @@ export const BUILT_IN_RELATIONSHIP_TYPES: Omit<RelationshipType, 'id'>[] = [
   { kind: 'relationshipType', label: 'boss of', color: '#e0763c', directed: true, builtIn: true },
   { kind: 'relationshipType', label: 'roommate', color: '#9a6fd0', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'mentioned', color: '#55555e', directed: true, builtIn: true },
+]
+
+/** Circle bubble hues — muted so translucent fills stay readable behind
+ * nodes and edges; auto-assigned in order, user-overridable. */
+export const CIRCLE_COLORS = [
+  '#8aa4ff',
+  '#f08aa8',
+  '#6fcfb0',
+  '#e0b35a',
+  '#b48ef0',
+  '#f0a06a',
+  '#7fd0e8',
+  '#a8d070',
 ]
 
 /** Swatches offered when creating a custom relationship type (§4.2). */

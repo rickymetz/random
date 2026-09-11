@@ -19,11 +19,12 @@ import {
 } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
-import type { Relationship } from '../lib/models'
+import { CIRCLE_COLORS, type Person, type Relationship } from '../lib/models'
 import { getPhotoUrl } from '../lib/photoCache'
 import type { UnlockedVault } from '../lib/vault'
 import {
   selectAvatar,
+  selectCircles,
   selectPeople,
   selectRelationships,
   selectRelationshipTypes,
@@ -40,6 +41,14 @@ interface GraphNode extends SimulationNodeDatum {
   avatar?: { blobRecordId: string; mimeType: string }
 }
 
+/** A circle (§4.6) with only the members currently on the graph. */
+interface GraphCircle {
+  id: string
+  name: string
+  color: string
+  memberIds: string[]
+}
+
 /** Pan/zoom/fit handles the React controls call into the canvas effect. */
 interface ViewApi {
   zoom: (factor: number) => void
@@ -48,22 +57,62 @@ interface ViewApi {
 
 /** Filter state survives leaving and returning (per browser session). */
 const FILTER_KEY = 'graph-filters'
-function loadFilters(): { hidden: string[]; mentions: boolean } {
+interface Filters {
+  hidden: string[]
+  mentions: boolean
+  hiddenCircles: string[]
+}
+function loadFilters(): Filters {
   try {
     const raw = sessionStorage.getItem(FILTER_KEY)
-    if (raw) return JSON.parse(raw) as { hidden: string[]; mentions: boolean }
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<Filters>
+      return {
+        hidden: parsed.hidden ?? [],
+        mentions: parsed.mentions ?? true,
+        hiddenCircles: parsed.hiddenCircles ?? [],
+      }
+    }
   } catch {
     // Private windows may refuse; defaults are fine.
   }
-  return { hidden: [], mentions: true }
+  return { hidden: [], mentions: true, hiddenCircles: [] }
 }
-function saveFilters(hidden: Set<string>, mentions: boolean): void {
+function saveFilters(hidden: Set<string>, mentions: boolean, hiddenCircles: Set<string>): void {
   try {
-    sessionStorage.setItem(FILTER_KEY, JSON.stringify({ hidden: [...hidden], mentions }))
+    sessionStorage.setItem(
+      FILTER_KEY,
+      JSON.stringify({ hidden: [...hidden], mentions, hiddenCircles: [...hiddenCircles] }),
+    )
   } catch {
     // ignore
   }
 }
+
+/** Convex hull (monotone chain); returns points in CCW order. */
+function convexHull(points: { x: number; y: number }[]): { x: number; y: number }[] {
+  if (points.length < 3) return points.slice()
+  const pts = points.slice().sort((a, b) => a.x - b.x || a.y - b.y)
+  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+  const lower: { x: number; y: number }[] = []
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop()
+    lower.push(p)
+  }
+  const upper: { x: number; y: number }[] = []
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i]
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop()
+    upper.push(p)
+  }
+  lower.pop()
+  upper.pop()
+  return lower.concat(upper)
+}
+
+/** Bubble padding around member nodes, in graph units. */
+const HULL_PAD = 34
 
 function nodeRadius(degree: number): number {
   return Math.min(NODE_R * 1.6, NODE_R * (0.85 + 0.25 * Math.log2(1 + degree)))
@@ -78,7 +127,11 @@ interface GraphLink extends SimulationLinkDatum<GraphNode> {
   highlighted: boolean
 }
 
-type Tap = { kind: 'node'; id: string } | { kind: 'edge'; id: string } | null
+type Tap =
+  | { kind: 'node'; id: string }
+  | { kind: 'edge'; id: string }
+  | { kind: 'circle'; id: string }
+  | null
 
 const NODE_R = 14
 const LABEL_ZOOM = 0.7
@@ -107,6 +160,7 @@ export default function GraphPage() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const focusId = params.get('focus')
+  const circleFocusId = params.get('circle')
   const depth = params.get('depth') === '2' ? 2 : 1
   const pathTargetId = params.get('path')
   const [peek, setPeek] = useState<Tap>(null)
@@ -120,9 +174,17 @@ export default function GraphPage() {
     () => new Set(loadFilters().hidden),
   )
   const [showMentions, setShowMentions] = useState(() => loadFilters().mentions)
+  const [hiddenCircles, setHiddenCircles] = useState<Set<string>>(
+    () => new Set(loadFilters().hiddenCircles),
+  )
   useEffect(() => {
-    saveFilters(hiddenTypes, showMentions)
-  }, [hiddenTypes, showMentions])
+    saveFilters(hiddenTypes, showMentions, hiddenCircles)
+  }, [hiddenTypes, showMentions, hiddenCircles])
+  const allCircles = useMemo(() => selectCircles(records), [records])
+  const focusedCircle = useMemo(
+    () => (circleFocusId ? allCircles.find((c) => c.id === circleFocusId) : undefined),
+    [allCircles, circleFocusId],
+  )
 
   // "Show on graph" from a dossier's how-you-connect section (§4.4).
   const pathInfo = useMemo(() => {
@@ -148,7 +210,7 @@ export default function GraphPage() {
     [params, setParams],
   )
 
-  const { nodes, links } = useMemo(() => {
+  const { nodes, links, circles } = useMemo(() => {
     const typeById = new Map(types.map((t) => [t.id, t]))
     const people = selectPeople(records)
     let edges = selectRelationships(records).filter((e) => {
@@ -161,7 +223,10 @@ export default function GraphPage() {
     })
 
     let visiblePeople = people
-    if (focusId) {
+    if (focusedCircle) {
+      // Circle focus: just the members and the edges among them.
+      visiblePeople = people.filter((p) => focusedCircle.memberIds.includes(p.id))
+    } else if (focusId) {
       // Local graph (§4.3): the focused person plus everyone within
       // `depth` hops, drawn as the induced subgraph — edges *among*
       // neighbours stay, which is how you spot that his parents are
@@ -215,8 +280,28 @@ export default function GraphPage() {
         directed: (typeById.get(e.typeId)?.directed ?? false) && e.origin === 'explicit',
         highlighted: pathInfo?.edgeIds.has(e.id) ?? false,
       }))
-    return { nodes, links }
-  }, [records, types, hiddenTypes, showMentions, focusId, depth, pathInfo])
+    const circles: GraphCircle[] = allCircles
+      .filter((c) => !hiddenCircles.has(c.id))
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        color: c.color,
+        memberIds: c.memberIds.filter((id) => ids.has(id)),
+      }))
+      .filter((c) => c.memberIds.length > 0)
+    return { nodes, links, circles }
+  }, [
+    records,
+    types,
+    hiddenTypes,
+    showMentions,
+    focusId,
+    focusedCircle,
+    depth,
+    pathInfo,
+    allCircles,
+    hiddenCircles,
+  ])
 
   const focusName = useMemo(() => {
     if (!focusId) return undefined
@@ -231,6 +316,7 @@ export default function GraphPage() {
   const canvasRef = useCanvasGraph(
     nodes,
     links,
+    circles,
     focusId,
     onTap,
     onOpen,
@@ -273,6 +359,25 @@ export default function GraphPage() {
                 const next = new URLSearchParams(params)
                 next.delete('focus')
                 next.delete('depth')
+                setParams(next)
+              }}
+              aria-label="Show everyone"
+            >
+              ×
+            </button>
+          </span>
+        )}
+        {focusedCircle && (
+          <span
+            className="chip focus-chip"
+            style={{ '--chip-color': focusedCircle.color } as React.CSSProperties}
+          >
+            {focusedCircle.name}
+            <button
+              className="subtle"
+              onClick={() => {
+                const next = new URLSearchParams(params)
+                next.delete('circle')
                 setParams(next)
               }}
               aria-label="Show everyone"
@@ -324,12 +429,32 @@ export default function GraphPage() {
         >
           mentions
         </button>
+        {allCircles.map((c) => (
+          <button
+            key={c.id}
+            className={`chip circle-filter ${hiddenCircles.has(c.id) ? 'off' : ''}`}
+            style={{ '--chip-color': c.color } as React.CSSProperties}
+            aria-pressed={!hiddenCircles.has(c.id)}
+            title={`${c.memberIds.length} ${c.memberIds.length === 1 ? 'person' : 'people'}`}
+            onClick={() =>
+              setHiddenCircles((prev) => {
+                const next = new Set(prev)
+                if (next.has(c.id)) next.delete(c.id)
+                else next.add(c.id)
+                return next
+              })
+            }
+          >
+            {c.name}
+          </button>
+        ))}
       </div>
       <p className="graph-legend">
-        Tap a label to hide or show that kind of link. Dotted line = mentioned in a
-        note. Tap a circle for details; bigger circles know more people.
+        Tap a label to hide or show that kind of link or bubble. Dotted line = mentioned
+        in a note. Bubbles are circles — tap one to edit it; tap a person for details.
       </p>
-      {nodes.length === 0 || (links.length === 0 && nodes.length <= 1) ? (
+      {nodes.length === 0 ||
+      (!focusedCircle && !focusId && links.length === 0 && nodes.length <= 1) ? (
         <p className="empty">
           No people yet — <Link to="/">add someone</Link> and connect them, or load the
           sample cast from <Link to="/settings">Settings</Link> to see the graph in action.
@@ -366,6 +491,16 @@ export default function GraphPage() {
             />
           )}
           {peek?.kind === 'edge' && <EdgePeek edgeId={peek.id} onClose={() => setPeek(null)} />}
+          {peek?.kind === 'circle' && (
+            <CirclePeek
+              circleId={peek.id}
+              onClose={() => setPeek(null)}
+              onFocus={() => {
+                setParams({ circle: peek.id })
+                setPeek(null)
+              }}
+            />
+          )}
         </div>
       )}
     </div>
@@ -524,9 +659,115 @@ function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) 
   )
 }
 
+/** Tap a bubble → rename, recolor, trim members, focus, or delete it (§4.6). */
+function CirclePeek({
+  circleId,
+  onClose,
+  onFocus,
+}: {
+  circleId: string
+  onClose: () => void
+  onFocus: () => void
+}) {
+  const records = useVaultStore((s) => s.records)
+  const updateCircle = useVaultStore((s) => s.updateCircle)
+  const removeCircle = useVaultStore((s) => s.removeCircle)
+  const cardRef = usePeekFocus(onClose)
+  const circle = records.get(circleId)
+  const [name, setName] = useState(circle?.kind === 'circle' ? circle.name : '')
+  if (!circle || circle.kind !== 'circle') return null
+  const members = circle.memberIds
+    .map((id) => records.get(id))
+    .filter((p): p is Person => p?.kind === 'person')
+    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+  const commitName = () => {
+    const next = name.trim()
+    if (next && next !== circle.name) void updateCircle({ ...circle, name: next })
+    else setName(circle.name)
+  }
+  return (
+    <div
+      ref={cardRef}
+      tabIndex={-1}
+      className="peek-card circle-peek"
+      role="dialog"
+      aria-label={`Circle: ${circle.name}`}
+      style={{ '--chip-color': circle.color } as React.CSSProperties}
+    >
+      <div className="peek-body">
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={commitName}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commitName()
+            }
+          }}
+          aria-label="Circle name"
+        />
+        <span className="swatches" role="group" aria-label="Circle color">
+          {CIRCLE_COLORS.map((color) => (
+            <button
+              key={color}
+              type="button"
+              className={`swatch ${color === circle.color ? 'selected' : ''}`}
+              style={{ background: color }}
+              aria-label={`Color ${color}`}
+              aria-pressed={color === circle.color}
+              onClick={() => void updateCircle({ ...circle, color })}
+            />
+          ))}
+        </span>
+        <ul className="members" aria-label="Members">
+          {members.map((p) => (
+            <li key={p.id}>
+              <Link to={`/person/${p.id}`}>{p.displayName}</Link>
+              <button
+                onClick={() =>
+                  void updateCircle({
+                    ...circle,
+                    memberIds: circle.memberIds.filter((m) => m !== p.id),
+                  })
+                }
+                aria-label={`Remove ${p.displayName} from ${circle.name}`}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+          {members.length === 0 && <li className="hint">No one yet — add people from their page.</li>}
+        </ul>
+      </div>
+      <div className="row wrap">
+        <button className="subtle" onClick={onFocus}>
+          Only this circle
+        </button>
+        <button
+          className="danger"
+          onClick={() => {
+            if (confirm(`Delete the circle “${circle.name}”? The people stay.`)) {
+              void removeCircle(circle.id)
+              onClose()
+            }
+          }}
+        >
+          Delete circle
+        </button>
+        <button className="subtle icon" onClick={onClose} aria-label="Close">
+          ×
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function useCanvasGraph(
   nodes: GraphNode[],
   links: GraphLink[],
+  circles: GraphCircle[],
   focusId: string | null,
   onTap: (tap: Tap) => void,
   onOpen: (personId: string) => void,
@@ -553,7 +794,10 @@ function useCanvasGraph(
     const positions = positionsRef.current
     const transform = transformRef.current
     const simNodes: GraphNode[] = nodes.map((n) => ({ ...n, ...positions.get(n.id) }))
+    const nodeById = new Map(simNodes.map((n) => [n.id, n]))
     const simLinks: GraphLink[] = links.map((l) => ({ ...l }))
+    // Last-drawn bubble outlines, for tap hit-testing.
+    const hulls = new Map<string, { x: number; y: number }[]>()
     const hasCachedPositions = simNodes.some((n) => n.x !== undefined)
 
     let width = 0
@@ -572,6 +816,22 @@ function useCanvasGraph(
       // Orphans hover at the rim instead of being flung off-screen.
       .force('x', forceX(0).strength(0.04))
       .force('y', forceY(0).strength(0.04))
+      // Gentle clustering (§4.6): members drift toward their circle's
+      // centroid so bubbles stay compact; edges still dominate.
+      .force('circles', (alpha: number) => {
+        for (const c of circles) {
+          const members = c.memberIds
+            .map((id) => nodeById.get(id))
+            .filter((n): n is GraphNode => Boolean(n && n.x != null && n.y != null))
+          if (members.length < 2) continue
+          const cx = members.reduce((s, n) => s + n.x!, 0) / members.length
+          const cy = members.reduce((s, n) => s + n.y!, 0) / members.length
+          for (const n of members) {
+            n.vx = (n.vx ?? 0) + (cx - n.x!) * alpha * 0.08
+            n.vy = (n.vy ?? 0) + (cy - n.y!) * alpha * 0.08
+          }
+        }
+      })
       .force('collide', forceCollide<GraphNode>((n) => n.r * 1.5))
       // A warm layout barely stirs; a cold one settles from scratch.
       .alpha(hasCachedPositions ? 0.08 : 1)
@@ -637,6 +897,40 @@ function useCanvasGraph(
       const minY = (-height / 2 - transform.y) / k - NODE_R * 2
       const maxY = (height / 2 - transform.y) / k + NODE_R * 2
       const inView = (x: number, y: number) => x >= minX && x <= maxX && y >= minY && y <= maxY
+
+      // Circle bubbles first, beneath everything (§4.6): a padded, rounded
+      // convex hull of the members — a thick round-joined stroke of the
+      // hull plus its fill gives soft corners without offset geometry.
+      ctx.font = `${12 / k}px system-ui`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'bottom'
+      for (const c of circles) {
+        const pts = c.memberIds
+          .map((id) => nodeById.get(id))
+          .filter((n): n is GraphNode => Boolean(n && n.x != null && n.y != null))
+          .map((n) => ({ x: n.x!, y: n.y! }))
+        if (pts.length === 0) continue
+        const hull = convexHull(pts)
+        hulls.set(c.id, hull)
+        ctx.beginPath()
+        if (hull.length === 1) {
+          ctx.arc(hull[0].x, hull[0].y, HULL_PAD, 0, Math.PI * 2)
+        } else {
+          ctx.moveTo(hull[0].x, hull[0].y)
+          for (let i = 1; i < hull.length; i++) ctx.lineTo(hull[i].x, hull[i].y)
+          ctx.closePath()
+        }
+        ctx.lineJoin = 'round'
+        ctx.lineCap = 'round'
+        ctx.globalAlpha = 0.11
+        ctx.fillStyle = c.color
+        ctx.strokeStyle = c.color
+        ctx.lineWidth = hull.length === 1 ? 2 : HULL_PAD * 2
+        if (hull.length > 1) ctx.stroke()
+        ctx.fill()
+      }
+      ctx.globalAlpha = 1
+      ctx.lineWidth = 1.5 / k
 
       const dash: [number, number] = [4 / k, 4 / k]
       const solid: never[] = []
@@ -729,6 +1023,25 @@ function useCanvasGraph(
           )
         }
       }
+      // Circle names last, over everything, with a dark halo so they read
+      // wherever the bubble's top edge lands (nodes, edges, other bubbles).
+      ctx.font = `600 ${12 / k}px system-ui`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'bottom'
+      ctx.lineJoin = 'round'
+      ctx.lineWidth = 3.5 / k
+      ctx.strokeStyle = 'rgba(13, 12, 11, 0.85)'
+      for (const c of circles) {
+        const hull = hulls.get(c.id)
+        if (!hull || hull.length === 0) continue
+        const minY = Math.min(...hull.map((p) => p.y))
+        const cxLabel = hull.reduce((s, p) => s + p.x, 0) / hull.length
+        const ly = minY - HULL_PAD - 4 / k
+        ctx.strokeText(c.name, cxLabel, ly)
+        ctx.fillStyle = c.color
+        ctx.fillText(c.name, cxLabel, ly)
+      }
+      ctx.lineWidth = 1.5 / k
       ctx.restore()
     }
 
@@ -835,7 +1148,33 @@ function useCanvasGraph(
           bestEdgeDist = d
         }
       }
-      return bestEdge ? { kind: 'edge', id: bestEdge.edgeId } : null
+      if (bestEdge) return { kind: 'edge', id: bestEdge.edgeId }
+      // Finally, bubbles: inside the padded hull (or within the pad of it).
+      for (const c of circles) {
+        const hull = hulls.get(c.id)
+        if (!hull || hull.length === 0) continue
+        if (hull.length === 1) {
+          const dx = p.x - hull[0].x
+          const dy = p.y - hull[0].y
+          if (dx * dx + dy * dy <= HULL_PAD * HULL_PAD) return { kind: 'circle', id: c.id }
+          continue
+        }
+        let inside = hull.length >= 3
+        for (let i = 0; i < hull.length && inside; i++) {
+          const a = hull[i]
+          const b = hull[(i + 1) % hull.length]
+          if ((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x) < 0) inside = false
+        }
+        if (inside) return { kind: 'circle', id: c.id }
+        for (let i = 0; i < hull.length; i++) {
+          const a = hull[i]
+          const b = hull[(i + 1) % hull.length]
+          if (pointSegmentDistSq(p.x, p.y, a.x, a.y, b.x, b.y) <= HULL_PAD * HULL_PAD) {
+            return { kind: 'circle', id: c.id }
+          }
+        }
+      }
+      return null
     }
 
     const pointers = new Map<number, { x: number; y: number }>()
@@ -1009,7 +1348,7 @@ function useCanvasGraph(
       canvas.removeEventListener('wheel', onWheel)
       canvas.removeEventListener('keydown', onKeyDown)
     }
-  }, [nodes, links, focusId, onTap, onOpen, vault, pathNodeIds, viewApiRef])
+  }, [nodes, links, circles, focusId, onTap, onOpen, vault, pathNodeIds, viewApiRef])
 
   return canvasRef
 }

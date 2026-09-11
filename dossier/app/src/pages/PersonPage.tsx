@@ -11,6 +11,8 @@ import { formatPartialDate, parsePartialDate, timeAgo } from '../lib/dates'
 import { plainText, segmentBody } from '../lib/mentions'
 import { CUSTOM_TYPE_COLORS, type Person, type Relationship } from '../lib/models'
 import {
+  selectCircles,
+  selectCirclesOf,
   selectFollowUps,
   selectNotes,
   selectPeople,
@@ -102,6 +104,8 @@ function Facts({
   editing: boolean
   setEditing: (v: boolean) => void
 }) {
+  const records = useVaultStore((s) => s.records)
+  const circles = useMemo(() => selectCirclesOf(records, person.id), [records, person.id])
   if (editing) return <FactsForm person={person} done={() => setEditing(false)} />
 
   // Tags, likes, and dislikes are facets: each is a link into the home
@@ -117,7 +121,21 @@ function Facts({
             </Link>
           </span>
         ))
+  const circleChips =
+    circles.length === 0
+      ? undefined
+      : circles.map((c) => (
+          <Link
+            key={c.id}
+            to={`/?circle=${c.id}`}
+            className="circle-chip"
+            style={{ '--chip-color': c.color } as React.CSSProperties}
+          >
+            {c.name}
+          </Link>
+        ))
   const rows: [string, ReactNode][] = [
+    ['Circles', circleChips],
     ['Also called', person.nicknames.length ? csv(person.nicknames) : undefined],
     ['Job', [person.jobTitle, person.employer].filter(Boolean).join(' @ ') || undefined],
     ['Location', person.location],
@@ -225,8 +243,11 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     likes: person.likes,
     dislikes: person.dislikes,
     tags: person.tags,
+    circles: selectCirclesOf(records, person.id).map((c) => c.name),
   }
   const [form, setForm] = useState(initial)
+  const addCircle = useVaultStore((s) => s.addCircle)
+  const setPersonCircles = useVaultStore((s) => s.setPersonCircles)
   // Shared vocabulary across all people, so spellings converge (§4.1).
   const vocab = useMemo(() => {
     const collect = (pick: (p: Person) => string[]) => {
@@ -240,6 +261,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
       tags: collect((p) => p.tags),
       likes: collect((p) => p.likes),
       dislikes: collect((p) => p.dislikes),
+      circles: selectCircles(records).map((c) => c.name),
     }
   }, [records])
   const [isSelf, setIsSelf] = useState(Boolean(person.isSelf))
@@ -275,7 +297,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     </label>
   )
   const chips = (
-    key: 'nicknames' | 'likes' | 'dislikes' | 'tags',
+    key: 'nicknames' | 'likes' | 'dislikes' | 'tags' | 'circles',
     label: string,
     suggestions: string[] = [],
   ) => (
@@ -334,6 +356,15 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         tags: form.tags,
         isSelf: isSelf || undefined,
       })
+      // Circle chips are names; unknown names become new circles.
+      const ids: string[] = []
+      for (const name of form.circles) {
+        const existing = selectCircles(useVaultStore.getState().records).find(
+          (c) => c.name.toLowerCase() === name.toLowerCase(),
+        )
+        ids.push(existing ? existing.id : (await addCircle(name)).id)
+      }
+      await setPersonCircles(person.id, ids)
       done()
     } finally {
       setBusy(false)
@@ -395,6 +426,14 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
           {chips('dislikes', 'Dislikes', vocab.dislikes)}
           {chips('tags', 'Tags', vocab.tags)}
         </div>
+      </fieldset>
+      <fieldset className="field-group">
+        <legend>Circles</legend>
+        <p className="hint">
+          Groups this person belongs to — “college friends”, “DC polycule” — drawn as a
+          colored bubble on the graph. Type a new name to start one.
+        </p>
+        <div className="field-grid">{chips('circles', 'Circles', vocab.circles)}</div>
       </fieldset>
       <label className="toggle-row">
         <input type="checkbox" checked={isSelf} onChange={(e) => setIsSelf(e.target.checked)} />

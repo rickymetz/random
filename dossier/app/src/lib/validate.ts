@@ -6,6 +6,7 @@
  * or defaulted here.
  */
 import type {
+  Circle,
   DomainRecord,
   FollowUp,
   NoteEntry,
@@ -160,6 +161,20 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
         createdAt: num(r.createdAt),
       }
       return photo
+    }
+    case 'circle': {
+      const name = str(r.name, 100)?.trim()
+      if (!name) return null
+      const circle: Circle = {
+        kind: 'circle',
+        id: rid,
+        name,
+        color: /^#[0-9a-fA-F]{6}$/.test(String(r.color)) ? (r.color as string) : '#8aa4ff',
+        memberIds: [...new Set(strList(r.memberIds, 1000).filter((m) => ID_RE.test(m)))],
+        createdAt: num(r.createdAt),
+        updatedAt: num(r.updatedAt),
+      }
+      return circle
     }
     case 'settings': {
       const finite = (v: unknown, min: number, max: number): number | undefined =>

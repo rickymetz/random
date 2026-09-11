@@ -1848,3 +1848,86 @@ a.facet:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* ---------------------------------------------------------------- circles */
+
+/* Circle chip: name on a tinted pill, hue from --chip-color */
+.circle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.1rem 0.6rem 0.1rem 0.45rem;
+  margin: 0 var(--s1) var(--s1) 0;
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--chip-color, var(--text-4)) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chip-color, var(--text-4)) 45%, transparent);
+  color: var(--text);
+  font-size: var(--fs-meta);
+  text-decoration: none;
+}
+.circle-chip::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--chip-color, var(--text-4));
+}
+.circle-banner {
+  border-left-color: var(--chip-color, var(--accent));
+}
+.circle-banner .circle-chip {
+  margin: 0;
+}
+
+/* Membership dots on People rows */
+.circle-dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: var(--s2);
+  vertical-align: middle;
+}
+.circle-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Bubble card on the graph */
+.circle-peek .peek-body {
+  gap: var(--s2);
+}
+.circle-peek input[type='text'] {
+  background: var(--surface-1);
+}
+.circle-peek .members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+}
+.circle-peek .members li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.2rem 0.1rem 0.55rem;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  font-size: var(--fs-meta);
+}
+.circle-peek .members a {
+  color: var(--text);
+  text-decoration: none;
+}
+.circle-peek .members button {
+  min-height: 1.5rem;
+  min-width: 1.5rem;
+  width: 1.5rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  box-shadow: none;
+}

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../lib/db'
 import { mentionToken } from '../lib/mentions'
 import {
+  selectCircles,
+  selectCirclesOf,
   selectNotes,
   selectRelationships,
   selectRelationshipTypes,
@@ -276,6 +278,58 @@ describe('vault store', () => {
       (r) => r.kind === 'note' && r.personId === ada.id,
     )
     expect(orphanNotes).toHaveLength(0)
+  })
+
+  it('circles: create by name, membership, rename, and cascades', async () => {
+    const ada = await store().addPerson('Ada')
+    const bob = await store().addPerson('Bob')
+    const c1 = await store().addCircle('College friends')
+    const again = await store().addCircle('college FRIENDS')
+    expect(again.id).toBe(c1.id) // case-insensitive name reuse
+    const c2 = await store().addCircle('DC polycule')
+    expect(c1.color).not.toBe(c2.color) // auto-assigned distinct hues
+
+    await store().setPersonCircles(ada.id, [c1.id, c2.id])
+    await store().setPersonCircles(bob.id, [c1.id])
+    expect(selectCirclesOf(store().records, ada.id).map((c) => c.id).sort()).toEqual(
+      [c1.id, c2.id].sort(),
+    )
+    // Removing one keeps the other
+    await store().setPersonCircles(ada.id, [c2.id])
+    expect(selectCirclesOf(store().records, ada.id).map((c) => c.id)).toEqual([c2.id])
+
+    // Rename + recolor persist; members untouched
+    const freshC2 = selectCircles(store().records).find((c) => c.id === c2.id)!
+    await store().updateCircle({ ...freshC2, name: 'DC crew', color: '#a8d070' })
+    const renamed = selectCircles(store().records).find((c) => c.id === c2.id)!
+    expect(renamed).toMatchObject({ name: 'DC crew', color: '#a8d070', memberIds: [ada.id] })
+
+    // Deleting a person removes them from every circle
+    await store().removePerson(ada.id)
+    expect(selectCircles(store().records).every((c) => !c.memberIds.includes(ada.id))).toBe(true)
+    // Empty circles persist until deleted explicitly
+    expect(selectCircles(store().records).some((c) => c.id === c2.id)).toBe(true)
+    await store().removeCircle(c2.id)
+    expect(selectCircles(store().records).some((c) => c.id === c2.id)).toBe(false)
+    // People survive a circle delete
+    expect(store().records.has(bob.id)).toBe(true)
+  })
+
+  it('imported circles are sanitized: bad member ids dropped, bad color defaulted', async () => {
+    const ada = await store().addPerson('Ada')
+    await store().importRecords([
+      {
+        kind: 'circle',
+        id: 'c-import',
+        name: '  Book club ',
+        color: 'javascript:alert(1)',
+        memberIds: [ada.id, '<script>', 42, ada.id],
+      },
+    ])
+    const c = selectCircles(store().records).find((x) => x.id === 'c-import')!
+    expect(c.name).toBe('Book club')
+    expect(c.color).toMatch(/^#[0-9a-f]{6}$/i)
+    expect(c.memberIds).toEqual([ada.id])
   })
 
   it('security settings persist through the encrypted settings record', async () => {
