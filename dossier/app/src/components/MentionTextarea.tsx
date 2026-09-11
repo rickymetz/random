@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { mentionToken } from '../lib/mentions'
+import { rankPeople } from '../lib/names'
 import type { Person } from '../lib/models'
 
 /** Word characters for a mention query — Unicode-aware so "@José" works. */
@@ -57,20 +58,10 @@ export default function MentionTextarea({
   const suggestions = useMemo((): Suggestion[] => {
     if (query === null || dismissed) return []
     const q = query.toLowerCase().trim()
-    const rank = (p: Person): number => {
-      const names = [p.displayName, ...p.nicknames].map((n) => n.toLowerCase())
-      if (q === '') return 3
-      if (names.some((n) => n.startsWith(q))) return 0
-      if (names.some((n) => n.split(/\s+/).some((w) => w.startsWith(q)))) return 1
-      if (names.some((n) => n.includes(q))) return 2
-      return -1
-    }
-    const ranked = people
-      .map((p) => ({ p, r: rank(p) }))
-      .filter(({ r }) => r >= 0)
-      .sort((a, b) => a.r - b.r || a.p.displayName.localeCompare(b.p.displayName))
-      .slice(0, MAX_SUGGESTIONS)
-      .map(({ p }): Suggestion => ({ kind: 'person', person: p }))
+    const ranked: Suggestion[] = rankPeople(people, q, MAX_SUGGESTIONS).map((person) => ({
+      kind: 'person',
+      person,
+    }))
     const exact = people.some((p) => p.displayName.toLowerCase() === q)
     if (q.length >= 2 && !exact && onCreatePerson) {
       ranked.push({ kind: 'create', name: query.trim() })

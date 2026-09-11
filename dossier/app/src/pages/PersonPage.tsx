@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import PersonPicker from '../components/PersonPicker'
 import ChipInput from '../components/ChipInput'
 import MentionTextarea from '../components/MentionTextarea'
 import { mutualConnections, selectSelf, shortestPath } from '../lib/graphQueries'
@@ -571,22 +572,15 @@ function ConnectionSection({ person }: { person: Person }) {
         <p className="hint">No known chain connects you yet.</p>
       )}
       <div className="row wrap">
-        <label className="inline-check">
+        <label className="inline-check compare-with">
           Mutual connections with
-          <select
+          <PersonPicker
+            people={people.filter((p) => !p.isSelf && p.id !== person.id)}
             value={compareId}
-            onChange={(e) => setCompareId(e.target.value)}
-            aria-label="Compare mutual connections with"
-          >
-            <option value="">you</option>
-            {people
-              .filter((p) => !p.isSelf)
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.displayName}
-                </option>
-              ))}
-          </select>
+            onChange={setCompareId}
+            label="Compare mutual connections with"
+            placeholder="you — or type a name"
+          />
         </label>
       </div>
       {mutuals.length === 0 ? (
@@ -845,6 +839,8 @@ function RelationshipSection({ person }: { person: Person }) {
     [records, person.id],
   )
   const personById = useMemo(() => new Map(people.map((p) => [p.id, p])), [people])
+  const others = useMemo(() => people.filter((p) => p.id !== person.id), [people, person.id])
+  const addPerson = useVaultStore((s) => s.addPerson)
   const typeById = useMemo(
     () => new Map(selectRelationshipTypes(records).map((t) => [t.id, t])),
     [records],
@@ -939,21 +935,14 @@ function RelationshipSection({ person }: { person: Person }) {
       <form className="add-form" onSubmit={add}>
         <label className="span-2">
           Person
-          <select
+          <PersonPicker
+            people={others}
             value={otherId}
-            onChange={(e) => setOtherId(e.target.value)}
-            aria-label="Person"
-          >
-            <option value="">person…</option>
-            {people
-              .filter((p) => p.id !== person.id)
-              .sort((a, b) => a.displayName.localeCompare(b.displayName))
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.displayName}
-                </option>
-              ))}
-          </select>
+            onChange={setOtherId}
+            onCreate={addPerson}
+            label="Person"
+            placeholder="Type a name…"
+          />
         </label>
         <label>
           Relationship type

@@ -17,6 +17,7 @@ import {
   useState,
   type MutableRefObject,
 } from 'react'
+import PersonPicker from '../components/PersonPicker'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
 import { CIRCLE_COLORS, colorName, type Person, type Relationship } from '../lib/models'
@@ -912,21 +913,15 @@ function CirclePeek({
         {others.length > 0 && (
           <label className="add-member">
             <span className="sr-only">Add a person to {circle.name}</span>
-            <select
+            <PersonPicker
+              people={others}
               value=""
-              onChange={(e) => {
-                const id = e.target.value
+              onChange={(id) => {
                 if (id) void updateCircle({ ...circle, memberIds: [...circle.memberIds, id] })
               }}
-              aria-label={`Add a person to ${circle.name}`}
-            >
-              <option value="">+ Add someone…</option>
-              {others.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.displayName}
-                </option>
-              ))}
-            </select>
+              label={`Add a person to ${circle.name}`}
+              placeholder="+ Add someone…"
+            />
           </label>
         )}
       </div>

@@ -2361,3 +2361,63 @@ input[type='search']::-webkit-search-cancel-button {
     right: max(0.125rem, calc((100vw - 40rem) / 2 - 2rem));
   }
 }
+
+/* ------------------------------------------------------ person picker */
+.person-picker {
+  position: relative;
+  min-width: 0;
+}
+.person-picker input {
+  width: 100%;
+}
+.picked-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  max-width: 100%;
+  min-height: var(--ctl-h);
+  padding: 0 var(--s1) 0 var(--s2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill, 999px);
+  background: var(--surface-2);
+}
+.picked-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.picked-chip .icon {
+  min-width: var(--ctl-h);
+}
+.chip-suggestions button {
+  align-items: center;
+  gap: var(--s2);
+}
+.chip-suggestions li.active button {
+  background: var(--surface-3);
+}
+.picker-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+.picker-name .hint {
+  font-size: var(--fs-micro);
+}
+.compare-with {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.compare-with .person-picker {
+  flex: 1 1 12rem;
+}
+/* Inside a form label the chip must not inherit the label's small-caps
+   styling. */
+.picked-chip {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--fs-ui);
+  font-weight: 500;
+  color: var(--text);
+}

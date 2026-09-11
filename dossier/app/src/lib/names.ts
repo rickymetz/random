@@ -32,3 +32,30 @@ export function shortName(name: string): string {
 export function rowsToReveal(index: number, page: number): number {
   return Math.ceil((index + 1) / page) * page
 }
+
+/**
+ * Rank people for a typed query the way the @-mention picker does: whole
+ * name or nickname prefix first, then a word prefix, then a substring;
+ * an empty query lists everyone alphabetically. Returns at most `max`.
+ */
+export function rankPeople<P extends { displayName: string; nicknames: string[] }>(
+  people: readonly P[],
+  query: string,
+  max: number,
+): P[] {
+  const q = query.trim().toLowerCase()
+  const rank = (p: P): number => {
+    const names = [p.displayName, ...p.nicknames].map((n) => n.toLowerCase())
+    if (q === '') return 3
+    if (names.some((n) => n.startsWith(q))) return 0
+    if (names.some((n) => n.split(/\s+/).some((w) => w.startsWith(q)))) return 1
+    if (names.some((n) => n.includes(q))) return 2
+    return -1
+  }
+  return people
+    .map((p) => ({ p, r: rank(p) }))
+    .filter(({ r }) => r >= 0)
+    .sort((a, b) => a.r - b.r || a.p.displayName.localeCompare(b.p.displayName))
+    .slice(0, max)
+    .map(({ p }) => p)
+}

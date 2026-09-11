@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RAIL_LETTERS, letterOf, rowsToReveal, shortName } from './names'
+import { RAIL_LETTERS, letterOf, rankPeople, rowsToReveal, shortName } from './names'
 
 describe('letterOf', () => {
   it('folds accents to the base letter so headers match the collator order', () => {
@@ -41,5 +41,27 @@ describe('rowsToReveal', () => {
     expect(rowsToReveal(59, 60)).toBe(60)
     expect(rowsToReveal(60, 60)).toBe(120)
     expect(rowsToReveal(299, 60)).toBe(300)
+  })
+})
+
+describe('rankPeople', () => {
+  const p = (displayName: string, nicknames: string[] = []) => ({ displayName, nicknames })
+  const people = [p('Marcus Webb'), p('Priya Raman', ['Pri']), p('Sam Kim'), p('Amara Okafor'), p('Elena Sofia')]
+  it('prefers whole-name prefix, then word prefix, then substring', () => {
+    expect(rankPeople(people, 'ma', 10).map((x) => x.displayName)).toEqual([
+      'Marcus Webb', // whole-name prefix
+      'Amara Okafor', // word prefix
+      'Priya Raman', // substring (ra-ma-n)
+    ])
+    expect(rankPeople(people, 'kim', 10).map((x) => x.displayName)).toEqual(['Sam Kim'])
+    expect(rankPeople(people, 'pri', 10).map((x) => x.displayName)).toEqual(['Priya Raman'])
+    expect(rankPeople(people, 'zzz', 10)).toEqual([])
+  })
+  it('lists everyone alphabetically for an empty query, capped', () => {
+    expect(rankPeople(people, '', 3).map((x) => x.displayName)).toEqual([
+      'Amara Okafor',
+      'Elena Sofia',
+      'Marcus Webb',
+    ])
   })
 })
