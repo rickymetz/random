@@ -682,13 +682,16 @@ function NodePeek({
       aria-label={person.displayName}
     >
       <div className="peek-body">
-        <strong>{person.displayName}</strong>
+        <strong>
+          {person.displayName}
+          {person.isSelf && <span className="you-badge">you</span>}
+        </strong>
         {detail && <span className="hint">{detail}</span>}
       </div>
       <div className="row">
         <button onClick={onOpen}>Open</button>
         <button className="subtle" onClick={onFocus}>
-          Their connections
+          {person.isSelf ? 'Your connections' : 'Their connections'}
         </button>
         <button className="subtle icon" onClick={onClose} aria-label="Close">
           ×
