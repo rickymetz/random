@@ -84,6 +84,8 @@ interface VaultState {
   kdfLegacy: boolean
   /** Home-screen search query, preserved across navigation (memory only). */
   homeQuery: string
+  /** People-list paging window, kept across a dossier visit like the query. */
+  homePage: { key: string; limit: number }
 
   /** Quick re-unlock PIN armed for this browser session (§6.3). */
   pinArmed: boolean
@@ -131,6 +133,7 @@ interface VaultState {
   unregisterDraft: (personId: string) => void
   flushDrafts: () => Promise<void>
   setHomeQuery: (query: string) => void
+  setHomePage: (page: { key: string; limit: number }) => void
 
   addPerson: (displayName: string) => Promise<Person>
   updatePerson: (person: Person) => Promise<void>
@@ -350,6 +353,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       records: new Map(),
       epoch: state.epoch + 1,
       homeQuery: '',
+      homePage: { key: '', limit: 0 },
       pinArmed: pinArmed(),
       pinAttemptsLeft: pinAttemptsLeft(),
       pinDigits: pinLength(),
@@ -422,6 +426,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
     corrupted: 0,
     kdfLegacy: false,
     homeQuery: '',
+    homePage: { key: '', limit: 0 },
     pinArmed: false,
     pinAttemptsLeft: 0,
     pinDigits: 0,
@@ -610,6 +615,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       }),
 
     setHomeQuery: (homeQuery) => set({ homeQuery }),
+    setHomePage: (homePage) => set({ homePage }),
 
     addPerson: (displayName) =>
       enqueue(async () => {

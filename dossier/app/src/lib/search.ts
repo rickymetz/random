@@ -26,6 +26,8 @@ export function createIndex(): MiniSearch<PersonDoc> {
       prefix: true,
       fuzzy: 0.15,
       boost: { name: 3, tags: 2 },
+      // Every word must hit: "bike pump" should not list every mechanic.
+      combineWith: 'AND',
     },
   })
 }
@@ -131,14 +133,27 @@ export function searchPeople(index: MiniSearch<PersonDoc>, query: string): strin
  * sailboat" needs the sailboat visible in the result row).
  */
 export function matchSnippet(notes: readonly NoteEntry[], query: string): string | null {
-  const term = query.trim().toLowerCase().split(/\s+/)[0]
-  if (!term) return null
-  for (const r of notes) {
-    const text = plainText(r.body)
-    const at = text.toLowerCase().indexOf(term)
-    if (at >= 0) {
-      const start = Math.max(0, at - 24)
-      const end = Math.min(text.length, at + term.length + 40)
+  const phrase = query.trim().toLowerCase()
+  const first = phrase.split(/\s+/)[0]
+  if (!first) return null
+  // The whole phrase first, then its first word — so "bike pump" shows
+  // the pump line, not whichever note mentions a bike.
+  for (const term of phrase === first ? [first] : [phrase, first]) {
+    for (const r of notes) {
+      const text = plainText(r.body)
+      const at = text.toLowerCase().indexOf(term)
+      if (at < 0) continue
+      let start = Math.max(0, at - 24)
+      // Snap to a word boundary rather than cutting "…ow after the".
+      if (start > 0) {
+        const space = text.lastIndexOf(' ', start)
+        start = space > 0 && at - space < 40 ? space + 1 : start
+      }
+      let end = Math.min(text.length, at + term.length + 40)
+      if (end < text.length) {
+        const space = text.indexOf(' ', end)
+        if (space > 0 && space - end < 12) end = space
+      }
       return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`
     }
   }

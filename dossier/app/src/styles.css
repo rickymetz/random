@@ -2165,3 +2165,38 @@ input[type='search']::-webkit-search-cancel-button {
     }
   }
 }
+
+/* ------------------------------------------------- scale: list + graph */
+.list-count {
+  margin: 0 0 var(--s2);
+}
+.people ul > li.letter {
+  position: sticky;
+  top: calc(var(--appbar-h) + env(safe-area-inset-top));
+  z-index: 2;
+  padding: var(--s1) var(--s2);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.upcoming h2 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+.upcoming h2 button.subtle {
+  font-size: var(--fs-meta);
+  font-weight: 500;
+}
+.graph-status {
+  margin: 0 0 var(--s2);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+.chip.more {
+  color: var(--text-3);
+}

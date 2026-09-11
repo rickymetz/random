@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import { daysUntilDue, daysUntilNext, formatPartialDate } from '../lib/dates'
@@ -82,33 +82,41 @@ export default function PeoplePage() {
 
   // Long lists render in pages: the first screenful is instant on a
   // phone with hundreds of people, and scrolling (or the button, for
-  // keyboard and screen-reader users) reveals the rest.
-  // The window is keyed on the query/circle so a new search starts back
-  // at one page in the same render (no flash of the old, longer list).
+  // keyboard and screen-reader users) reveals the rest. The window lives
+  // in the store, keyed on query/circle, so Back from a dossier lands on
+  // the same rows the browser is restoring the scroll position to.
   const pageKey = `${circle?.id ?? ''}|${query.trim()}`
+  const homePage = useVaultStore((s) => s.homePage)
+  const setHomePage = useVaultStore((s) => s.setHomePage)
+  const limit = homePage.key === pageKey && homePage.limit > 0 ? homePage.limit : PAGE
   const pageKeyRef = useRef(pageKey)
   pageKeyRef.current = pageKey
-  const [window_, setWindow] = useState({ key: pageKey, limit: PAGE })
-  const limit = window_.key === pageKey ? window_.limit : PAGE
-  // Reads the key through a ref: the observer callback below is created
-  // once per (hasMore, limit) and would otherwise grow a stale key's
-  // window after the query changed.
-  const setLimit = (grow: (n: number) => number) =>
-    setWindow((w) => {
-      const key = pageKeyRef.current
-      return { key, limit: grow(w.key === key ? w.limit : PAGE) }
-    })
+  const growPage = () => {
+    const key = pageKeyRef.current
+    const cur = useVaultStore.getState().homePage
+    const base = cur.key === key && cur.limit > 0 ? cur.limit : PAGE
+    setHomePage({ key, limit: base + PAGE })
+  }
   const sentinelRef = useRef<HTMLLIElement>(null)
   const hasMore = people.length > limit
   useEffect(() => {
     const el = sentinelRef.current
     if (!el || !hasMore || typeof IntersectionObserver === 'undefined') return
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) setLimit((n) => n + PAGE)
-    })
+    // Start loading a couple of screens early so a fast scroll never
+    // hits the end of the page.
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) growPage()
+      },
+      { rootMargin: '800px 0px' },
+    )
     io.observe(el)
     return () => io.disconnect()
-  }, [hasMore, limit])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, limit, pageKey])
+  // Letter headers make a long A–Z scroll navigable; only for the plain
+  // list (a search or a circle is already a short, ranked set).
+  const browsing = !query.trim() && !circle && people.length > 40
 
   const create = async () => {
     if (busy) return
@@ -215,13 +223,29 @@ export default function PeoplePage() {
           + Add “{trimmed}”{circle ? ` to ${circle.name}` : ''}
         </button>
       )}
+      {browsing && (
+        <p className="hint list-count" aria-live="polite">
+          {people.length} people, A to Z
+        </p>
+      )}
       <ul>
-        {people.slice(0, limit).map((p) => (
-          <PersonRow key={p.id} person={p} query={trimmed} />
-        ))}
+        {people.slice(0, limit).map((p, i, shown) => {
+          const letter = p.displayName.charAt(0).toLocaleUpperCase()
+          const prev = i > 0 ? shown[i - 1].displayName.charAt(0).toLocaleUpperCase() : null
+          return (
+            <Fragment key={p.id}>
+              {browsing && letter !== prev && (
+                <li className="letter" aria-hidden="true">
+                  {letter}
+                </li>
+              )}
+              <PersonRow person={p} query={trimmed} />
+            </Fragment>
+          )
+        })}
         {hasMore && (
           <li ref={sentinelRef} className="list-more">
-            <button className="subtle" onClick={() => setLimit((n) => n + PAGE)}>
+            <button className="subtle" onClick={growPage}>
               Show more ({people.length - limit} remaining)
             </button>
           </li>
@@ -260,7 +284,22 @@ const PersonRow = memo(function PersonRow({ person, query }: { person: Person; q
     const q = query.toLowerCase()
     const nameHit = person.displayName.toLowerCase().includes(q) || detail.toLowerCase().includes(q)
     if (nameHit) return null
-    // Say WHY a circle-name hit matched, the way note hits do.
+    // Say WHY it matched, the way note hits do: a structured field, a
+    // circle, a tag — "the guy with the sailboat" needs the sailboat.
+    const has = (v?: string) => Boolean(v && v.toLowerCase().includes(q))
+    const nick = person.nicknames.find((n) => n.toLowerCase().includes(q))
+    if (nick) return `aka ${nick}`
+    if (has(person.location)) return `in ${person.location}`
+    const tag = person.tags.find((t) => t.toLowerCase().includes(q))
+    if (tag) return `tagged ${tag}`
+    const like = person.likes.find((t) => t.toLowerCase().includes(q))
+    if (like) return `likes ${like}`
+    const dislike = person.dislikes.find((t) => t.toLowerCase().includes(q))
+    if (dislike) return `dislikes ${dislike}`
+    if (has(person.howWeMet)) return `met: ${person.howWeMet}`
+    if (has(person.pronouns)) return person.pronouns ?? null
+    const contact = [person.contact?.phone, person.contact?.email, person.contact?.other].find(has)
+    if (contact) return contact
     const viaCircle = circles.find((c) => c.name.toLowerCase().includes(q))
     if (viaCircle) return `in ${viaCircle.name}`
     return matchSnippet(notes, query)
@@ -324,6 +363,7 @@ function PinFailureNotice() {
 }
 
 const HORIZON_DAYS = 30
+const UPCOMING_COLLAPSED = 3
 const EXPORT_NAG_DAYS = 7
 
 /** Re-render date math when the calendar day changes (midnight rollover). */
@@ -411,15 +451,26 @@ function Upcoming() {
         label: r.text,
       })
     }
-    return list.sort((a, b) => a.days - b.days).slice(0, 8)
+    return list.sort((a, b) => a.days - b.days)
   }, [records, today])
+  // Three rows by default: with hundreds of people the strip is always
+  // full, and it must not push the list itself below the fold.
+  const [expanded, setExpanded] = useState(false)
+  const shown = expanded ? items : items.slice(0, UPCOMING_COLLAPSED)
 
   if (items.length === 0) return null
   return (
     <section className="upcoming">
-      <h2>Upcoming</h2>
+      <h2>
+        Upcoming
+        {items.length > UPCOMING_COLLAPSED && (
+          <button className="subtle" onClick={() => setExpanded((v) => !v)}>
+            {expanded ? 'Show fewer' : `See all ${items.length}`}
+          </button>
+        )}
+      </h2>
       <ul>
-        {items.map((item) => (
+        {shown.map((item) => (
           <li key={item.key}>
             <span className={`days ${item.overdue ? 'overdue' : ''}`}>
               {item.overdue

@@ -370,9 +370,13 @@ created:
   Playwright profiling script under 4× CPU throttling. Design
   consequences: per-snapshot indexes for per-person lookups (notes,
   photos, avatar, circles) instead of record scans per row; the People
-  list renders in pages of 60 (sentinel + "Show more"); the graph
-  batches draw calls by style, cools faster and paints every other tick
-  above 150 nodes.
+  list renders in pages of 60 (sentinel + "Show more") with letter
+  headers and a capped Upcoming strip so the list stays above the fold;
+  search combines words with AND and every hit says why it matched
+  (field, tag, circle, or note snippet); the graph batches draw calls
+  by style, cools faster and paints every other tick above 150 nodes,
+  and past the label limit opens on your own connections (§4.3) with
+  "Show everyone" one tap away.
 - Target browsers: latest Safari (iOS/macOS), Chrome, Firefox, Edge. No
   legacy support.
 

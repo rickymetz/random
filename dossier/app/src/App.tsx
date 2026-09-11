@@ -1,5 +1,12 @@
 import { Suspense, lazy, useEffect, useState, useSyncExternalStore } from 'react'
-import { NavLink, Route, Routes, useParams } from 'react-router-dom'
+import {
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+  useNavigationType,
+  useParams,
+} from 'react-router-dom'
 import {
   DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_BACKGROUND_GRACE_SECONDS,
@@ -69,6 +76,19 @@ function useKeyboardInset() {
   }, [])
 }
 
+/**
+ * A hash router keeps the window scroll across routes, so tapping a tab
+ * from the bottom of a long list landed 2,000px down the next page.
+ * Reset on forward navigations only; Back keeps the browser's restore.
+ */
+function useScrollReset() {
+  const { pathname } = useLocation()
+  const navType = useNavigationType()
+  useEffect(() => {
+    if (navType === 'PUSH') window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+  }, [pathname, navType])
+}
+
 /** Warn this long before the inactivity lock fires (when the timer allows). */
 const LOCK_WARNING_MS = 15_000
 
@@ -91,6 +111,7 @@ export default function App() {
     void init()
   }, [init])
   useKeyboardInset()
+  useScrollReset()
 
   // Timer-driven locks save any in-progress capture draft as an encrypted
   // note first — a memory aid must not eat the fact you just typed. The

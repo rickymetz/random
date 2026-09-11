@@ -139,6 +139,8 @@ const NODE_R = 14
 const LABEL_ZOOM = 0.7
 // Degradation ladder (§4.3): labels thin out first as the graph grows.
 const LABEL_MAX_NODES = 250
+/** Circle chips shown inline before a “+N more” toggle. */
+const CIRCLE_CHIPS_INLINE = 6
 
 function initialsOf(name: string): string {
   return name
@@ -161,12 +163,36 @@ export default function GraphPage() {
   const records = useVaultStore((s) => s.records)
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
-  const focusId = params.get('focus')
+  const focusParam = params.get('focus')
   const circleFocusId = params.get('circle')
   const depth = params.get('depth') === '2' ? 2 : 1
   const pathTargetId = params.get('path')
   const [peek, setPeek] = useState<Tap>(null)
   const viewApiRef = useRef<ViewApi | null>(null)
+  const [arranging, setArranging] = useState(false)
+  const [showAllCircles, setShowAllCircles] = useState(false)
+
+  // Graceful degradation (§4.3): past the label limit a fit-all view is
+  // an unreadable hairball, so a big vault opens on your own connections
+  // instead. "Show everyone" (?all=1) is one tap away.
+  const self = useMemo(() => selectSelf(records), [records])
+  const peopleCount = useMemo(() => selectPeople(records).length, [records])
+  const bigGraph = peopleCount > LABEL_MAX_NODES
+  const showAll = params.get('all') === '1'
+  // Applied synchronously (not only via the URL) so the first layout is
+  // the small ego graph, never a 300-node simulation that then gets
+  // thrown away — and so the ego view fits itself like any cold start.
+  const autoFocusId =
+    bigGraph && !showAll && !focusParam && !circleFocusId && !pathTargetId
+      ? (self?.id ?? null)
+      : null
+  const focusId = focusParam ?? autoFocusId
+  useEffect(() => {
+    if (!autoFocusId) return
+    const next = new URLSearchParams(params)
+    next.set('focus', autoFocusId)
+    setParams(next, { replace: true })
+  }, [autoFocusId, params, setParams])
 
   const types = useMemo(
     () => selectRelationshipTypes(records).sort((a, b) => a.label.localeCompare(b.label)),
@@ -307,10 +333,20 @@ export default function GraphPage() {
     hiddenCircles,
   ])
 
+  // In an ego view only circles with someone on screen get a chip; a
+  // rail of twenty absent circles ahead of the link types was eleven
+  // screens wide on a phone.
+  const railCircles = useMemo(() => {
+    if (!focusId) return allCircles
+    const visible = new Set(nodes.map((n) => n.id))
+    return allCircles.filter((c) => c.memberIds.some((id) => visible.has(id)))
+  }, [allCircles, focusId, nodes])
+
   const focusName = useMemo(() => {
     if (!focusId) return undefined
     const p = records.get(focusId)
-    return p?.kind === 'person' ? p.displayName : undefined
+    if (p?.kind !== 'person') return undefined
+    return p.isSelf ? 'Your' : `${p.displayName}’s`
   }, [records, focusId])
 
   const vault = useVaultStore((s) => s.vault)
@@ -328,6 +364,7 @@ export default function GraphPage() {
     vault,
     pathNodeIds,
     viewApiRef,
+    setArranging,
   )
   const removeCircle = useVaultStore((s) => s.removeCircle)
   const clearCircleParam = () => {
@@ -349,7 +386,7 @@ export default function GraphPage() {
       <div className="graph-controls">
         {focusName && (
           <span className="chip focus-chip no-dot depth">
-            {focusName}’s connections
+            {focusName} connections
             <button
               aria-pressed={depth === 1}
               onClick={() => setDepth(1)}
@@ -370,9 +407,11 @@ export default function GraphPage() {
                 const next = new URLSearchParams(params)
                 next.delete('focus')
                 next.delete('depth')
+                if (bigGraph) next.set('all', '1')
                 setParams(next)
               }}
-              aria-label="Show everyone"
+              aria-label={bigGraph ? `Show everyone (${peopleCount})` : 'Show everyone'}
+              title={bigGraph ? `Show everyone (${peopleCount})` : 'Show everyone'}
             >
               ×
             </button>
@@ -405,12 +444,32 @@ export default function GraphPage() {
             </button>
           </span>
         )}
-        {allCircles.length > 0 && !focusedCircle && (
+        {types
+          .filter((t) => t.label !== 'mentioned')
+          .map((t) => (
+            <button
+              key={t.id}
+              className={`chip ${hiddenTypes.has(t.id) ? 'off' : ''}`}
+              style={{ '--chip-color': t.color } as React.CSSProperties}
+              aria-pressed={!hiddenTypes.has(t.id)}
+              onClick={() =>
+                setHiddenTypes((prev) => {
+                  const next = new Set(prev)
+                  if (next.has(t.id)) next.delete(t.id)
+                  else next.add(t.id)
+                  return next
+                })
+              }
+            >
+              {t.label}
+            </button>
+          ))}
+        {railCircles.length > 0 && !focusedCircle && (
           <span className="chip-group" role="group" aria-label="Circles">
             <span className="chip-group-label" aria-hidden="true">
               Circles
             </span>
-            {allCircles.map((c) => {
+            {(showAllCircles ? railCircles : railCircles.slice(0, CIRCLE_CHIPS_INLINE)).map((c) => {
               const n = c.memberIds.length
               const on = !hiddenCircles.has(c.id)
               return (
@@ -454,28 +513,17 @@ export default function GraphPage() {
                 </span>
               )
             })}
+            {railCircles.length > CIRCLE_CHIPS_INLINE && (
+              <button
+                className="chip no-dot more"
+                aria-expanded={showAllCircles}
+                onClick={() => setShowAllCircles((v) => !v)}
+              >
+                {showAllCircles ? 'fewer' : `+${railCircles.length - CIRCLE_CHIPS_INLINE} more`}
+              </button>
+            )}
           </span>
         )}
-        {types
-          .filter((t) => t.label !== 'mentioned')
-          .map((t) => (
-            <button
-              key={t.id}
-              className={`chip ${hiddenTypes.has(t.id) ? 'off' : ''}`}
-              style={{ '--chip-color': t.color } as React.CSSProperties}
-              aria-pressed={!hiddenTypes.has(t.id)}
-              onClick={() =>
-                setHiddenTypes((prev) => {
-                  const next = new Set(prev)
-                  if (next.has(t.id)) next.delete(t.id)
-                  else next.add(t.id)
-                  return next
-                })
-              }
-            >
-              {t.label}
-            </button>
-          ))}
         <button
           className={`chip ${showMentions ? '' : 'off'}`}
           aria-pressed={showMentions}
@@ -485,10 +533,15 @@ export default function GraphPage() {
         </button>
       </div>
       <p className="graph-legend">
-        Tap a label to hide or show that kind of link or circle. Dotted line = mentioned in
-        a note. Tinted areas are circles — tap one (or its ✎) to edit it; tap a person for
-        details.
+        {nodes.length > LABEL_MAX_NODES
+          ? 'Too many people to name at once: zoom in to see names, or pick a person or circle above.'
+          : 'Tap a label to hide or show that kind of link or circle. Dotted line = mentioned in a note. Tinted areas are circles — tap one (or its ✎) to edit it; tap a person for details.'}
       </p>
+      {arranging && nodes.length > 150 && (
+        <p className="graph-status" role="status">
+          Arranging {nodes.length} people…
+        </p>
+      )}
       <div className="graph-canvas-wrap">
         {focusedCircle && nodes.length === 0 ? (
           <div className="empty circle-empty" role="status">
@@ -907,6 +960,7 @@ function useCanvasGraph(
   vault: UnlockedVault | null,
   pathNodeIds: string[] | null,
   viewApiRef: MutableRefObject<ViewApi | null>,
+  onLayout: (running: boolean) => void,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // All three survive effect re-runs so a filter toggle or record edit
@@ -987,9 +1041,11 @@ function useCanvasGraph(
       // Big casts cool faster (~170 ticks instead of ~300): on a phone
       // each tick+paint of hundreds of nodes is tens of milliseconds, and
       // the extra settling buys no legibility.
-      .alphaDecay(simNodes.length > 150 ? 0.04 : 0.0228)
+      // Small ego views are readable after a second too — the long
+      // tail of drift just feels slow.
+      .alphaDecay(simNodes.length > 150 || simNodes.length < 30 ? 0.04 : 0.0228)
       // A warm layout barely stirs; a cold one settles from scratch.
-      .alpha(hasCachedPositions ? 0.08 : 1)
+      .alpha(hasCachedPositions ? 0.02 : 1)
 
     // Reduced motion: settle synchronously and paint once — no animated
     // layout, no reheats on circle changes.
@@ -1016,6 +1072,7 @@ function useCanvasGraph(
       reheat: () => {
         if (!reduceMotion) {
           canvas.dataset.layout = 'running'
+          onLayout(true)
           simulation.alpha(0.06).restart()
         } else scheduleRender()
       },
@@ -1023,8 +1080,10 @@ function useCanvasGraph(
 
     // Layout state for tooling/tests (the profiler waits for 'settled').
     canvas.dataset.layout = reduceMotion ? 'settled' : 'running'
+    onLayout(!reduceMotion)
     simulation.on('end.settle', () => {
       canvas.dataset.layout = 'settled'
+      onLayout(false)
       scheduleRender()
     })
     // Painting hundreds of nodes costs far more than stepping the
@@ -1264,7 +1323,11 @@ function useCanvasGraph(
         ctx.lineWidth = 1.5 / k
       }
       // Pass 2: name labels — thinned out on big graphs (§4.3 degradation).
-      const labelZoom = simNodes.length > LABEL_MAX_NODES ? 1.2 : LABEL_ZOOM
+      // Density, not just count, decides when names help: a 2-hop ego
+      // view of 85 people is a wall of text at 0.7; ten people in a
+      // circle deserve names even at the bubble's wider fit.
+      const n = simNodes.length
+      const labelZoom = n > LABEL_MAX_NODES ? 1.2 : n > 60 ? 1.0 : n <= 30 ? 0.55 : LABEL_ZOOM
       if (k >= labelZoom) {
         ctx.font = `${11 / k}px system-ui`
         ctx.fillStyle = '#8b857a'
@@ -1651,7 +1714,7 @@ function useCanvasGraph(
       canvas.removeEventListener('keydown', onKeyDown)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, links, focusId, circleFocusId, onTap, onOpen, vault, pathNodeIds, viewApiRef])
+  }, [nodes, links, focusId, circleFocusId, onTap, onOpen, vault, pathNodeIds, viewApiRef, onLayout])
 
   return canvasRef
 }
