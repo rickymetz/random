@@ -37,6 +37,10 @@ export default function PersonPage() {
   // Lifted so the sticky capture bar yields the bottom edge to the facts
   // form's sticky Save/Cancel while editing.
   const [editing, setEditing] = useState(false)
+  const noteVisit = useVaultStore((s) => s.noteVisit)
+  useEffect(() => {
+    if (id) void noteVisit(id)
+  }, [id, noteVisit])
 
   if (!person || person.kind !== 'person') {
     return (

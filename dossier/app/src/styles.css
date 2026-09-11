@@ -2170,6 +2170,10 @@ input[type='search']::-webkit-search-cancel-button {
 .list-count {
   margin: 0 0 var(--s2);
 }
+.people ul > li.letter h3 {
+  margin: 0;
+  font: inherit;
+}
 .people ul > li.letter {
   position: sticky;
   top: calc(var(--appbar-h) + env(safe-area-inset-top));
@@ -2199,4 +2203,161 @@ input[type='search']::-webkit-search-cancel-button {
 }
 .chip.more {
   color: var(--text-3);
+}
+
+/* ------------------------------------------------ home: recent + rail */
+.recent h2 {
+  margin: var(--s4) 0 var(--s2);
+}
+.list-heading {
+  margin: var(--s4) 0 var(--s1);
+}
+.list-heading .hint {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  margin-left: var(--s1);
+}
+.recent ul {
+  list-style: none;
+  display: flex;
+  gap: var(--s3);
+  margin: 0 calc(var(--gutter) * -1);
+  padding: 0 var(--gutter) var(--s1);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.recent.with-rail ul {
+  scroll-padding-inline-end: 1.5rem;
+}
+.recent ul::-webkit-scrollbar {
+  display: none;
+}
+.people .recent li {
+  border-bottom: none;
+  flex: 0 0 auto;
+}
+.recent-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s1);
+  width: 3.75rem;
+  min-height: var(--ctl-h);
+  color: var(--text-2);
+  font-size: 0.75rem;
+  text-decoration: none;
+  text-align: center;
+}
+.recent-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.people ul.with-rail {
+  padding-right: 1.25rem;
+}
+/* The rail is list-scoped: hidden until the list has scrolled up near
+   the top, so it never sits over Upcoming, Recent or the search box. */
+.letter-rail {
+  position: fixed;
+  right: max(0.125rem, env(safe-area-inset-right));
+  top: calc(var(--appbar-h) + env(safe-area-inset-top) + 1rem);
+  bottom: calc(6rem + env(safe-area-inset-bottom));
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 1.5rem;
+  padding: var(--s1) 0;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.letter-rail.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (max-width: 48rem) {
+  .letter-rail {
+    bottom: calc(var(--tabbar-h) + 5.5rem + env(safe-area-inset-bottom));
+  }
+}
+/* Landscape phones: use the full height; too short for 27 letters at a
+   readable size → sticky headers only. */
+@media (max-height: 34rem) {
+  .letter-rail {
+    top: calc(var(--appbar-h) + env(safe-area-inset-top) + 0.5rem);
+    bottom: 0.5rem;
+  }
+}
+@media (max-height: 24rem) {
+  .letter-rail {
+    display: none;
+  }
+}
+.letter-rail.dragging {
+  background: var(--surface-2);
+}
+.letter-rail:hover button {
+  color: var(--text-2);
+}
+.letter-rail button,
+.letter-rail .absent {
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-3);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  pointer-events: none; /* the rail handles pointers; buttons stay for AT */
+}
+.letter-rail .absent {
+  display: grid;
+  place-items: center;
+  color: var(--text-4);
+  opacity: 0.45;
+}
+.letter-rail button.active {
+  color: var(--accent);
+}
+.letter-rail button:focus-visible {
+  pointer-events: auto;
+  outline-offset: 0;
+  color: var(--accent);
+}
+.rail-bubble {
+  position: absolute;
+  right: 2.75rem;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--e-3);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 600;
+}
+@media (min-width: 48rem) {
+  /* Desktop: keep the rail inside the centred column's right gutter. */
+  .letter-rail {
+    right: max(0.125rem, calc((100vw - 40rem) / 2 - 2rem));
+  }
 }

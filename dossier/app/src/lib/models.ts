@@ -101,7 +101,14 @@ export interface Settings {
   remindersEnabled?: boolean
   /** Day-stamp (yyyy-mm-dd) of the last reminder notification shown. */
   lastReminderDay?: string
+  /** Dossiers opened most recently, newest first (§4.4 "Recent" row).
+   * Device-local like the rest of Settings: a restored backup starts
+   * the row again from what was recently updated. */
+  recentIds?: string[]
 }
+
+/** How many recently opened dossiers the home screen remembers. */
+export const RECENT_LIMIT = 8
 
 export const DEFAULT_AUTO_LOCK_MINUTES = 2
 export const DEFAULT_BACKGROUND_GRACE_SECONDS = 30

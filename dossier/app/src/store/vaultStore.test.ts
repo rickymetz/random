@@ -5,8 +5,10 @@ import {
   selectCircles,
   selectCirclesOf,
   selectNotes,
+  selectPeople,
   selectRelationships,
   selectRelationshipTypes,
+  selectSettings,
   useVaultStore,
 } from './vaultStore'
 
@@ -569,3 +571,46 @@ describe('vault store', () => {
     expect(person).toMatchObject({ kind: 'person', displayName: 'Ada' })
   })
 }, 120_000)
+
+describe('recent dossiers (noteVisit)', () => {
+  beforeEach(async () => {
+    await db.slots.clear()
+    await db.records.clear()
+    await db.blobs.clear()
+    await db.auth.clear()
+    useVaultStore.setState({
+      status: 'unknown',
+      vault: null,
+      records: new Map(),
+      corrupted: 0,
+      homeQuery: '',
+    })
+    await store().create('open sesame')
+  })
+
+  it('keeps the newest first, dedupes, caps, skips self, and prunes deletions', async () => {
+    const a = await store().addPerson('Ada')
+    const b = await store().addPerson('Bob')
+    const self = selectPeople(store().records).find((p) => p.isSelf)!
+    await store().noteVisit(a.id)
+    await store().noteVisit(b.id)
+    await store().noteVisit(a.id)
+    await store().noteVisit(self.id)
+    await store().noteVisit('not-a-person')
+    expect(selectSettings(store().records)?.recentIds).toEqual([a.id, b.id])
+    // Re-visiting the newest is a no-op write.
+    const before = selectSettings(store().records)
+    await store().noteVisit(a.id)
+    expect(selectSettings(store().records)).toBe(before)
+    // Cap.
+    const extra = []
+    for (let i = 0; i < 10; i++) extra.push(await store().addPerson(`P${i}`))
+    for (const p of extra) await store().noteVisit(p.id)
+    expect(selectSettings(store().records)?.recentIds).toHaveLength(8)
+    expect(selectSettings(store().records)?.recentIds?.[0]).toBe(extra[9].id)
+    // Deleting a person drops them from the row.
+    await store().removePerson(extra[9].id)
+    expect(selectSettings(store().records)?.recentIds?.[0]).toBe(extra[8].id)
+    expect(selectSettings(store().records)?.recentIds).not.toContain(extra[9].id)
+  })
+})

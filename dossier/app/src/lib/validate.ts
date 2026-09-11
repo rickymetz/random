@@ -17,6 +17,7 @@ import type {
   RelationshipType,
   Settings,
 } from './models'
+import { RECENT_LIMIT } from './models'
 
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/
 
@@ -191,7 +192,13 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
           typeof r.lastReminderDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.lastReminderDay)
             ? r.lastReminderDay
             : undefined,
+        recentIds: Array.isArray(r.recentIds)
+          ? r.recentIds
+              .filter((id): id is string => typeof id === 'string' && id.length <= 64)
+              .slice(0, RECENT_LIMIT)
+          : undefined,
       }
+      if (settings.recentIds?.length === 0) settings.recentIds = undefined
       return settings
     }
     default:

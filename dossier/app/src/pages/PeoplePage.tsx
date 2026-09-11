@@ -1,8 +1,18 @@
-import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import { daysUntilDue, daysUntilNext, formatPartialDate } from '../lib/dates'
 import type { Person } from '../lib/models'
+import { RAIL_LETTERS, letterOf, rowsToReveal, shortName } from '../lib/names'
 import { matchSnippet } from '../lib/search'
 import {
   searchPeopleIds,
@@ -17,6 +27,11 @@ import {
 /** Rows rendered before the list asks for more (scroll or button). */
 const PAGE = 60
 const collator = new Intl.Collator(undefined, { sensitivity: 'base' })
+/** Below this many people the plain list needs neither Recent nor a rail. */
+const RECENT_MIN_PEOPLE = 8
+const RAIL_MIN_PEOPLE = 40
+/** Recent-row length: six tiles fit a phone width with the sixth peeking. */
+const RECENT_SHOWN = 6
 
 /**
  * Search-first home screen (scenario S2): as-you-type full-text search over
@@ -116,7 +131,75 @@ export default function PeoplePage() {
   }, [hasMore, limit, pageKey])
   // Letter headers make a long A–Z scroll navigable; only for the plain
   // list (a search or a circle is already a short, ranked set).
-  const browsing = !query.trim() && !circle && people.length > 40
+  const plainList = !query.trim() && !circle
+  const showRecent = plainList && people.length > RECENT_MIN_PEOPLE
+  // Letter headers, the count and the rail only once the list is long
+  // enough to need them.
+  const browsing = plainList && people.length > RAIL_MIN_PEOPLE
+  const showRail = browsing
+
+  // Jump rail: reveal enough rows for the letter, then scroll its first
+  // row under the app bar once those rows exist. A jump that needs no
+  // paging scrolls at once and leaves nothing pending — a leftover
+  // pending letter would yank the page back on the next render.
+  // A keyboard/screen-reader jump also moves focus to the letter's first
+  // row, so the reading position follows the scroll; a finger drag
+  // leaves focus alone.
+  const [pendingJump, setPendingJump] = useState<{ letter: string; focus: boolean } | null>(null)
+  const jumpTo = useCallback(
+    (letter: string, focus = false) => {
+      const index = people.findIndex((p) => letterOf(p.displayName) === letter)
+      if (index < 0) return
+      const needed = rowsToReveal(index, PAGE)
+      const cur = useVaultStore.getState().homePage
+      const have = cur.key === pageKeyRef.current && cur.limit > 0 ? cur.limit : PAGE
+      if (needed > have) {
+        setHomePage({ key: pageKeyRef.current, limit: needed })
+        setPendingJump({ letter, focus })
+      } else {
+        scrollToLetter(letter, focus)
+      }
+    },
+    [people, setHomePage],
+  )
+  useLayoutEffect(() => {
+    if (!pendingJump) return
+    if (scrollToLetter(pendingJump.letter, pendingJump.focus)) setPendingJump(null)
+  }, [pendingJump, limit])
+  useEffect(() => {
+    setPendingJump(null)
+  }, [pageKey])
+
+  // The rail belongs to the list, not the page: it appears once the list
+  // has scrolled up near the top and hides again while the search box,
+  // Upcoming and Recent are in play (they sit under its column).
+  const listRef = useRef<HTMLUListElement>(null)
+  const [railVisible, setRailVisible] = useState(false)
+  useEffect(() => {
+    if (!showRail) {
+      setRailVisible(false)
+      return
+    }
+    let raf = 0
+    const check = () => {
+      raf = 0
+      const el = listRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      setRailVisible(r.top <= window.innerHeight * 0.45 && r.bottom > 120)
+    }
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(check)
+    }
+    check()
+    window.addEventListener('scroll', schedule, { passive: true })
+    window.addEventListener('resize', schedule)
+    return () => {
+      window.removeEventListener('scroll', schedule)
+      window.removeEventListener('resize', schedule)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [showRail, limit])
 
   const create = async () => {
     if (busy) return
@@ -198,6 +281,7 @@ export default function PeoplePage() {
       )}
       <KdfUpgradeNag />
       <PinFailureNotice />
+      {showRecent && <Recent people={sorted} withRail={showRail} />}
       {!trimmed && <BackupNag />}
       {!trimmed && <Upcoming />}
       {circleHits.length > 0 && (
@@ -224,19 +308,20 @@ export default function PeoplePage() {
         </button>
       )}
       {browsing && (
-        <p className="hint list-count" aria-live="polite">
-          {people.length} people, A to Z
-        </p>
+        <h2 className="list-heading">
+          All people <span className="hint">{people.length}</span>
+        </h2>
       )}
-      <ul>
+      {showRail && <LetterRail people={people} onJump={jumpTo} visible={railVisible} />}
+      <ul ref={listRef} className={showRail ? 'with-rail' : undefined}>
         {people.slice(0, limit).map((p, i, shown) => {
-          const letter = p.displayName.charAt(0).toLocaleUpperCase()
-          const prev = i > 0 ? shown[i - 1].displayName.charAt(0).toLocaleUpperCase() : null
+          const letter = letterOf(p.displayName)
+          const prev = i > 0 ? letterOf(shown[i - 1].displayName) : null
           return (
             <Fragment key={p.id}>
               {browsing && letter !== prev && (
-                <li className="letter" aria-hidden="true">
-                  {letter}
+                <li className="letter" data-letter={letter} role="presentation">
+                  <h3>{letter}</h3>
                 </li>
               )}
               <PersonRow person={p} query={trimmed} />
@@ -270,6 +355,196 @@ export default function PeoplePage() {
         </button>
       )}
     </div>
+  )
+}
+
+/**
+ * Scroll so the letter's first row sits right under the app bar and its
+ * sticky header. Not scrollIntoView on the header itself: a stuck sticky
+ * header is "already in view", so the browser wouldn't move.
+ */
+function scrollToLetter(letter: string, focusRow = false): boolean {
+  const header = document.querySelector<HTMLElement>(`li.letter[data-letter="${letter}"]`)
+  const row = header?.nextElementSibling as HTMLElement | null
+  if (!header || !row) return false
+  const bar = document.querySelector<HTMLElement>('.app-bar')?.getBoundingClientRect().height ?? 0
+  const top = row.getBoundingClientRect().top + window.scrollY - bar - header.offsetHeight
+  window.scrollTo({ top: Math.max(0, top), behavior: 'instant' })
+  if (focusRow) row.querySelector<HTMLElement>('a')?.focus({ preventScroll: true })
+  return true
+}
+
+/**
+ * Right-edge A–Z rail (§4.4): tap or drag to jump. Letters nobody files
+ * under are dimmed; a drag over one snaps to the nearest letter that has
+ * people. Underneath it is one keyboard stop — arrow keys move between
+ * letters that have people, Enter/Space jumps — and real buttons for
+ * screen readers.
+ */
+function LetterRail({
+  people,
+  onJump,
+  visible,
+}: {
+  people: Person[]
+  onJump: (letter: string, focus?: boolean) => void
+  visible: boolean
+}) {
+  const present = useMemo(() => new Set(people.map((p) => letterOf(p.displayName))), [people])
+  const usable = useMemo(() => RAIL_LETTERS.filter((l) => present.has(l)), [present])
+  const railRef = useRef<HTMLElement>(null)
+  const [active, setActive] = useState<string | null>(null)
+  const [focusLetter, setFocusLetter] = useState<string>(usable[0] ?? 'A')
+  const lastJump = useRef<string | null>(null)
+  const tabStop = usable.includes(focusLetter) ? focusLetter : usable[0]
+
+  const letterAt = (clientY: number): string | null => {
+    const rail = railRef.current
+    if (!rail) return null
+    const rect = rail.getBoundingClientRect()
+    const i = Math.floor(((clientY - rect.top) / rect.height) * RAIL_LETTERS.length)
+    const clamped = Math.max(0, Math.min(RAIL_LETTERS.length - 1, i))
+    // Snap to the nearest letter (looking down, then up) that has people.
+    for (let j = clamped; j < RAIL_LETTERS.length; j++) {
+      if (present.has(RAIL_LETTERS[j])) return RAIL_LETTERS[j]
+    }
+    for (let j = clamped - 1; j >= 0; j--) {
+      if (present.has(RAIL_LETTERS[j])) return RAIL_LETTERS[j]
+    }
+    return null
+  }
+  const drag = (e: React.PointerEvent) => {
+    const letter = letterAt(e.clientY)
+    if (!letter) return
+    setActive(letter)
+    if (lastJump.current !== letter) {
+      lastJump.current = letter
+      onJump(letter)
+    }
+  }
+  const release = () => {
+    setActive(null)
+    lastJump.current = null
+  }
+  const moveFocus = (letter: string) => {
+    setFocusLetter(letter)
+    railRef.current?.querySelector<HTMLButtonElement>(`button[data-letter="${letter}"]`)?.focus()
+  }
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const i = usable.indexOf(tabStop)
+    let next: string | undefined
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') next = usable[Math.min(usable.length - 1, i + 1)]
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = usable[Math.max(0, i - 1)]
+    else if (e.key === 'Home') next = usable[0]
+    else if (e.key === 'End') next = usable[usable.length - 1]
+    else if (e.key.length === 1) {
+      const typed = letterOf(e.key)
+      if (present.has(typed)) next = typed
+    }
+    if (!next) return
+    e.preventDefault()
+    moveFocus(next)
+  }
+  const activeIndex = active ? RAIL_LETTERS.indexOf(active) : -1
+  return (
+    <nav
+      ref={railRef}
+      className={`letter-rail ${active ? 'dragging' : ''} ${visible ? 'visible' : ''}`}
+      aria-label="Jump to letter"
+      aria-hidden={!visible}
+      onPointerDown={(e) => {
+        e.preventDefault()
+        railRef.current?.setPointerCapture(e.pointerId)
+        lastJump.current = null
+        drag(e)
+      }}
+      onPointerMove={(e) => {
+        if (e.buttons === 0) return
+        drag(e)
+      }}
+      onPointerUp={release}
+      onPointerCancel={release}
+      onLostPointerCapture={release}
+      onKeyDown={onKeyDown}
+    >
+      {RAIL_LETTERS.map((l) =>
+        present.has(l) ? (
+          <button
+            key={l}
+            type="button"
+            data-letter={l}
+            tabIndex={visible && l === tabStop ? 0 : -1}
+            className={l === active ? 'active' : ''}
+            // Pointer presses are handled by the rail itself (the buttons
+            // are pointer-events: none); keyboard activation has detail 0
+            // and also moves focus to the row it lands on.
+            onClick={(e) => {
+              if (e.detail === 0) onJump(l, true)
+            }}
+            onFocus={() => setFocusLetter(l)}
+            aria-label={`Jump to ${l === '#' ? '#, numbers and symbols' : l}`}
+          >
+            {l}
+          </button>
+        ) : (
+          // Letters nobody files under: visible as dimmed placeholders so
+          // the rail keeps its shape, nothing for assistive tech.
+          <span key={l} className="absent" aria-hidden="true">
+            {l}
+          </span>
+        ),
+      )}
+      {active && (
+        <span
+          className="rail-bubble"
+          aria-hidden="true"
+          style={{ top: `${((activeIndex + 0.5) / RAIL_LETTERS.length) * 100}%` }}
+        >
+          {active}
+        </span>
+      )}
+    </nav>
+  )
+}
+
+/**
+ * The last few dossiers you opened (§4.4), newest first — with hundreds
+ * of people, who you touched this week is what you scroll for. Kept in
+ * the encrypted, device-local Settings record. A fresh device (or a
+ * restore) has no visits yet, so the row pads out with the most
+ * recently updated people — always six, always "Recent".
+ */
+function Recent({ people, withRail }: { people: Person[]; withRail: boolean }) {
+  const records = useVaultStore((s) => s.records)
+  const recentIds = selectSettings(records)?.recentIds
+  const items = useMemo(() => {
+    const byId = new Map(people.map((p) => [p.id, p]))
+    const fromVisits = (recentIds ?? [])
+      .map((id) => byId.get(id))
+      .filter((p): p is Person => p !== undefined && !p.isSelf)
+    const seen = new Set(fromVisits.map((p) => p.id))
+    const fill = people
+      .filter((p) => !p.isSelf && !seen.has(p.id))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+    return [...fromVisits, ...fill].slice(0, RECENT_SHOWN)
+  }, [people, recentIds])
+  if (items.length === 0) return null
+  return (
+    <section className={`recent ${withRail ? 'with-rail' : ''}`} aria-labelledby="recent-heading">
+      <h2 id="recent-heading">Recent</h2>
+      <ul>
+        {items.map((p) => (
+          <li key={p.id}>
+            <Link to={`/person/${p.id}`} className="recent-item" aria-label={p.displayName}>
+              <Avatar person={p} size={40} />
+              <span className="recent-name" aria-hidden="true">
+                {shortName(p.displayName)}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
