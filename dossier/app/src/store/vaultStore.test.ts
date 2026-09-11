@@ -237,6 +237,18 @@ describe('vault store', () => {
     expect(selectNotes(store().records, ada.id)).toHaveLength(1)
   })
 
+  it('saveNote never resurrects a deleted person', async () => {
+    const ada = await store().addPerson('Ada')
+    await store().removePerson(ada.id)
+    // A draft flush racing the delete must not persist an orphan note.
+    await store().saveNote(ada.id, 'note for a person that no longer exists')
+    expect(selectNotes(store().records, ada.id)).toHaveLength(0)
+    const orphanNotes = [...store().records.values()].filter(
+      (r) => r.kind === 'note' && r.personId === ada.id,
+    )
+    expect(orphanNotes).toHaveLength(0)
+  })
+
   it('security settings persist through the encrypted settings record', async () => {
     await store().updateSecurity({ autoLockMinutes: 5, backgroundGraceSeconds: 120 })
     store().lock()

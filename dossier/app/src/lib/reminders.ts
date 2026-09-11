@@ -5,6 +5,7 @@
  * (§6.5: notifications must not out the app's contents).
  */
 import { daysUntilDue, daysUntilNext } from './dates'
+import { currentDisguise } from './disguise'
 import type { DomainRecord, Person } from './models'
 
 export function todayStamp(now: Date = new Date()): string {
@@ -61,14 +62,16 @@ export async function showGenericReminder(): Promise<boolean> {
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
         ])
       : null
+    // Title matches the installed disguise, not a fixed product name (§6.5).
+    const title = currentDisguise().name
     if (registration?.showNotification) {
-      await registration.showNotification('Ledger', {
+      await registration.showNotification(title, {
         body: 'You have a reminder.',
         tag: 'ledger-reminder',
       })
       return true
     }
-    new Notification('Ledger', { body: 'You have a reminder.', tag: 'ledger-reminder' })
+    new Notification(title, { body: 'You have a reminder.', tag: 'ledger-reminder' })
     return true
   } catch {
     // The in-app Upcoming view is the reliable fallback.

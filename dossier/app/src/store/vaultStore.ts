@@ -610,6 +610,10 @@ export const useVaultStore = create<VaultState>((set, get) => {
 
     saveNote: (personId, body) =>
       enqueue(async () => {
+      // Never resurrect a deleted person: a draft flushed while the
+      // person is being removed would persist an orphaned note (unseen
+      // in every UI, yet carried in exports).
+      if (!get().records.has(personId)) return
       const note: NoteEntry = {
         kind: 'note',
         id: crypto.randomUUID(),

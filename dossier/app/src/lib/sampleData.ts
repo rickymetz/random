@@ -68,39 +68,82 @@ const EDGES: [string, string, string][] = [
   ['Theo Martins', 'roommate', 'Sam Kim'],
   ['me', 'friend', 'Theo Martins'],
   ['Sam Kim', 'friend', 'Rosa Delgado'],
-  // Bridges between clusters
+  // Bridges between clusters. NOTE: no explicit Ivy–Dana edge — their
+  // link comes from the @mention note below, so a dashed derived edge
+  // actually shows on the graph (an explicit edge would suppress it).
   ['Elena Sofia', 'friend', 'Theo Martins'],
   ['Rosa Delgado', 'ex', 'Marcus Webb'],
   ['Ivy Chen', 'friend', 'Elena Sofia'],
-  ['Ivy Chen', 'friend', 'Dana Kim'],
   ['Bruno Costa', 'friend', 'Sam Kim'],
   ['Grace Liu', 'sibling', 'Priya Raman'],
   ['Grace Liu', 'friend', 'Nadia Osei'],
 ]
 
-/** [author, mentioned] — saved as notes; the store derives dashed edges. */
-const MENTION_NOTES: [string, string, (token: string) => string][] = [
-  ['Dana Kim', 'Ivy Chen', (t) => `Coffee at Little Fern — ${t} pulled a heart on the flat white`],
-  ['Theo Martins', 'Bruno Costa', (t) => `Wants to borrow ${t}'s van for the Sagres trip`],
+/**
+ * [author, mentioned, body, guard] — saved as notes; the store derives
+ * dashed mention edges. `guard` is a distinctive substring used to detect
+ * an already-seeded copy (person ids change if a person is re-created,
+ * so the id inside the mention token can't be the duplicate key).
+ */
+const MENTION_NOTES: [string, string, (token: string) => string, string][] = [
+  [
+    'Dana Kim',
+    'Ivy Chen',
+    (t) => `Coffee at Little Fern — ${t} pulled a heart on the flat white`,
+    'pulled a heart on the flat white',
+  ],
+  [
+    'Theo Martins',
+    'Bruno Costa',
+    (t) => `Wants to borrow ${t}'s van for the Sagres trip`,
+    'van for the Sagres trip',
+  ],
 ]
+
+/** Every seeded person carries this tag: it scopes re-run matching (a real
+ * contact who shares a name is never adopted into the cast) and makes the
+ * cast easy to find and clean up. */
+export const SAMPLE_TAG = 'sample'
 
 export interface SampleDataResult {
   peopleAdded: number
   edgesAdded: number
+  /** 'me'-anchored edges skipped because no person is marked as self. */
+  skippedNoSelf: number
 }
 
 export async function loadSampleData(): Promise<SampleDataResult> {
   const store = useVaultStore.getState()
+  // Only match people the loader itself created (sample tag): a real
+  // contact who happens to share a seeded name must never have fictional
+  // edges or notes attached to their dossier.
   const byName = new Map(
-    selectPeople(store.records).map((p) => [p.displayName.toLowerCase(), p]),
+    selectPeople(store.records)
+      .filter((p) => p.tags.includes(SAMPLE_TAG))
+      .map((p) => [p.displayName.toLowerCase(), p]),
   )
 
   let peopleAdded = 0
   const idOf = new Map<string, string>()
   for (const sample of CAST) {
+    const tags = [...(sample.tags ?? []), SAMPLE_TAG]
     const existing = byName.get(sample.name.toLowerCase())
     if (existing) {
       idOf.set(sample.name, existing.id)
+      // Repair a half-seeded person (addPerson succeeded, the field fill
+      // didn't): backfill only fields that are still empty.
+      if (!existing.jobTitle && sample.jobTitle) {
+        await store.updatePerson({
+          ...existing,
+          jobTitle: sample.jobTitle,
+          employer: existing.employer ?? sample.employer,
+          location: existing.location ?? sample.location,
+          howWeMet: existing.howWeMet ?? sample.howWeMet,
+          birthday: existing.birthday ?? sample.birthday,
+          likes: existing.likes.length ? existing.likes : (sample.likes ?? []),
+          tags: existing.tags.length > 1 ? existing.tags : tags,
+        })
+      }
       continue
     }
     const created = await store.addPerson(sample.name)
@@ -112,7 +155,7 @@ export async function loadSampleData(): Promise<SampleDataResult> {
       howWeMet: sample.howWeMet,
       birthday: sample.birthday,
       likes: sample.likes ?? [],
-      tags: sample.tags ?? [],
+      tags,
     }
     await store.updatePerson(filled)
     idOf.set(sample.name, created.id)
@@ -135,11 +178,18 @@ export async function loadSampleData(): Promise<SampleDataResult> {
   )
 
   let edgesAdded = 0
+  let skippedNoSelf = 0
   for (const [fromName, typeLabel, toName] of EDGES) {
     const fromId = resolve(fromName)
     const toId = resolve(toName)
     const type = typeByLabel.get(typeLabel)
-    if (!fromId || !toId || !type) continue
+    if (!type) continue
+    if (!fromId || !toId) {
+      // Only 'me' can be unresolvable; surface the skip instead of
+      // silently thinning the how-you-connect demo.
+      if (fromName === 'me' || toName === 'me') skippedNoSelf += 1
+      continue
+    }
     const key = [type.id, ...[fromId, toId].sort()].join('|')
     if (existingEdges.has(key)) continue
     await useVaultStore.getState().addRelationship(fromId, toId, type.id)
@@ -147,14 +197,14 @@ export async function loadSampleData(): Promise<SampleDataResult> {
     edgesAdded += 1
   }
 
-  for (const [authorName, mentionedName, body] of MENTION_NOTES) {
+  for (const [authorName, mentionedName, body, guard] of MENTION_NOTES) {
     const authorId = idOf.get(authorName)
-    const mentioned = CAST.find((c) => c.name === mentionedName)
-    const mentionedId = mentioned && idOf.get(mentioned.name)
+    const mentionedId = idOf.get(mentionedName)
     if (!authorId || !mentionedId) continue
     // Only on first load: a repeat run must not stack duplicate notes.
+    // Keyed on distinctive text, not ids — re-created people get new ids.
     const alreadyNoted = [...useVaultStore.getState().records.values()].some(
-      (r) => r.kind === 'note' && r.personId === authorId && r.body.includes(mentionedId),
+      (r) => r.kind === 'note' && r.personId === authorId && r.body.includes(guard),
     )
     if (alreadyNoted) continue
     await useVaultStore
@@ -162,5 +212,5 @@ export async function loadSampleData(): Promise<SampleDataResult> {
       .saveNote(authorId, body(mentionToken({ id: mentionedId, displayName: mentionedName })))
   }
 
-  return { peopleAdded, edgesAdded }
+  return { peopleAdded, edgesAdded, skippedNoSelf }
 }

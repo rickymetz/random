@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { MAX_PIN_ATTEMPTS } from '../lib/pin'
+import { PIN_MASK_SUPPORTED } from '../lib/platform'
 import { webAuthnAvailable } from '../lib/webauthn'
 import { useVaultStore } from '../store/vaultStore'
 
@@ -8,9 +9,11 @@ const MIN_PASSPHRASE_LENGTH = 8
 /**
  * Deliberately bland (REQUIREMENTS.md §6.5): no vault metadata, no counts,
  * no product branding — the mark is an abstract shape and the heading says
- * only what to do. autoComplete="off" keeps the vault passphrase out of
- * browser/OS password managers (§6.2: key material never leaves the
- * device). When a session PIN is armed it is the default quick path;
+ * only what to do. autoComplete="off" asks browsers not to offer saving
+ * the passphrase; most ignore it on password fields, so a user accepting
+ * their browser's save prompt can still sync it off-device — there is no
+ * reliable web-side block (§6.2 caveat). When a session PIN is armed it
+ * is the default quick path;
  * biometric unlock shows when an enrollment exists (§6.3). Both screens
  * link to each other.
  */
@@ -108,18 +111,19 @@ function PinUnlock({ onUsePassphrase }: { onUsePassphrase: () => void }) {
       <div className="unlock-card">
         <UnlockMark />
         <h1>Enter PIN</h1>
-        {/* Filled dots echo typed digits without revealing them. */}
-        {pinDigits > 0 && (
-          <div className="pin-dots" aria-hidden="true">
-            {Array.from({ length: pinDigits }, (_, i) => (
-              <span key={i} className={i < pin.length ? 'on' : undefined} />
-            ))}
-          </div>
-        )}
+        {/* One dot per typed digit — no empty slots: the locked screen
+            must not disclose the armed PIN's length (§6.5). */}
+        <div className="pin-dots" aria-hidden="true">
+          {Array.from({ length: pin.length }, (_, i) => (
+            <span key={i} className="on" />
+          ))}
+        </div>
         <input
           // A masked field that still gets the numeric keypad on iOS:
-          // type=password forces QWERTY there, so mask via CSS instead.
-          type="text"
+          // type=password forces QWERTY there, so mask via CSS where the
+          // property exists (Firefox lacks it — fall back to password
+          // rather than render the PIN in cleartext).
+          type={PIN_MASK_SUPPORTED ? 'text' : 'password'}
           className="pin-input"
           inputMode="numeric"
           pattern="[0-9]*"
@@ -230,7 +234,7 @@ function PassphraseForm({
         {mode === 'create' && (
           <>
             <label>
-              Repeat it
+              Repeat passphrase
               <input
                 type="password"
                 value={confirm}

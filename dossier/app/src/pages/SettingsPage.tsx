@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { destroyAllData } from '../lib/db'
 import {
   MAX_IMPORT_FILE_BYTES,
@@ -12,7 +13,7 @@ import {
 } from '../lib/models'
 import { DISGUISES, currentDisguise, setDisguise } from '../lib/disguise'
 import { MAX_PIN_ATTEMPTS } from '../lib/pin'
-import { getStorageStatus } from '../lib/platform'
+import { PIN_MASK_SUPPORTED, getStorageStatus } from '../lib/platform'
 import { requestNotificationPermission } from '../lib/reminders'
 import { loadSampleData } from '../lib/sampleData'
 import { loadAllBlobs, unlockVault } from '../lib/vault'
@@ -32,6 +33,7 @@ export default function SettingsPage() {
 
   return (
     <div className="settings">
+      <h1 className="sr-only">Settings</h1>
       <SecuritySection />
       <DisguiseSection />
       <ExportSection />
@@ -159,7 +161,7 @@ function SecuritySection() {
             <label className="field">
               <span>New PIN</span>
               <input
-                type="text"
+                type={PIN_MASK_SUPPORTED ? 'text' : 'password'}
                 className="pin-input"
                 inputMode="numeric"
                 pattern="[0-9]*"
@@ -174,7 +176,7 @@ function SecuritySection() {
             <label className="field">
               <span>Repeat PIN</span>
               <input
-                type="text"
+                type={PIN_MASK_SUPPORTED ? 'text' : 'password'}
                 className="pin-input"
                 inputMode="numeric"
                 pattern="[0-9]*"
@@ -556,13 +558,13 @@ function ImportSection() {
  */
 function SampleDataSection() {
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
+  const [message, setMessage] = useState<ReactNode>(null)
 
   const seed = async () => {
     if (busy) return
     if (
       !confirm(
-        'Add 14 fictional people with interconnected relationships to explore the graph? You can delete them individually later.',
+        "Add 14 fictional people (tagged 'sample') with interconnected relationships to explore the graph? You can delete them individually later.",
       )
     ) {
       return
@@ -570,12 +572,19 @@ function SampleDataSection() {
     setBusy(true)
     setMessage(null)
     try {
-      const { peopleAdded, edgesAdded } = await loadSampleData()
-      setMessage(
-        peopleAdded === 0 && edgesAdded === 0
-          ? 'Sample cast is already here.'
-          : `Added ${peopleAdded} people and ${edgesAdded} relationships — open the Graph tab.`,
-      )
+      const { peopleAdded, edgesAdded, skippedNoSelf } = await loadSampleData()
+      if (peopleAdded === 0 && edgesAdded === 0) {
+        setMessage('Sample cast is already here.')
+      } else {
+        setMessage(
+          <>
+            Added {peopleAdded} people and {edgesAdded} relationships — open the{' '}
+            <Link to="/graph">Graph</Link>.
+            {skippedNoSelf > 0 &&
+              ` ${skippedNoSelf} relationships to you were skipped because no person is marked "This is me" — mark one and load again.`}
+          </>,
+        )
+      }
     } catch {
       setMessage('Could not load the sample data — try again.')
     } finally {
@@ -593,11 +602,10 @@ function SampleDataSection() {
       <button onClick={() => void seed()} disabled={busy} aria-busy={busy}>
         {busy ? 'Adding…' : 'Load sample people'}
       </button>
-      {message && (
-        <p className="hint" role="status">
-          {message}
-        </p>
-      )}
+      {/* Always mounted so the polite live region reliably announces. */}
+      <p className="hint status-slot" role="status">
+        {message}
+      </p>
     </section>
   )
 }

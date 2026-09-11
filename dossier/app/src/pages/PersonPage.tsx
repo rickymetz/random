@@ -62,7 +62,7 @@ export default function PersonPage() {
           <h1>
             {person.displayName}
             {person.isSelf && (
-              <span className="you-badge" aria-label="This is you">
+              <span className="you-badge" title="This is you">
                 you
               </span>
             )}
@@ -91,7 +91,11 @@ export default function PersonPage() {
           Delete person
         </button>
       </footer>
-      {!editing && <CaptureBar person={person} />}
+      {/* Hidden, not unmounted, while the facts form is open: unmounting
+          would flush a half-typed draft into a permanent note with no
+          feedback; hiding just cedes the bottom edge to Save/Cancel and
+          the draft is still there afterwards. */}
+      <CaptureBar person={person} hidden={editing} />
     </article>
   )
 }
@@ -491,7 +495,7 @@ function useMemoMutuals(
   )
 }
 
-function CaptureBar({ person }: { person: Person }) {
+function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boolean }) {
   const records = useVaultStore((s) => s.records)
   const saveNote = useVaultStore((s) => s.saveNote)
   const registerDraft = useVaultStore((s) => s.registerDraft)
@@ -509,7 +513,13 @@ function CaptureBar({ person }: { person: Person }) {
     registerDraft(person.id, () => draftRef.current)
     return () => {
       const leftover = draftRef.current.trim()
-      if (leftover) void saveNote(person.id, leftover)
+      // Guard against resurrection: if this unmount is the person being
+      // DELETED, flushing would persist an orphaned note (invisible in
+      // every UI, but present in exports) for a dossier that no longer
+      // exists.
+      if (leftover && useVaultStore.getState().records.has(person.id)) {
+        void saveNote(person.id, leftover)
+      }
       unregisterDraft(person.id)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -541,7 +551,7 @@ function CaptureBar({ person }: { person: Person }) {
     }
   }
   return (
-    <section className="capture-bar">
+    <section className="capture-bar" hidden={hidden}>
       <MentionTextarea
         people={others}
         value={draft}
@@ -549,16 +559,27 @@ function CaptureBar({ person }: { person: Person }) {
         placeholder="Jot something… @ to link a person"
         autoFocus={isFresh}
       />
-      <div className="row">
-        <button className="primary" onClick={save} disabled={!draft.trim() || busy}>
-          {busy ? '…' : 'Save note'}
-        </button>
-        {savedFlash && (
-          <span className="hint saved" role="status">
-            Saved ✓
-          </span>
-        )}
-      </div>
+      {/* The Save row appears only once there is something to save — an
+          idle bar shouldn't spend two rows of bottom chrome. */}
+      {(draft.trim() !== '' || savedFlash || busy) && (
+        <div className="row">
+          <button
+            className="primary"
+            // Keep focus in the textarea on tap: a focus shift mid-tap
+            // repositions the bar/tab bar and the click misses (QA bug).
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={save}
+            disabled={!draft.trim() || busy}
+          >
+            {busy ? '…' : 'Save note'}
+          </button>
+          {savedFlash && (
+            <span className="hint saved" role="status">
+              Saved ✓
+            </span>
+          )}
+        </div>
+      )}
     </section>
   )
 }
@@ -767,7 +788,7 @@ function RelationshipSection({ person }: { person: Person }) {
       <ul className="edges">{edges.map(describe)}</ul>
       <form className="add-form" onSubmit={add}>
         <label className="span-2">
-          Link to someone
+          Person
           <select
             value={otherId}
             onChange={(e) => setOtherId(e.target.value)}
@@ -785,7 +806,7 @@ function RelationshipSection({ person }: { person: Person }) {
           </select>
         </label>
         <label>
-          As
+          Relationship type
           <select
             value={typeId}
             onChange={(e) => setTypeId(e.target.value)}
@@ -818,7 +839,7 @@ function RelationshipSection({ person }: { person: Person }) {
               />
             </label>
             <div className="row wrap">
-              <span className="swatches" role="radiogroup" aria-label="Type color">
+              <span className="swatches" role="group" aria-label="Type color">
                 {CUSTOM_TYPE_COLORS.map((color) => (
                   <button
                     key={color}
@@ -932,20 +953,48 @@ function PhotoSection({ personId }: { personId: string }) {
           {error}
         </p>
       )}
-      {lightbox && (
-        <div
-          className="lightbox"
-          role="dialog"
-          aria-label="Photo"
-          onClick={() => setLightbox(null)}
-        >
-          <img src={lightbox} alt="" />
-          <button className="subtle icon close" aria-label="Close photo">
-            ×
-          </button>
-        </div>
-      )}
+      {lightbox && <Lightbox url={lightbox} onClose={() => setLightbox(null)} />}
     </section>
+  )
+}
+
+/**
+ * Modal photo view: focus moves to Close on open and returns to the
+ * opener on close; Escape and any click dismiss.
+ */
+function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  const closeRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const opener = document.activeElement
+    closeRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      if (opener instanceof HTMLElement) opener.focus()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return (
+    <div
+      className="lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Photo"
+      onClick={onClose}
+    >
+      <img src={url} alt="" />
+      <button
+        ref={closeRef}
+        className="subtle icon close"
+        onClick={onClose}
+        aria-label="Close photo"
+      >
+        ×
+      </button>
+    </div>
   )
 }
 
@@ -992,7 +1041,7 @@ function PhotoThumb({
       )}
       <div className="photo-actions">
         {photo.isAvatar ? (
-          <span className="hint" aria-label="Current avatar">
+          <span className="hint" title="Current avatar">
             avatar ✓
           </span>
         ) : (
@@ -1110,6 +1159,13 @@ function PromotePanel({
   const [deleteAfter, setDeleteAfter] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const panelRef = useRef<HTMLFormElement>(null)
+
+  // The panel expands downward near the bottom of the notes list — bring
+  // it into view instead of leaving it under the page's bottom edge.
+  useEffect(() => {
+    panelRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [])
 
   const promote = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1165,7 +1221,7 @@ function PromotePanel({
   }
 
   return (
-    <form className="promote-panel" onSubmit={promote}>
+    <form ref={panelRef} className="promote-panel" onSubmit={promote}>
       <p className="panel-title">Save to a field</p>
       <label>
         Field

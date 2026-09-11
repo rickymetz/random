@@ -163,6 +163,7 @@ export default function GraphPage() {
 
   return (
     <div className="graph">
+      <h1 className="sr-only">Graph</h1>
       <div className="graph-controls">
         {focusName && (
           <span className="chip focus-chip no-dot">
@@ -252,6 +253,30 @@ export default function GraphPage() {
   )
 }
 
+/**
+ * Peek cards open from canvas taps with no natural focus target: move
+ * focus into the card so it's announced and Escape closes it, then hand
+ * focus back to the canvas.
+ */
+function usePeekFocus(onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  useEffect(() => {
+    const opener = document.activeElement
+    ref.current?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseRef.current()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      if (opener instanceof HTMLElement) opener.focus()
+    }
+  }, [])
+  return ref
+}
+
 /** Tap a node → peek card → through to the full dossier (§4.3). */
 function NodePeek({
   personId,
@@ -265,11 +290,18 @@ function NodePeek({
   onFocus: () => void
 }) {
   const records = useVaultStore((s) => s.records)
+  const cardRef = usePeekFocus(onClose)
   const person = records.get(personId)
   if (!person || person.kind !== 'person') return null
   const detail = [person.jobTitle, person.employer].filter(Boolean).join(' @ ')
   return (
-    <div className="peek-card" role="dialog" aria-label={person.displayName}>
+    <div
+      ref={cardRef}
+      tabIndex={-1}
+      className="peek-card"
+      role="dialog"
+      aria-label={person.displayName}
+    >
       <div className="peek-body">
         <strong>{person.displayName}</strong>
         {detail && <span className="hint">{detail}</span>}
@@ -292,6 +324,8 @@ function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) 
   const records = useVaultStore((s) => s.records)
   const addRelationship = useVaultStore((s) => s.addRelationship)
   const removeRelationship = useVaultStore((s) => s.removeRelationship)
+  const cardRef = usePeekFocus(onClose)
+  const [pendingType, setPendingType] = useState('')
   const edge = records.get(edgeId)
   const types = useMemo(
     () =>
@@ -317,7 +351,13 @@ function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) 
   }
 
   return (
-    <div className="peek-card" role="dialog" aria-label="Edit relationship">
+    <div
+      ref={cardRef}
+      tabIndex={-1}
+      className="peek-card"
+      role="dialog"
+      aria-label="Edit relationship"
+    >
       <div className="peek-body">
         <strong>
           {from.displayName} — {to.displayName}
@@ -328,14 +368,24 @@ function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) 
         </span>
       </div>
       <div className="row">
-        <select defaultValue="" onChange={(e) => void retype(e.target.value)} aria-label="Change type">
-          <option value="">change type…</option>
+        {/* Applied via the button, never on select change: arrow-keying
+            through a closed select fires change per step on Windows,
+            which would rewrite the relationship just by exploring. */}
+        <select
+          value={pendingType}
+          onChange={(e) => setPendingType(e.target.value)}
+          aria-label="Change type"
+        >
+          <option value="">retype…</option>
           {types.map((t) => (
             <option key={t.id} value={t.id}>
               {t.label}
             </option>
           ))}
         </select>
+        {pendingType && (
+          <button onClick={() => void retype(pendingType)}>Apply</button>
+        )}
         <button
           className="danger"
           onClick={() => {
@@ -606,8 +656,15 @@ function useCanvasGraph(
     }
 
     // Nearest node within a screen-space floor, so zoomed-out nodes stay
-    // tappable; then nearest edge segment.
-    const hitTest = (clientX: number, clientY: number): Tap | GraphNode | null => {
+    // tappable; then nearest edge segment. On touch the edge tolerance is
+    // tighter: in a dense cluster the space between nodes is laced with
+    // line segments, and a fat-finger miss should dismiss, not open a
+    // card with a destructive Remove.
+    const hitTest = (
+      clientX: number,
+      clientY: number,
+      coarse = false,
+    ): Tap | GraphNode | null => {
       const p = toGraphCoords(clientX, clientY)
       const hitR = Math.max(NODE_R, 18 / transform.k)
       let best: GraphNode | null = null
@@ -623,7 +680,7 @@ function useCanvasGraph(
         }
       }
       if (best) return best
-      const edgeR = 10 / transform.k
+      const edgeR = (coarse ? 6 : 10) / transform.k
       let bestEdge: GraphLink | null = null
       let bestEdgeDist = edgeR * edgeR
       for (const link of simLinks) {
@@ -720,7 +777,7 @@ function useCanvasGraph(
     const onPointerUp = (e: PointerEvent) => {
       pointers.delete(e.pointerId)
       if (moved < 6 && pointers.size === 0) {
-        const hit = hitTest(e.clientX, e.clientY)
+        const hit = hitTest(e.clientX, e.clientY, e.pointerType === 'touch')
         if (hit && 'name' in hit) onTap({ kind: 'node', id: (hit as GraphNode).id })
         else if (hit) onTap(hit as Tap)
         else onTap(null)

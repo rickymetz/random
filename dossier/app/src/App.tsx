@@ -1,10 +1,10 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState, useSyncExternalStore } from 'react'
 import { NavLink, Route, Routes, useParams } from 'react-router-dom'
 import {
   DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_BACKGROUND_GRACE_SECONDS,
 } from './lib/models'
-import { currentDisguise } from './lib/disguise'
+import { currentDisguise, subscribeDisguise } from './lib/disguise'
 import {
   hasDueItems,
   notificationsGranted,
@@ -179,11 +179,18 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlocked, remindersEnabled, lastReminderDay])
 
+  // Re-render the brand when the disguise changes in Settings.
+  const disguiseId = useSyncExternalStore(subscribeDisguise, () => currentDisguise().id)
+  void disguiseId
+
   if (status === 'unknown') return null
   if (status !== 'unlocked') return <UnlockPage mode={status === 'no-vault' ? 'create' : 'unlock'} />
 
   return (
     <div className="app">
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
       <header className="app-bar">
         {/* The brand echoes the disguise, not the product (§6.5). */}
         <span className="brand">{currentDisguise().name}</span>
@@ -209,7 +216,7 @@ export default function App() {
           Locking soon — touch anywhere to stay unlocked.
         </p>
       )}
-      <main>
+      <main id="main">
         <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<PeoplePage />} />
@@ -240,9 +247,12 @@ export default function App() {
           </span>
           Settings
         </NavLink>
+        {/* The everyday lock: unlike the header's panic Lock it flushes
+            any capture draft to a note and keeps the session PIN — a tab
+            tap must never eat the fact you just typed. */}
         <button
-          onClick={panicLock}
-          aria-label="Lock now (PIN is discarded; passphrase or biometrics to reopen)"
+          onClick={() => void timerLock()}
+          aria-label="Lock (drafts are saved; quick unlock stays armed)"
         >
           <span className="glyph" aria-hidden="true">
             {'◉'}

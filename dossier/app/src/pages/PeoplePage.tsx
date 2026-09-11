@@ -65,10 +65,16 @@ export default function PeoplePage() {
   const trimmed = query.trim()
   return (
     <div className="people">
+      <h1 className="sr-only">People</h1>
       <form onSubmit={submit}>
         <input
           type="search"
-          autoFocus
+          // Autofocus is a desktop convenience; on touch it pops the
+          // keyboard over the Upcoming strip on every visit to this tab.
+          autoFocus={
+            typeof window !== 'undefined' &&
+            window.matchMedia('(pointer: fine)').matches
+          }
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search people, facts, notes…"
@@ -128,7 +134,7 @@ function PersonRow({ person, query }: { person: Person; query: string }) {
         <span className="person-row-text">
           <strong>{person.displayName}</strong>
           {person.isSelf && (
-            <span className="you-badge" aria-label="This is you">
+            <span className="you-badge" title="This is you">
               you
             </span>
           )}
