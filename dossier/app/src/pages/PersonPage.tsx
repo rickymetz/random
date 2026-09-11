@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ChipInput from '../components/ChipInput'
@@ -70,27 +70,20 @@ export default function PersonPage() {
           {meta && <p className="person-meta">{meta}</p>}
         </div>
       </header>
+      {person.isSelf && (
+        <p className="banner">
+          This card is you. Link people to it and the app can show how you know
+          someone through others.
+        </p>
+      )}
       <Facts person={person} editing={editing} setEditing={setEditing} />
       <RelationshipSection person={person} />
       <ConnectionSection person={person} />
       <FollowUpSection personId={person.id} />
       <PhotoSection personId={person.id} />
       <NotesSection personId={person.id} />
-      <footer className="person-footer">
-        <button
-          className="danger"
-          onClick={async () => {
-            const warning = person.isSelf
-              ? `Delete ${person.displayName}? This is your “me” person — connection queries stop working until you mark someone else as you.`
-              : `Delete ${person.displayName} and everything about them?`
-            if (!confirm(warning)) return
-            await useVaultStore.getState().removePerson(person.id)
-            navigate('/')
-          }}
-        >
-          Delete person
-        </button>
-      </footer>
+      <MentionedInSection personId={person.id} />
+      <footer className="person-footer" />
       {/* Hidden, not unmounted, while the facts form is open: unmounting
           would flush a half-typed draft into a permanent note with no
           feedback; hiding just cedes the bottom edge to Save/Cancel and
@@ -111,25 +104,42 @@ function Facts({
 }) {
   if (editing) return <FactsForm person={person} done={() => setEditing(false)} />
 
-  const rows: [string, string | undefined][] = [
+  // Tags, likes, and dislikes are facets: each is a link into the home
+  // search so "everyone who likes karaoke" is one tap away.
+  const facet = (values: string[]) =>
+    values.length === 0
+      ? undefined
+      : values.map((v, i) => (
+          <span key={v}>
+            {i > 0 && ', '}
+            <Link to={`/?q=${encodeURIComponent(v)}`} className="facet">
+              {v}
+            </Link>
+          </span>
+        ))
+  const rows: [string, ReactNode][] = [
+    ['Also called', person.nicknames.length ? csv(person.nicknames) : undefined],
     ['Job', [person.jobTitle, person.employer].filter(Boolean).join(' @ ') || undefined],
     ['Location', person.location],
     ['Birthday', person.birthday && formatPartialDate(person.birthday)],
     ['How we met', person.howWeMet],
     ['Phone', person.contact?.phone],
     ['Email', person.contact?.email],
-    ['Likes', person.likes.length ? csv(person.likes) : undefined],
-    ['Dislikes', person.dislikes.length ? csv(person.dislikes) : undefined],
-    ['Tags', person.tags.length ? csv(person.tags) : undefined],
+    ['Likes', facet(person.likes)],
+    ['Dislikes', facet(person.dislikes)],
+    ['Tags', facet(person.tags)],
   ]
   const filled = rows.filter(([, v]) => v)
   return (
     <section>
       <div className="section-head">
         <h2>Details</h2>
-        <button className="quiet" onClick={() => setEditing(true)}>
-          Edit
-        </button>
+        <span className="row">
+          <CopyAsTextButton person={person} />
+          <button className="quiet" onClick={() => setEditing(true)}>
+            Edit
+          </button>
+        </span>
       </div>
       {filled.length === 0 ? (
         <p className="empty">
@@ -151,9 +161,56 @@ function Facts({
   )
 }
 
+/**
+ * The plain-text escape hatch (data outlives the tool): the dossier as
+ * readable text on the clipboard, with notes flattened to "@Name". The
+ * clipboard is the user's own device; this is the deliberate, per-person
+ * alternative to a plaintext export file (§4.5).
+ */
+function CopyAsTextButton({ person }: { person: Person }) {
+  const records = useVaultStore((s) => s.records)
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const copy = async () => {
+    const lines: string[] = [person.displayName]
+    if (person.nicknames.length) lines.push(`Also called: ${csv(person.nicknames)}`)
+    if (person.pronouns) lines.push(`Pronouns: ${person.pronouns}`)
+    const job = [person.jobTitle, person.employer].filter(Boolean).join(' @ ')
+    if (job) lines.push(`Job: ${job}`)
+    if (person.location) lines.push(`Location: ${person.location}`)
+    if (person.birthday) lines.push(`Birthday: ${formatPartialDate(person.birthday)}`)
+    if (person.howWeMet) lines.push(`How we met: ${person.howWeMet}`)
+    if (person.contact?.phone) lines.push(`Phone: ${person.contact.phone}`)
+    if (person.contact?.email) lines.push(`Email: ${person.contact.email}`)
+    if (person.likes.length) lines.push(`Likes: ${csv(person.likes)}`)
+    if (person.dislikes.length) lines.push(`Dislikes: ${csv(person.dislikes)}`)
+    if (person.tags.length) lines.push(`Tags: ${csv(person.tags)}`)
+    const notes = selectNotes(records, person.id)
+    if (notes.length) {
+      lines.push('', 'Notes:')
+      for (const n of notes) {
+        lines.push(`- ${new Date(n.createdAt).toLocaleDateString()}: ${plainText(n.body)}`)
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+      setState('copied')
+    } catch {
+      setState('failed')
+    }
+    setTimeout(() => setState('idle'), 2000)
+  }
+  return (
+    <button className="quiet" onClick={() => void copy()} aria-live="polite">
+      {state === 'copied' ? 'Copied ✓' : state === 'failed' ? 'Copy failed' : 'Copy as text'}
+    </button>
+  )
+}
+
 function FactsForm({ person, done }: { person: Person; done: () => void }) {
   const updatePerson = useVaultStore((s) => s.updatePerson)
   const records = useVaultStore((s) => s.records)
+  const navigate = useNavigate()
+  const currentSelf = useMemo(() => selectSelf(records), [records])
   const initial = {
     displayName: person.displayName,
     nicknames: person.nicknames,
@@ -229,7 +286,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         values={form[key]}
         onChange={(values) => setForm({ ...form, [key]: values })}
         suggestions={suggestions}
-        placeholder="type and press enter"
+        placeholder="type a word, then Enter"
       />
     </label>
   )
@@ -245,6 +302,17 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
       return
     }
     setDateError(null)
+    // Claiming "this is me" silently un-marks the current self — say so.
+    if (
+      isSelf &&
+      !person.isSelf &&
+      currentSelf &&
+      !confirm(
+        `Make ${form.displayName.trim() || person.displayName} “you”? ${currentSelf.displayName} will no longer be marked as you.`,
+      )
+    ) {
+      return
+    }
     setBusy(true)
     try {
       await updatePerson({
@@ -286,7 +354,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
           {field('displayName', 'Name', '', {}, 'span-2')}
           {chips('nicknames', 'Nicknames')}
           {field('pronouns', 'Pronouns')}
-          {field('birthday', 'Birthday', 'e.g. Jun 21 or 1984-06-21', {
+          {field('birthday', 'Birthday', 'Jun 21 (year optional)', {
             'aria-invalid': dateError ? true : undefined,
           })}
           {dateError && (
@@ -330,8 +398,26 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
       </fieldset>
       <label className="toggle-row">
         <input type="checkbox" checked={isSelf} onChange={(e) => setIsSelf(e.target.checked)} />
-        This is me (anchors "how you connect" queries)
+        <span>
+          This is me
+          <span className="hint"> — only one card can be you; it lets the app show how you know people through others.</span>
+        </span>
       </label>
+      {/* Deleting lives in edit mode, not next to the everyday note box. */}
+      <button
+        type="button"
+        className="danger"
+        onClick={async () => {
+          const warning = person.isSelf
+            ? `Delete ${person.displayName}? This is your “me” card — “how you connect” stops working until you mark someone else as you.`
+            : `Delete ${person.displayName} and everything about them? This cannot be undone.`
+          if (!confirm(warning)) return
+          await useVaultStore.getState().removePerson(person.id)
+          navigate('/')
+        }}
+      >
+        Delete this person
+      </button>
       <div className="form-actions">
         <button type="submit" className="primary" disabled={busy}>
           {busy ? '…' : 'Save'}
@@ -498,6 +584,7 @@ function useMemoMutuals(
 function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boolean }) {
   const records = useVaultStore((s) => s.records)
   const saveNote = useVaultStore((s) => s.saveNote)
+  const addPerson = useVaultStore((s) => s.addPerson)
   const registerDraft = useVaultStore((s) => s.registerDraft)
   const unregisterDraft = useVaultStore((s) => s.unregisterDraft)
   const [draft, setDraft] = useState('')
@@ -556,7 +643,9 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
         people={others}
         value={draft}
         onChange={setDraft}
-        placeholder="Jot something… @ to link a person"
+        onSubmit={() => void save()}
+        onCreatePerson={addPerson}
+        placeholder="Jot something… type @ to link a person"
         autoFocus={isFresh}
       />
       {/* The Save row appears only once there is something to save — an
@@ -621,7 +710,9 @@ function FollowUpSection({ personId }: { personId: string }) {
   return (
     <section>
       <h2>Follow-ups</h2>
-      {items.length === 0 && <p className="empty-inline">Nothing to chase.</p>}
+      {items.length === 0 && (
+        <p className="empty-inline">Nothing to remember for next time.</p>
+      )}
       <ul className="follow-ups">
         {items.map((f) => (
           <li key={f.id} className={f.done ? 'done' : ''}>
@@ -663,7 +754,7 @@ function FollowUpSection({ personId }: { personId: string }) {
             className="due"
             value={due}
             onChange={(e) => setDue(e.target.value)}
-            placeholder="e.g. Sep 20"
+            placeholder="Sep 20 (year optional)"
             aria-label="Due date (optional)"
             aria-invalid={dueError ? true : undefined}
           />
@@ -721,24 +812,30 @@ function RelationshipSection({ person }: { person: Person }) {
   const selectedDirected =
     typeId === 'new' ? newTypeDirected : (typeById.get(typeId)?.directed ?? false)
 
+  const first = person.displayName.split(' ')[0]
   const describe = (edge: Relationship) => {
     const type = typeById.get(edge.typeId)
     const outgoing = edge.fromId === person.id
     const other = personById.get(outgoing ? edge.toId : edge.fromId)
     if (!other) return null
-    // Read direction naturally: "parent of Bob" vs "Carol: parent of them".
-    const label =
-      type?.directed && !outgoing
-        ? `${type.label} them`
-        : `${type?.label ?? '?'}${type?.directed ? ' →' : ''}`
+    // Read as a sentence, never as an arrow: "Sam is boss of Marcus" /
+    // "June is parent of Marcus" / "mentioned Ivy in a note".
+    let label: string
+    if (edge.origin === 'mention') {
+      label = outgoing ? `${first} mentioned them in a note` : `mentioned ${first} in a note`
+    } else if (type?.directed) {
+      label = outgoing
+        ? `${first} is ${type.label} ${other.displayName.split(' ')[0]}`
+        : `${other.displayName.split(' ')[0]} is ${type.label} ${first}`
+    } else {
+      label = type?.label ?? 'linked'
+    }
     return (
       <li key={edge.id} className={edge.origin === 'mention' ? 'mention-edge' : ''}>
         <Link to={`/person/${other.id}`}>{other.displayName}</Link>
         <span className="edge-type" style={{ color: type?.color }}>
-          {type?.directed && !outgoing ? `${other.displayName.split(' ')[0]} is ` : ''}
           {label}
         </span>
-        {edge.origin === 'mention' && <em className="hint"> (from a mention)</em>}
         <button
           className="subtle icon"
           onClick={() => {
@@ -782,9 +879,11 @@ function RelationshipSection({ person }: { person: Person }) {
     <section>
       <div className="section-head">
         <h2>Relationships</h2>
-        <Link to={`/graph?focus=${person.id}`}>Their world →</Link>
+        <Link to={`/graph?focus=${person.id}`}>See on graph →</Link>
       </div>
-      {edges.length === 0 && <p className="empty-inline">No links yet.</p>}
+      {edges.length === 0 && (
+        <p className="empty-inline">No one linked yet — pick a person and how you know them.</p>
+      )}
       <ul className="edges">{edges.map(describe)}</ul>
       <form className="add-form" onSubmit={add}>
         <label className="span-2">
@@ -839,6 +938,7 @@ function RelationshipSection({ person }: { person: Person }) {
               />
             </label>
             <div className="row wrap">
+              <span className="hint">Color on the graph</span>
               <span className="swatches" role="group" aria-label="Type color">
                 {CUSTOM_TYPE_COLORS.map((color) => (
                   <button
@@ -852,15 +952,15 @@ function RelationshipSection({ person }: { person: Person }) {
                   />
                 ))}
               </span>
-              <label className="inline-check">
-                <input
-                  type="checkbox"
-                  checked={newTypeDirected}
-                  onChange={(e) => setNewTypeDirected(e.target.checked)}
-                />
-                directed
-              </label>
             </div>
+            <label className="inline-check">
+              <input
+                type="checkbox"
+                checked={newTypeDirected}
+                onChange={(e) => setNewTypeDirected(e.target.checked)}
+              />
+              One-way (like “parent of” or “boss of”)
+            </label>
           </div>
         )}
         {selectedDirected && (
@@ -870,7 +970,14 @@ function RelationshipSection({ person }: { person: Person }) {
             onClick={() => setOutward((v) => !v)}
             aria-label="Swap direction"
           >
-            {outward ? `${person.displayName.split(' ')[0]} → them` : `them → ${person.displayName.split(' ')[0]}`}
+            {(() => {
+              const label =
+                typeId === 'new' ? newType.trim() || 'the type' : (typeById.get(typeId)?.label ?? '')
+              const other = personById.get(otherId)?.displayName.split(' ')[0] ?? 'them'
+              return outward
+                ? `${first} is ${label} ${other} — switch`
+                : `${other} is ${label} ${first} — switch`
+            })()}
           </button>
         )}
       </form>
@@ -1059,30 +1166,48 @@ function PhotoThumb({
 
 /** Promotable targets for note triage (§4.1 inbox model). */
 const PROMOTE_TARGETS = [
+  { id: 'like', label: 'Like' },
+  { id: 'dislike', label: 'Dislike' },
+  { id: 'tag', label: 'Tag (a label, e.g. yoga, work)' },
   { id: 'jobTitle', label: 'Job title' },
   { id: 'employer', label: 'Employer' },
   { id: 'location', label: 'Location' },
-  { id: 'birthday', label: 'Birthday' },
   { id: 'howWeMet', label: 'How we met' },
+  { id: 'birthday', label: 'Birthday' },
   { id: 'phone', label: 'Phone' },
   { id: 'email', label: 'Email' },
-  { id: 'like', label: 'Like' },
-  { id: 'dislike', label: 'Dislike' },
-  { id: 'tag', label: 'Tag' },
 ] as const
 type PromoteTarget = (typeof PROMOTE_TARGETS)[number]['id']
+
+/** A note body rendered with @mentions as links. */
+function NoteBody({ body }: { body: string }) {
+  return (
+    <p>
+      {segmentBody(body).map((seg, i) =>
+        seg.type === 'text' ? (
+          <span key={i}>{seg.text}</span>
+        ) : (
+          <Link key={i} to={`/person/${seg.personId}`} className="mention">
+            @{seg.name}
+          </Link>
+        ),
+      )}
+    </p>
+  )
+}
 
 function NotesSection({ personId }: { personId: string }) {
   const records = useVaultStore((s) => s.records)
   const removeNote = useVaultStore((s) => s.removeNote)
   const notes = useMemo(() => selectNotes(records, personId), [records, personId])
   const [promotingId, setPromotingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   return (
     <section>
       <h2>Notes</h2>
       {notes.length === 0 && (
-        <p className="empty">Nothing yet — jot something below.</p>
+        <p className="empty">Nothing yet — jot something in the box below.</p>
       )}
       <ul className="notes">
         {notes.map((note) => (
@@ -1090,36 +1215,50 @@ function NotesSection({ personId }: { personId: string }) {
             <time dateTime={new Date(note.createdAt).toISOString()}>
               {timeAgo(note.createdAt)} · {new Date(note.createdAt).toLocaleDateString()}
             </time>
-            <p>
-              {segmentBody(note.body).map((seg, i) =>
-                seg.type === 'text' ? (
-                  <span key={i}>{seg.text}</span>
-                ) : (
-                  <Link key={i} to={`/person/${seg.personId}`} className="mention">
-                    @{seg.name}
-                  </Link>
-                ),
-              )}
-            </p>
-            <div className="note-actions">
-              <button
-                className="subtle"
-                onClick={() => setPromotingId(promotingId === note.id ? null : note.id)}
-                aria-expanded={promotingId === note.id}
-              >
-                → field
-              </button>
-              <button
-                className="subtle icon"
-                onClick={() => {
-                  if (confirm('Delete this note?')) void removeNote(note.id)
-                }}
-                aria-label="Delete note"
-              >
-                ×
-              </button>
-            </div>
-            {promotingId === note.id && (
+            {editingId === note.id ? (
+              <NoteEditor
+                personId={personId}
+                noteId={note.id}
+                body={note.body}
+                onDone={() => setEditingId(null)}
+              />
+            ) : (
+              <NoteBody body={note.body} />
+            )}
+            {editingId !== note.id && (
+              <div className="note-actions">
+                <button
+                  className="subtle"
+                  onClick={() => {
+                    setPromotingId(promotingId === note.id ? null : note.id)
+                  }}
+                  aria-expanded={promotingId === note.id}
+                >
+                  Save as detail…
+                </button>
+                <button
+                  className="subtle icon"
+                  onClick={() => {
+                    setPromotingId(null)
+                    setEditingId(note.id)
+                  }}
+                  aria-label="Edit note"
+                  title="Edit note"
+                >
+                  ✎
+                </button>
+                <button
+                  className="subtle icon"
+                  onClick={() => {
+                    if (confirm('Delete this note?')) void removeNote(note.id)
+                  }}
+                  aria-label="Delete note"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+            {promotingId === note.id && editingId !== note.id && (
               <PromotePanel
                 personId={personId}
                 noteId={note.id}
@@ -1127,6 +1266,102 @@ function NotesSection({ personId }: { personId: string }) {
                 onDone={() => setPromotingId(null)}
               />
             )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/** Inline edit of an existing note; mention edges follow the new text. */
+function NoteEditor({
+  personId,
+  noteId,
+  body,
+  onDone,
+}: {
+  personId: string
+  noteId: string
+  body: string
+  onDone: () => void
+}) {
+  const records = useVaultStore((s) => s.records)
+  const updateNote = useVaultStore((s) => s.updateNote)
+  const addPerson = useVaultStore((s) => s.addPerson)
+  const [draft, setDraft] = useState(body)
+  const [busy, setBusy] = useState(false)
+  const others = useMemo(
+    () => selectPeople(records).filter((p) => p.id !== personId),
+    [records, personId],
+  )
+  const save = async () => {
+    const next = draft.trim()
+    if (!next || busy) return
+    setBusy(true)
+    try {
+      if (next !== body) await updateNote(noteId, next)
+      onDone()
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="note-editor">
+      <MentionTextarea
+        people={others}
+        value={draft}
+        onChange={setDraft}
+        onSubmit={() => void save()}
+        onCreatePerson={addPerson}
+        placeholder="Edit note"
+        autoFocus
+      />
+      <div className="row">
+        <button className="primary" onClick={() => void save()} disabled={busy || !draft.trim()}>
+          Save
+        </button>
+        <button className="quiet" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Backlinks (the Obsidian instinct): every note by someone else that
+ * @mentions this person, with the sentence that explains why the dashed
+ * edge exists and a link back to its author.
+ */
+function MentionedInSection({ personId }: { personId: string }) {
+  const records = useVaultStore((s) => s.records)
+  const mentions = useMemo(
+    () =>
+      [...records.values()]
+        .filter((r) => r.kind === 'note' && r.personId !== personId && r.mentions.includes(personId))
+        .map((r) => {
+          const note = r as Extract<typeof r, { kind: 'note' }>
+          const author = records.get(note.personId)
+          return {
+            note,
+            authorName: author?.kind === 'person' ? author.displayName : 'Someone',
+          }
+        })
+        .sort((a, b) => b.note.createdAt - a.note.createdAt),
+    [records, personId],
+  )
+  if (mentions.length === 0) return null
+  return (
+    <section>
+      <h2>Mentioned in</h2>
+      <ul className="notes mentioned-in">
+        {mentions.map(({ note, authorName }) => (
+          <li key={note.id}>
+            <time dateTime={new Date(note.createdAt).toISOString()}>
+              <Link to={`/person/${note.personId}`}>{authorName}</Link> ·{' '}
+              {new Date(note.createdAt).toLocaleDateString()}
+            </time>
+            <NoteBody body={note.body} />
           </li>
         ))}
       </ul>
@@ -1154,8 +1389,15 @@ function PromotePanel({
   const records = useVaultStore((s) => s.records)
   const updatePerson = useVaultStore((s) => s.updatePerson)
   const removeNote = useVaultStore((s) => s.removeNote)
-  const [target, setTarget] = useState<PromoteTarget>('jobTitle')
-  const [text, setText] = useState(plainText(noteBody))
+  const [target, setTarget] = useState<PromoteTarget>('like')
+  // Prefill with the first line: a multi-line note is several facts, and
+  // the panel promotes one at a time.
+  const [text, setText] = useState(
+    plainText(noteBody)
+      .split('\n')
+      .map((l) => l.trim())
+      .find(Boolean) ?? '',
+  )
   const [deleteAfter, setDeleteAfter] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -1222,9 +1464,9 @@ function PromotePanel({
 
   return (
     <form ref={panelRef} className="promote-panel" onSubmit={promote}>
-      <p className="panel-title">Save to a field</p>
+      <p className="panel-title">Turn this note into a detail</p>
       <label>
-        Field
+        Which detail?
         <select
           value={target}
           onChange={(e) => setTarget(e.target.value as PromoteTarget)}
@@ -1238,7 +1480,7 @@ function PromotePanel({
         </select>
       </label>
       <label>
-        Value
+        Text to save
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}

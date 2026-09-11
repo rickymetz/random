@@ -1184,9 +1184,9 @@ section h2 {
 }
 
 .notes li {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0 var(--s2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
   padding: var(--s3) 0;
   border-bottom: 1px solid var(--line);
 }
@@ -1209,7 +1209,8 @@ section h2 {
 .note-actions {
   display: flex;
   gap: var(--s1);
-  align-items: start;
+  align-items: center;
+  justify-content: flex-end;
 }
 .note-actions .subtle {
   border: none;
@@ -1767,4 +1768,83 @@ body:has(.promote-panel) .capture-bar {
   main:has(.graph) {
     max-width: 64rem;
   }
+}
+
+/* ------------------------------------------------- review round 3 bits */
+
+/* Keyboard-selected mention suggestion */
+.mention-suggestions li.active button {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+/* Facet links on the details card (tags/likes → search) */
+a.facet {
+  color: var(--text);
+  text-decoration: underline dotted var(--line-2);
+  text-underline-offset: 3px;
+}
+a.facet:hover {
+  text-decoration-color: var(--text-3);
+}
+
+/* Inline note editor */
+.note-editor {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.note-editor .row {
+  margin: 0;
+}
+
+/* Backlinks: author + date on the meta line */
+.mentioned-in time a {
+  color: var(--text-2);
+  text-decoration: none;
+  font-weight: 550;
+}
+
+/* Graph: one-line legend under the chip rail + on-canvas view controls */
+.graph-legend {
+  margin: 0 0 var(--s2);
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+}
+.graph-view-controls {
+  position: absolute;
+  top: var(--s2);
+  right: var(--s2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  z-index: 2;
+}
+.graph-view-controls button {
+  width: 2.25rem;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0;
+  font-size: 1rem;
+  background: rgba(34, 33, 32, 0.85);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.chip.depth {
+  gap: 0.2rem;
+}
+.chip.depth button {
+  min-height: 0;
+  padding: 0 0.35rem;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  box-shadow: none;
+  font-size: var(--fs-meta);
+}
+.chip.depth button[aria-pressed='true'] {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }

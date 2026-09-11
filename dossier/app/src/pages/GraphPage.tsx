@@ -4,10 +4,19 @@ import {
   forceLink,
   forceManyBody,
   forceSimulation,
+  forceX,
+  forceY,
   type SimulationLinkDatum,
   type SimulationNodeDatum,
 } from 'd3-force'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
 import type { Relationship } from '../lib/models'
@@ -25,7 +34,39 @@ interface GraphNode extends SimulationNodeDatum {
   id: string
   name: string
   initials: string
+  /** Drawn radius — hubs are bigger (degree-scaled), like Obsidian. */
+  r: number
+  isSelf: boolean
   avatar?: { blobRecordId: string; mimeType: string }
+}
+
+/** Pan/zoom/fit handles the React controls call into the canvas effect. */
+interface ViewApi {
+  zoom: (factor: number) => void
+  fit: () => void
+}
+
+/** Filter state survives leaving and returning (per browser session). */
+const FILTER_KEY = 'graph-filters'
+function loadFilters(): { hidden: string[]; mentions: boolean } {
+  try {
+    const raw = sessionStorage.getItem(FILTER_KEY)
+    if (raw) return JSON.parse(raw) as { hidden: string[]; mentions: boolean }
+  } catch {
+    // Private windows may refuse; defaults are fine.
+  }
+  return { hidden: [], mentions: true }
+}
+function saveFilters(hidden: Set<string>, mentions: boolean): void {
+  try {
+    sessionStorage.setItem(FILTER_KEY, JSON.stringify({ hidden: [...hidden], mentions }))
+  } catch {
+    // ignore
+  }
+}
+
+function nodeRadius(degree: number): number {
+  return Math.min(NODE_R * 1.6, NODE_R * (0.85 + 0.25 * Math.log2(1 + degree)))
 }
 
 interface GraphLink extends SimulationLinkDatum<GraphNode> {
@@ -66,15 +107,22 @@ export default function GraphPage() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const focusId = params.get('focus')
+  const depth = params.get('depth') === '2' ? 2 : 1
   const pathTargetId = params.get('path')
   const [peek, setPeek] = useState<Tap>(null)
+  const viewApiRef = useRef<ViewApi | null>(null)
 
   const types = useMemo(
     () => selectRelationshipTypes(records).sort((a, b) => a.label.localeCompare(b.label)),
     [records],
   )
-  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set())
-  const [showMentions, setShowMentions] = useState(true)
+  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(
+    () => new Set(loadFilters().hidden),
+  )
+  const [showMentions, setShowMentions] = useState(() => loadFilters().mentions)
+  useEffect(() => {
+    saveFilters(hiddenTypes, showMentions)
+  }, [hiddenTypes, showMentions])
 
   // "Show on graph" from a dossier's how-you-connect section (§4.4).
   const pathInfo = useMemo(() => {
@@ -114,30 +162,50 @@ export default function GraphPage() {
 
     let visiblePeople = people
     if (focusId) {
-      // Ego view: the focused person plus direct connections (§4.3).
+      // Local graph (§4.3): the focused person plus everyone within
+      // `depth` hops, drawn as the induced subgraph — edges *among*
+      // neighbours stay, which is how you spot that his parents are
+      // married to each other.
       const keep = new Set([focusId])
-      for (const e of edges) {
-        if (e.fromId === focusId) keep.add(e.toId)
-        if (e.toId === focusId) keep.add(e.fromId)
+      let frontier = [focusId]
+      for (let hop = 0; hop < depth; hop++) {
+        const next: string[] = []
+        for (const e of edges) {
+          if (frontier.includes(e.fromId) && !keep.has(e.toId)) {
+            keep.add(e.toId)
+            next.push(e.toId)
+          }
+          if (frontier.includes(e.toId) && !keep.has(e.fromId)) {
+            keep.add(e.fromId)
+            next.push(e.fromId)
+          }
+        }
+        frontier = next
       }
       visiblePeople = people.filter((p) => keep.has(p.id))
-      edges = edges.filter((e) => e.fromId === focusId || e.toId === focusId)
     }
 
     const ids = new Set(visiblePeople.map((p) => p.id))
+    const visibleEdges = edges.filter((e) => ids.has(e.fromId) && ids.has(e.toId))
+    const degree = new Map<string, number>()
+    for (const e of visibleEdges) {
+      degree.set(e.fromId, (degree.get(e.fromId) ?? 0) + 1)
+      degree.set(e.toId, (degree.get(e.toId) ?? 0) + 1)
+    }
     const nodes: GraphNode[] = visiblePeople.map((p) => {
       const avatar = selectAvatar(records, p.id)
       return {
         id: p.id,
         name: p.displayName,
         initials: initialsOf(p.displayName),
+        r: nodeRadius(degree.get(p.id) ?? 0),
+        isSelf: Boolean(p.isSelf),
         avatar: avatar
           ? { blobRecordId: avatar.blobRecordId, mimeType: avatar.mimeType }
           : undefined,
       }
     })
-    const links: GraphLink[] = edges
-      .filter((e) => ids.has(e.fromId) && ids.has(e.toId))
+    const links: GraphLink[] = visibleEdges
       .map((e) => ({
         edgeId: e.id,
         source: e.fromId,
@@ -148,7 +216,7 @@ export default function GraphPage() {
         highlighted: pathInfo?.edgeIds.has(e.id) ?? false,
       }))
     return { nodes, links }
-  }, [records, types, hiddenTypes, showMentions, focusId, pathInfo])
+  }, [records, types, hiddenTypes, showMentions, focusId, depth, pathInfo])
 
   const focusName = useMemo(() => {
     if (!focusId) return undefined
@@ -158,19 +226,55 @@ export default function GraphPage() {
 
   const vault = useVaultStore((s) => s.vault)
   const onTap = useCallback((tap: Tap) => setPeek(tap), [])
+  const onOpen = useCallback((id: string) => navigate(`/person/${id}`), [navigate])
   const pathNodeIds = pathInfo?.reason === 'ok' ? pathInfo.nodeIds : null
-  const canvasRef = useCanvasGraph(nodes, links, focusId, onTap, vault, pathNodeIds)
+  const canvasRef = useCanvasGraph(
+    nodes,
+    links,
+    focusId,
+    onTap,
+    onOpen,
+    vault,
+    pathNodeIds,
+    viewApiRef,
+  )
+
+  const setDepth = (d: 1 | 2) => {
+    const next = new URLSearchParams(params)
+    if (d === 2) next.set('depth', '2')
+    else next.delete('depth')
+    setParams(next)
+  }
 
   return (
     <div className="graph">
       <h1 className="sr-only">Graph</h1>
       <div className="graph-controls">
         {focusName && (
-          <span className="chip focus-chip no-dot">
-            {focusName}’s world
+          <span className="chip focus-chip no-dot depth">
+            {focusName}’s connections
+            <button
+              aria-pressed={depth === 1}
+              onClick={() => setDepth(1)}
+              title="People they know"
+            >
+              1 hop
+            </button>
+            <button
+              aria-pressed={depth === 2}
+              onClick={() => setDepth(2)}
+              title="…and who those people know"
+            >
+              2 hops
+            </button>
             <button
               className="subtle"
-              onClick={() => clearParam('focus')}
+              onClick={() => {
+                const next = new URLSearchParams(params)
+                next.delete('focus')
+                next.delete('depth')
+                setParams(next)
+              }}
               aria-label="Show everyone"
             >
               ×
@@ -221,6 +325,10 @@ export default function GraphPage() {
           mentions
         </button>
       </div>
+      <p className="graph-legend">
+        Tap a label to hide or show that kind of link. Dotted line = mentioned in a
+        note. Tap a circle for details; bigger circles know more people.
+      </p>
       {nodes.length === 0 || (links.length === 0 && nodes.length <= 1) ? (
         <p className="empty">
           No people yet — <Link to="/">add someone</Link> and connect them, or load the
@@ -233,8 +341,19 @@ export default function GraphPage() {
             className="graph-canvas"
             tabIndex={0}
             role="application"
-            aria-label={`Relationship graph: ${nodes.length} people, ${links.length} connections. Arrow keys pan, plus and minus zoom, 0 resets. Person pages list the same relationships as text.`}
+            aria-label={`Relationship graph: ${nodes.length} people, ${links.length} connections. Arrow keys pan, plus and minus zoom, 0 fits everyone. Person pages list the same relationships as text.`}
           />
+          <div className="graph-view-controls" role="group" aria-label="View">
+            <button onClick={() => viewApiRef.current?.zoom(1.25)} aria-label="Zoom in">
+              +
+            </button>
+            <button onClick={() => viewApiRef.current?.zoom(1 / 1.25)} aria-label="Zoom out">
+              −
+            </button>
+            <button onClick={() => viewApiRef.current?.fit()} aria-label="Fit everyone in view">
+              ⤢
+            </button>
+          </div>
           {peek?.kind === 'node' && (
             <NodePeek
               personId={peek.id}
@@ -309,7 +428,7 @@ function NodePeek({
       <div className="row">
         <button onClick={onOpen}>Open</button>
         <button className="subtle" onClick={onFocus}>
-          Their world
+          Their connections
         </button>
         <button className="subtle icon" onClick={onClose} aria-label="Close">
           ×
@@ -410,8 +529,10 @@ function useCanvasGraph(
   links: GraphLink[],
   focusId: string | null,
   onTap: (tap: Tap) => void,
+  onOpen: (personId: string) => void,
   vault: UnlockedVault | null,
   pathNodeIds: string[] | null,
+  viewApiRef: MutableRefObject<ViewApi | null>,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // All three survive effect re-runs so a filter toggle or record edit
@@ -448,7 +569,10 @@ function useCanvasGraph(
       )
       .force('charge', forceManyBody().strength(-180))
       .force('center', forceCenter(0, 0))
-      .force('collide', forceCollide(NODE_R * 1.6))
+      // Orphans hover at the rim instead of being flung off-screen.
+      .force('x', forceX(0).strength(0.04))
+      .force('y', forceY(0).strength(0.04))
+      .force('collide', forceCollide<GraphNode>((n) => n.r * 1.5))
       // A warm layout barely stirs; a cold one settles from scratch.
       .alpha(hasCachedPositions ? 0.08 : 1)
 
@@ -531,8 +655,8 @@ function useCanvasGraph(
         ctx.stroke()
         if (link.directed) {
           const angle = Math.atan2(t.y! - s.y!, t.x! - s.x!)
-          const ax = t.x! - Math.cos(angle) * (NODE_R + 4)
-          const ay = t.y! - Math.sin(angle) * (NODE_R + 4)
+          const ax = t.x! - Math.cos(angle) * (t.r + 4)
+          const ay = t.y! - Math.sin(angle) * (t.r + 4)
           const size = 6 / Math.sqrt(k)
           ctx.setLineDash(solid)
           ctx.beginPath()
@@ -558,42 +682,39 @@ function useCanvasGraph(
         if (node.x == null || node.y == null || !inView(node.x, node.y)) continue
         visibleNodes.push(node)
         const isFocus = node.id === focusId
+        // The self node is the anchor of every "how you connect" query:
+        // it gets the accent ring even when not focused.
+        const ring = isFocus || node.isSelf ? '#d8a657' : '#4a463f'
+        const r = node.r
         const image = node.avatar ? avatarImages.get(node.avatar.blobRecordId) : undefined
         if (image instanceof HTMLImageElement) {
           ctx.save()
           ctx.beginPath()
-          ctx.arc(node.x, node.y, NODE_R, 0, Math.PI * 2)
+          ctx.arc(node.x, node.y, r, 0, Math.PI * 2)
           ctx.clip()
           // Cover-crop from a centered square so faces aren't stretched.
           const side = Math.min(image.naturalWidth, image.naturalHeight)
           const sx = (image.naturalWidth - side) / 2
           const sy = (image.naturalHeight - side) / 2
-          ctx.drawImage(
-            image,
-            sx,
-            sy,
-            side,
-            side,
-            node.x - NODE_R,
-            node.y - NODE_R,
-            NODE_R * 2,
-            NODE_R * 2,
-          )
+          ctx.drawImage(image, sx, sy, side, side, node.x - r, node.y - r, r * 2, r * 2)
           ctx.restore()
           ctx.beginPath()
-          ctx.arc(node.x, node.y, NODE_R, 0, Math.PI * 2)
-          ctx.strokeStyle = isFocus ? '#d8a657' : '#4a463f'
+          ctx.arc(node.x, node.y, r, 0, Math.PI * 2)
+          ctx.lineWidth = (node.isSelf ? 2.5 : 1.5) / k
+          ctx.strokeStyle = ring
           ctx.stroke()
         } else {
           ctx.beginPath()
-          ctx.arc(node.x, node.y, NODE_R, 0, Math.PI * 2)
+          ctx.arc(node.x, node.y, r, 0, Math.PI * 2)
           ctx.fillStyle = isFocus ? '#d8a657' : '#2b2926'
           ctx.fill()
-          ctx.strokeStyle = isFocus ? '#d8a657' : '#4a463f'
+          ctx.lineWidth = (node.isSelf ? 2.5 : 1.5) / k
+          ctx.strokeStyle = ring
           ctx.stroke()
           ctx.fillStyle = isFocus ? '#17140f' : '#ece8e1'
           ctx.fillText(node.initials, node.x, node.y)
         }
+        ctx.lineWidth = 1.5 / k
       }
       // Pass 2: name labels — thinned out on big graphs (§4.3 degradation).
       const labelZoom = simNodes.length > LABEL_MAX_NODES ? 1.2 : LABEL_ZOOM
@@ -601,7 +722,11 @@ function useCanvasGraph(
         ctx.font = `${11 / k}px system-ui`
         ctx.fillStyle = '#8b857a'
         for (const node of visibleNodes) {
-          ctx.fillText(node.name, node.x!, node.y! + NODE_R + 12 / k)
+          ctx.fillText(
+            node.isSelf ? `${node.name} (you)` : node.name,
+            node.x!,
+            node.y! + node.r + 12 / k,
+          )
         }
       }
       ctx.restore()
@@ -621,30 +746,47 @@ function useCanvasGraph(
     observer.observe(canvas.parentElement!)
     resize()
 
+    // Center and zoom the viewport onto a set of node ids (all, or a path).
+    const fitTo = (ids: Iterable<string>, maxK: number) => {
+      const points = [...ids]
+        .map((id) => positions.get(id))
+        .filter((p): p is { x: number; y: number } => Boolean(p))
+      if (points.length === 0) return
+      const minX = Math.min(...points.map((p) => p.x))
+      const maxX = Math.max(...points.map((p) => p.x))
+      const minY = Math.min(...points.map((p) => p.y))
+      const maxY = Math.max(...points.map((p) => p.y))
+      const pad = NODE_R * 4
+      const spanX = maxX - minX + pad * 2
+      const spanY = maxY - minY + pad * 2
+      const k = Math.min(maxK, Math.max(0.2, Math.min(width / spanX, height / spanY)))
+      transform.k = k
+      transform.x = -((minX + maxX) / 2) * k
+      transform.y = -((minY + maxY) / 2) * k
+      scheduleRender()
+    }
+    const fitAll = () => fitTo(simNodes.map((n) => n.id), 1.4)
+
+    viewApiRef.current = {
+      zoom: (factor) => {
+        transform.k = Math.min(4, Math.max(0.15, transform.k * factor))
+        scheduleRender()
+      },
+      fit: fitAll,
+    }
+
     // "Show on graph" should actually show it: once the layout has had a
     // moment to settle, center and zoom the viewport onto the path.
     let fitTimer: ReturnType<typeof setTimeout> | undefined
     const fitKey = pathNodeIds?.join(',') ?? ''
     if (pathNodeIds && pathNodeIds.length > 0 && lastFitKeyRef.current !== fitKey) {
       lastFitKeyRef.current = fitKey
-      fitTimer = setTimeout(() => {
-        const points = pathNodeIds
-          .map((id) => positions.get(id))
-          .filter((p): p is { x: number; y: number } => Boolean(p))
-        if (points.length === 0) return
-        const minX = Math.min(...points.map((p) => p.x))
-        const maxX = Math.max(...points.map((p) => p.x))
-        const minY = Math.min(...points.map((p) => p.y))
-        const maxY = Math.max(...points.map((p) => p.y))
-        const pad = NODE_R * 6
-        const spanX = maxX - minX + pad * 2
-        const spanY = maxY - minY + pad * 2
-        const k = Math.min(2, Math.max(0.3, Math.min(width / spanX, height / spanY)))
-        transform.k = k
-        transform.x = -((minX + maxX) / 2) * k
-        transform.y = -((minY + maxY) / 2) * k
-        scheduleRender()
-      }, 700)
+      fitTimer = setTimeout(() => fitTo(pathNodeIds, 2), 700)
+    } else if (!hasCachedPositions) {
+      // First layout of this session: fit everyone once it has settled,
+      // so nobody starts off-screen (orphans, big casts on a phone).
+      simulation.on('end', fitAll)
+      fitTimer = setTimeout(fitAll, 900)
     }
 
     const toGraphCoords = (clientX: number, clientY: number) => {
@@ -666,15 +808,15 @@ function useCanvasGraph(
       coarse = false,
     ): Tap | GraphNode | null => {
       const p = toGraphCoords(clientX, clientY)
-      const hitR = Math.max(NODE_R, 18 / transform.k)
       let best: GraphNode | null = null
-      let bestDist = hitR * hitR
+      let bestDist = Infinity
       for (const node of simNodes) {
         if (node.x == null || node.y == null) continue
+        const hitR = Math.max(node.r, 18 / transform.k)
         const dx = p.x - node.x
         const dy = p.y - node.y
         const d = dx * dx + dy * dy
-        if (d <= bestDist) {
+        if (d <= hitR * hitR && d < bestDist) {
           best = node
           bestDist = d
         }
@@ -799,6 +941,18 @@ function useCanvasGraph(
       scheduleRender()
     }
 
+    // Hover affordance (desktop): pointer cursor over a node or edge; a
+    // double-click on a node opens the dossier.
+    const onHover = (e: PointerEvent) => {
+      if (pointers.size > 0 || e.pointerType === 'touch') return
+      const hit = hitTest(e.clientX, e.clientY)
+      canvas.style.cursor = hit ? 'pointer' : 'grab'
+    }
+    const onDblClick = (e: MouseEvent) => {
+      const hit = hitTest(e.clientX, e.clientY)
+      if (hit && 'name' in hit) onOpen((hit as GraphNode).id)
+    }
+
     const onKeyDown = (e: KeyboardEvent) => {
       const pan = 40
       switch (e.key) {
@@ -822,10 +976,8 @@ function useCanvasGraph(
           transform.k = Math.max(0.15, transform.k / 1.2)
           break
         case '0':
-          transform.x = 0
-          transform.y = 0
-          transform.k = 1
-          break
+          fitAll()
+          return
         default:
           return
       }
@@ -835,24 +987,29 @@ function useCanvasGraph(
 
     canvas.addEventListener('pointerdown', onPointerDown)
     canvas.addEventListener('pointermove', onPointerMove)
+    canvas.addEventListener('pointermove', onHover)
     canvas.addEventListener('pointerup', onPointerUp)
     canvas.addEventListener('pointercancel', onPointerUp)
+    canvas.addEventListener('dblclick', onDblClick)
     canvas.addEventListener('wheel', onWheel, { passive: false })
     canvas.addEventListener('keydown', onKeyDown)
 
     return () => {
       alive = false
+      viewApiRef.current = null
       if (fitTimer !== undefined) clearTimeout(fitTimer)
       simulation.stop()
       observer.disconnect()
       canvas.removeEventListener('pointerdown', onPointerDown)
       canvas.removeEventListener('pointermove', onPointerMove)
+      canvas.removeEventListener('pointermove', onHover)
       canvas.removeEventListener('pointerup', onPointerUp)
       canvas.removeEventListener('pointercancel', onPointerUp)
+      canvas.removeEventListener('dblclick', onDblClick)
       canvas.removeEventListener('wheel', onWheel)
       canvas.removeEventListener('keydown', onKeyDown)
     }
-  }, [nodes, links, focusId, onTap, vault, pathNodeIds])
+  }, [nodes, links, focusId, onTap, onOpen, vault, pathNodeIds, viewApiRef])
 
   return canvasRef
 }

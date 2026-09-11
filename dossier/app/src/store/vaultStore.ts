@@ -10,7 +10,7 @@
  * mirrored here.
  */
 import { create } from 'zustand'
-import { extractMentions, stripMentionsOf } from '../lib/mentions'
+import { extractMentions, renameMentionsOf, stripMentionsOf } from '../lib/mentions'
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
   SETTINGS_ID,
@@ -136,6 +136,7 @@ interface VaultState {
   removePerson: (personId: string) => Promise<void>
   saveNote: (personId: string, body: string) => Promise<void>
   removeNote: (noteId: string) => Promise<void>
+  updateNote: (noteId: string, body: string) => Promise<void>
   addFollowUp: (personId: string, text: string, dueDate?: PartialDate) => Promise<void>
   toggleFollowUp: (followUpId: string) => Promise<void>
   removeFollowUp: (followUpId: string) => Promise<void>
@@ -562,15 +563,28 @@ export const useVaultStore = create<VaultState>((set, get) => {
     updatePerson: (person) =>
       enqueue(async () => {
       const puts: DomainRecord[] = [{ ...person, updatedAt: Date.now() }]
+      const reindex = new Set<string>([person.id])
       // At most one self: claiming "this is me" demotes the previous one.
       if (person.isSelf) {
         for (const r of get().records.values()) {
           if (r.kind === 'person' && r.isSelf && r.id !== person.id) {
             puts.push({ ...r, isSelf: undefined })
+            reindex.add(r.id)
           }
         }
       }
-      await apply(puts, [], puts.map((p) => p.id))
+      // A rename rewrites the label inside every note that mentions this
+      // person, so "@Old Name" never lingers in someone else's timeline.
+      const before = get().records.get(person.id)
+      if (before?.kind === 'person' && before.displayName !== person.displayName) {
+        for (const r of get().records.values()) {
+          if (r.kind === 'note' && r.mentions.includes(person.id)) {
+            puts.push({ ...r, body: renameMentionsOf(r.body, person.id, person.displayName) })
+            reindex.add(r.personId)
+          }
+        }
+      }
+      await apply(puts, [], [...reindex])
     }),
 
     removePerson: (personId) =>
@@ -626,6 +640,18 @@ export const useVaultStore = create<VaultState>((set, get) => {
       withNote.set(note.id, note)
       const { puts, deletes } = diffMentionEdges(withNote, personId)
       await apply([note, ...puts], deletes, [personId])
+    }),
+
+    updateNote: (noteId, body) =>
+      enqueue(async () => {
+      const note = get().records.get(noteId)
+      if (!note || note.kind !== 'note') return
+      const edited: NoteEntry = { ...note, body, mentions: extractMentions(body) }
+      const withEdit = new Map(get().records)
+      withEdit.set(noteId, edited)
+      // Mention edges follow the text exactly as they do on save/delete.
+      const { puts, deletes } = diffMentionEdges(withEdit, note.personId)
+      await apply([edited, ...puts], deletes, [note.personId])
     }),
 
     removeNote: (noteId) =>

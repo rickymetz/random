@@ -41,10 +41,10 @@ export default function SettingsPage() {
       <StorageSection />
       <SampleDataSection />
       <section className="danger-zone">
-        <h2>Danger</h2>
+        <h2>Delete everything</h2>
         <p className="hint">
-          Nothing ever leaves this device except encrypted backups, so this is the whole
-          story: wipe here, and it's gone.
+          Wipes every note and person from this device. There's no copy anywhere else
+          unless you saved a backup, so this really is gone.
         </p>
         <button className="danger" onClick={destroy}>
           Destroy all data
@@ -118,7 +118,7 @@ function SecuritySection() {
       else if (result === 'cancelled') setBioMsg(null)
       else if (result === 'unsupported')
         setBioMsg(
-          'This device/browser does not support biometric (PRF) unlock. If a "Ledger" passkey was created anyway, remove it in your system password settings.',
+          "Your phone or browser can't do this kind of unlock — use the PIN instead. If a passkey for this app was created anyway, you can remove it in your phone's password settings.",
         )
     } finally {
       setBioBusy(false)
@@ -146,13 +146,13 @@ function SecuritySection() {
       {pinArmed ? (
         <div className="row">
           <p className="hint" role="status">
-            PIN armed. It lives only in this app session — never on disk — and is gone
-            after the app fully closes or {MAX_PIN_ATTEMPTS} wrong tries; the passphrase
-            always works. The Lock button also discards it (panic); timed auto-locks
-            keep it.
+            PIN is on. It works until you fully close the app — then you'll enter your
+            passphrase once and can set it again. After {MAX_PIN_ATTEMPTS} wrong tries
+            it's cleared. The “Lock &amp; forget PIN” button at the top clears it too;
+            the tab-bar Lock and auto-lock keep it.
           </p>
           <button className="subtle" onClick={forgetPin}>
-            Disable
+            Turn off
           </button>
         </div>
       ) : (
@@ -189,22 +189,23 @@ function SecuritySection() {
               />
             </label>
             <label className="field">
-              <span>Vault passphrase</span>
+              <span>Your passphrase</span>
               <input
                 type="password"
                 value={pinPass}
                 onChange={(e) => setPinPass(e.target.value)}
-                placeholder="authorizes the PIN"
+                placeholder="to confirm it's you"
                 aria-label="Vault passphrase to authorize the PIN"
                 autoComplete="off"
               />
             </label>
             <button type="submit" disabled={pinBusy || !pin || !pinConfirm || !pinPass}>
-              {pinBusy ? '…' : 'Arm'}
+              {pinBusy ? '…' : 'Turn on'}
             </button>
           </div>
           <p className="hint">
-            Lasts until the app fully closes; re-arm here after a restart.
+            A short code for quick unlocking. It works until you fully close the app;
+            after that, enter your passphrase once and set it again here.
           </p>
         </form>
       )}
@@ -214,34 +215,34 @@ function SecuritySection() {
         </p>
       )}
 
-      <h3>Biometric unlock</h3>
+      <h3>Face ID / fingerprint unlock</h3>
       {!webAuthnAvailable() ? (
-        <p className="hint">Not available in this browser.</p>
+        <p className="hint">Your browser can't do this — use the PIN instead.</p>
       ) : biometricEnrolled ? (
         <div className="row">
           <p className="hint" role="status">
-            Enrolled — Face ID / fingerprint opens the vault. Removing here deletes the
-            app's copy; the passkey itself lives in your system password settings.
+            On — your face or fingerprint opens the app. Turning it off here removes
+            the app's copy; the passkey itself lives in your phone's password settings.
           </p>
           <button className="subtle" onClick={() => void removeBiometric().catch(() => {})}>
-            Remove
+            Turn off
           </button>
         </div>
       ) : (
         <form className="row wrap" onSubmit={enroll}>
           <label className="field">
-            <span>Vault passphrase</span>
+            <span>Your passphrase</span>
             <input
               type="password"
               value={bioPass}
               onChange={(e) => setBioPass(e.target.value)}
-              placeholder="authorizes enrollment"
+              placeholder="to confirm it's you"
               aria-label="Vault passphrase to authorize biometrics"
               autoComplete="off"
             />
           </label>
           <button type="submit" disabled={bioBusy || !bioPass}>
-            {bioBusy ? '…' : 'Enroll'}
+            {bioBusy ? 'Waiting for your phone…' : 'Turn on'}
           </button>
         </form>
       )}
@@ -254,7 +255,7 @@ function SecuritySection() {
       <h3>Auto-lock</h3>
       <div className="row wrap">
         <label className="inline-check">
-          After inactivity
+          When I stop using it
           <select
             value={settings?.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES}
             onChange={(e) => {
@@ -279,7 +280,7 @@ function SecuritySection() {
           </select>
         </label>
         <label className="inline-check">
-          After backgrounding
+          When I switch to another app
           <select
             value={settings?.backgroundGraceSeconds ?? DEFAULT_BACKGROUND_GRACE_SECONDS}
             onChange={(e) =>
@@ -300,7 +301,7 @@ function SecuritySection() {
         </span>
       </div>
 
-      <h3>Discretion</h3>
+      <h3>Privacy</h3>
       <div className="column">
         <label className="inline-check">
           <input
@@ -329,7 +330,7 @@ function SecuritySection() {
               void changeSecurity({ shakeToLock: enable })
             }}
           />
-          Shake to lock (three hard jolts panic-lock the vault)
+          Shake the phone three times to lock instantly
         </label>
         <label className="inline-check">
           <input
@@ -341,8 +342,8 @@ function SecuritySection() {
               void changeSecurity({ remindersEnabled: enable })
             }}
           />
-          Daily reminder notification — always generic (“You have a reminder”), never a
-          name
+          Daily reminder — the notification only ever says “You have a reminder”, never
+          who it's about
         </label>
       </div>
     </section>
@@ -355,10 +356,11 @@ function DisguiseSection() {
   const base = import.meta.env.BASE_URL
   return (
     <section>
-      <h2>Appearance</h2>
+      <h2>Home-screen name &amp; icon</h2>
       <p className="hint">
-        The name and icon this app installs under — pick whatever blends into your home
-        screen. On iOS, re-add to the Home Screen after changing to update the icon.
+        If you add this app to your home screen (Share → Add to Home Screen), this is
+        the name and icon it shows — pick whatever blends in. On iPhone, re-add it
+        after changing to update the icon.
       </p>
       <div className="row wrap">
         {DISGUISES.map((d) => (
@@ -428,8 +430,9 @@ function ExportSection() {
     <section>
       <h2>Backup</h2>
       <p className="hint">
-        Downloads an encrypted backup — the only way data leaves this device. It opens
-        with your passphrase on any device; without it, the file is noise.
+        Saves a copy of everything to a file. It's scrambled with your passphrase, so
+        only you can open it — keep it somewhere safe like iCloud or Drive, and use
+        Restore below to bring it back on a new phone.
         {settings?.lastExportAt && (
           <> Last backup: {new Date(settings.lastExportAt).toLocaleDateString()}.</>
         )}
@@ -441,13 +444,13 @@ function ExportSection() {
             type="password"
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
-            placeholder="unlocks the export"
+            placeholder="to confirm it's you"
             aria-label="Confirm passphrase"
             autoComplete="off"
           />
         </label>
         <button type="submit" disabled={!passphrase || state === 'busy'} aria-busy={state === 'busy'}>
-          {state === 'busy' ? '…' : 'Export'}
+          {state === 'busy' ? '…' : 'Save backup'}
         </button>
       </form>
       {state === 'busy' && (
@@ -465,7 +468,9 @@ function ExportSection() {
           Export failed — try again.
         </p>
       )}
-      {state === 'done' && <p className="hint">Backup saved.</p>}
+      {state === 'done' && (
+        <p className="hint">Backup saved. Check your downloads for a .ledger file.</p>
+      )}
     </section>
   )
 }
@@ -511,8 +516,9 @@ function ImportSection() {
     <section>
       <h2>Restore</h2>
       <p className="hint">
-        Merges a backup into this vault (newer entries win by id). On a fresh device:
-        create a vault, then restore here.
+        Bring back notes from a backup file. What's already here stays; where both
+        have the same entry, the newer one wins. On a new phone: set a passphrase,
+        then restore here.
       </p>
       <form className="column" onSubmit={doImport}>
         <label className="field">
@@ -615,10 +621,10 @@ function StorageSection() {
   const status = getStorageStatus()
   const label =
     status.persisted === true
-      ? 'Protected — the browser agreed not to evict this app’s storage.'
+      ? 'Your notes live only on this device, and the browser has agreed to keep them even if you don’t open the app for a long time.'
       : status.persisted === false
-        ? 'NOT protected — the browser may evict this data if the app goes unused. Keep backups current.'
-        : 'Unknown — this browser didn’t say. Keep backups current.'
+        ? 'Your notes live only on this device. If you don’t open the app for a long time, the browser may clear them to free space — so save a backup now and then.'
+        : 'Your notes live only on this device. This browser didn’t say whether it might clear them — save a backup now and then.'
   return (
     <section>
       <h2>Storage</h2>

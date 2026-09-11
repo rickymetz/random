@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import { daysUntilDue, daysUntilNext, formatPartialDate } from '../lib/dates'
 import type { Person } from '../lib/models'
@@ -26,6 +26,17 @@ export default function PeoplePage() {
   const corrupted = useVaultStore((s) => s.corrupted)
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  // Facet links (a tag or like on a dossier) arrive as ?q=…: adopt the
+  // query, then drop the param so back/forward stays clean.
+  const [params, setParams] = useSearchParams()
+  const linkedQuery = params.get('q')
+  useEffect(() => {
+    if (linkedQuery === null) return
+    setQuery(linkedQuery)
+    setParams({}, { replace: true })
+  }, [linkedQuery, setQuery, setParams])
 
   const people = useMemo(() => {
     const all = selectPeople(records)
@@ -68,6 +79,7 @@ export default function PeoplePage() {
       <h1 className="sr-only">People</h1>
       <form onSubmit={submit}>
         <input
+          ref={searchRef}
           type="search"
           // Autofocus is a desktop convenience; on touch it pops the
           // keyboard over the Upcoming strip on every visit to this tab.
@@ -77,10 +89,16 @@ export default function PeoplePage() {
           }
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search people, facts, notes…"
-          aria-label="Search people, facts, and notes"
+          placeholder="Search names, details, notes — or type a new name"
+          aria-label="Search names, details, and notes"
         />
       </form>
+      {!trimmed && !people.some((p) => !p.isSelf) && (
+        <p className="empty">
+          No one here yet. Type a name above and tap <strong>Add</strong>, or tap{' '}
+          <strong>+</strong>.
+        </p>
+      )}
       {corrupted > 0 && (
         <p className="banner" role="alert">
           {corrupted} record{corrupted === 1 ? '' : 's'} could not be read and were
@@ -104,7 +122,15 @@ export default function PeoplePage() {
       {!trimmed && (
         <button
           className="add-person fab"
-          onClick={create}
+          // Name first: a nameless "New person" dumped at the bottom of a
+          // long page is the confusing path. Focus the box and let the
+          // typed name become the "+ Add" button.
+          onClick={() => {
+            const el = searchRef.current
+            if (!el) return
+            el.placeholder = 'Who did you meet? Type their name'
+            el.focus()
+          }}
           disabled={busy}
           aria-label="New person"
         >
@@ -210,8 +236,9 @@ function BackupNag() {
     <p className="banner">
       {last
         ? `Last backup ${Math.floor((Date.now() - last) / 86_400_000)} days ago.`
-        : 'No backup yet.'}{' '}
-      Browsers can evict storage — <Link to="/settings">export an encrypted backup</Link>.
+        : 'Nothing backed up yet.'}{' '}
+      Your notes live only on this device —{' '}
+      <Link to="/settings">save a backup copy</Link> so they survive a cleared browser.
     </p>
   )
 }

@@ -57,3 +57,12 @@ export function stripMentionsOf(body: string, personId: string): string {
     id.toLowerCase() === personId.toLowerCase() ? name : match,
   )
 }
+
+/** Rewrite the display text of every token pointing at `personId`
+ * (renames should not leave stale "@Old Name" labels in other people's
+ * notes; the id keeps the link itself intact either way). */
+export function renameMentionsOf(body: string, personId: string, newName: string): string {
+  return body.replace(MENTION_RE, (match, _name: string, id: string) =>
+    id === personId ? mentionToken({ id, displayName: newName }) : match,
+  )
+}

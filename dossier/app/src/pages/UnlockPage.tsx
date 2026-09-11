@@ -184,7 +184,7 @@ function PassphraseForm({
     setError(null)
     if (mode === 'create') {
       if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
-        setError(`Use at least ${MIN_PASSPHRASE_LENGTH} characters — this passphrase is the only key.`)
+        setError(`Use at least ${MIN_PASSPHRASE_LENGTH} characters — a short sentence works well.`)
         return
       }
       if (passphrase !== confirm) {
@@ -213,6 +213,15 @@ function PassphraseForm({
       <div className="unlock-card">
         <UnlockMark />
         <h1>{mode === 'create' ? 'Set a passphrase' : 'Enter passphrase'}</h1>
+        {mode === 'create' ? (
+          <p className="hint">
+            Notes about the people you meet, kept only on this device and locked with a
+            passphrase only you know. Nobody else holds it, so it can't be reset —
+            pick something you'll remember, like three or four words.
+          </p>
+        ) : (
+          <p className="hint">Locked — everything is still here.</p>
+        )}
         {mode === 'unlock' && pinLockedOut && (
           <p className="notice-warn" role="status">
             The quick-unlock PIN was disabled after too many wrong tries. Unlock with
@@ -245,7 +254,8 @@ function PassphraseForm({
               />
             </label>
             <p className="hint">
-              There is no recovery. If you forget this passphrase, the data is gone.
+              At least {MIN_PASSPHRASE_LENGTH} characters. There is no reset: if you forget
+              it, the notes can't be opened.
             </p>
           </>
         )}

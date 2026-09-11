@@ -39,6 +39,7 @@ export default function App() {
   const lock = useVaultStore((s) => s.lock)
   const panicLock = useVaultStore((s) => s.panicLock)
   const flushDrafts = useVaultStore((s) => s.flushDrafts)
+  const pinArmed = useVaultStore((s) => s.pinArmed)
   const settings = useVaultStore((s) =>
     s.status === 'unlocked' ? selectSettings(s.records) : undefined,
   )
@@ -201,14 +202,24 @@ export default function App() {
           <NavLink to="/graph">Graph</NavLink>
           <NavLink to="/settings">Settings</NavLink>
         </nav>
-        {/* Panic lock (§6.4): drops the DEK AND the session PIN. */}
+        {/* Panic lock (§6.4): drops the DEK AND the session PIN. It still
+            saves a capture draft first — data loss is a shake's job, not a
+            button's. Named so it can't be confused with the tab-bar Lock. */}
         <button
           className="lock-button"
-          onClick={panicLock}
-          aria-label="Lock now (PIN is discarded; passphrase or biometrics to reopen)"
-          title="Lock now — PIN is discarded; passphrase or biometrics to reopen"
+          onClick={() => void flushDrafts().finally(() => panicLock())}
+          aria-label={
+            pinArmed
+              ? 'Lock and forget the PIN (passphrase or biometrics to reopen)'
+              : 'Lock (passphrase or biometrics to reopen)'
+          }
+          title={
+            pinArmed
+              ? 'Lock and forget the PIN — passphrase or biometrics to reopen'
+              : 'Lock — passphrase or biometrics to reopen'
+          }
         >
-          Lock
+          {pinArmed ? 'Lock & forget PIN' : 'Lock'}
         </button>
       </header>
       {lockWarning && (

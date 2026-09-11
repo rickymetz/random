@@ -237,6 +237,35 @@ describe('vault store', () => {
     expect(selectNotes(store().records, ada.id)).toHaveLength(1)
   })
 
+  it('updateNote re-derives mention edges from the new text', async () => {
+    const ada = await store().addPerson('Ada')
+    const bob = await store().addPerson('Bob')
+    const cy = await store().addPerson('Cy')
+    await store().saveNote(ada.id, `Lunch with ${mentionToken(bob)}`)
+    const note = selectNotes(store().records, ada.id)[0]
+    expect(selectRelationships(store().records).map((r) => r.toId)).toEqual([bob.id])
+
+    await store().updateNote(note.id, `Lunch with ${mentionToken(cy)} instead`)
+    const edited = selectNotes(store().records, ada.id)[0]
+    expect(edited.id).toBe(note.id)
+    expect(edited.body).toContain(cy.id)
+    // Bob's dashed edge is gone; Cy's exists.
+    expect(selectRelationships(store().records).map((r) => r.toId)).toEqual([cy.id])
+  })
+
+  it('renaming a person rewrites @mention labels in other people’s notes', async () => {
+    const ada = await store().addPerson('Ada')
+    const bob = await store().addPerson('Bob Jones')
+    await store().saveNote(ada.id, `Met ${mentionToken(bob)} at the pier`)
+    await store().updatePerson({ ...bob, displayName: 'Bob Jones-Park' })
+    const note = selectNotes(store().records, ada.id)[0]
+    expect(note.body).toContain('@[Bob Jones-Park](')
+    expect(note.body).not.toContain('@[Bob Jones](')
+    // The link itself (id) is untouched and the edge still stands.
+    expect(note.mentions).toEqual([bob.id])
+    expect(selectRelationships(store().records)).toHaveLength(1)
+  })
+
   it('saveNote never resurrects a deleted person', async () => {
     const ada = await store().addPerson('Ada')
     await store().removePerson(ada.id)

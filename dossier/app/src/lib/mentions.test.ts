@@ -40,3 +40,14 @@ describe('mentions', () => {
     expect(extractMentions('email me @[not-a-token](nope) ok')).toEqual([])
   })
 })
+
+describe('renameMentionsOf', () => {
+  it('rewrites only the tokens for the renamed id', async () => {
+    const { renameMentionsOf, mentionToken } = await import('./mentions')
+    const a = { id: '11111111-1111-4111-8111-111111111111', displayName: 'Ann Old' }
+    const b = { id: '22222222-2222-4222-8222-222222222222', displayName: 'Ben' }
+    const body = `x ${mentionToken(a)} y ${mentionToken(b)} z`
+    const out = renameMentionsOf(body, a.id, 'Ann New')
+    expect(out).toBe(`x ${mentionToken({ ...a, displayName: 'Ann New' })} y ${mentionToken(b)} z`)
+  })
+})
