@@ -108,7 +108,24 @@ export const DEFAULT_BACKGROUND_GRACE_SECONDS = 30
 
 export const SETTINGS_ID = 'settings'
 
+/**
+ * A named group of people ("college friends", "DC polycule") drawn as a
+ * translucent bubble on the graph (§4.6). Many-to-many and flat: a person
+ * can be in any number of circles; circles never nest. Empty circles
+ * persist until deleted explicitly.
+ */
+export interface Circle {
+  kind: 'circle'
+  id: string
+  name: string
+  color: string
+  memberIds: string[]
+  createdAt: number
+  updatedAt: number
+}
+
 export type DomainRecord =
+  | Circle
   | Person
   | NoteEntry
   | FollowUp
@@ -132,6 +149,40 @@ export const BUILT_IN_RELATIONSHIP_TYPES: Omit<RelationshipType, 'id'>[] = [
   { kind: 'relationshipType', label: 'roommate', color: '#9a6fd0', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'mentioned', color: '#55555e', directed: true, builtIn: true },
 ]
+
+/** Circle bubble hues — muted so translucent fills stay readable behind
+ * nodes and edges; auto-assigned in order, user-overridable. */
+export const CIRCLE_COLORS = [
+  '#8aa4ff',
+  '#f08aa8',
+  '#6fcfb0',
+  '#e07ad6',
+  '#b48ef0',
+  '#f0a06a',
+  '#7fd0e8',
+  '#a8d070',
+]
+
+/** Spoken names for swatches — "orchid", not "hash e zero seven a d six". */
+const COLOR_NAMES: Record<string, string> = {
+  '#8aa4ff': 'periwinkle',
+  '#f08aa8': 'rose',
+  '#6fcfb0': 'mint',
+  '#e07ad6': 'orchid',
+  '#b48ef0': 'lavender',
+  '#f0a06a': 'apricot',
+  '#7fd0e8': 'sky',
+  '#a8d070': 'lime',
+  '#d84f9f': 'magenta',
+  '#5fd04f': 'green',
+  '#4fd0c3': 'teal',
+  '#d0c34f': 'yellow',
+  '#7a8ff0': 'blue',
+  '#f08f7a': 'coral',
+}
+export function colorName(hex: string): string {
+  return COLOR_NAMES[hex.toLowerCase()] ?? hex
+}
 
 /** Swatches offered when creating a custom relationship type (§4.2). */
 export const CUSTOM_TYPE_COLORS = [

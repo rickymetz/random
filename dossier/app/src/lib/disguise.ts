@@ -44,6 +44,17 @@ export const DISGUISES: Disguise[] = [
 
 const STORAGE_KEY = 'appearance'
 
+/* The brand in the app bar must follow a disguise change immediately —
+   localStorage alone re-renders nothing, so changes are observable. */
+const listeners = new Set<() => void>()
+
+export function subscribeDisguise(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
 export function currentDisguise(): Disguise {
   try {
     const id = localStorage.getItem(STORAGE_KEY)
@@ -60,6 +71,7 @@ export function setDisguise(id: string): void {
     // Private windows may refuse; the swap below still applies this session.
   }
   applyDisguise()
+  for (const listener of listeners) listener()
 }
 
 /** Swap the manifest/title/icons to the chosen disguise. Call at boot. */

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { MAX_PIN_ATTEMPTS } from '../lib/pin'
+import { PIN_MASK_SUPPORTED } from '../lib/platform'
 import { webAuthnAvailable } from '../lib/webauthn'
 import { useVaultStore } from '../store/vaultStore'
 
@@ -8,9 +9,11 @@ const MIN_PASSPHRASE_LENGTH = 8
 /**
  * Deliberately bland (REQUIREMENTS.md §6.5): no vault metadata, no counts,
  * no product branding — the mark is an abstract shape and the heading says
- * only what to do. autoComplete="off" keeps the vault passphrase out of
- * browser/OS password managers (§6.2: key material never leaves the
- * device). When a session PIN is armed it is the default quick path;
+ * only what to do. autoComplete="off" asks browsers not to offer saving
+ * the passphrase; most ignore it on password fields, so a user accepting
+ * their browser's save prompt can still sync it off-device — there is no
+ * reliable web-side block (§6.2 caveat). When a session PIN is armed it
+ * is the default quick path;
  * biometric unlock shows when an enrollment exists (§6.3). Both screens
  * link to each other.
  */
@@ -108,18 +111,19 @@ function PinUnlock({ onUsePassphrase }: { onUsePassphrase: () => void }) {
       <div className="unlock-card">
         <UnlockMark />
         <h1>Enter PIN</h1>
-        {/* Filled dots echo typed digits without revealing them. */}
-        {pinDigits > 0 && (
-          <div className="pin-dots" aria-hidden="true">
-            {Array.from({ length: pinDigits }, (_, i) => (
-              <span key={i} className={i < pin.length ? 'on' : undefined} />
-            ))}
-          </div>
-        )}
+        {/* One dot per typed digit — no empty slots: the locked screen
+            must not disclose the armed PIN's length (§6.5). */}
+        <div className="pin-dots" aria-hidden="true">
+          {Array.from({ length: pin.length }, (_, i) => (
+            <span key={i} className="on" />
+          ))}
+        </div>
         <input
           // A masked field that still gets the numeric keypad on iOS:
-          // type=password forces QWERTY there, so mask via CSS instead.
-          type="text"
+          // type=password forces QWERTY there, so mask via CSS where the
+          // property exists (Firefox lacks it — fall back to password
+          // rather than render the PIN in cleartext).
+          type={PIN_MASK_SUPPORTED ? 'text' : 'password'}
           className="pin-input"
           inputMode="numeric"
           pattern="[0-9]*"
@@ -180,7 +184,7 @@ function PassphraseForm({
     setError(null)
     if (mode === 'create') {
       if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
-        setError(`Use at least ${MIN_PASSPHRASE_LENGTH} characters — this passphrase is the only key.`)
+        setError(`Use at least ${MIN_PASSPHRASE_LENGTH} characters — a short sentence works well.`)
         return
       }
       if (passphrase !== confirm) {
@@ -209,6 +213,15 @@ function PassphraseForm({
       <div className="unlock-card">
         <UnlockMark />
         <h1>{mode === 'create' ? 'Set a passphrase' : 'Enter passphrase'}</h1>
+        {mode === 'create' ? (
+          <p className="hint">
+            Notes about the people you meet, kept only on this device and locked with a
+            passphrase only you know. Nobody else holds it, so it can't be reset —
+            pick something you'll remember, like three or four words.
+          </p>
+        ) : (
+          <p className="hint">Locked — everything is still here.</p>
+        )}
         {mode === 'unlock' && pinLockedOut && (
           <p className="notice-warn" role="status">
             The quick-unlock PIN was disabled after too many wrong tries. Unlock with
@@ -230,7 +243,7 @@ function PassphraseForm({
         {mode === 'create' && (
           <>
             <label>
-              Repeat it
+              Repeat passphrase
               <input
                 type="password"
                 value={confirm}
@@ -241,7 +254,8 @@ function PassphraseForm({
               />
             </label>
             <p className="hint">
-              There is no recovery. If you forget this passphrase, the data is gone.
+              At least {MIN_PASSPHRASE_LENGTH} characters. There is no reset: if you forget
+              it, the notes can't be opened.
             </p>
           </>
         )}

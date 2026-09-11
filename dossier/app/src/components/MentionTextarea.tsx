@@ -1,66 +1,101 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { mentionToken } from '../lib/mentions'
 import type { Person } from '../lib/models'
 
+/** Word characters for a mention query — Unicode-aware so "@José" works. */
+const WORD = '[\\p{L}\\p{N}_]'
+const QUERY_RE = new RegExp(`(^|[\\s.,;!?(])@(${WORD}*(?: ${WORD}*)?)$`, 'u')
+const TAIL_RE = new RegExp(`^${WORD}*`, 'u')
+
+const MAX_SUGGESTIONS = 6
+
+type Suggestion = { kind: 'person'; person: Person } | { kind: 'create'; name: string }
+
 /**
  * Quick-capture textarea with @mention insertion (§4.1–4.2). Typing `@`
- * plus letters surfaces matching people; picking one inserts a mention
- * token that becomes a graph edge on save. Suggestions insert on
- * pointerdown (before blur) so the mobile keyboard never flaps, and
- * matching covers any word of the name — "@smith" finds John Smith.
+ * surfaces people (all of them for a bare "@", ranked by prefix match
+ * as you type); picking one inserts a mention token that becomes a graph
+ * edge on save. Fully keyboard-operable (arrows / Enter / Tab / Escape)
+ * and pointer-friendly: suggestions insert on pointerdown (before blur)
+ * so the mobile keyboard never flaps. A query with no match offers to
+ * create the person on the spot — you're often typing about someone you
+ * haven't filed yet (scenario S1).
  */
 export default function MentionTextarea({
   people,
   value,
   onChange,
+  onSubmit,
+  onCreatePerson,
   placeholder,
   autoFocus,
 }: {
   people: Person[]
   value: string
   onChange: (value: string) => void
+  /** Cmd/Ctrl+Enter. */
+  onSubmit?: () => void
+  onCreatePerson?: (name: string) => Promise<Person>
   placeholder?: string
   autoFocus?: boolean
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  const listId = useId()
   const [caret, setCaret] = useState(0)
   const [dismissed, setDismissed] = useState(false)
+  const [active, setActive] = useState(0)
 
   // An active mention query is a trailing "@word" (at most two words)
   // right before the caret — bounded so a stray "@" doesn't keep the
   // picker open for the whole rest of the sentence.
   const query = useMemo(() => {
     const upToCaret = value.slice(0, caret)
-    const match = /(^|[\s.,;!?(])@(\w+(?: \w*)?)$/.exec(upToCaret)
+    const match = QUERY_RE.exec(upToCaret)
     return match ? match[2] : null
   }, [value, caret])
 
-  const suggestions = useMemo(() => {
+  const suggestions = useMemo((): Suggestion[] => {
     if (query === null || dismissed) return []
-    const q = query.toLowerCase()
-    const wordMatch = (name: string) =>
-      name.toLowerCase().includes(q) ||
-      name
-        .toLowerCase()
-        .split(/\s+/)
-        .some((w) => w.startsWith(q))
-    return people
-      .filter((p) => wordMatch(p.displayName) || p.nicknames.some(wordMatch))
-      .slice(0, 5)
-  }, [people, query, dismissed])
+    const q = query.toLowerCase().trim()
+    const rank = (p: Person): number => {
+      const names = [p.displayName, ...p.nicknames].map((n) => n.toLowerCase())
+      if (q === '') return 3
+      if (names.some((n) => n.startsWith(q))) return 0
+      if (names.some((n) => n.split(/\s+/).some((w) => w.startsWith(q)))) return 1
+      if (names.some((n) => n.includes(q))) return 2
+      return -1
+    }
+    const ranked = people
+      .map((p) => ({ p, r: rank(p) }))
+      .filter(({ r }) => r >= 0)
+      .sort((a, b) => a.r - b.r || a.p.displayName.localeCompare(b.p.displayName))
+      .slice(0, MAX_SUGGESTIONS)
+      .map(({ p }): Suggestion => ({ kind: 'person', person: p }))
+    const exact = people.some((p) => p.displayName.toLowerCase() === q)
+    if (q.length >= 2 && !exact && onCreatePerson) {
+      ranked.push({ kind: 'create', name: query.trim() })
+    }
+    return ranked
+  }, [people, query, dismissed, onCreatePerson])
 
-  const insert = (person: Person) => {
+  useEffect(() => {
+    setActive(0)
+  }, [query, suggestions.length])
+
+  const insertToken = (person: Person) => {
     if (query === null) return
     const start = caret - query.length - 1 // include the "@"
     // Consume any word characters continuing past the caret so a
     // mid-word pick doesn't strand the tail ("@an|n" → no orphan "n").
-    const rest = value.slice(caret).replace(/^\w*/, '')
+    const rest = value.slice(caret).replace(TAIL_RE, '')
     const token = mentionToken(person)
-    const next = value.slice(0, start) + token + ' ' + rest
+    // One space after the token, but not two when the text already has one.
+    const gap = rest.startsWith(' ') ? '' : ' '
+    const next = value.slice(0, start) + token + gap + rest
     onChange(next)
     const el = ref.current
     if (el) {
-      const pos = start + token.length + 1
+      const pos = start + token.length + gap.length
       requestAnimationFrame(() => {
         el.focus()
         el.setSelectionRange(pos, pos)
@@ -69,10 +104,19 @@ export default function MentionTextarea({
     }
   }
 
+  const pick = async (s: Suggestion) => {
+    if (s.kind === 'person') return insertToken(s.person)
+    const created = await onCreatePerson!(s.name)
+    insertToken(created)
+  }
+
   const track = () => {
     setCaret(ref.current?.selectionStart ?? 0)
     setDismissed(false)
   }
+
+  const open = suggestions.length > 0
+  const optionId = (i: number) => `${listId}-opt-${i}`
 
   return (
     <div className="mention-box">
@@ -82,6 +126,10 @@ export default function MentionTextarea({
         value={value}
         placeholder={placeholder}
         aria-label={placeholder ?? 'Note'}
+        aria-autocomplete="list"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open ? optionId(active) : undefined}
         autoFocus={autoFocus}
         onChange={(e) => {
           onChange(e.target.value)
@@ -89,18 +137,44 @@ export default function MentionTextarea({
           setDismissed(false)
         }}
         onKeyDown={(e) => {
-          if (e.key === 'Escape' && suggestions.length > 0) {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && onSubmit) {
+            e.preventDefault()
+            onSubmit()
+            return
+          }
+          if (!open) return
+          if (e.key === 'Escape') {
             e.preventDefault()
             setDismissed(true)
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault()
+            setActive((i) => (i + 1) % suggestions.length)
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault()
+            setActive((i) => (i - 1 + suggestions.length) % suggestions.length)
+          } else if (e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault()
+            void pick(suggestions[active])
           }
         }}
         onKeyUp={track}
         onClick={track}
       />
-      {suggestions.length > 0 && (
-        <ul className="mention-suggestions" role="listbox" aria-label="People to mention">
-          {suggestions.map((p) => (
-            <li key={p.id} role="option" aria-selected={false}>
+      {open && (
+        <ul
+          id={listId}
+          className="mention-suggestions"
+          role="listbox"
+          aria-label="People to mention"
+        >
+          {suggestions.map((s, i) => (
+            <li
+              key={s.kind === 'person' ? s.person.id : `create:${s.name}`}
+              id={optionId(i)}
+              role="option"
+              aria-selected={i === active}
+              className={i === active ? 'active' : undefined}
+            >
               <button
                 type="button"
                 tabIndex={-1}
@@ -108,10 +182,11 @@ export default function MentionTextarea({
                 // keyboard stays up and the caret math stays valid.
                 onPointerDown={(e) => {
                   e.preventDefault()
-                  insert(p)
+                  void pick(s)
                 }}
+                onPointerEnter={() => setActive(i)}
               >
-                {p.displayName}
+                {s.kind === 'person' ? s.person.displayName : `+ Add “${s.name}”`}
               </button>
             </li>
           ))}

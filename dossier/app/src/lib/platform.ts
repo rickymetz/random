@@ -31,3 +31,11 @@ export async function requestPersistentStorage(): Promise<void> {
 export function getStorageStatus(): StorageStatus {
   return { ...status }
 }
+
+/**
+ * PIN fields mask via CSS -webkit-text-security to keep the iOS numeric
+ * keypad; Firefox lacks the property, so fall back to type=password
+ * there rather than render the PIN in cleartext.
+ */
+export const PIN_MASK_SUPPORTED =
+  typeof CSS !== 'undefined' && CSS.supports?.('-webkit-text-security', 'disc') === true

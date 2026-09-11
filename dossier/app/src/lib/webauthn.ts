@@ -21,6 +21,7 @@
  */
 import { deriveKeyFromPrf, randomBytes, unwrapDek, wipe, wrapDek } from './crypto'
 import { db, type AuthRow } from './db'
+import { currentDisguise } from './disguise'
 
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
@@ -65,8 +66,14 @@ export async function enrollBiometric(rawDek: Uint8Array): Promise<EnrollResult>
   const created = (await navigator.credentials.create({
     publicKey: {
       challenge: randomBytes(32) as BufferSource,
-      rp: { name: 'Ledger' },
-      user: { id: userId as BufferSource, name: 'ledger', displayName: 'Ledger' },
+      // Passkey names match the installed disguise (§6.5) — the system
+      // credential list should read like the icon on the home screen.
+      rp: { name: currentDisguise().name },
+      user: {
+        id: userId as BufferSource,
+        name: currentDisguise().name.toLowerCase(),
+        displayName: currentDisguise().name,
+      },
       pubKeyCredParams: [
         { type: 'public-key', alg: -7 },
         { type: 'public-key', alg: -257 },

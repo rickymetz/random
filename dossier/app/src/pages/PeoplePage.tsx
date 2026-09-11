@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import { daysUntilDue, daysUntilNext, formatPartialDate } from '../lib/dates'
 import type { Person } from '../lib/models'
 import { matchSnippet } from '../lib/search'
 import {
   searchPeopleIds,
+  selectCircles,
+  selectCirclesOf,
   selectPeople,
   selectSettings,
   useVaultStore,
@@ -23,12 +25,38 @@ export default function PeoplePage() {
   const query = useVaultStore((s) => s.homeQuery)
   const setQuery = useVaultStore((s) => s.setHomeQuery)
   const addPerson = useVaultStore((s) => s.addPerson)
+  const setPersonCircles = useVaultStore((s) => s.setPersonCircles)
   const corrupted = useVaultStore((s) => s.corrupted)
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  // Facet links (a tag or like on a dossier) arrive as ?q=…: adopt the
+  // query, then drop the param so back/forward stays clean.
+  const [params, setParams] = useSearchParams()
+  const linkedQuery = params.get('q')
+  // ?circle=<id> lists one circle's members (from a chip on a dossier or
+  // the graph's bubble card).
+  const circleId = params.get('circle')
+  const circle = useMemo(() => {
+    const c = circleId ? records.get(circleId) : undefined
+    return c?.kind === 'circle' ? c : undefined
+  }, [records, circleId])
+  // A circle link means "show me this circle" — not this circle narrowed
+  // by whatever was last typed in the search box.
+  useEffect(() => {
+    if (circleId) setQuery('')
+  }, [circleId, setQuery])
+  useEffect(() => {
+    if (linkedQuery === null) return
+    setQuery(linkedQuery)
+    setParams({}, { replace: true })
+  }, [linkedQuery, setQuery, setParams])
 
   const people = useMemo(() => {
-    const all = selectPeople(records)
+    const all = circle
+      ? selectPeople(records).filter((p) => circle.memberIds.includes(p.id))
+      : selectPeople(records)
     const trimmed = query.trim()
     if (!trimmed) return all.sort((a, b) => a.displayName.localeCompare(b.displayName))
     const byId = new Map(all.map((p) => [p.id, p]))
@@ -42,13 +70,15 @@ export default function PeoplePage() {
       if (!seen.has(p.id) && p.displayName.toLowerCase().includes(q)) ranked.push(p)
     }
     return ranked
-  }, [records, query])
+  }, [records, query, circle])
 
   const create = async () => {
     if (busy) return
     setBusy(true)
     try {
       const person = await addPerson(query.trim() || 'New person')
+      // Adding from inside a circle's list puts the new person in it.
+      if (circle) await setPersonCircles(person.id, [circle.id])
       setQuery('')
       navigate(`/person/${person.id}`)
     } finally {
@@ -63,18 +93,57 @@ export default function PeoplePage() {
   }
 
   const trimmed = query.trim()
+  // Circle names are searchable too — surface the circles themselves, not
+  // just their members, and don't offer to create a *person* by that name.
+  const circleHits = useMemo(() => {
+    const q = trimmed.toLowerCase()
+    if (!q || circle) return []
+    return selectCircles(records).filter((c) => c.name.toLowerCase().includes(q))
+  }, [records, trimmed, circle])
+  const exactCircle = circleHits.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())
   return (
     <div className="people">
+      <h1 className="sr-only">People</h1>
       <form onSubmit={submit}>
         <input
+          ref={searchRef}
           type="search"
-          autoFocus
+          // Autofocus is a desktop convenience; on touch it pops the
+          // keyboard over the Upcoming strip on every visit to this tab.
+          autoFocus={
+            typeof window !== 'undefined' &&
+            window.matchMedia('(pointer: fine)').matches
+          }
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search people, facts, notes…"
-          aria-label="Search people, facts, and notes"
+          placeholder={
+            circle
+              ? `Search in ${circle.name}… or type a name to add`
+              : 'Search names, details, notes — or type a new name'
+          }
+          aria-label="Search names, details, and notes"
         />
       </form>
+      {circle && (
+        <p
+          className="banner circle-banner"
+          role="status"
+          style={{ '--chip-color': circle.color } as React.CSSProperties}
+        >
+          <span className="circle-chip">{circle.name}</span> — {circle.memberIds.length}{' '}
+          {circle.memberIds.length === 1 ? 'person' : 'people'} ·{' '}
+          <Link to={`/graph?circle=${circle.id}`}>see on graph</Link>
+          <button className="subtle" onClick={() => setParams({}, { replace: true })}>
+            Show everyone
+          </button>
+        </p>
+      )}
+      {!trimmed && !circle && !people.some((p) => !p.isSelf) && (
+        <p className="empty">
+          No one here yet. Type a name above and tap <strong>Add</strong>, or tap{' '}
+          <strong>+</strong>.
+        </p>
+      )}
       {corrupted > 0 && (
         <p className="banner" role="alert">
           {corrupted} record{corrupted === 1 ? '' : 's'} could not be read and were
@@ -85,9 +154,27 @@ export default function PeoplePage() {
       <PinFailureNotice />
       {!trimmed && <BackupNag />}
       {!trimmed && <Upcoming />}
-      {trimmed && (
+      {circleHits.length > 0 && (
+        <ul className="circle-results" aria-label="Circles">
+          {circleHits.map((c) => (
+            <li key={c.id}>
+              <Link
+                to={`/?circle=${c.id}`}
+                className="circle-chip"
+                style={{ '--chip-color': c.color } as React.CSSProperties}
+              >
+                {c.name}
+              </Link>
+              <span className="hint">
+                {c.memberIds.length} {c.memberIds.length === 1 ? 'person' : 'people'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {trimmed && !exactCircle && (
         <button className="add-person" onClick={create} disabled={busy}>
-          + Add “{trimmed}”
+          + Add “{trimmed}”{circle ? ` to ${circle.name}` : ''}
         </button>
       )}
       <ul>
@@ -98,7 +185,15 @@ export default function PeoplePage() {
       {!trimmed && (
         <button
           className="add-person fab"
-          onClick={create}
+          // Name first: a nameless "New person" dumped at the bottom of a
+          // long page is the confusing path. Focus the box and let the
+          // typed name become the "+ Add" button.
+          onClick={() => {
+            const el = searchRef.current
+            if (!el) return
+            el.placeholder = 'Who did you meet? Type their name'
+            el.focus()
+          }}
           disabled={busy}
           aria-label="New person"
         >
@@ -111,15 +206,19 @@ export default function PeoplePage() {
 
 function PersonRow({ person, query }: { person: Person; query: string }) {
   const records = useVaultStore((s) => s.records)
+  const circles = useMemo(() => selectCirclesOf(records, person.id), [records, person.id])
   const detail = [person.jobTitle, person.employer].filter(Boolean).join(' @ ')
   // Show WHY a result matched when the hit came from note text (§4.4).
   const snippet = useMemo(() => {
     if (!query) return null
-    const nameHit =
-      person.displayName.toLowerCase().includes(query.toLowerCase()) ||
-      detail.toLowerCase().includes(query.toLowerCase())
-    return nameHit ? null : matchSnippet(records, person.id, query)
-  }, [records, person, query, detail])
+    const q = query.toLowerCase()
+    const nameHit = person.displayName.toLowerCase().includes(q) || detail.toLowerCase().includes(q)
+    if (nameHit) return null
+    // Say WHY a circle-name hit matched, the way note hits do.
+    const viaCircle = circles.find((c) => c.name.toLowerCase().includes(q))
+    if (viaCircle) return `in ${viaCircle.name}`
+    return matchSnippet(records, person.id, query)
+  }, [records, person, query, detail, circles])
 
   return (
     <li>
@@ -128,8 +227,16 @@ function PersonRow({ person, query }: { person: Person; query: string }) {
         <span className="person-row-text">
           <strong>{person.displayName}</strong>
           {person.isSelf && (
-            <span className="you-badge" aria-label="This is you">
+            <span className="you-badge" title="This is you">
               you
+            </span>
+          )}
+          {circles.length > 0 && (
+            <span className="circle-dots" title={circles.map((c) => c.name).join(', ')}>
+              {circles.map((c) => (
+                <i key={c.id} style={{ background: c.color }} />
+              ))}
+              <span className="sr-only">in {circles.map((c) => c.name).join(', ')}</span>
             </span>
           )}
           {detail && <span className="hint"> {detail}</span>}
@@ -204,8 +311,9 @@ function BackupNag() {
     <p className="banner">
       {last
         ? `Last backup ${Math.floor((Date.now() - last) / 86_400_000)} days ago.`
-        : 'No backup yet.'}{' '}
-      Browsers can evict storage — <Link to="/settings">export an encrypted backup</Link>.
+        : 'Nothing backed up yet.'}{' '}
+      Your notes live only on this device —{' '}
+      <Link to="/settings">save a backup copy</Link> so they survive a cleared browser.
     </p>
   )
 }

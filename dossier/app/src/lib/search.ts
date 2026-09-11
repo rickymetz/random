@@ -33,8 +33,10 @@ export function createIndex(): MiniSearch<PersonDoc> {
 function personTexts(records: Map<string, DomainRecord>, personId: string) {
   const notes: NoteEntry[] = []
   const edgeNotes: string[] = []
+  const circleNames: string[] = []
   for (const r of records.values()) {
     if (r.kind === 'note' && r.personId === personId) notes.push(r)
+    else if (r.kind === 'circle' && r.memberIds.includes(personId)) circleNames.push(r.name)
     else if (
       r.kind === 'relationship' &&
       r.note &&
@@ -43,13 +45,14 @@ function personTexts(records: Map<string, DomainRecord>, personId: string) {
       edgeNotes.push(r.note)
     }
   }
-  return { notes, edgeNotes }
+  return { notes, edgeNotes, circleNames }
 }
 
 function toDoc(
   person: Person,
   notes: NoteEntry[],
   edgeNotes: string[],
+  circleNames: string[] = [],
 ): PersonDoc {
   return {
     id: person.id,
@@ -68,7 +71,7 @@ function toDoc(
     ]
       .filter(Boolean)
       .join(' '),
-    tags: person.tags.join(' '),
+    tags: [...person.tags, ...circleNames].join(' '),
     notes: [...notes.map((n) => plainText(n.body)), ...edgeNotes].join(' '),
   }
 }
@@ -80,8 +83,8 @@ export function rebuildIndex(
   index.removeAll()
   for (const r of records.values()) {
     if (r.kind === 'person') {
-      const { notes, edgeNotes } = personTexts(records, r.id)
-      index.add(toDoc(r, notes, edgeNotes))
+      const { notes, edgeNotes, circleNames } = personTexts(records, r.id)
+      index.add(toDoc(r, notes, edgeNotes, circleNames))
     }
   }
 }
@@ -95,8 +98,8 @@ export function reindexPerson(
   const person = records.get(personId)
   if (index.has(personId)) index.discard(personId)
   if (!person || person.kind !== 'person') return
-  const { notes, edgeNotes } = personTexts(records, personId)
-  index.add(toDoc(person, notes, edgeNotes))
+  const { notes, edgeNotes, circleNames } = personTexts(records, personId)
+  index.add(toDoc(person, notes, edgeNotes, circleNames))
 }
 
 export function searchPeople(index: MiniSearch<PersonDoc>, query: string): string[] {

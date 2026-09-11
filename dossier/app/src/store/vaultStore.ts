@@ -10,7 +10,8 @@
  * mirrored here.
  */
 import { create } from 'zustand'
-import { extractMentions, stripMentionsOf } from '../lib/mentions'
+import { extractMentions, renameMentionsOf, stripMentionsOf } from '../lib/mentions'
+import { CIRCLE_COLORS, type Circle } from '../lib/models'
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
   SETTINGS_ID,
@@ -136,6 +137,14 @@ interface VaultState {
   removePerson: (personId: string) => Promise<void>
   saveNote: (personId: string, body: string) => Promise<void>
   removeNote: (noteId: string) => Promise<void>
+  updateNote: (noteId: string, body: string) => Promise<void>
+  /** Circles (§4.6): named, colored groups drawn as bubbles on the graph. */
+  addCircle: (name: string, color?: string) => Promise<Circle>
+  /** Resolves 'name-taken' (nothing written) if another circle has that name. */
+  updateCircle: (circle: Circle) => Promise<'ok' | 'name-taken'>
+  removeCircle: (circleId: string) => Promise<void>
+  /** Replace the set of circles a person belongs to. */
+  setPersonCircles: (personId: string, circleIds: string[]) => Promise<void>
   addFollowUp: (personId: string, text: string, dueDate?: PartialDate) => Promise<void>
   toggleFollowUp: (followUpId: string) => Promise<void>
   removeFollowUp: (followUpId: string) => Promise<void>
@@ -562,15 +571,28 @@ export const useVaultStore = create<VaultState>((set, get) => {
     updatePerson: (person) =>
       enqueue(async () => {
       const puts: DomainRecord[] = [{ ...person, updatedAt: Date.now() }]
+      const reindex = new Set<string>([person.id])
       // At most one self: claiming "this is me" demotes the previous one.
       if (person.isSelf) {
         for (const r of get().records.values()) {
           if (r.kind === 'person' && r.isSelf && r.id !== person.id) {
             puts.push({ ...r, isSelf: undefined })
+            reindex.add(r.id)
           }
         }
       }
-      await apply(puts, [], puts.map((p) => p.id))
+      // A rename rewrites the label inside every note that mentions this
+      // person, so "@Old Name" never lingers in someone else's timeline.
+      const before = get().records.get(person.id)
+      if (before?.kind === 'person' && before.displayName !== person.displayName) {
+        for (const r of get().records.values()) {
+          if (r.kind === 'note' && r.mentions.includes(person.id)) {
+            puts.push({ ...r, body: renameMentionsOf(r.body, person.id, person.displayName) })
+            reindex.add(r.personId)
+          }
+        }
+      }
+      await apply(puts, [], [...reindex])
     }),
 
     removePerson: (personId) =>
@@ -588,6 +610,8 @@ export const useVaultStore = create<VaultState>((set, get) => {
         ) {
           deletes.push(r.id)
           if (r.kind === 'photo') blobIds.push(r.blobRecordId)
+        } else if (r.kind === 'circle' && r.memberIds.includes(personId)) {
+          puts.push({ ...r, memberIds: r.memberIds.filter((m) => m !== personId) })
         } else if (r.kind === 'note' && r.mentions.includes(personId)) {
           // Rewrite dangling mention tokens in other people's notes to the
           // plain name, so no dead @links survive the delete.
@@ -610,6 +634,10 @@ export const useVaultStore = create<VaultState>((set, get) => {
 
     saveNote: (personId, body) =>
       enqueue(async () => {
+      // Never resurrect a deleted person: a draft flushed while the
+      // person is being removed would persist an orphaned note (unseen
+      // in every UI, yet carried in exports).
+      if (!get().records.has(personId)) return
       const note: NoteEntry = {
         kind: 'note',
         id: crypto.randomUUID(),
@@ -622,6 +650,18 @@ export const useVaultStore = create<VaultState>((set, get) => {
       withNote.set(note.id, note)
       const { puts, deletes } = diffMentionEdges(withNote, personId)
       await apply([note, ...puts], deletes, [personId])
+    }),
+
+    updateNote: (noteId, body) =>
+      enqueue(async () => {
+      const note = get().records.get(noteId)
+      if (!note || note.kind !== 'note') return
+      const edited: NoteEntry = { ...note, body, mentions: extractMentions(body) }
+      const withEdit = new Map(get().records)
+      withEdit.set(noteId, edited)
+      // Mention edges follow the text exactly as they do on save/delete.
+      const { puts, deletes } = diffMentionEdges(withEdit, note.personId)
+      await apply([edited, ...puts], deletes, [note.personId])
     }),
 
     removeNote: (noteId) =>
@@ -733,6 +773,81 @@ export const useVaultStore = create<VaultState>((set, get) => {
       return type
     }),
 
+    addCircle: (name, color) =>
+      enqueue(async () => {
+        const trimmed = name.trim()
+        const all = selectCircles(get().records)
+        const existing = all.find((c) => c.name.toLowerCase() === trimmed.toLowerCase())
+        if (existing) return existing
+        // Least-used hue (palette order breaks ties), so the 9th circle
+        // never lands on an exact duplicate of the 1st.
+        const counts = new Map(CIRCLE_COLORS.map((c) => [c, 0]))
+        for (const c of all) counts.set(c.color, (counts.get(c.color) ?? 0) + 1)
+        const auto = CIRCLE_COLORS.reduce((best, c) =>
+          (counts.get(c) ?? 0) < (counts.get(best) ?? 0) ? c : best,
+        )
+        const circle: Circle = {
+          kind: 'circle',
+          id: crypto.randomUUID(),
+          name: trimmed,
+          color: color ?? auto,
+          memberIds: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }
+        await apply([circle], [], [])
+        return circle
+      }),
+
+    updateCircle: (circle) =>
+      enqueue(async () => {
+        const before = get().records.get(circle.id)
+        if (before?.kind !== 'circle') return 'ok' as const
+        const wanted = circle.name.trim().toLowerCase()
+        const clash = selectCircles(get().records).some(
+          (c) => c.id !== circle.id && c.name.toLowerCase() === wanted,
+        )
+        if (clash) return 'name-taken' as const
+        const next: Circle = {
+          ...circle,
+          name: circle.name.trim() || before.name,
+          memberIds: [...new Set(circle.memberIds)].filter((id) => get().records.has(id)),
+          updatedAt: Date.now(),
+        }
+        // Circle names are searchable: reindex anyone whose membership or
+        // circle name changed.
+        await apply([next], [], [...new Set([...before.memberIds, ...next.memberIds])])
+        return 'ok' as const
+      }),
+
+    removeCircle: (circleId) =>
+      enqueue(async () => {
+        const circle = get().records.get(circleId)
+        if (circle?.kind !== 'circle') return
+        // Only the grouping goes; the people are untouched.
+        await apply([], [circleId], [...circle.memberIds])
+      }),
+
+    setPersonCircles: (personId, circleIds) =>
+      enqueue(async () => {
+        if (!get().records.has(personId)) return
+        const want = new Set(circleIds)
+        const puts: DomainRecord[] = []
+        for (const c of selectCircles(get().records)) {
+          const has = c.memberIds.includes(personId)
+          if (want.has(c.id) && !has) {
+            puts.push({ ...c, memberIds: [...c.memberIds, personId], updatedAt: Date.now() })
+          } else if (!want.has(c.id) && has) {
+            puts.push({
+              ...c,
+              memberIds: c.memberIds.filter((m) => m !== personId),
+              updatedAt: Date.now(),
+            })
+          }
+        }
+        if (puts.length > 0) await apply(puts, [], [personId])
+      }),
+
     markExported: () =>
       enqueue(async () => {
       const existing = get().records.get(SETTINGS_ID)
@@ -762,6 +877,16 @@ export const useVaultStore = create<VaultState>((set, get) => {
           .map((r) => [r.label, r.id]),
       )
       const idRemap = new Map<string, string>()
+      // Map every built-in type BEFORE any relationship is remapped: bundle
+      // rows arrive in arbitrary key order, so a relationship that precedes
+      // its type record would otherwise keep a dangling typeId — and every
+      // "partner" would read as "linked" after a restore.
+      for (const record of sanitized) {
+        if (record.kind === 'relationshipType' && record.builtIn) {
+          const existingId = builtInByLabel.get(record.label)
+          if (existingId && existingId !== record.id) idRemap.set(record.id, existingId)
+        }
+      }
       const puts: DomainRecord[] = []
       const blobBytesById = new Map(blobs.map((b) => [b.id, b.bytes]))
       const blobWrites: { id: string; bytes: Uint8Array }[] = []
@@ -976,4 +1101,17 @@ export function selectSettings(records: Map<string, DomainRecord>): Settings | u
 /** Search the in-memory index; returns person ids ranked by relevance. */
 export function searchPeopleIds(query: string): string[] {
   return searchPeople(searchIndex, query)
+}
+
+export function selectCircles(records: Map<string, DomainRecord>): Circle[] {
+  return [...records.values()]
+    .filter((r): r is Circle => r.kind === 'circle')
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export function selectCirclesOf(
+  records: Map<string, DomainRecord>,
+  personId: string,
+): Circle[] {
+  return selectCircles(records).filter((c) => c.memberIds.includes(personId))
 }

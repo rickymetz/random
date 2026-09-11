@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../lib/db'
 import { mentionToken } from '../lib/mentions'
 import {
+  selectCircles,
+  selectCirclesOf,
   selectNotes,
   selectRelationships,
   selectRelationshipTypes,
@@ -235,6 +237,141 @@ describe('vault store', () => {
     draft = 'other'
     await store().flushDrafts()
     expect(selectNotes(store().records, ada.id)).toHaveLength(1)
+  })
+
+  it('updateNote re-derives mention edges from the new text', async () => {
+    const ada = await store().addPerson('Ada')
+    const bob = await store().addPerson('Bob')
+    const cy = await store().addPerson('Cy')
+    await store().saveNote(ada.id, `Lunch with ${mentionToken(bob)}`)
+    const note = selectNotes(store().records, ada.id)[0]
+    expect(selectRelationships(store().records).map((r) => r.toId)).toEqual([bob.id])
+
+    await store().updateNote(note.id, `Lunch with ${mentionToken(cy)} instead`)
+    const edited = selectNotes(store().records, ada.id)[0]
+    expect(edited.id).toBe(note.id)
+    expect(edited.body).toContain(cy.id)
+    // Bob's dashed edge is gone; Cy's exists.
+    expect(selectRelationships(store().records).map((r) => r.toId)).toEqual([cy.id])
+  })
+
+  it('renaming a person rewrites @mention labels in other people’s notes', async () => {
+    const ada = await store().addPerson('Ada')
+    const bob = await store().addPerson('Bob Jones')
+    await store().saveNote(ada.id, `Met ${mentionToken(bob)} at the pier`)
+    await store().updatePerson({ ...bob, displayName: 'Bob Jones-Park' })
+    const note = selectNotes(store().records, ada.id)[0]
+    expect(note.body).toContain('@[Bob Jones-Park](')
+    expect(note.body).not.toContain('@[Bob Jones](')
+    // The link itself (id) is untouched and the edge still stands.
+    expect(note.mentions).toEqual([bob.id])
+    expect(selectRelationships(store().records)).toHaveLength(1)
+  })
+
+  it('saveNote never resurrects a deleted person', async () => {
+    const ada = await store().addPerson('Ada')
+    await store().removePerson(ada.id)
+    // A draft flush racing the delete must not persist an orphan note.
+    await store().saveNote(ada.id, 'note for a person that no longer exists')
+    expect(selectNotes(store().records, ada.id)).toHaveLength(0)
+    const orphanNotes = [...store().records.values()].filter(
+      (r) => r.kind === 'note' && r.personId === ada.id,
+    )
+    expect(orphanNotes).toHaveLength(0)
+  })
+
+  it('circles: create by name, membership, rename, and cascades', async () => {
+    const ada = await store().addPerson('Ada')
+    const bob = await store().addPerson('Bob')
+    const c1 = await store().addCircle('College friends')
+    const again = await store().addCircle('college FRIENDS')
+    expect(again.id).toBe(c1.id) // case-insensitive name reuse
+    const c2 = await store().addCircle('DC polycule')
+    expect(c1.color).not.toBe(c2.color) // auto-assigned distinct hues
+
+    await store().setPersonCircles(ada.id, [c1.id, c2.id])
+    await store().setPersonCircles(bob.id, [c1.id])
+    expect(selectCirclesOf(store().records, ada.id).map((c) => c.id).sort()).toEqual(
+      [c1.id, c2.id].sort(),
+    )
+    // Removing one keeps the other
+    await store().setPersonCircles(ada.id, [c2.id])
+    expect(selectCirclesOf(store().records, ada.id).map((c) => c.id)).toEqual([c2.id])
+
+    // Rename + recolor persist; members untouched
+    const freshC2 = selectCircles(store().records).find((c) => c.id === c2.id)!
+    await store().updateCircle({ ...freshC2, name: 'DC crew', color: '#a8d070' })
+    const renamed = selectCircles(store().records).find((c) => c.id === c2.id)!
+    expect(renamed).toMatchObject({ name: 'DC crew', color: '#a8d070', memberIds: [ada.id] })
+
+    // Deleting a person removes them from every circle
+    await store().removePerson(ada.id)
+    expect(selectCircles(store().records).every((c) => !c.memberIds.includes(ada.id))).toBe(true)
+    // Empty circles persist until deleted explicitly
+    expect(selectCircles(store().records).some((c) => c.id === c2.id)).toBe(true)
+    await store().removeCircle(c2.id)
+    expect(selectCircles(store().records).some((c) => c.id === c2.id)).toBe(false)
+    // People survive a circle delete
+    expect(store().records.has(bob.id)).toBe(true)
+  })
+
+  it('updateCircle refuses a name another circle already uses', async () => {
+    const a = await store().addCircle('College friends')
+    const b = await store().addCircle('DC crew')
+    const result = await store().updateCircle({ ...b, name: 'college FRIENDS' })
+    expect(result).toBe('name-taken')
+    expect(selectCircles(store().records).find((c) => c.id === b.id)?.name).toBe('DC crew')
+    // Renaming to itself (case change) is fine.
+    expect(await store().updateCircle({ ...a, name: 'College Friends' })).toBe('ok')
+  })
+
+  it('restore keeps relationship types even when a relationship precedes its type in the bundle', async () => {
+    const ada = await store().addPerson('Ada')
+    const bob = await store().addPerson('Bob')
+    // A bundle from another device: its own ids for the built-in types,
+    // and the relationship row listed BEFORE the type row.
+    const foreignPartnerId = crypto.randomUUID()
+    await store().importRecords([
+      {
+        kind: 'relationship',
+        id: crypto.randomUUID(),
+        fromId: ada.id,
+        toId: bob.id,
+        typeId: foreignPartnerId,
+        directed: false,
+        origin: 'explicit',
+        createdAt: 1,
+      },
+      {
+        kind: 'relationshipType',
+        id: foreignPartnerId,
+        label: 'partner',
+        color: '#e2567a',
+        directed: false,
+        builtIn: true,
+      },
+    ])
+    const localPartner = selectRelationshipTypes(store().records).find((t) => t.label === 'partner')!
+    const edge = selectRelationships(store().records)[0]
+    expect(edge.typeId).toBe(localPartner.id)
+    expect(store().records.has(foreignPartnerId)).toBe(false)
+  })
+
+  it('imported circles are sanitized: bad member ids dropped, bad color defaulted', async () => {
+    const ada = await store().addPerson('Ada')
+    await store().importRecords([
+      {
+        kind: 'circle',
+        id: 'c-import',
+        name: '  Book club ',
+        color: 'javascript:alert(1)',
+        memberIds: [ada.id, '<script>', 42, ada.id],
+      },
+    ])
+    const c = selectCircles(store().records).find((x) => x.id === 'c-import')!
+    expect(c.name).toBe('Book club')
+    expect(c.color).toMatch(/^#[0-9a-f]{6}$/i)
+    expect(c.memberIds).toEqual([ada.id])
   })
 
   it('security settings persist through the encrypted settings record', async () => {
