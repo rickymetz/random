@@ -911,8 +911,7 @@ function CirclePeek({
           {members.length === 0 && <li className="hint">No one yet.</li>}
         </ul>
         {others.length > 0 && (
-          <label className="add-member">
-            <span className="sr-only">Add a person to {circle.name}</span>
+          <div className="add-member">
             <PersonPicker
               people={others}
               value=""
@@ -921,8 +920,10 @@ function CirclePeek({
               }}
               label={`Add a person to ${circle.name}`}
               placeholder="+ Add someone…"
+              pickedMessage={(p) => `${p.displayName} added to ${circle.name}`}
+              listAbove
             />
-          </label>
+          </div>
         )}
       </div>
       <div className="row wrap">

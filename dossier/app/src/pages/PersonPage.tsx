@@ -20,10 +20,17 @@ import {
   selectPhotos,
   selectRelationships,
   selectRelationshipTypes,
+  selectSettings,
   useVaultStore,
 } from '../store/vaultStore'
 
 const csv = (list: string[]) => list.join(', ')
+
+/** "friend of Ada", but "boss of Ada" — not "boss of of Ada". */
+const relOf = (label: string | undefined, name: string) => {
+  const l = label ?? 'linked'
+  return / of$/.test(l) ? `${l} ${name}` : `${l} of ${name}`
+}
 
 /**
  * The dossier (§4.1), ordered for scenario S2 — facts, relationships, and
@@ -507,6 +514,10 @@ function ConnectionSection({ person }: { person: Person }) {
   const otherId = compareId && records.has(compareId) ? compareId : selfId
   const path = useMemoPath(records, selfId, person.id)
   const mutuals = useMemoMutuals(records, otherId, person.id)
+  const compareExclude = useMemo(
+    () => [person.id, ...people.filter((p) => p.isSelf).map((p) => p.id)],
+    [people, person.id],
+  )
   const hasAnyEdge = useMemo(
     () =>
       [...records.values()].some(
@@ -572,16 +583,18 @@ function ConnectionSection({ person }: { person: Person }) {
         <p className="hint">No known chain connects you yet.</p>
       )}
       <div className="row wrap">
-        <label className="inline-check compare-with">
-          Mutual connections with
+        <div className="inline-check compare-with">
+          <span aria-hidden="true">Mutual connections with</span>
           <PersonPicker
-            people={people.filter((p) => !p.isSelf && p.id !== person.id)}
+            people={people}
+            excludeIds={compareExclude}
             value={compareId}
             onChange={setCompareId}
             label="Compare mutual connections with"
-            placeholder="you — or type a name"
+            placeholder="Type a name…"
+            emptyLabel="You"
           />
-        </label>
+        </div>
       </div>
       {mutuals.length === 0 ? (
         <p className="hint">
@@ -593,8 +606,8 @@ function ConnectionSection({ person }: { person: Person }) {
             <li key={m.person.id}>
               <Link to={`/person/${m.person.id}`}>{m.person.displayName}</Link>
               <span className="hint">
-                {typeById.get(m.edgeToB.typeId)?.label ?? 'linked'} of {person.displayName} ·{' '}
-                {typeById.get(m.edgeToA.typeId)?.label ?? 'linked'} of {otherName}
+                {relOf(typeById.get(m.edgeToB.typeId)?.label, person.displayName)} ·{' '}
+                {relOf(typeById.get(m.edgeToA.typeId)?.label, otherName)}
               </span>
             </li>
           ))}
@@ -839,7 +852,8 @@ function RelationshipSection({ person }: { person: Person }) {
     [records, person.id],
   )
   const personById = useMemo(() => new Map(people.map((p) => [p.id, p])), [people])
-  const others = useMemo(() => people.filter((p) => p.id !== person.id), [people, person.id])
+  const selfExclude = useMemo(() => [person.id], [person.id])
+  const recentIds = selectSettings(records)?.recentIds
   const addPerson = useVaultStore((s) => s.addPerson)
   const typeById = useMemo(
     () => new Map(selectRelationshipTypes(records).map((t) => [t.id, t])),
@@ -933,17 +947,23 @@ function RelationshipSection({ person }: { person: Person }) {
       )}
       <ul className="edges">{edges.map(describe)}</ul>
       <form className="add-form" onSubmit={add}>
-        <label className="span-2">
-          Person
+        {/* A div, not a label: once the chip shows, a label's control would
+            become the × button and clicking "Person" would un-pick. */}
+        <div className="span-2 field">
+          <span className="field-label" aria-hidden="true">
+            Person
+          </span>
           <PersonPicker
-            people={others}
+            people={people}
+            excludeIds={selfExclude}
             value={otherId}
             onChange={setOtherId}
             onCreate={addPerson}
             label="Person"
             placeholder="Type a name…"
+            preferIds={recentIds}
           />
-        </label>
+        </div>
         <label>
           Relationship type
           <select

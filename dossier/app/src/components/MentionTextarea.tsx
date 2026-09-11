@@ -165,20 +165,16 @@ export default function MentionTextarea({
               role="option"
               aria-selected={i === active}
               className={i === active ? 'active' : undefined}
+              // The option itself is the target (no nested button — an
+              // option's children are presentational). pointerdown only
+              // keeps focus in the textarea so the keyboard stays up and
+              // the caret math stays valid; click activates, which is
+              // also what a screen reader's double-tap sends.
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => void pick(s)}
+              onPointerEnter={() => setActive(i)}
             >
-              <button
-                type="button"
-                tabIndex={-1}
-                // pointerdown fires before the textarea's blur, so the
-                // keyboard stays up and the caret math stays valid.
-                onPointerDown={(e) => {
-                  e.preventDefault()
-                  void pick(s)
-                }}
-                onPointerEnter={() => setActive(i)}
-              >
-                {s.kind === 'person' ? s.person.displayName : `+ Add “${s.name}”`}
-              </button>
+              {s.kind === 'person' ? s.person.displayName : `+ Add “${s.name}”`}
             </li>
           ))}
         </ul>

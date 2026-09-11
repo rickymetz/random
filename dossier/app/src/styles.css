@@ -620,7 +620,8 @@ section h2 {
   color: var(--text-3);
 }
 
-/* Menus (mention + chip suggestions share one look) */
+/* Menus (mention + chip suggestions share one look). Mention options are
+   the <li>s themselves (no nested button). */
 .mention-box {
   /* Anchors the suggestion popup to the textarea, not a distant sticky
      ancestor — dropped by mistake in the redesign. */
@@ -651,6 +652,7 @@ section h2 {
   top: 100%;
   margin-top: var(--s1);
 }
+.mention-suggestions li[role='option'],
 .mention-suggestions button,
 .chip-suggestions button {
   display: flex;
@@ -665,10 +667,16 @@ section h2 {
   justify-content: flex-start;
   box-shadow: none;
 }
+.mention-suggestions li + li,
 .mention-suggestions button + button,
 .chip-suggestions li + li button {
   border-top: 1px solid var(--line);
 }
+.mention-suggestions li[role='option'] {
+  align-items: center;
+  cursor: pointer;
+}
+.mention-suggestions li[role='option']:hover,
 .mention-suggestions button:hover,
 .chip-suggestions button:hover {
   background: var(--surface-3);
@@ -1775,6 +1783,7 @@ body:has(.promote-panel) .capture-bar {
 /* ------------------------------------------------- review round 3 bits */
 
 /* Keyboard-selected mention suggestion */
+.mention-suggestions li.active,
 .mention-suggestions li.active button {
   background: var(--surface-3);
   color: var(--text);
@@ -1901,6 +1910,14 @@ a.facet:hover {
 }
 .circle-peek input[type='text'] {
   background: var(--surface-1);
+}
+/* The picker's field is not the circle's name: no headline styling. */
+.circle-peek .person-picker input {
+  font: 450 var(--fs-ui) / 1.3 var(--font-ui);
+}
+.circle-peek .person-picker .chip-suggestions {
+  max-height: calc(5 * var(--ctl-h));
+  overflow-y: auto;
 }
 .circle-peek .members {
   list-style: none;
@@ -2120,7 +2137,8 @@ button.danger-text {
   }
   /* The mention list rides above the lifted bar; on a small phone with the
      keyboard up it must scroll rather than run off the top. */
-  body.kb-open .mention-suggestions {
+  body.kb-open .mention-suggestions,
+  body.kb-open .person-picker .chip-suggestions {
     max-height: calc(100dvh - var(--kb, 0px) - 12rem);
     overflow-y: auto;
   }
@@ -2369,6 +2387,23 @@ input[type='search']::-webkit-search-cancel-button {
 }
 .person-picker input {
   width: 100%;
+  scroll-margin-top: calc(var(--appbar-h) + env(safe-area-inset-top) + var(--s3));
+}
+/* Above the sticky capture bar (25) and the tab bar (30). */
+.person-picker .chip-suggestions {
+  z-index: 31;
+}
+.add-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+.add-form .field-label {
+  font: 650 var(--fs-label) / 1.3 var(--font-ui);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
 }
 .picked-chip {
   display: inline-flex;
@@ -2378,23 +2413,57 @@ input[type='search']::-webkit-search-cancel-button {
   min-height: var(--ctl-h);
   padding: 0 var(--s1) 0 var(--s2);
   border: 1px solid var(--line-2);
-  border-radius: var(--r-pill, 999px);
+  border-radius: 999px;
   background: var(--surface-2);
+  /* Inside a form label the chip must not inherit small-caps styling. */
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--fs-ui);
+  font-weight: 500;
+  color: var(--text);
 }
-.picked-chip > span {
+.picked-chip > span:not(.avatar) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .picked-chip .icon {
   min-width: var(--ctl-h);
+  border: none;
+  margin-right: -1px;
 }
-.chip-suggestions button {
+.person-picker .chip-suggestions li[role='option'] {
+  display: flex;
   align-items: center;
   gap: var(--s2);
+  min-height: var(--ctl-h);
+  padding: 0 var(--s3);
+  color: var(--text);
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: normal;
+  font: 450 var(--fs-ui) / 1.3 var(--font-ui);
 }
-.chip-suggestions li.active button {
+.person-picker .chip-suggestions li + li {
+  border-top: 1px solid var(--line);
+}
+.person-picker .chip-suggestions li.active {
   background: var(--surface-3);
+}
+.person-picker .picker-more {
+  padding: var(--s1) var(--s3);
+  text-transform: none;
+  letter-spacing: normal;
+}
+.picker-empty {
+  margin: var(--s1) 0 0;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.person-picker.list-above .chip-suggestions {
+  top: auto;
+  bottom: 100%;
+  margin: 0 0 var(--s1);
 }
 .picker-name {
   display: flex;
@@ -2402,8 +2471,16 @@ input[type='search']::-webkit-search-cancel-button {
   min-width: 0;
   line-height: 1.2;
 }
+.picker-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .picker-name .hint {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-meta);
+}
+.picker-create {
+  color: var(--text-2);
 }
 .compare-with {
   align-items: center;
@@ -2411,13 +2488,4 @@ input[type='search']::-webkit-search-cancel-button {
 }
 .compare-with .person-picker {
   flex: 1 1 12rem;
-}
-/* Inside a form label the chip must not inherit the label's small-caps
-   styling. */
-.picked-chip {
-  text-transform: none;
-  letter-spacing: normal;
-  font-size: var(--fs-ui);
-  font-weight: 500;
-  color: var(--text);
 }
