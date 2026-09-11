@@ -140,7 +140,8 @@ interface VaultState {
   updateNote: (noteId: string, body: string) => Promise<void>
   /** Circles (§4.6): named, colored groups drawn as bubbles on the graph. */
   addCircle: (name: string, color?: string) => Promise<Circle>
-  updateCircle: (circle: Circle) => Promise<void>
+  /** Resolves 'name-taken' (nothing written) if another circle has that name. */
+  updateCircle: (circle: Circle) => Promise<'ok' | 'name-taken'>
   removeCircle: (circleId: string) => Promise<void>
   /** Replace the set of circles a person belongs to. */
   setPersonCircles: (personId: string, circleIds: string[]) => Promise<void>
@@ -778,10 +779,13 @@ export const useVaultStore = create<VaultState>((set, get) => {
         const all = selectCircles(get().records)
         const existing = all.find((c) => c.name.toLowerCase() === trimmed.toLowerCase())
         if (existing) return existing
-        // Next unused hue, wrapping once the palette is exhausted.
-        const used = new Set(all.map((c) => c.color))
-        const auto =
-          CIRCLE_COLORS.find((c) => !used.has(c)) ?? CIRCLE_COLORS[all.length % CIRCLE_COLORS.length]
+        // Least-used hue (palette order breaks ties), so the 9th circle
+        // never lands on an exact duplicate of the 1st.
+        const counts = new Map(CIRCLE_COLORS.map((c) => [c, 0]))
+        for (const c of all) counts.set(c.color, (counts.get(c.color) ?? 0) + 1)
+        const auto = CIRCLE_COLORS.reduce((best, c) =>
+          (counts.get(c) ?? 0) < (counts.get(best) ?? 0) ? c : best,
+        )
         const circle: Circle = {
           kind: 'circle',
           id: crypto.randomUUID(),
@@ -798,7 +802,12 @@ export const useVaultStore = create<VaultState>((set, get) => {
     updateCircle: (circle) =>
       enqueue(async () => {
         const before = get().records.get(circle.id)
-        if (before?.kind !== 'circle') return
+        if (before?.kind !== 'circle') return 'ok' as const
+        const wanted = circle.name.trim().toLowerCase()
+        const clash = selectCircles(get().records).some(
+          (c) => c.id !== circle.id && c.name.toLowerCase() === wanted,
+        )
+        if (clash) return 'name-taken' as const
         const next: Circle = {
           ...circle,
           name: circle.name.trim() || before.name,
@@ -808,6 +817,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
         // Circle names are searchable: reindex anyone whose membership or
         // circle name changed.
         await apply([next], [], [...new Set([...before.memberIds, ...next.memberIds])])
+        return 'ok' as const
       }),
 
     removeCircle: (circleId) =>
@@ -867,6 +877,16 @@ export const useVaultStore = create<VaultState>((set, get) => {
           .map((r) => [r.label, r.id]),
       )
       const idRemap = new Map<string, string>()
+      // Map every built-in type BEFORE any relationship is remapped: bundle
+      // rows arrive in arbitrary key order, so a relationship that precedes
+      // its type record would otherwise keep a dangling typeId — and every
+      // "partner" would read as "linked" after a restore.
+      for (const record of sanitized) {
+        if (record.kind === 'relationshipType' && record.builtIn) {
+          const existingId = builtInByLabel.get(record.label)
+          if (existingId && existingId !== record.id) idRemap.set(record.id, existingId)
+        }
+      }
       const puts: DomainRecord[] = []
       const blobBytesById = new Map(blobs.map((b) => [b.id, b.bytes]))
       const blobWrites: { id: string; bytes: Uint8Array }[] = []

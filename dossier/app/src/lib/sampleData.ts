@@ -108,9 +108,9 @@ export const SAMPLE_TAG = 'sample'
 
 /** Circles (§4.6) — overlapping groups so bubbles visibly intersect. */
 const CIRCLES: [string, string[]][] = [
-  ['Meridian Labs', ['Priya Raman', 'Marcus Webb', 'Elena Sofia', 'me']],
+  ['Meridian Labs', ['Priya Raman', 'Marcus Webb', 'Elena Sofia']],
   ['Webb family', ['June Webb', 'Harold Webb', 'Marcus Webb', 'Nadia Osei']],
-  ['Climbing crew', ['Theo Martins', 'Sam Kim', 'Bruno Costa', 'me']],
+  ['Climbing crew', ['Theo Martins', 'Sam Kim', 'Bruno Costa']],
 ]
 
 export interface SampleDataResult {
@@ -231,6 +231,13 @@ export async function loadSampleData(): Promise<SampleDataResult> {
       (c) => c.name.toLowerCase() === name.toLowerCase(),
     )
     if (existing) {
+      // Only touch a circle the loader itself made: a real circle that
+      // happens to share a name must never absorb fictional people.
+      const sampleOnly = existing.memberIds.every((id) => {
+        const p = st.records.get(id)
+        return p?.kind === 'person' && p.tags.includes(SAMPLE_TAG)
+      })
+      if (!sampleOnly) continue
       const merged = [...new Set([...existing.memberIds, ...memberIds])]
       if (merged.length !== existing.memberIds.length) {
         await st.updateCircle({ ...existing, memberIds: merged })

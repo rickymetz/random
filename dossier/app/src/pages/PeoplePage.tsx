@@ -6,6 +6,7 @@ import type { Person } from '../lib/models'
 import { matchSnippet } from '../lib/search'
 import {
   searchPeopleIds,
+  selectCircles,
   selectCirclesOf,
   selectPeople,
   selectSettings,
@@ -24,6 +25,7 @@ export default function PeoplePage() {
   const query = useVaultStore((s) => s.homeQuery)
   const setQuery = useVaultStore((s) => s.setHomeQuery)
   const addPerson = useVaultStore((s) => s.addPerson)
+  const setPersonCircles = useVaultStore((s) => s.setPersonCircles)
   const corrupted = useVaultStore((s) => s.corrupted)
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
@@ -75,6 +77,8 @@ export default function PeoplePage() {
     setBusy(true)
     try {
       const person = await addPerson(query.trim() || 'New person')
+      // Adding from inside a circle's list puts the new person in it.
+      if (circle) await setPersonCircles(person.id, [circle.id])
       setQuery('')
       navigate(`/person/${person.id}`)
     } finally {
@@ -89,6 +93,14 @@ export default function PeoplePage() {
   }
 
   const trimmed = query.trim()
+  // Circle names are searchable too — surface the circles themselves, not
+  // just their members, and don't offer to create a *person* by that name.
+  const circleHits = useMemo(() => {
+    const q = trimmed.toLowerCase()
+    if (!q || circle) return []
+    return selectCircles(records).filter((c) => c.name.toLowerCase().includes(q))
+  }, [records, trimmed, circle])
+  const exactCircle = circleHits.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())
   return (
     <div className="people">
       <h1 className="sr-only">People</h1>
@@ -104,12 +116,20 @@ export default function PeoplePage() {
           }
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search names, details, notes — or type a new name"
+          placeholder={
+            circle
+              ? `Search in ${circle.name}… or type a name to add`
+              : 'Search names, details, notes — or type a new name'
+          }
           aria-label="Search names, details, and notes"
         />
       </form>
       {circle && (
-        <p className="banner circle-banner" style={{ '--chip-color': circle.color } as React.CSSProperties}>
+        <p
+          className="banner circle-banner"
+          role="status"
+          style={{ '--chip-color': circle.color } as React.CSSProperties}
+        >
           <span className="circle-chip">{circle.name}</span> — {circle.memberIds.length}{' '}
           {circle.memberIds.length === 1 ? 'person' : 'people'} ·{' '}
           <Link to={`/graph?circle=${circle.id}`}>see on graph</Link>
@@ -134,9 +154,27 @@ export default function PeoplePage() {
       <PinFailureNotice />
       {!trimmed && <BackupNag />}
       {!trimmed && <Upcoming />}
-      {trimmed && (
+      {circleHits.length > 0 && (
+        <ul className="circle-results" aria-label="Circles">
+          {circleHits.map((c) => (
+            <li key={c.id}>
+              <Link
+                to={`/?circle=${c.id}`}
+                className="circle-chip"
+                style={{ '--chip-color': c.color } as React.CSSProperties}
+              >
+                {c.name}
+              </Link>
+              <span className="hint">
+                {c.memberIds.length} {c.memberIds.length === 1 ? 'person' : 'people'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {trimmed && !exactCircle && (
         <button className="add-person" onClick={create} disabled={busy}>
-          + Add “{trimmed}”
+          + Add “{trimmed}”{circle ? ` to ${circle.name}` : ''}
         </button>
       )}
       <ul>
@@ -173,11 +211,14 @@ function PersonRow({ person, query }: { person: Person; query: string }) {
   // Show WHY a result matched when the hit came from note text (§4.4).
   const snippet = useMemo(() => {
     if (!query) return null
-    const nameHit =
-      person.displayName.toLowerCase().includes(query.toLowerCase()) ||
-      detail.toLowerCase().includes(query.toLowerCase())
-    return nameHit ? null : matchSnippet(records, person.id, query)
-  }, [records, person, query, detail])
+    const q = query.toLowerCase()
+    const nameHit = person.displayName.toLowerCase().includes(q) || detail.toLowerCase().includes(q)
+    if (nameHit) return null
+    // Say WHY a circle-name hit matched, the way note hits do.
+    const viaCircle = circles.find((c) => c.name.toLowerCase().includes(q))
+    if (viaCircle) return `in ${viaCircle.name}`
+    return matchSnippet(records, person.id, query)
+  }, [records, person, query, detail, circles])
 
   return (
     <li>
@@ -195,6 +236,7 @@ function PersonRow({ person, query }: { person: Person; query: string }) {
               {circles.map((c) => (
                 <i key={c.id} style={{ background: c.color }} />
               ))}
+              <span className="sr-only">in {circles.map((c) => c.name).join(', ')}</span>
             </span>
           )}
           {detail && <span className="hint"> {detail}</span>}

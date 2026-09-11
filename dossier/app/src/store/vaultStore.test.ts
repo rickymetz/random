@@ -315,6 +315,48 @@ describe('vault store', () => {
     expect(store().records.has(bob.id)).toBe(true)
   })
 
+  it('updateCircle refuses a name another circle already uses', async () => {
+    const a = await store().addCircle('College friends')
+    const b = await store().addCircle('DC crew')
+    const result = await store().updateCircle({ ...b, name: 'college FRIENDS' })
+    expect(result).toBe('name-taken')
+    expect(selectCircles(store().records).find((c) => c.id === b.id)?.name).toBe('DC crew')
+    // Renaming to itself (case change) is fine.
+    expect(await store().updateCircle({ ...a, name: 'College Friends' })).toBe('ok')
+  })
+
+  it('restore keeps relationship types even when a relationship precedes its type in the bundle', async () => {
+    const ada = await store().addPerson('Ada')
+    const bob = await store().addPerson('Bob')
+    // A bundle from another device: its own ids for the built-in types,
+    // and the relationship row listed BEFORE the type row.
+    const foreignPartnerId = crypto.randomUUID()
+    await store().importRecords([
+      {
+        kind: 'relationship',
+        id: crypto.randomUUID(),
+        fromId: ada.id,
+        toId: bob.id,
+        typeId: foreignPartnerId,
+        directed: false,
+        origin: 'explicit',
+        createdAt: 1,
+      },
+      {
+        kind: 'relationshipType',
+        id: foreignPartnerId,
+        label: 'partner',
+        color: '#e2567a',
+        directed: false,
+        builtIn: true,
+      },
+    ])
+    const localPartner = selectRelationshipTypes(store().records).find((t) => t.label === 'partner')!
+    const edge = selectRelationships(store().records)[0]
+    expect(edge.typeId).toBe(localPartner.id)
+    expect(store().records.has(foreignPartnerId)).toBe(false)
+  })
+
   it('imported circles are sanitized: bad member ids dropped, bad color defaulted', async () => {
     const ada = await store().addPerson('Ada')
     await store().importRecords([

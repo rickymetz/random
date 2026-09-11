@@ -167,10 +167,15 @@ circles interview (Appendix A):
   members with the name floating above it. A weak layout force pulls
   members toward their circle's centroid so bubbles stay compact; edges
   still dominate. Bubbles draw beneath edges and nodes.
-- **Graph controls:** a chip per circle shows/hides its bubble (members stay
-  on the graph); tapping a bubble opens a circle card (members, rename,
-  color swatches, Focus, Delete); Focus shows only that circle's members
-  and the edges among them (`?circle=<id>`), like the ego view for people.
+- **Graph controls:** circle chips (hollow-ring glyph, grouped ahead of the
+  relationship-type chips) show/hide each bubble; tapping a bubble — or the
+  ✎ on its chip, which is also the keyboard/screen-reader path and the only
+  path for an empty circle — opens a circle card (name with collision
+  check, color swatches, members with remove and an "Add someone…" picker,
+  "Only this circle" / "Show everyone", Delete). Focus draws only that
+  circle and its members (`?circle=<id>`). Bubbles are a single offset
+  outline of the members' hull (fill 0.09, outline 0.45) with zoom-scaled,
+  collision-avoiding labels; a centroid force keeps members together.
 - **Colors:** auto-assigned from a muted palette (next unused hue); the
   card's swatches override.
 - **Managed from the person page:** a "Circles" chip field on the edit

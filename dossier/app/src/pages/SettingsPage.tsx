@@ -570,7 +570,7 @@ function SampleDataSection() {
     if (busy) return
     if (
       !confirm(
-        "Add 14 fictional people (tagged 'sample') with interconnected relationships to explore the graph? You can delete them individually later.",
+        "Add 14 fictional people (tagged 'sample'), their relationships, and 3 circles to explore the graph? You can delete them individually later.",
       )
     ) {
       return
@@ -585,8 +585,7 @@ function SampleDataSection() {
         setMessage(
           <>
             Added {peopleAdded} people, {edgesAdded} relationships, and {circlesAdded} circles —
-            open the{' '}
-            <Link to="/graph">Graph</Link>.
+            open the <Link to="/graph">Graph</Link> (tap a tinted area to edit a circle).
             {skippedNoSelf > 0 &&
               ` ${skippedNoSelf} relationships to you were skipped because no person is marked "This is me" — mark one and load again.`}
           </>,

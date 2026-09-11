@@ -19,7 +19,7 @@ import {
 } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
-import { CIRCLE_COLORS, type Person, type Relationship } from '../lib/models'
+import { CIRCLE_COLORS, colorName, type Person, type Relationship } from '../lib/models'
 import { getPhotoUrl } from '../lib/photoCache'
 import type { UnlockedVault } from '../lib/vault'
 import {
@@ -47,6 +47,8 @@ interface GraphCircle {
   name: string
   color: string
   memberIds: string[]
+  /** Members that exist at all (visible or not). */
+  total: number
 }
 
 /** Pan/zoom/fit handles the React controls call into the canvas effect. */
@@ -280,15 +282,17 @@ export default function GraphPage() {
         directed: (typeById.get(e.typeId)?.directed ?? false) && e.origin === 'explicit',
         highlighted: pathInfo?.edgeIds.has(e.id) ?? false,
       }))
+    // In circle focus only that circle draws (never another circle's
+    // remnant around a shared member); elsewhere a circle whose members
+    // are mostly off-graph doesn't draw a lonely disc either.
     const circles: GraphCircle[] = allCircles
-      .filter((c) => !hiddenCircles.has(c.id))
-      .map((c) => ({
-        id: c.id,
-        name: c.name,
-        color: c.color,
-        memberIds: c.memberIds.filter((id) => ids.has(id)),
-      }))
-      .filter((c) => c.memberIds.length > 0)
+      .filter((c) => (focusedCircle ? c.id === focusedCircle.id : !hiddenCircles.has(c.id)))
+      .map((c) => {
+        const total = c.memberIds.filter((id) => records.has(id)).length
+        const visible = c.memberIds.filter((id) => ids.has(id))
+        return { id: c.id, name: c.name, color: c.color, memberIds: visible, total }
+      })
+      .filter((c) => c.memberIds.length >= Math.min(2, c.total) && c.memberIds.length > 0)
     return { nodes, links, circles }
   }, [
     records,
@@ -318,12 +322,19 @@ export default function GraphPage() {
     links,
     circles,
     focusId,
+    circleFocusId,
     onTap,
     onOpen,
     vault,
     pathNodeIds,
     viewApiRef,
   )
+  const removeCircle = useVaultStore((s) => s.removeCircle)
+  const clearCircleParam = () => {
+    const next = new URLSearchParams(params)
+    next.delete('circle')
+    setParams(next)
+  }
 
   const setDepth = (d: 1 | 2) => {
     const next = new URLSearchParams(params)
@@ -372,16 +383,8 @@ export default function GraphPage() {
             className="chip focus-chip"
             style={{ '--chip-color': focusedCircle.color } as React.CSSProperties}
           >
-            {focusedCircle.name}
-            <button
-              className="subtle"
-              onClick={() => {
-                const next = new URLSearchParams(params)
-                next.delete('circle')
-                setParams(next)
-              }}
-              aria-label="Show everyone"
-            >
+            Only {focusedCircle.name}
+            <button className="subtle" onClick={clearCircleParam} aria-label="Show everyone">
               ×
             </button>
           </span>
@@ -400,6 +403,57 @@ export default function GraphPage() {
             >
               ×
             </button>
+          </span>
+        )}
+        {allCircles.length > 0 && !focusedCircle && (
+          <span className="chip-group" role="group" aria-label="Circles">
+            <span className="chip-group-label" aria-hidden="true">
+              Circles
+            </span>
+            {allCircles.map((c) => {
+              const n = c.memberIds.length
+              const on = !hiddenCircles.has(c.id)
+              return (
+                <span
+                  key={c.id}
+                  className={`chip circle-filter ${on ? '' : 'off'}`}
+                  style={{ '--chip-color': c.color } as React.CSSProperties}
+                  aria-pressed={on}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${c.name} circle, ${n} ${n === 1 ? 'person' : 'people'} — ${on ? 'shown' : 'hidden'}`}
+                  onClick={() =>
+                    setHiddenCircles((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(c.id)) next.delete(c.id)
+                      else next.add(c.id)
+                      return next
+                    })
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      ;(e.currentTarget as HTMLElement).click()
+                    }
+                  }}
+                >
+                  <span className="name">{c.name}</span>
+                  {/* Keyboard/AT path to the card — and the only path for an
+                      empty circle, which draws no bubble to tap. */}
+                  <button
+                    className="edit"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setPeek({ kind: 'circle', id: c.id })
+                    }}
+                    aria-label={`Edit ${c.name}`}
+                    title="Edit circle"
+                  >
+                    ✎
+                  </button>
+                </span>
+              )
+            })}
           </span>
         )}
         {types
@@ -429,58 +483,65 @@ export default function GraphPage() {
         >
           mentions
         </button>
-        {allCircles.map((c) => (
-          <button
-            key={c.id}
-            className={`chip circle-filter ${hiddenCircles.has(c.id) ? 'off' : ''}`}
-            style={{ '--chip-color': c.color } as React.CSSProperties}
-            aria-pressed={!hiddenCircles.has(c.id)}
-            title={`${c.memberIds.length} ${c.memberIds.length === 1 ? 'person' : 'people'}`}
-            onClick={() =>
-              setHiddenCircles((prev) => {
-                const next = new Set(prev)
-                if (next.has(c.id)) next.delete(c.id)
-                else next.add(c.id)
-                return next
-              })
-            }
-          >
-            {c.name}
-          </button>
-        ))}
       </div>
       <p className="graph-legend">
-        Tap a label to hide or show that kind of link or bubble. Dotted line = mentioned
-        in a note. Bubbles are circles — tap one to edit it; tap a person for details.
+        Tap a label to hide or show that kind of link or circle. Dotted line = mentioned in
+        a note. Tinted areas are circles — tap one (or its ✎) to edit it; tap a person for
+        details.
       </p>
-      {nodes.length === 0 ||
-      (!focusedCircle && !focusId && links.length === 0 && nodes.length <= 1) ? (
-        <p className="empty">
-          No people yet — <Link to="/">add someone</Link> and connect them, or load the
-          sample cast from <Link to="/settings">Settings</Link> to see the graph in action.
-        </p>
-      ) : (
-        <div className="graph-canvas-wrap">
-          <canvas
-            ref={canvasRef}
-            className="graph-canvas"
-            tabIndex={0}
-            role="application"
-            aria-label={`Relationship graph: ${nodes.length} people, ${links.length} connections. Arrow keys pan, plus and minus zoom, 0 fits everyone. Person pages list the same relationships as text.`}
-          />
-          <div className="graph-view-controls" role="group" aria-label="View">
-            <button onClick={() => viewApiRef.current?.zoom(1.25)} aria-label="Zoom in">
-              +
-            </button>
-            <button onClick={() => viewApiRef.current?.zoom(1 / 1.25)} aria-label="Zoom out">
-              −
-            </button>
-            <button onClick={() => viewApiRef.current?.fit()} aria-label="Fit everyone in view">
-              ⤢
-            </button>
+      <div className="graph-canvas-wrap">
+        {focusedCircle && nodes.length === 0 ? (
+          <div className="empty circle-empty" role="status">
+            “{focusedCircle.name}” has no members yet — add people from their pages, or
+            delete it.
+            <div className="row wrap">
+              <button className="subtle" onClick={clearCircleParam}>
+                Show everyone
+              </button>
+              <button
+                className="danger-text"
+                onClick={() => {
+                  if (confirm(`Delete the circle “${focusedCircle.name}”? The people stay.`)) {
+                    void removeCircle(focusedCircle.id)
+                    clearCircleParam()
+                  }
+                }}
+              >
+                Delete circle
+              </button>
+            </div>
           </div>
-          {peek?.kind === 'node' && (
+        ) : nodes.length === 0 ||
+          (!focusedCircle && !focusId && links.length === 0 && nodes.length <= 1) ? (
+          <p className="empty">
+            No people yet — <Link to="/">add someone</Link> and connect them, or load the
+            sample cast from <Link to="/settings">Settings</Link> to see the graph in action.
+          </p>
+        ) : (
+          <>
+            <canvas
+              ref={canvasRef}
+              className="graph-canvas"
+              tabIndex={0}
+              role="application"
+              aria-label={`Relationship graph: ${nodes.length} people, ${links.length} connections, ${circles.length} circles. Arrow keys pan, plus and minus zoom, 0 fits everyone. Person pages list the same relationships and circle membership as text.`}
+            />
+            <div className="graph-view-controls" role="group" aria-label="View">
+              <button onClick={() => viewApiRef.current?.zoom(1.25)} aria-label="Zoom in">
+                +
+              </button>
+              <button onClick={() => viewApiRef.current?.zoom(1 / 1.25)} aria-label="Zoom out">
+                −
+              </button>
+              <button onClick={() => viewApiRef.current?.fit()} aria-label="Fit everyone in view">
+                ⤢
+              </button>
+            </div>
+          </>
+        )}
+        {peek?.kind === 'node' && (
             <NodePeek
+              key={peek.id}
               personId={peek.id}
               onClose={() => setPeek(null)}
               onOpen={() => navigate(`/person/${peek.id}`)}
@@ -490,19 +551,30 @@ export default function GraphPage() {
               }}
             />
           )}
-          {peek?.kind === 'edge' && <EdgePeek edgeId={peek.id} onClose={() => setPeek(null)} />}
+          {peek?.kind === 'edge' && (
+            <EdgePeek key={peek.id} edgeId={peek.id} onClose={() => setPeek(null)} />
+          )}
           {peek?.kind === 'circle' && (
             <CirclePeek
+              key={peek.id}
               circleId={peek.id}
+              focused={circleFocusId === peek.id}
               onClose={() => setPeek(null)}
               onFocus={() => {
                 setParams({ circle: peek.id })
                 setPeek(null)
               }}
+              onUnfocus={() => {
+                clearCircleParam()
+                setPeek(null)
+              }}
+              onDeleted={() => {
+                if (circleFocusId === peek.id) clearCircleParam()
+                setPeek(null)
+              }}
             />
           )}
-        </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -659,15 +731,22 @@ function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) 
   )
 }
 
-/** Tap a bubble → rename, recolor, trim members, focus, or delete it (§4.6). */
+/** Tap a bubble (or a chip's ✎) → rename, recolor, add/remove members,
+ * focus, or delete it (§4.6). */
 function CirclePeek({
   circleId,
+  focused,
   onClose,
   onFocus,
+  onUnfocus,
+  onDeleted,
 }: {
   circleId: string
+  focused: boolean
   onClose: () => void
   onFocus: () => void
+  onUnfocus: () => void
+  onDeleted: () => void
 }) {
   const records = useVaultStore((s) => s.records)
   const updateCircle = useVaultStore((s) => s.updateCircle)
@@ -675,15 +754,29 @@ function CirclePeek({
   const cardRef = usePeekFocus(onClose)
   const circle = records.get(circleId)
   const [name, setName] = useState(circle?.kind === 'circle' ? circle.name : '')
+  const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null)
   if (!circle || circle.kind !== 'circle') return null
   const members = circle.memberIds
     .map((id) => records.get(id))
     .filter((p): p is Person => p?.kind === 'person')
     .sort((a, b) => a.displayName.localeCompare(b.displayName))
-  const commitName = () => {
+  const others = selectPeople(records)
+    .filter((p) => !circle.memberIds.includes(p.id))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+  const dirty = name.trim() !== circle.name
+  const commitName = async () => {
     const next = name.trim()
-    if (next && next !== circle.name) void updateCircle({ ...circle, name: next })
-    else setName(circle.name)
+    if (!next || next === circle.name) {
+      setName(circle.name)
+      return
+    }
+    const result = await updateCircle({ ...circle, name: next })
+    if (result === 'name-taken') {
+      setStatus({ text: `A circle called “${next}” already exists.`, error: true })
+    } else {
+      setStatus({ text: 'Saved ✓' })
+      setTimeout(() => setStatus(null), 1800)
+    }
   }
   return (
     <div
@@ -694,20 +787,40 @@ function CirclePeek({
       aria-label={`Circle: ${circle.name}`}
       style={{ '--chip-color': circle.color } as React.CSSProperties}
     >
+      <button className="subtle icon peek-close" onClick={onClose} aria-label="Close">
+        ×
+      </button>
       <div className="peek-body">
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={commitName}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              commitName()
-            }
-          }}
-          aria-label="Circle name"
-        />
+        <div className="name-row">
+          <label>
+            Name
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value)
+                setStatus(null)
+              }}
+              onBlur={() => void commitName()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void commitName()
+                }
+              }}
+              aria-label="Circle name"
+              aria-invalid={status?.error ? true : undefined}
+            />
+          </label>
+          {dirty && (
+            <button className="primary" onClick={() => void commitName()}>
+              Save
+            </button>
+          )}
+        </div>
+        <span className={`status ${status?.error ? 'error' : ''}`} role="status">
+          {status?.text}
+        </span>
         <span className="swatches" role="group" aria-label="Circle color">
           {CIRCLE_COLORS.map((color) => (
             <button
@@ -715,7 +828,7 @@ function CirclePeek({
               type="button"
               className={`swatch ${color === circle.color ? 'selected' : ''}`}
               style={{ background: color }}
-              aria-label={`Color ${color}`}
+              aria-label={`Color ${colorName(color)}`}
               aria-pressed={color === circle.color}
               onClick={() => void updateCircle({ ...circle, color })}
             />
@@ -738,26 +851,45 @@ function CirclePeek({
               </button>
             </li>
           ))}
-          {members.length === 0 && <li className="hint">No one yet — add people from their page.</li>}
+          {members.length === 0 && <li className="hint">No one yet.</li>}
         </ul>
+        {others.length > 0 && (
+          <label className="add-member">
+            <span className="sr-only">Add a person to {circle.name}</span>
+            <select
+              value=""
+              onChange={(e) => {
+                const id = e.target.value
+                if (id) void updateCircle({ ...circle, memberIds: [...circle.memberIds, id] })
+              }}
+              aria-label={`Add a person to ${circle.name}`}
+            >
+              <option value="">+ Add someone…</option>
+              {others.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       <div className="row wrap">
-        <button className="subtle" onClick={onFocus}>
-          Only this circle
-        </button>
+        {focused ? (
+          <button onClick={onUnfocus}>Show everyone</button>
+        ) : (
+          <button onClick={onFocus}>Only this circle</button>
+        )}
         <button
-          className="danger"
+          className="danger-text"
           onClick={() => {
             if (confirm(`Delete the circle “${circle.name}”? The people stay.`)) {
               void removeCircle(circle.id)
-              onClose()
+              onDeleted()
             }
           }}
         >
           Delete circle
-        </button>
-        <button className="subtle icon" onClick={onClose} aria-label="Close">
-          ×
         </button>
       </div>
     </div>
@@ -769,6 +901,7 @@ function useCanvasGraph(
   links: GraphLink[],
   circles: GraphCircle[],
   focusId: string | null,
+  circleFocusId: string | null,
   onTap: (tap: Tap) => void,
   onOpen: (personId: string) => void,
   vault: UnlockedVault | null,
@@ -784,12 +917,27 @@ function useCanvasGraph(
   const avatarImagesRef = useRef(new Map<string, HTMLImageElement | 'loading' | 'failed'>())
   // Fit-to-path camera runs once per distinct path, not on every re-render.
   const lastFitKeyRef = useRef<string>('')
+  // Circles are read through a ref so recolouring or hiding a bubble
+  // repaints without restarting the simulation (no layout jiggle);
+  // only membership changes reheat it, explicitly.
+  const circlesRef = useRef(circles)
+  const simRef = useRef<{ reheat: () => void; render: () => void } | null>(null)
+  const membershipKey = circles.map((c) => `${c.id}:${c.memberIds.join(',')}`).join('|')
+  useEffect(() => {
+    circlesRef.current = circles
+    simRef.current?.render()
+  }, [circles])
+  useEffect(() => {
+    simRef.current?.reheat()
+  }, [membershipKey])
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || nodes.length === 0) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    const reduceMotion =
+      typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
     const positions = positionsRef.current
     const transform = transformRef.current
@@ -819,22 +967,35 @@ function useCanvasGraph(
       // Gentle clustering (§4.6): members drift toward their circle's
       // centroid so bubbles stay compact; edges still dominate.
       .force('circles', (alpha: number) => {
-        for (const c of circles) {
+        for (const c of circlesRef.current) {
           const members = c.memberIds
             .map((id) => nodeById.get(id))
             .filter((n): n is GraphNode => Boolean(n && n.x != null && n.y != null))
           if (members.length < 2) continue
           const cx = members.reduce((s, n) => s + n.x!, 0) / members.length
           const cy = members.reduce((s, n) => s + n.y!, 0) / members.length
+          // Strong enough to matter (≈6× the rim gravity), still well under
+          // link strength; eased for big circles so they don't crush.
+          const k = (0.24 * alpha) / Math.max(1, Math.sqrt(members.length / 4))
           for (const n of members) {
-            n.vx = (n.vx ?? 0) + (cx - n.x!) * alpha * 0.08
-            n.vy = (n.vy ?? 0) + (cy - n.y!) * alpha * 0.08
+            n.vx = (n.vx ?? 0) + (cx - n.x!) * k
+            n.vy = (n.vy ?? 0) + (cy - n.y!) * k
           }
         }
       })
       .force('collide', forceCollide<GraphNode>((n) => n.r * 1.5))
       // A warm layout barely stirs; a cold one settles from scratch.
       .alpha(hasCachedPositions ? 0.08 : 1)
+
+    // Reduced motion: settle synchronously and paint once — no animated
+    // layout, no reheats on circle changes.
+    if (reduceMotion) {
+      simulation.stop()
+      for (let i = 0; i < 180; i++) simulation.tick()
+      for (const n of simNodes) {
+        if (n.x !== undefined && n.y !== undefined) positions.set(n.id, { x: n.x, y: n.y })
+      }
+    }
 
     let rafPending = false
     const scheduleRender = () => {
@@ -844,6 +1005,14 @@ function useCanvasGraph(
         rafPending = false
         render()
       })
+    }
+
+    simRef.current = {
+      render: scheduleRender,
+      reheat: () => {
+        if (!reduceMotion) simulation.alpha(0.06).restart()
+        else scheduleRender()
+      },
     }
 
     simulation.on('tick', () => {
@@ -898,13 +1067,14 @@ function useCanvasGraph(
       const maxY = (height / 2 - transform.y) / k + NODE_R * 2
       const inView = (x: number, y: number) => x >= minX && x <= maxX && y >= minY && y <= maxY
 
-      // Circle bubbles first, beneath everything (§4.6): a padded, rounded
-      // convex hull of the members — a thick round-joined stroke of the
-      // hull plus its fill gives soft corners without offset geometry.
-      ctx.font = `${12 / k}px system-ui`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'bottom'
-      for (const c of circles) {
+      // Circle bubbles first, beneath everything (§4.6): one exact offset
+      // outline of the members' convex hull — an arc of radius HULL_PAD at
+      // each vertex, joined by tangents — filled once and outlined once,
+      // so there is no doubled rim and identity comes from the outline
+      // where fills blend.
+      const circlesNow = circlesRef.current
+      hulls.clear()
+      for (const c of circlesNow) {
         const pts = c.memberIds
           .map((id) => nodeById.get(id))
           .filter((n): n is GraphNode => Boolean(n && n.x != null && n.y != null))
@@ -912,22 +1082,28 @@ function useCanvasGraph(
         if (pts.length === 0) continue
         const hull = convexHull(pts)
         hulls.set(c.id, hull)
+        const n = hull.length
         ctx.beginPath()
-        if (hull.length === 1) {
+        if (n === 1) {
           ctx.arc(hull[0].x, hull[0].y, HULL_PAD, 0, Math.PI * 2)
         } else {
-          ctx.moveTo(hull[0].x, hull[0].y)
-          for (let i = 1; i < hull.length; i++) ctx.lineTo(hull[i].x, hull[i].y)
-          ctx.closePath()
+          for (let i = 0; i < n; i++) {
+            const v = hull[i]
+            const p = hull[(i - 1 + n) % n]
+            const q = hull[(i + 1) % n]
+            const aIn = Math.atan2(v.y - p.y, v.x - p.x) - Math.PI / 2
+            const aOut = Math.atan2(q.y - v.y, q.x - v.x) - Math.PI / 2
+            ctx.arc(v.x, v.y, HULL_PAD, aIn, n === 2 ? aIn + Math.PI : aOut)
+          }
         }
-        ctx.lineJoin = 'round'
-        ctx.lineCap = 'round'
-        ctx.globalAlpha = 0.11
+        ctx.closePath()
+        ctx.globalAlpha = 0.09
         ctx.fillStyle = c.color
-        ctx.strokeStyle = c.color
-        ctx.lineWidth = hull.length === 1 ? 2 : HULL_PAD * 2
-        if (hull.length > 1) ctx.stroke()
         ctx.fill()
+        ctx.globalAlpha = 0.45
+        ctx.strokeStyle = c.color
+        ctx.lineWidth = 1.25 / k
+        ctx.stroke()
       }
       ctx.globalAlpha = 1
       ctx.lineWidth = 1.5 / k
@@ -1023,36 +1199,72 @@ function useCanvasGraph(
           )
         }
       }
-      // Circle names last, over everything, with a dark halo so they read
-      // wherever the bubble's top edge lands (nodes, edges, other bubbles).
-      ctx.font = `600 ${12 / k}px system-ui`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'bottom'
-      ctx.lineJoin = 'round'
-      ctx.lineWidth = 3.5 / k
-      ctx.strokeStyle = 'rgba(13, 12, 11, 0.85)'
-      for (const c of circles) {
-        const hull = hulls.get(c.id)
-        if (!hull || hull.length === 0) continue
-        const minY = Math.min(...hull.map((p) => p.y))
-        const cxLabel = hull.reduce((s, p) => s + p.x, 0) / hull.length
-        const ly = minY - HULL_PAD - 4 / k
-        ctx.strokeText(c.name, cxLabel, ly)
-        ctx.fillStyle = c.color
-        ctx.fillText(c.name, cxLabel, ly)
+      // Circle names last, over everything, with a dark halo. They scale
+      // with zoom (floor 9px) and vanish when zoomed far out, truncate to
+      // their bubble's width, and dodge nodes and each other.
+      if (k >= 0.45) {
+        const fontPx = Math.min(12, Math.max(9, 12 * k)) / k
+        const lineH = fontPx * 1.3
+        ctx.font = `600 ${fontPx}px system-ui`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'bottom'
+        ctx.lineJoin = 'round'
+        ctx.lineWidth = 3.5 / k
+        ctx.strokeStyle = 'rgba(13, 12, 11, 0.85)'
+        const placed: { x: number; y: number; w: number; h: number }[] = []
+        const nodeBoxes = visibleNodes.map((nd) => ({
+          x: nd.x! - nd.r,
+          y: nd.y! - nd.r,
+          w: nd.r * 2,
+          h: nd.r * 2 + 14 / k,
+        }))
+        const hits = (b: { x: number; y: number; w: number; h: number }) =>
+          [...placed, ...nodeBoxes].some(
+            (o) => b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y,
+          )
+        for (const c of circlesNow) {
+          const hull = hulls.get(c.id)
+          if (!hull || hull.length === 0) continue
+          const xs = hull.map((p) => p.x)
+          const bubbleW = Math.max(...xs) - Math.min(...xs) + HULL_PAD * 2
+          let text = c.name
+          while (text.length > 3 && ctx.measureText(text).width > Math.max(bubbleW, 160 / k)) {
+            text = text.slice(0, -2).trimEnd() + '…'
+          }
+          const w = ctx.measureText(text).width
+          const cxLabel = hull.reduce((s, p) => s + p.x, 0) / hull.length
+          let ly = Math.min(...hull.map((p) => p.y)) - HULL_PAD - 4 / k
+          // Keep the name on screen when the bubble's top is scrolled off.
+          ly = Math.max(ly, minY + NODE_R * 2 + lineH)
+          let box = { x: cxLabel - w / 2, y: ly - lineH, w, h: lineH }
+          for (let tries = 0; tries < 4 && hits(box); tries++) {
+            ly -= lineH
+            box = { ...box, y: ly - lineH }
+          }
+          placed.push(box)
+          ctx.strokeText(text, cxLabel, ly)
+          ctx.fillStyle = c.color
+          ctx.fillText(text, cxLabel, ly)
+        }
       }
       ctx.lineWidth = 1.5 / k
       ctx.restore()
     }
 
+    // Until the user pans or zooms, a viewport change (rotation, resize,
+    // tab bar appearing) re-frames everyone instead of cropping the edges.
+    let userMoved = false
+    let refit: (() => void) | null = null
     const resize = () => {
       const wrap = canvas.parentElement
       if (!wrap) return
       dpr = window.devicePixelRatio || 1
+      const sizeChanged = wrap.clientWidth !== width || wrap.clientHeight !== height
       width = wrap.clientWidth
       height = wrap.clientHeight
       canvas.width = Math.max(1, Math.round(width * dpr))
       canvas.height = Math.max(1, Math.round(height * dpr))
+      if (sizeChanged && !userMoved) refit?.()
       scheduleRender()
     }
     const observer = new ResizeObserver(resize)
@@ -1069,7 +1281,7 @@ function useCanvasGraph(
       const maxX = Math.max(...points.map((p) => p.x))
       const minY = Math.min(...points.map((p) => p.y))
       const maxY = Math.max(...points.map((p) => p.y))
-      const pad = NODE_R * 4
+      const pad = circlesRef.current.length > 0 ? HULL_PAD + 18 + NODE_R : NODE_R * 4
       const spanX = maxX - minX + pad * 2
       const spanY = maxY - minY + pad * 2
       const k = Math.min(maxK, Math.max(0.2, Math.min(width / spanX, height / spanY)))
@@ -1079,9 +1291,11 @@ function useCanvasGraph(
       scheduleRender()
     }
     const fitAll = () => fitTo(simNodes.map((n) => n.id), 1.4)
+    refit = fitAll
 
     viewApiRef.current = {
       zoom: (factor) => {
+        userMoved = true
         transform.k = Math.min(4, Math.max(0.15, transform.k * factor))
         scheduleRender()
       },
@@ -1095,12 +1309,17 @@ function useCanvasGraph(
     if (pathNodeIds && pathNodeIds.length > 0 && lastFitKeyRef.current !== fitKey) {
       lastFitKeyRef.current = fitKey
       fitTimer = setTimeout(() => fitTo(pathNodeIds, 2), 700)
+    } else if (circleFocusId && lastFitKeyRef.current !== `circle:${circleFocusId}`) {
+      // Focusing a circle re-frames on its members.
+      lastFitKeyRef.current = `circle:${circleFocusId}`
+      fitTimer = setTimeout(fitAll, reduceMotion ? 0 : 400)
     } else if (!hasCachedPositions) {
       // First layout of this session: fit everyone once it has settled,
       // so nobody starts off-screen (orphans, big casts on a phone).
       simulation.on('end', fitAll)
-      fitTimer = setTimeout(fitAll, 900)
+      fitTimer = setTimeout(fitAll, reduceMotion ? 0 : 900)
     }
+    if (reduceMotion) scheduleRender()
 
     const toGraphCoords = (clientX: number, clientY: number) => {
       const rect = canvas.getBoundingClientRect()
@@ -1150,13 +1369,15 @@ function useCanvasGraph(
       }
       if (bestEdge) return { kind: 'edge', id: bestEdge.edgeId }
       // Finally, bubbles: inside the padded hull (or within the pad of it).
-      for (const c of circles) {
+      // The band never shrinks below a finger's width on screen.
+      const band = Math.max(HULL_PAD, 22 / transform.k)
+      for (const c of circlesRef.current) {
         const hull = hulls.get(c.id)
         if (!hull || hull.length === 0) continue
         if (hull.length === 1) {
           const dx = p.x - hull[0].x
           const dy = p.y - hull[0].y
-          if (dx * dx + dy * dy <= HULL_PAD * HULL_PAD) return { kind: 'circle', id: c.id }
+          if (dx * dx + dy * dy <= band * band) return { kind: 'circle', id: c.id }
           continue
         }
         let inside = hull.length >= 3
@@ -1169,7 +1390,7 @@ function useCanvasGraph(
         for (let i = 0; i < hull.length; i++) {
           const a = hull[i]
           const b = hull[(i + 1) % hull.length]
-          if (pointSegmentDistSq(p.x, p.y, a.x, a.y, b.x, b.y) <= HULL_PAD * HULL_PAD) {
+          if (pointSegmentDistSq(p.x, p.y, a.x, a.y, b.x, b.y) <= band * band) {
             return { kind: 'circle', id: c.id }
           }
         }
@@ -1249,6 +1470,7 @@ function useCanvasGraph(
           dragNode.fy = p.y
         }
       } else {
+        userMoved = true
         transform.x += dx
         transform.y += dy
         scheduleRender()
@@ -1269,6 +1491,7 @@ function useCanvasGraph(
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
+      userMoved = true
       const factor = Math.exp(-e.deltaY * 0.002)
       const next = Math.min(4, Math.max(0.15, transform.k * factor))
       const rect = canvas.getBoundingClientRect()
@@ -1294,6 +1517,7 @@ function useCanvasGraph(
 
     const onKeyDown = (e: KeyboardEvent) => {
       const pan = 40
+      if (e.key !== '0') userMoved = true
       switch (e.key) {
         case 'ArrowLeft':
           transform.x += pan
@@ -1336,6 +1560,7 @@ function useCanvasGraph(
     return () => {
       alive = false
       viewApiRef.current = null
+      simRef.current = null
       if (fitTimer !== undefined) clearTimeout(fitTimer)
       simulation.stop()
       observer.disconnect()
@@ -1348,7 +1573,8 @@ function useCanvasGraph(
       canvas.removeEventListener('wheel', onWheel)
       canvas.removeEventListener('keydown', onKeyDown)
     }
-  }, [nodes, links, circles, focusId, onTap, onOpen, vault, pathNodeIds, viewApiRef])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, links, focusId, circleFocusId, onTap, onOpen, vault, pathNodeIds, viewApiRef])
 
   return canvasRef
 }

@@ -14,23 +14,33 @@ export default function ChipInput({
   suggestions = [],
   placeholder,
   label,
+  suggestOnFocus = false,
 }: {
   values: string[]
   onChange: (values: string[]) => void
   suggestions?: string[]
   placeholder?: string
   label: string
+  /** Offer the existing vocabulary as soon as the field is focused. */
+  suggestOnFocus?: boolean
 }) {
   const [draft, setDraft] = useState('')
+  const [focused, setFocused] = useState(false)
 
   const matches = useMemo(() => {
     const q = draft.trim().toLowerCase()
-    if (!q) return []
     const present = new Set(values.map((v) => v.toLowerCase()))
+    if (!q) {
+      return suggestOnFocus && focused
+        ? suggestions.filter((s) => !present.has(s.toLowerCase())).slice(0, 6)
+        : []
+    }
+    // Substring, not prefix: "club" finds "Book club".
     return suggestions
-      .filter((s) => s.toLowerCase().startsWith(q) && !present.has(s.toLowerCase()))
-      .slice(0, 5)
-  }, [draft, suggestions, values])
+      .filter((s) => s.toLowerCase().includes(q) && !present.has(s.toLowerCase()))
+      .sort((a, b) => Number(!a.toLowerCase().startsWith(q)) - Number(!b.toLowerCase().startsWith(q)))
+      .slice(0, 6)
+  }, [draft, suggestions, values, suggestOnFocus, focused])
 
   // One onChange per call, even for multiple entries — two add() calls
   // against the same render's `values` would overwrite each other.
@@ -94,7 +104,9 @@ export default function ChipInput({
               removeAt(values.length - 1)
             }
           }}
+          onFocus={() => setFocused(true)}
           onBlur={() => {
+            setFocused(false)
             if (draft.trim()) add(draft)
           }}
         />

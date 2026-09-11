@@ -161,7 +161,7 @@ function Facts({
       </div>
       {filled.length === 0 ? (
         <p className="empty">
-          Nothing recorded yet — Edit adds job, birthday, likes, and more.
+          Nothing recorded yet — Edit adds job, birthday, likes, circles, and more.
         </p>
       ) : (
         <div className="facts-card">
@@ -300,15 +300,17 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     key: 'nicknames' | 'likes' | 'dislikes' | 'tags' | 'circles',
     label: string,
     suggestions: string[] = [],
+    opts: { placeholder?: string; hideLabel?: boolean; suggestOnFocus?: boolean } = {},
   ) => (
     <label className="span-2">
-      {label}
+      {opts.hideLabel ? <span className="sr-only">{label}</span> : label}
       <ChipInput
         label={label}
         values={form[key]}
         onChange={(values) => setForm({ ...form, [key]: values })}
         suggestions={suggestions}
-        placeholder="type a word, then Enter"
+        placeholder={opts.placeholder ?? 'type a word, then Enter'}
+        suggestOnFocus={opts.suggestOnFocus}
       />
     </label>
   )
@@ -396,6 +398,20 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         </div>
       </fieldset>
       <fieldset className="field-group">
+        <legend>Circles</legend>
+        <p className="hint">
+          The circles this person is part of — “book club”, “Meridian Labs” — shown as a
+          tinted area on the graph. Pick an existing circle or type a new name.
+        </p>
+        <div className="field-grid">
+          {chips('circles', 'Circles', vocab.circles, {
+            placeholder: 'circle name — existing ones are suggested',
+            hideLabel: true,
+            suggestOnFocus: true,
+          })}
+        </div>
+      </fieldset>
+      <fieldset className="field-group">
         <legend>Work & life</legend>
         <div className="field-grid">
           {field('jobTitle', 'Job title')}
@@ -426,14 +442,6 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
           {chips('dislikes', 'Dislikes', vocab.dislikes)}
           {chips('tags', 'Tags', vocab.tags)}
         </div>
-      </fieldset>
-      <fieldset className="field-group">
-        <legend>Circles</legend>
-        <p className="hint">
-          Groups this person belongs to — “college friends”, “DC polycule” — drawn as a
-          colored bubble on the graph. Type a new name to start one.
-        </p>
-        <div className="field-grid">{chips('circles', 'Circles', vocab.circles)}</div>
       </fieldset>
       <label className="toggle-row">
         <input type="checkbox" checked={isSelf} onChange={(e) => setIsSelf(e.target.checked)} />
