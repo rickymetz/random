@@ -343,6 +343,27 @@ created:
     reminders, notifications are best-effort.
   - WebAuthn PRF availability varies; feature-detect and fall back
     cleanly to passphrase.
+  - **A Safari tab and the Home Screen app are separate worlds** (separate
+    storage, notifications only from the installed app). The app says so
+    on the create screen and in Settings when it detects an iOS tab, and
+    points to backup → restore for moving a vault across.
+  - **Keyboard vs. bottom bars:** iOS overlays the keyboard on the layout
+    viewport (`interactive-widget=resizes-content` is Android-only), so
+    the app tracks `visualViewport` and lifts its bottom-anchored bars
+    (capture bar, form Save row) by the covered height (`--kb`).
+  - `100dvh` with a `100vh` fallback for iOS < 15.4.
+- **Scale targets** (a "several hundred people" address book, §4.4):
+  300 people / 1,000 notes must feel instant on a mid-range phone —
+  search keystroke under ~100 ms, People list and dossier open under
+  ~500 ms, graph settling in under ~10 s — and 1,000 people must remain
+  usable. Verified with a deterministic bulk crowd (Settings → `?dev=1`
+  → Stress test, one encrypted write via the import path) and a
+  Playwright profiling script under 4× CPU throttling. Design
+  consequences: per-snapshot indexes for per-person lookups (notes,
+  photos, avatar, circles) instead of record scans per row; the People
+  list renders in pages of 60 (sentinel + "Show more"); the graph
+  batches draw calls by style, cools faster and paints every other tick
+  above 150 nodes.
 - Target browsers: latest Safari (iOS/macOS), Chrome, Firefox, Edge. No
   legacy support.
 
@@ -443,6 +464,7 @@ From the requirements interview (2026-09-09):
 | Media | Person photos only in v1 |
 | Graph UX | Core feature, fully interactive |
 | Circles (§4.6) | First-class entity (not tags); many-to-many, flat; hull bubbles + gentle clustering; chips to show/hide + tap-to-focus; auto color with override; managed from the person page; empty circles persist, delete is explicit; name + color + members only; seeded in the sample cast |
+| Scale + iOS (§7) | Stress crowd behind `?dev=1`, not a user feature; per-snapshot selector indexes; paged People list; batched graph painting; `visualViewport`-driven keyboard inset for bottom bars; iOS-tab install guidance (separate storage) |
 | Discretion | Instant lock/panic, neutral disguise, decoy vault (designed now, built v2) |
 | Platform | Mobile-first, desktop works |
 | Legal/ethics section | Skipped for now (revisit before public release) |

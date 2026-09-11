@@ -111,15 +111,10 @@ export function searchPeople(index: MiniSearch<PersonDoc>, query: string): strin
  * query term, for showing WHY a search matched (§4.4: "the guy with the
  * sailboat" needs the sailboat visible in the result row).
  */
-export function matchSnippet(
-  records: Map<string, DomainRecord>,
-  personId: string,
-  query: string,
-): string | null {
+export function matchSnippet(notes: readonly NoteEntry[], query: string): string | null {
   const term = query.trim().toLowerCase().split(/\s+/)[0]
   if (!term) return null
-  for (const r of records.values()) {
-    if (r.kind !== 'note' || r.personId !== personId) continue
+  for (const r of notes) {
     const text = plainText(r.body)
     const at = text.toLowerCase().indexOf(term)
     if (at >= 0) {

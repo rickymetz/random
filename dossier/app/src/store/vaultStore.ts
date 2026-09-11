@@ -135,6 +135,8 @@ interface VaultState {
   addPerson: (displayName: string) => Promise<Person>
   updatePerson: (person: Person) => Promise<void>
   removePerson: (personId: string) => Promise<void>
+  /** Bulk delete; circles left with no members are removed too. */
+  removePeople: (personIds: string[]) => Promise<void>
   saveNote: (personId: string, body: string) => Promise<void>
   removeNote: (noteId: string) => Promise<void>
   updateNote: (noteId: string, body: string) => Promise<void>
@@ -352,6 +354,64 @@ export const useVaultStore = create<VaultState>((set, get) => {
       pinAttemptsLeft: pinAttemptsLeft(),
       pinDigits: pinLength(),
     }))
+  }
+
+
+  /**
+   * Delete people and everything that hangs off them (notes, follow-ups,
+   * photos, edges, circle memberships, dangling @mentions elsewhere) in
+   * ONE write. `dropEmptiedCircles` (bulk removal of a whole cast) also
+   * deletes circles whose every member was removed — a one-off delete
+   * keeps the now-emptier circle, as before.
+   */
+  async function removePeopleImpl(
+    personIds: string[],
+    dropEmptiedCircles: boolean,
+  ): Promise<void> {
+    const { records } = get()
+    const gone = new Set(personIds.filter((id) => records.get(id)?.kind === 'person'))
+    if (gone.size === 0) return
+    const deletes = [...gone]
+    const puts: DomainRecord[] = []
+    const touched = new Set<string>(gone)
+    const blobIds: string[] = []
+    for (const r of records.values()) {
+      if (
+        ((r.kind === 'note' || r.kind === 'followUp' || r.kind === 'photo') &&
+          gone.has(r.personId)) ||
+        (r.kind === 'relationship' && (gone.has(r.fromId) || gone.has(r.toId)))
+      ) {
+        deletes.push(r.id)
+        if (r.kind === 'photo') blobIds.push(r.blobRecordId)
+      } else if (r.kind === 'circle' && r.memberIds.some((m) => gone.has(m))) {
+        const memberIds = r.memberIds.filter((m) => !gone.has(m))
+        if (dropEmptiedCircles && memberIds.length === 0) deletes.push(r.id)
+        else puts.push({ ...r, memberIds })
+      } else if (r.kind === 'note' && r.mentions.some((m) => gone.has(m))) {
+        // Rewrite dangling mention tokens in other people's notes to the
+        // plain name, so no dead @links survive the delete.
+        let body = r.body
+        for (const m of r.mentions) if (gone.has(m)) body = stripMentionsOf(body, m)
+        puts.push({ ...r, body, mentions: r.mentions.filter((m) => !gone.has(m)) })
+        touched.add(r.personId)
+      }
+    }
+    // Capture before apply: a lock mid-write must not strand blobs.
+    const vaultForBlobs = get().vault
+    // Reindexing per person is O(records) each; past a handful, one
+    // rebuild is cheaper.
+    if (touched.size > 20) {
+      await apply(puts, deletes)
+      if (get().vault === vaultForBlobs && get().status === 'unlocked') {
+        rebuildIndex(searchIndex, get().records)
+      }
+    } else {
+      await apply(puts, deletes, [...touched])
+    }
+    if (vaultForBlobs && blobIds.length > 0) {
+      await deleteBlobs(vaultForBlobs, blobIds)
+      for (const id of blobIds) evictPhoto(id)
+    }
   }
 
   return {
@@ -596,41 +656,9 @@ export const useVaultStore = create<VaultState>((set, get) => {
     }),
 
     removePerson: (personId) =>
-      enqueue(async () => {
-      const { records } = get()
-      const deletes = [personId]
-      const puts: DomainRecord[] = []
-      const touched = new Set<string>([personId])
-      const blobIds: string[] = []
-      for (const r of records.values()) {
-        if (
-          ((r.kind === 'note' || r.kind === 'followUp' || r.kind === 'photo') &&
-            r.personId === personId) ||
-          (r.kind === 'relationship' && (r.fromId === personId || r.toId === personId))
-        ) {
-          deletes.push(r.id)
-          if (r.kind === 'photo') blobIds.push(r.blobRecordId)
-        } else if (r.kind === 'circle' && r.memberIds.includes(personId)) {
-          puts.push({ ...r, memberIds: r.memberIds.filter((m) => m !== personId) })
-        } else if (r.kind === 'note' && r.mentions.includes(personId)) {
-          // Rewrite dangling mention tokens in other people's notes to the
-          // plain name, so no dead @links survive the delete.
-          puts.push({
-            ...r,
-            body: stripMentionsOf(r.body, personId),
-            mentions: r.mentions.filter((m) => m !== personId),
-          })
-          touched.add(r.personId)
-        }
-      }
-      // Capture before apply: a lock mid-write must not strand blobs.
-      const vaultForBlobs = get().vault
-      await apply(puts, deletes, [...touched])
-      if (vaultForBlobs && blobIds.length > 0) {
-        await deleteBlobs(vaultForBlobs, blobIds)
-        for (const id of blobIds) evictPhoto(id)
-      }
-    }),
+      enqueue(() => removePeopleImpl([personId], false)),
+
+    removePeople: (personIds) => enqueue(() => removePeopleImpl(personIds, true)),
 
     saveNote: (personId, body) =>
       enqueue(async () => {
@@ -1062,26 +1090,67 @@ export function selectRelationshipTypes(
   )
 }
 
+/**
+ * Per-person lookups (notes, photos, avatar, circles) come from one index
+ * built lazily per records snapshot: every mutation swaps in a new Map,
+ * so a WeakMap keyed on the Map itself invalidates for free. Without it,
+ * a 300-row People list ran a full record scan per row per keystroke.
+ * The arrays returned are shared — treat them as read-only.
+ */
+interface PersonIndex {
+  notes: Map<string, NoteEntry[]>
+  photos: Map<string, Photo[]>
+  avatar: Map<string, Photo>
+  circles: Map<string, Circle[]>
+  circleList: Circle[]
+}
+const indexCache = new WeakMap<Map<string, DomainRecord>, PersonIndex>()
+const EMPTY: never[] = []
+function personIndex(records: Map<string, DomainRecord>): PersonIndex {
+  const cached = indexCache.get(records)
+  if (cached) return cached
+  const idx: PersonIndex = {
+    notes: new Map(),
+    photos: new Map(),
+    avatar: new Map(),
+    circles: new Map(),
+    circleList: [],
+  }
+  const push = <T,>(map: Map<string, T[]>, key: string, value: T) => {
+    const list = map.get(key)
+    if (list) list.push(value)
+    else map.set(key, [value])
+  }
+  for (const r of records.values()) {
+    if (r.kind === 'note') push(idx.notes, r.personId, r)
+    else if (r.kind === 'photo') {
+      push(idx.photos, r.personId, r)
+      if (r.isAvatar && !idx.avatar.has(r.personId)) idx.avatar.set(r.personId, r)
+    } else if (r.kind === 'circle') idx.circleList.push(r)
+  }
+  for (const list of idx.notes.values()) list.sort((a, b) => b.createdAt - a.createdAt)
+  for (const list of idx.photos.values()) {
+    list.sort((a, b) => Number(b.isAvatar) - Number(a.isAvatar) || a.createdAt - b.createdAt)
+  }
+  idx.circleList.sort((a, b) => a.name.localeCompare(b.name))
+  for (const c of idx.circleList) for (const id of c.memberIds) push(idx.circles, id, c)
+  indexCache.set(records, idx)
+  return idx
+}
+
 export function selectNotes(records: Map<string, DomainRecord>, personId: string): NoteEntry[] {
-  return [...records.values()]
-    .filter((r): r is NoteEntry => r.kind === 'note' && r.personId === personId)
-    .sort((a, b) => b.createdAt - a.createdAt)
+  return personIndex(records).notes.get(personId) ?? EMPTY
 }
 
 export function selectPhotos(records: Map<string, DomainRecord>, personId: string): Photo[] {
-  return [...records.values()]
-    .filter((r): r is Photo => r.kind === 'photo' && r.personId === personId)
-    .sort((a, b) => Number(b.isAvatar) - Number(a.isAvatar) || a.createdAt - b.createdAt)
+  return personIndex(records).photos.get(personId) ?? EMPTY
 }
 
 export function selectAvatar(
   records: Map<string, DomainRecord>,
   personId: string,
 ): Photo | undefined {
-  for (const r of records.values()) {
-    if (r.kind === 'photo' && r.personId === personId && r.isAvatar) return r
-  }
-  return undefined
+  return personIndex(records).avatar.get(personId)
 }
 
 export function selectFollowUps(
@@ -1104,14 +1173,12 @@ export function searchPeopleIds(query: string): string[] {
 }
 
 export function selectCircles(records: Map<string, DomainRecord>): Circle[] {
-  return [...records.values()]
-    .filter((r): r is Circle => r.kind === 'circle')
-    .sort((a, b) => a.name.localeCompare(b.name))
+  return personIndex(records).circleList
 }
 
 export function selectCirclesOf(
   records: Map<string, DomainRecord>,
   personId: string,
 ): Circle[] {
-  return selectCircles(records).filter((c) => c.memberIds.includes(personId))
+  return personIndex(records).circles.get(personId) ?? EMPTY
 }

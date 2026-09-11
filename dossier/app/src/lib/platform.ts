@@ -39,3 +39,28 @@ export function getStorageStatus(): StorageStatus {
  */
 export const PIN_MASK_SUPPORTED =
   typeof CSS !== 'undefined' && CSS.supports?.('-webkit-text-security', 'disc') === true
+
+/** iPhone/iPad (iPadOS reports itself as a Mac with touch). */
+export function isIos(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return (
+    /iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  )
+}
+
+/**
+ * Running in a Safari tab on iOS rather than from the Home Screen. The
+ * two keep SEPARATE storage: a vault created in the tab does not exist
+ * inside the installed app (and vice versa), and notifications only work
+ * from the Home Screen app — so the install hint matters here.
+ */
+export function isIosBrowserTab(): boolean {
+  if (!isIos()) return false
+  const nav = navigator as Navigator & { standalone?: boolean }
+  if (nav.standalone === true) return false
+  if (typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches) {
+    return false
+  }
+  return true
+}

@@ -30,6 +30,45 @@ function KeyedPersonPage() {
   return <PersonPage key={id} />
 }
 
+/**
+ * iOS Safari overlays the keyboard on the layout viewport instead of
+ * resizing it (the interactive-widget meta only works on Android), which
+ * parks bottom-anchored bars (capture bar, form Save) under the keys.
+ * Track the visual viewport and expose the covered height as --kb so
+ * those bars can lift above it. Pinch-zoom also shrinks the visual
+ * viewport; ignore it (scale > 1) so the bars don't jump while zooming.
+ */
+function useKeyboardInset() {
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const root = document.documentElement
+    let raf = 0
+    const update = () => {
+      raf = 0
+      const zoomed = vv.scale > 1.01
+      const inset = zoomed
+        ? 0
+        : Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))
+      root.style.setProperty('--kb', `${inset}px`)
+      document.body.classList.toggle('kb-open', inset > 80)
+    }
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(update)
+    }
+    vv.addEventListener('resize', schedule)
+    vv.addEventListener('scroll', schedule)
+    update()
+    return () => {
+      vv.removeEventListener('resize', schedule)
+      vv.removeEventListener('scroll', schedule)
+      if (raf) cancelAnimationFrame(raf)
+      root.style.removeProperty('--kb')
+      document.body.classList.remove('kb-open')
+    }
+  }, [])
+}
+
 /** Warn this long before the inactivity lock fires (when the timer allows). */
 const LOCK_WARNING_MS = 15_000
 
@@ -51,6 +90,7 @@ export default function App() {
   useEffect(() => {
     void init()
   }, [init])
+  useKeyboardInset()
 
   // Timer-driven locks save any in-progress capture draft as an encrypted
   // note first — a memory aid must not eat the fact you just typed. The

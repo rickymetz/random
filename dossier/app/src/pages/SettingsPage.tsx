@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { destroyAllData } from '../lib/db'
 import {
   MAX_IMPORT_FILE_BYTES,
@@ -13,15 +13,19 @@ import {
 } from '../lib/models'
 import { DISGUISES, currentDisguise, setDisguise } from '../lib/disguise'
 import { MAX_PIN_ATTEMPTS } from '../lib/pin'
-import { PIN_MASK_SUPPORTED, getStorageStatus } from '../lib/platform'
+import { PIN_MASK_SUPPORTED, getStorageStatus, isIosBrowserTab } from '../lib/platform'
 import { requestNotificationPermission } from '../lib/reminders'
 import { loadSampleData } from '../lib/sampleData'
+import { loadStressCast, removeStressCast } from '../lib/stressData'
 import { loadAllBlobs, unlockVault } from '../lib/vault'
 import { webAuthnAvailable } from '../lib/webauthn'
-import { selectSettings, useVaultStore } from '../store/vaultStore'
+import { selectPeople, selectSettings, useVaultStore } from '../store/vaultStore'
 
 export default function SettingsPage() {
   const lock = useVaultStore((s) => s.lock)
+  // Profiling tools live behind #/settings?dev=1 — not a feature.
+  const [params] = useSearchParams()
+  const dev = params.get('dev') === '1'
 
   const destroy = async () => {
     const answer = prompt('Type DELETE to destroy all data on this device. There is no undo.')
@@ -35,11 +39,13 @@ export default function SettingsPage() {
     <div className="settings">
       <h1 className="sr-only">Settings</h1>
       <SecuritySection />
+      {isIosBrowserTab() && <InstallSection />}
       <DisguiseSection />
       <ExportSection />
       <ImportSection />
       <StorageSection />
       <SampleDataSection />
+      {dev && <StressSection />}
       <section className="danger-zone">
         <h2>Delete everything</h2>
         <p className="hint">
@@ -345,7 +351,39 @@ function SecuritySection() {
           Daily reminder — the notification only ever says “You have a reminder”, never
           who it's about
         </label>
+        {isIosBrowserTab() && (
+          <p className="hint">
+            On iPhone, reminders only work from the Home Screen app — see “Add to Home
+            Screen” below.
+          </p>
+        )}
       </div>
+    </section>
+  )
+}
+
+/**
+ * iOS-only: a Safari tab and the Home Screen app are separate worlds
+ * (storage, notifications, Face ID prompts). Say so before someone
+ * builds up a vault in the tab and finds the app empty.
+ */
+function InstallSection() {
+  const records = useVaultStore((s) => s.records)
+  const hasContent = selectPeople(records).some((p) => !p.isSelf)
+  return (
+    <section>
+      <h2>Add to Home Screen</h2>
+      <p className="hint">
+        You're using this in a Safari tab. Added to the Home Screen (Share → Add to
+        Home Screen) it opens full-screen, can send reminders, and is easier to lock
+        and unlock.
+      </p>
+      <p className="hint">
+        The Home Screen app keeps its own storage, separate from Safari.{' '}
+        {hasContent
+          ? 'Your notes here won’t appear in it by themselves: save a backup below, open the app, and restore it there.'
+          : 'Set up your passphrase inside the app, not here.'}
+      </p>
     </section>
   )
 }
@@ -609,6 +647,78 @@ function SampleDataSection() {
         {busy ? 'Adding…' : 'Load sample people'}
       </button>
       {/* Always mounted so the polite live region reliably announces. */}
+      <p className="hint status-slot" role="status">
+        {message}
+      </p>
+    </section>
+  )
+}
+
+/**
+ * Scale testing (§7): bulk-load a fictional crowd in one write, and take
+ * it away again. Dev-only (`?dev=1`); the counts and timing feed the
+ * profiling script.
+ */
+function StressSection() {
+  const records = useVaultStore((s) => s.records)
+  const [size, setSize] = useState(300)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const total = records.size
+
+  const add = async () => {
+    if (busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const r = await loadStressCast(size)
+      setMessage(
+        `Added ${r.people} people, ${r.notes} notes, ${r.edges} relationships, ${r.circles} circles, ${r.followUps} follow-ups in ${r.ms} ms.`,
+      )
+    } catch {
+      setMessage('Could not load the crowd — try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const remove = async () => {
+    if (busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const t0 = performance.now()
+      const n = await removeStressCast()
+      setMessage(`Removed ${n} people in ${Math.round(performance.now() - t0)} ms.`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="stress">
+      <h2>Stress test</h2>
+      <p className="hint">
+        Adds a large fictional crowd (tagged ‘stress-test’) to see how the app copes.
+        Currently holding {total} records.
+      </p>
+      <div className="row wrap">
+        <label className="stress-size">
+          People
+          <select value={size} onChange={(e) => setSize(Number(e.target.value))}>
+            {[100, 300, 1000, 3000].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button onClick={() => void add()} disabled={busy} aria-busy={busy}>
+          {busy ? 'Working…' : 'Add crowd'}
+        </button>
+        <button className="danger" onClick={() => void remove()} disabled={busy}>
+          Remove crowd
+        </button>
+      </div>
       <p className="hint status-slot" role="status">
         {message}
       </p>
