@@ -1,5 +1,12 @@
 import { Suspense, lazy, useEffect, useState, useSyncExternalStore } from 'react'
-import { NavLink, Route, Routes, useParams } from 'react-router-dom'
+import {
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+  useNavigationType,
+  useParams,
+} from 'react-router-dom'
 import {
   DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_BACKGROUND_GRACE_SECONDS,
@@ -30,6 +37,58 @@ function KeyedPersonPage() {
   return <PersonPage key={id} />
 }
 
+/**
+ * iOS Safari overlays the keyboard on the layout viewport instead of
+ * resizing it (the interactive-widget meta only works on Android), which
+ * parks bottom-anchored bars (capture bar, form Save) under the keys.
+ * Track the visual viewport and expose the covered height as --kb so
+ * those bars can lift above it. Pinch-zoom also shrinks the visual
+ * viewport; ignore it (scale > 1) so the bars don't jump while zooming.
+ */
+function useKeyboardInset() {
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const root = document.documentElement
+    let raf = 0
+    const update = () => {
+      raf = 0
+      const zoomed = vv.scale > 1.01
+      const inset = zoomed
+        ? 0
+        : Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))
+      root.style.setProperty('--kb', `${inset}px`)
+      document.body.classList.toggle('kb-open', inset > 80)
+    }
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(update)
+    }
+    vv.addEventListener('resize', schedule)
+    vv.addEventListener('scroll', schedule)
+    update()
+    return () => {
+      vv.removeEventListener('resize', schedule)
+      vv.removeEventListener('scroll', schedule)
+      if (raf) cancelAnimationFrame(raf)
+      root.style.removeProperty('--kb')
+      document.body.classList.remove('kb-open')
+    }
+  }, [])
+}
+
+/**
+ * A hash router keeps the window scroll across routes, so tapping a tab
+ * from the bottom of a long list landed 2,000px down the next page.
+ * Reset on forward navigations only; Back keeps the browser's restore.
+ */
+function useScrollReset() {
+  const { pathname } = useLocation()
+  const navType = useNavigationType()
+  useEffect(() => {
+    if (navType === 'PUSH') window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+  }, [pathname, navType])
+}
+
 /** Warn this long before the inactivity lock fires (when the timer allows). */
 const LOCK_WARNING_MS = 15_000
 
@@ -51,6 +110,8 @@ export default function App() {
   useEffect(() => {
     void init()
   }, [init])
+  useKeyboardInset()
+  useScrollReset()
 
   // Timer-driven locks save any in-progress capture draft as an encrypted
   // note first — a memory aid must not eat the fact you just typed. The
@@ -129,10 +190,12 @@ export default function App() {
   // accident-prone, so unlike the deliberate Lock button it DOES flush
   // the capture draft before locking.
   const shakeToLock = settings?.shakeToLock ?? false
+  const [motionBlocked, setMotionBlocked] = useState(false)
   useEffect(() => {
     if (!unlocked || !shakeToLock || typeof DeviceMotionEvent === 'undefined') return
     let spikes: number[] = []
     let fired = false
+    let listening = false
     const onMotion = (e: DeviceMotionEvent) => {
       if (fired) return
       const a = e.acceleration ?? e.accelerationIncludingGravity
@@ -150,8 +213,38 @@ export default function App() {
         }
       }
     }
-    window.addEventListener('devicemotion', onMotion)
-    return () => window.removeEventListener('devicemotion', onMotion)
+    const listen = () => {
+      if (listening) return
+      listening = true
+      window.addEventListener('devicemotion', onMotion)
+    }
+    // iOS 13+ delivers no motion events until requestPermission() is
+    // granted, and the grant lasts one page load — it must be re-asked
+    // (from a user gesture) on every launch, not just when the toggle
+    // was first switched on in Settings.
+    const DME = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> }
+    const onFirstTap = () => {
+      window.removeEventListener('pointerdown', onFirstTap, true)
+      DME.requestPermission!()
+        .then((state) => {
+          if (state === 'granted') {
+            setMotionBlocked(false)
+            listen()
+          } else {
+            setMotionBlocked(true)
+          }
+        })
+        .catch(() => setMotionBlocked(true))
+    }
+    if (typeof DME.requestPermission === 'function') {
+      window.addEventListener('pointerdown', onFirstTap, true)
+    } else {
+      listen()
+    }
+    return () => {
+      window.removeEventListener('pointerdown', onFirstTap, true)
+      window.removeEventListener('devicemotion', onMotion)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlocked, shakeToLock, panicLock])
 
@@ -225,6 +318,15 @@ export default function App() {
       {lockWarning && (
         <p className="banner lock-warning" role="status">
           Locking soon — touch anywhere to stay unlocked.
+        </p>
+      )}
+      {motionBlocked && unlocked && (
+        <p className="banner" role="status">
+          Shake to lock is off: the phone didn't allow motion access. Allow it in
+          Settings → Safari → Motion &amp; Orientation Access, or turn the option off.{' '}
+          <button className="subtle" onClick={() => setMotionBlocked(false)}>
+            Dismiss
+          </button>
         </p>
       )}
       <main id="main">

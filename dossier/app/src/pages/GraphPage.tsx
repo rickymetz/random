@@ -139,6 +139,8 @@ const NODE_R = 14
 const LABEL_ZOOM = 0.7
 // Degradation ladder (§4.3): labels thin out first as the graph grows.
 const LABEL_MAX_NODES = 250
+/** Circle chips shown inline before a “+N more” toggle. */
+const CIRCLE_CHIPS_INLINE = 6
 
 function initialsOf(name: string): string {
   return name
@@ -161,12 +163,36 @@ export default function GraphPage() {
   const records = useVaultStore((s) => s.records)
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
-  const focusId = params.get('focus')
+  const focusParam = params.get('focus')
   const circleFocusId = params.get('circle')
   const depth = params.get('depth') === '2' ? 2 : 1
   const pathTargetId = params.get('path')
   const [peek, setPeek] = useState<Tap>(null)
   const viewApiRef = useRef<ViewApi | null>(null)
+  const [arranging, setArranging] = useState(false)
+  const [showAllCircles, setShowAllCircles] = useState(false)
+
+  // Graceful degradation (§4.3): past the label limit a fit-all view is
+  // an unreadable hairball, so a big vault opens on your own connections
+  // instead. "Show everyone" (?all=1) is one tap away.
+  const self = useMemo(() => selectSelf(records), [records])
+  const peopleCount = useMemo(() => selectPeople(records).length, [records])
+  const bigGraph = peopleCount > LABEL_MAX_NODES
+  const showAll = params.get('all') === '1'
+  // Applied synchronously (not only via the URL) so the first layout is
+  // the small ego graph, never a 300-node simulation that then gets
+  // thrown away — and so the ego view fits itself like any cold start.
+  const autoFocusId =
+    bigGraph && !showAll && !focusParam && !circleFocusId && !pathTargetId
+      ? (self?.id ?? null)
+      : null
+  const focusId = focusParam ?? autoFocusId
+  useEffect(() => {
+    if (!autoFocusId) return
+    const next = new URLSearchParams(params)
+    next.set('focus', autoFocusId)
+    setParams(next, { replace: true })
+  }, [autoFocusId, params, setParams])
 
   const types = useMemo(
     () => selectRelationshipTypes(records).sort((a, b) => a.label.localeCompare(b.label)),
@@ -307,10 +333,20 @@ export default function GraphPage() {
     hiddenCircles,
   ])
 
+  // In an ego view only circles with someone on screen get a chip; a
+  // rail of twenty absent circles ahead of the link types was eleven
+  // screens wide on a phone.
+  const railCircles = useMemo(() => {
+    if (!focusId) return allCircles
+    const visible = new Set(nodes.map((n) => n.id))
+    return allCircles.filter((c) => c.memberIds.some((id) => visible.has(id)))
+  }, [allCircles, focusId, nodes])
+
   const focusName = useMemo(() => {
     if (!focusId) return undefined
     const p = records.get(focusId)
-    return p?.kind === 'person' ? p.displayName : undefined
+    if (p?.kind !== 'person') return undefined
+    return p.isSelf ? 'Your' : `${p.displayName}’s`
   }, [records, focusId])
 
   const vault = useVaultStore((s) => s.vault)
@@ -328,6 +364,7 @@ export default function GraphPage() {
     vault,
     pathNodeIds,
     viewApiRef,
+    setArranging,
   )
   const removeCircle = useVaultStore((s) => s.removeCircle)
   const clearCircleParam = () => {
@@ -349,7 +386,7 @@ export default function GraphPage() {
       <div className="graph-controls">
         {focusName && (
           <span className="chip focus-chip no-dot depth">
-            {focusName}’s connections
+            {focusName} connections
             <button
               aria-pressed={depth === 1}
               onClick={() => setDepth(1)}
@@ -370,9 +407,11 @@ export default function GraphPage() {
                 const next = new URLSearchParams(params)
                 next.delete('focus')
                 next.delete('depth')
+                if (bigGraph) next.set('all', '1')
                 setParams(next)
               }}
-              aria-label="Show everyone"
+              aria-label={bigGraph ? `Show everyone (${peopleCount})` : 'Show everyone'}
+              title={bigGraph ? `Show everyone (${peopleCount})` : 'Show everyone'}
             >
               ×
             </button>
@@ -405,12 +444,32 @@ export default function GraphPage() {
             </button>
           </span>
         )}
-        {allCircles.length > 0 && !focusedCircle && (
+        {types
+          .filter((t) => t.label !== 'mentioned')
+          .map((t) => (
+            <button
+              key={t.id}
+              className={`chip ${hiddenTypes.has(t.id) ? 'off' : ''}`}
+              style={{ '--chip-color': t.color } as React.CSSProperties}
+              aria-pressed={!hiddenTypes.has(t.id)}
+              onClick={() =>
+                setHiddenTypes((prev) => {
+                  const next = new Set(prev)
+                  if (next.has(t.id)) next.delete(t.id)
+                  else next.add(t.id)
+                  return next
+                })
+              }
+            >
+              {t.label}
+            </button>
+          ))}
+        {railCircles.length > 0 && !focusedCircle && (
           <span className="chip-group" role="group" aria-label="Circles">
             <span className="chip-group-label" aria-hidden="true">
               Circles
             </span>
-            {allCircles.map((c) => {
+            {(showAllCircles ? railCircles : railCircles.slice(0, CIRCLE_CHIPS_INLINE)).map((c) => {
               const n = c.memberIds.length
               const on = !hiddenCircles.has(c.id)
               return (
@@ -454,28 +513,17 @@ export default function GraphPage() {
                 </span>
               )
             })}
+            {railCircles.length > CIRCLE_CHIPS_INLINE && (
+              <button
+                className="chip no-dot more"
+                aria-expanded={showAllCircles}
+                onClick={() => setShowAllCircles((v) => !v)}
+              >
+                {showAllCircles ? 'fewer' : `+${railCircles.length - CIRCLE_CHIPS_INLINE} more`}
+              </button>
+            )}
           </span>
         )}
-        {types
-          .filter((t) => t.label !== 'mentioned')
-          .map((t) => (
-            <button
-              key={t.id}
-              className={`chip ${hiddenTypes.has(t.id) ? 'off' : ''}`}
-              style={{ '--chip-color': t.color } as React.CSSProperties}
-              aria-pressed={!hiddenTypes.has(t.id)}
-              onClick={() =>
-                setHiddenTypes((prev) => {
-                  const next = new Set(prev)
-                  if (next.has(t.id)) next.delete(t.id)
-                  else next.add(t.id)
-                  return next
-                })
-              }
-            >
-              {t.label}
-            </button>
-          ))}
         <button
           className={`chip ${showMentions ? '' : 'off'}`}
           aria-pressed={showMentions}
@@ -485,10 +533,15 @@ export default function GraphPage() {
         </button>
       </div>
       <p className="graph-legend">
-        Tap a label to hide or show that kind of link or circle. Dotted line = mentioned in
-        a note. Tinted areas are circles — tap one (or its ✎) to edit it; tap a person for
-        details.
+        {nodes.length > LABEL_MAX_NODES
+          ? 'Too many people to name at once: zoom in to see names, or pick a person or circle above.'
+          : 'Tap a label to hide or show that kind of link or circle. Dotted line = mentioned in a note. Tinted areas are circles — tap one (or its ✎) to edit it; tap a person for details.'}
       </p>
+      {arranging && nodes.length > 150 && (
+        <p className="graph-status" role="status">
+          Arranging {nodes.length} people…
+        </p>
+      )}
       <div className="graph-canvas-wrap">
         {focusedCircle && nodes.length === 0 ? (
           <div className="empty circle-empty" role="status">
@@ -629,13 +682,16 @@ function NodePeek({
       aria-label={person.displayName}
     >
       <div className="peek-body">
-        <strong>{person.displayName}</strong>
+        <strong>
+          {person.displayName}
+          {person.isSelf && <span className="you-badge">you</span>}
+        </strong>
         {detail && <span className="hint">{detail}</span>}
       </div>
       <div className="row">
         <button onClick={onOpen}>Open</button>
         <button className="subtle" onClick={onFocus}>
-          Their connections
+          {person.isSelf ? 'Your connections' : 'Their connections'}
         </button>
         <button className="subtle icon" onClick={onClose} aria-label="Close">
           ×
@@ -907,6 +963,7 @@ function useCanvasGraph(
   vault: UnlockedVault | null,
   pathNodeIds: string[] | null,
   viewApiRef: MutableRefObject<ViewApi | null>,
+  onLayout: (running: boolean) => void,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // All three survive effect re-runs so a filter toggle or record edit
@@ -984,8 +1041,14 @@ function useCanvasGraph(
         }
       })
       .force('collide', forceCollide<GraphNode>((n) => n.r * 1.5))
+      // Big casts cool faster (~170 ticks instead of ~300): on a phone
+      // each tick+paint of hundreds of nodes is tens of milliseconds, and
+      // the extra settling buys no legibility.
+      // Small ego views are readable after a second too — the long
+      // tail of drift just feels slow.
+      .alphaDecay(simNodes.length > 150 || simNodes.length < 30 ? 0.04 : 0.0228)
       // A warm layout barely stirs; a cold one settles from scratch.
-      .alpha(hasCachedPositions ? 0.08 : 1)
+      .alpha(hasCachedPositions ? 0.02 : 1)
 
     // Reduced motion: settle synchronously and paint once — no animated
     // layout, no reheats on circle changes.
@@ -1010,15 +1073,38 @@ function useCanvasGraph(
     simRef.current = {
       render: scheduleRender,
       reheat: () => {
-        if (!reduceMotion) simulation.alpha(0.06).restart()
-        else scheduleRender()
+        if (!reduceMotion) {
+          canvas.dataset.layout = 'running'
+          onLayout(true)
+          simulation.alpha(0.06).restart()
+        } else scheduleRender()
       },
     }
 
+    // Layout state for tooling/tests (the profiler waits for 'settled').
+    canvas.dataset.layout = reduceMotion ? 'settled' : 'running'
+    onLayout(!reduceMotion)
+    simulation.on('end.settle', () => {
+      canvas.dataset.layout = 'settled'
+      onLayout(false)
+      scheduleRender()
+    })
+    // Painting hundreds of nodes costs far more than stepping the
+    // simulation, so on a big cast the layout phase paints every other
+    // tick (dragging always paints — a finger needs every frame).
+    // `dragging` is owned by the pointer handlers further down.
+    let dragging = false
+    const big = simNodes.length > 150
+    let tickCount = 0
     simulation.on('tick', () => {
+      // While the layout is still hot nobody can read it: advance two
+      // steps per painted frame so the settled picture arrives sooner.
+      if (simulation.alpha() > 0.4) simulation.tick()
       for (const n of simNodes) {
         if (n.x !== undefined && n.y !== undefined) positions.set(n.id, { x: n.x, y: n.y })
       }
+      tickCount += 1
+      if (big && !dragging && tickCount % 2 === 1) return
       scheduleRender()
     })
 
@@ -1110,33 +1196,57 @@ function useCanvasGraph(
 
       const dash: [number, number] = [4 / k, 4 / k]
       const solid: never[] = []
+      // Edges batched by style — one stroke per (color, dashed, highlight)
+      // instead of one per edge; hundreds of tiny strokes were the
+      // single biggest cost per frame on a big cast.
+      const groups = new Map<string, GraphLink[]>()
+      const arrows: GraphLink[] = []
       for (const link of simLinks) {
         const s = link.source as GraphNode
         const t = link.target as GraphNode
         if (s.x == null || t.x == null) continue
         if (!inView(s.x, s.y!) && !inView(t.x, t.y!)) continue
+        const key = `${link.color}|${link.dashed ? 1 : 0}|${link.highlighted ? 1 : 0}`
+        const list = groups.get(key)
+        if (list) list.push(link)
+        else groups.set(key, [link])
+        if (link.directed) arrows.push(link)
+      }
+      // Highlighted (path) edges stroke last so nothing overdraws them.
+      const ordered = [...groups.values()].sort(
+        (a, b) => Number(a[0].highlighted) - Number(b[0].highlighted),
+      )
+      for (const list of ordered) {
+        const first = list[0]
         ctx.beginPath()
-        ctx.strokeStyle = link.color
-        ctx.globalAlpha = link.highlighted ? 1 : link.dashed ? 0.5 : 0.8
-        ctx.lineWidth = (link.highlighted ? 3.5 : 1.5) / k
-        ctx.setLineDash(link.dashed ? dash : solid)
-        ctx.moveTo(s.x, s.y!)
-        ctx.lineTo(t.x!, t.y!)
-        ctx.stroke()
-        if (link.directed) {
-          const angle = Math.atan2(t.y! - s.y!, t.x! - s.x!)
-          const ax = t.x! - Math.cos(angle) * (t.r + 4)
-          const ay = t.y! - Math.sin(angle) * (t.r + 4)
-          const size = 6 / Math.sqrt(k)
-          ctx.setLineDash(solid)
-          ctx.beginPath()
-          ctx.moveTo(ax, ay)
-          ctx.lineTo(ax - size * Math.cos(angle - 0.5), ay - size * Math.sin(angle - 0.5))
-          ctx.lineTo(ax - size * Math.cos(angle + 0.5), ay - size * Math.sin(angle + 0.5))
-          ctx.closePath()
-          ctx.fillStyle = link.color
-          ctx.fill()
+        for (const link of list) {
+          const s = link.source as GraphNode
+          const t = link.target as GraphNode
+          ctx.moveTo(s.x!, s.y!)
+          ctx.lineTo(t.x!, t.y!)
         }
+        ctx.strokeStyle = first.color
+        ctx.globalAlpha = first.highlighted ? 1 : first.dashed ? 0.5 : 0.8
+        ctx.lineWidth = (first.highlighted ? 3.5 : 1.5) / k
+        ctx.setLineDash(first.dashed ? dash : solid)
+        ctx.stroke()
+      }
+      ctx.setLineDash(solid)
+      for (const link of arrows) {
+        const s = link.source as GraphNode
+        const t = link.target as GraphNode
+        const angle = Math.atan2(t.y! - s.y!, t.x! - s.x!)
+        const ax = t.x! - Math.cos(angle) * (t.r + 4)
+        const ay = t.y! - Math.sin(angle) * (t.r + 4)
+        const size = 6 / Math.sqrt(k)
+        ctx.globalAlpha = link.highlighted ? 1 : 0.8
+        ctx.beginPath()
+        ctx.moveTo(ax, ay)
+        ctx.lineTo(ax - size * Math.cos(angle - 0.5), ay - size * Math.sin(angle - 0.5))
+        ctx.lineTo(ax - size * Math.cos(angle + 0.5), ay - size * Math.sin(angle + 0.5))
+        ctx.closePath()
+        ctx.fillStyle = link.color
+        ctx.fill()
       }
 
       ctx.globalAlpha = 1
@@ -1145,49 +1255,82 @@ function useCanvasGraph(
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       // Pass 1: circles with avatar or initials, one font for all nodes.
+      // Plain nodes (no photo, not focused, not you) share one fill path
+      // and one ring path; initials skip when they'd be under ~7px.
       ctx.font = '11px system-ui'
       const visibleNodes: GraphNode[] = []
+      const plain: GraphNode[] = []
+      const special: GraphNode[] = []
       const avatarImages = avatarImagesRef.current
       for (const node of simNodes) {
         if (node.x == null || node.y == null || !inView(node.x, node.y)) continue
         visibleNodes.push(node)
+        const image = node.avatar ? avatarImages.get(node.avatar.blobRecordId) : undefined
+        if (!(image instanceof HTMLImageElement) && node.id !== focusId && !node.isSelf) {
+          plain.push(node)
+        } else {
+          special.push(node)
+        }
+      }
+      // Plain batch first: focused/self/photo nodes paint over it.
+      if (plain.length > 0) {
+        ctx.beginPath()
+        for (const node of plain) {
+          ctx.moveTo(node.x! + node.r, node.y!)
+          ctx.arc(node.x!, node.y!, node.r, 0, Math.PI * 2)
+        }
+        ctx.fillStyle = '#2b2926'
+        ctx.fill()
+        ctx.lineWidth = 1.5 / k
+        ctx.strokeStyle = '#4a463f'
+        ctx.stroke()
+        if (k * 11 >= 7) {
+          ctx.fillStyle = '#ece8e1'
+          for (const node of plain) ctx.fillText(node.initials, node.x!, node.y!)
+        }
+      }
+      for (const node of special) {
         const isFocus = node.id === focusId
+        const image = node.avatar ? avatarImages.get(node.avatar.blobRecordId) : undefined
         // The self node is the anchor of every "how you connect" query:
         // it gets the accent ring even when not focused.
         const ring = isFocus || node.isSelf ? '#d8a657' : '#4a463f'
         const r = node.r
-        const image = node.avatar ? avatarImages.get(node.avatar.blobRecordId) : undefined
         if (image instanceof HTMLImageElement) {
           ctx.save()
           ctx.beginPath()
-          ctx.arc(node.x, node.y, r, 0, Math.PI * 2)
+          ctx.arc(node.x!, node.y!, r, 0, Math.PI * 2)
           ctx.clip()
           // Cover-crop from a centered square so faces aren't stretched.
           const side = Math.min(image.naturalWidth, image.naturalHeight)
           const sx = (image.naturalWidth - side) / 2
           const sy = (image.naturalHeight - side) / 2
-          ctx.drawImage(image, sx, sy, side, side, node.x - r, node.y - r, r * 2, r * 2)
+          ctx.drawImage(image, sx, sy, side, side, node.x! - r, node.y! - r, r * 2, r * 2)
           ctx.restore()
           ctx.beginPath()
-          ctx.arc(node.x, node.y, r, 0, Math.PI * 2)
+          ctx.arc(node.x!, node.y!, r, 0, Math.PI * 2)
           ctx.lineWidth = (node.isSelf ? 2.5 : 1.5) / k
           ctx.strokeStyle = ring
           ctx.stroke()
         } else {
           ctx.beginPath()
-          ctx.arc(node.x, node.y, r, 0, Math.PI * 2)
+          ctx.arc(node.x!, node.y!, r, 0, Math.PI * 2)
           ctx.fillStyle = isFocus ? '#d8a657' : '#2b2926'
           ctx.fill()
           ctx.lineWidth = (node.isSelf ? 2.5 : 1.5) / k
           ctx.strokeStyle = ring
           ctx.stroke()
           ctx.fillStyle = isFocus ? '#17140f' : '#ece8e1'
-          ctx.fillText(node.initials, node.x, node.y)
+          ctx.fillText(node.initials, node.x!, node.y!)
         }
         ctx.lineWidth = 1.5 / k
       }
       // Pass 2: name labels — thinned out on big graphs (§4.3 degradation).
-      const labelZoom = simNodes.length > LABEL_MAX_NODES ? 1.2 : LABEL_ZOOM
+      // Density, not just count, decides when names help: a 2-hop ego
+      // view of 85 people is a wall of text at 0.7; ten people in a
+      // circle deserve names even at the bubble's wider fit.
+      const n = simNodes.length
+      const labelZoom = n > LABEL_MAX_NODES ? 1.2 : n > 60 ? 1.0 : n <= 30 ? 0.55 : LABEL_ZOOM
       if (k >= labelZoom) {
         ctx.font = `${11 / k}px system-ui`
         ctx.fillStyle = '#8b857a'
@@ -1218,10 +1361,10 @@ function useCanvasGraph(
           w: nd.r * 2,
           h: nd.r * 2 + 14 / k,
         }))
+        const overlaps = (b: { x: number; y: number; w: number; h: number }) => (o: typeof b) =>
+          b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y
         const hits = (b: { x: number; y: number; w: number; h: number }) =>
-          [...placed, ...nodeBoxes].some(
-            (o) => b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y,
-          )
+          placed.some(overlaps(b)) || nodeBoxes.some(overlaps(b))
         for (const c of circlesNow) {
           const hull = hulls.get(c.id)
           if (!hull || hull.length === 0) continue
@@ -1400,7 +1543,6 @@ function useCanvasGraph(
 
     const pointers = new Map<number, { x: number; y: number }>()
     let dragNode: GraphNode | null = null
-    let dragging = false
     let moved = 0
     let pinchDist = 0
 
@@ -1462,6 +1604,7 @@ function useCanvasGraph(
         // shift the layout.
         if (!dragging && moved > 6) {
           dragging = true
+          canvas.dataset.layout = 'running'
           simulation.alphaTarget(0.3).restart()
         }
         if (dragging) {
@@ -1574,7 +1717,7 @@ function useCanvasGraph(
       canvas.removeEventListener('keydown', onKeyDown)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, links, focusId, circleFocusId, onTap, onOpen, vault, pathNodeIds, viewApiRef])
+  }, [nodes, links, focusId, circleFocusId, onTap, onOpen, vault, pathNodeIds, viewApiRef, onLayout])
 
   return canvasRef
 }

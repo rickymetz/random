@@ -23,9 +23,16 @@ applyDisguise()
 void requestPersistentStorage()
 
 // Auto-update the service worker, checking hourly — an installed PWA that
-// is never fully closed would otherwise run a stale build indefinitely.
-const updateSW = registerSW({ immediate: true })
-setInterval(() => void updateSW(false), 60 * 60 * 1000)
+// is never fully closed (and a hash router that never navigates) would
+// otherwise run a stale build indefinitely. The function registerSW
+// returns does NOT poll in autoUpdate mode; registration.update() does.
+registerSW({
+  immediate: true,
+  onRegisteredSW(_url, registration) {
+    if (!registration) return
+    setInterval(() => void registration.update().catch(() => undefined), 60 * 60 * 1000)
+  },
+})
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

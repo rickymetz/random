@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import { daysUntilDue, daysUntilNext, formatPartialDate } from '../lib/dates'
@@ -8,10 +8,15 @@ import {
   searchPeopleIds,
   selectCircles,
   selectCirclesOf,
+  selectNotes,
   selectPeople,
   selectSettings,
   useVaultStore,
 } from '../store/vaultStore'
+
+/** Rows rendered before the list asks for more (scroll or button). */
+const PAGE = 60
+const collator = new Intl.Collator(undefined, { sensitivity: 'base' })
 
 /**
  * Search-first home screen (scenario S2): as-you-type full-text search over
@@ -53,12 +58,15 @@ export default function PeoplePage() {
     setParams({}, { replace: true })
   }, [linkedQuery, setQuery, setParams])
 
+  // Sorted once per records snapshot; the query only narrows it.
+  const sorted = useMemo(
+    () => selectPeople(records).sort((a, b) => collator.compare(a.displayName, b.displayName)),
+    [records],
+  )
   const people = useMemo(() => {
-    const all = circle
-      ? selectPeople(records).filter((p) => circle.memberIds.includes(p.id))
-      : selectPeople(records)
+    const all = circle ? sorted.filter((p) => circle.memberIds.includes(p.id)) : sorted
     const trimmed = query.trim()
-    if (!trimmed) return all.sort((a, b) => a.displayName.localeCompare(b.displayName))
+    if (!trimmed) return all
     const byId = new Map(all.map((p) => [p.id, p]))
     const ranked = searchPeopleIds(trimmed)
       .map((id) => byId.get(id))
@@ -70,7 +78,45 @@ export default function PeoplePage() {
       if (!seen.has(p.id) && p.displayName.toLowerCase().includes(q)) ranked.push(p)
     }
     return ranked
-  }, [records, query, circle])
+  }, [sorted, query, circle])
+
+  // Long lists render in pages: the first screenful is instant on a
+  // phone with hundreds of people, and scrolling (or the button, for
+  // keyboard and screen-reader users) reveals the rest. The window lives
+  // in the store, keyed on query/circle, so Back from a dossier lands on
+  // the same rows the browser is restoring the scroll position to.
+  const pageKey = `${circle?.id ?? ''}|${query.trim()}`
+  const homePage = useVaultStore((s) => s.homePage)
+  const setHomePage = useVaultStore((s) => s.setHomePage)
+  const limit = homePage.key === pageKey && homePage.limit > 0 ? homePage.limit : PAGE
+  const pageKeyRef = useRef(pageKey)
+  pageKeyRef.current = pageKey
+  const growPage = () => {
+    const key = pageKeyRef.current
+    const cur = useVaultStore.getState().homePage
+    const base = cur.key === key && cur.limit > 0 ? cur.limit : PAGE
+    setHomePage({ key, limit: base + PAGE })
+  }
+  const sentinelRef = useRef<HTMLLIElement>(null)
+  const hasMore = people.length > limit
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || !hasMore || typeof IntersectionObserver === 'undefined') return
+    // Start loading a couple of screens early so a fast scroll never
+    // hits the end of the page.
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) growPage()
+      },
+      { rootMargin: '800px 0px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, limit, pageKey])
+  // Letter headers make a long A–Z scroll navigable; only for the plain
+  // list (a search or a circle is already a short, ranked set).
+  const browsing = !query.trim() && !circle && people.length > 40
 
   const create = async () => {
     if (busy) return
@@ -177,10 +223,33 @@ export default function PeoplePage() {
           + Add “{trimmed}”{circle ? ` to ${circle.name}` : ''}
         </button>
       )}
+      {browsing && (
+        <p className="hint list-count" aria-live="polite">
+          {people.length} people, A to Z
+        </p>
+      )}
       <ul>
-        {people.map((p) => (
-          <PersonRow key={p.id} person={p} query={trimmed} />
-        ))}
+        {people.slice(0, limit).map((p, i, shown) => {
+          const letter = p.displayName.charAt(0).toLocaleUpperCase()
+          const prev = i > 0 ? shown[i - 1].displayName.charAt(0).toLocaleUpperCase() : null
+          return (
+            <Fragment key={p.id}>
+              {browsing && letter !== prev && (
+                <li className="letter" aria-hidden="true">
+                  {letter}
+                </li>
+              )}
+              <PersonRow person={p} query={trimmed} />
+            </Fragment>
+          )
+        })}
+        {hasMore && (
+          <li ref={sentinelRef} className="list-more">
+            <button className="subtle" onClick={growPage}>
+              Show more ({people.length - limit} remaining)
+            </button>
+          </li>
+        )}
       </ul>
       {!trimmed && (
         <button
@@ -204,9 +273,10 @@ export default function PeoplePage() {
   )
 }
 
-function PersonRow({ person, query }: { person: Person; query: string }) {
+const PersonRow = memo(function PersonRow({ person, query }: { person: Person; query: string }) {
   const records = useVaultStore((s) => s.records)
-  const circles = useMemo(() => selectCirclesOf(records, person.id), [records, person.id])
+  const circles = selectCirclesOf(records, person.id)
+  const notes = selectNotes(records, person.id)
   const detail = [person.jobTitle, person.employer].filter(Boolean).join(' @ ')
   // Show WHY a result matched when the hit came from note text (§4.4).
   const snippet = useMemo(() => {
@@ -214,11 +284,26 @@ function PersonRow({ person, query }: { person: Person; query: string }) {
     const q = query.toLowerCase()
     const nameHit = person.displayName.toLowerCase().includes(q) || detail.toLowerCase().includes(q)
     if (nameHit) return null
-    // Say WHY a circle-name hit matched, the way note hits do.
+    // Say WHY it matched, the way note hits do: a structured field, a
+    // circle, a tag — "the guy with the sailboat" needs the sailboat.
+    const has = (v?: string) => Boolean(v && v.toLowerCase().includes(q))
+    const nick = person.nicknames.find((n) => n.toLowerCase().includes(q))
+    if (nick) return `aka ${nick}`
+    if (has(person.location)) return `in ${person.location}`
+    const tag = person.tags.find((t) => t.toLowerCase().includes(q))
+    if (tag) return `tagged ${tag}`
+    const like = person.likes.find((t) => t.toLowerCase().includes(q))
+    if (like) return `likes ${like}`
+    const dislike = person.dislikes.find((t) => t.toLowerCase().includes(q))
+    if (dislike) return `dislikes ${dislike}`
+    if (has(person.howWeMet)) return `met: ${person.howWeMet}`
+    if (has(person.pronouns)) return person.pronouns ?? null
+    const contact = [person.contact?.phone, person.contact?.email, person.contact?.other].find(has)
+    if (contact) return contact
     const viaCircle = circles.find((c) => c.name.toLowerCase().includes(q))
     if (viaCircle) return `in ${viaCircle.name}`
-    return matchSnippet(records, person.id, query)
-  }, [records, person, query, detail, circles])
+    return matchSnippet(notes, query)
+  }, [notes, person, query, detail, circles])
 
   return (
     <li>
@@ -248,7 +333,7 @@ function PersonRow({ person, query }: { person: Person; query: string }) {
       </Link>
     </li>
   )
-}
+})
 
 /** Biometric/PIN unlocks can't migrate a legacy KDF wrap (§6.2). */
 function KdfUpgradeNag() {
@@ -278,6 +363,7 @@ function PinFailureNotice() {
 }
 
 const HORIZON_DAYS = 30
+const UPCOMING_COLLAPSED = 3
 const EXPORT_NAG_DAYS = 7
 
 /** Re-render date math when the calendar day changes (midnight rollover). */
@@ -365,15 +451,26 @@ function Upcoming() {
         label: r.text,
       })
     }
-    return list.sort((a, b) => a.days - b.days).slice(0, 8)
+    return list.sort((a, b) => a.days - b.days)
   }, [records, today])
+  // Three rows by default: with hundreds of people the strip is always
+  // full, and it must not push the list itself below the fold.
+  const [expanded, setExpanded] = useState(false)
+  const shown = expanded ? items : items.slice(0, UPCOMING_COLLAPSED)
 
   if (items.length === 0) return null
   return (
     <section className="upcoming">
-      <h2>Upcoming</h2>
+      <h2>
+        Upcoming
+        {items.length > UPCOMING_COLLAPSED && (
+          <button className="subtle" onClick={() => setExpanded((v) => !v)}>
+            {expanded ? 'Show fewer' : `See all ${items.length}`}
+          </button>
+        )}
+      </h2>
       <ul>
-        {items.map((item) => (
+        {shown.map((item) => (
           <li key={item.key}>
             <span className={`days ${item.overdue ? 'overdue' : ''}`}>
               {item.overdue

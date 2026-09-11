@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { destroyAllData } from '../lib/db'
 import {
   MAX_IMPORT_FILE_BYTES,
@@ -13,15 +13,19 @@ import {
 } from '../lib/models'
 import { DISGUISES, currentDisguise, setDisguise } from '../lib/disguise'
 import { MAX_PIN_ATTEMPTS } from '../lib/pin'
-import { PIN_MASK_SUPPORTED, getStorageStatus } from '../lib/platform'
+import { PIN_MASK_SUPPORTED, getStorageStatus, isIos, isIosBrowserTab } from '../lib/platform'
 import { requestNotificationPermission } from '../lib/reminders'
 import { loadSampleData } from '../lib/sampleData'
+import { loadStressCast, removeStressCast } from '../lib/stressData'
 import { loadAllBlobs, unlockVault } from '../lib/vault'
 import { webAuthnAvailable } from '../lib/webauthn'
-import { selectSettings, useVaultStore } from '../store/vaultStore'
+import { selectPeople, selectSettings, useVaultStore } from '../store/vaultStore'
 
 export default function SettingsPage() {
   const lock = useVaultStore((s) => s.lock)
+  // Profiling tools live behind #/settings?dev=1 — not a feature.
+  const [params] = useSearchParams()
+  const dev = params.get('dev') === '1'
 
   const destroy = async () => {
     const answer = prompt('Type DELETE to destroy all data on this device. There is no undo.')
@@ -35,11 +39,13 @@ export default function SettingsPage() {
     <div className="settings">
       <h1 className="sr-only">Settings</h1>
       <SecuritySection />
+      {isIosBrowserTab() && <InstallSection />}
       <DisguiseSection />
       <ExportSection />
       <ImportSection />
       <StorageSection />
       <SampleDataSection />
+      {dev && <StressSection />}
       <section className="danger-zone">
         <h2>Delete everything</h2>
         <p className="hint">
@@ -70,6 +76,7 @@ function SecuritySection() {
   const [pinConfirm, setPinConfirm] = useState('')
   const [pinPass, setPinPass] = useState('')
   const [pinMsg, setPinMsg] = useState<string | null>(null)
+  const [reminderNotice, setReminderNotice] = useState<string | null>(null)
   const [pinBusy, setPinBusy] = useState(false)
   const [bioPass, setBioPass] = useState('')
   const [bioMsg, setBioMsg] = useState<string | null>(null)
@@ -222,7 +229,7 @@ function SecuritySection() {
         <div className="row">
           <p className="hint" role="status">
             On — your face or fingerprint opens the app. Turning it off here removes
-            the app's copy; the passkey itself lives in your phone's password settings.
+            the app's copy; the passkey itself lives in your device's password settings.
           </p>
           <button className="subtle" onClick={() => void removeBiometric().catch(() => {})}>
             Turn off
@@ -338,14 +345,57 @@ function SecuritySection() {
             checked={settings?.remindersEnabled ?? false}
             onChange={async (e) => {
               const enable = e.target.checked
-              if (enable && !(await requestNotificationPermission())) return
+              if (enable && !(await requestNotificationPermission())) {
+                setReminderNotice(
+                  'Notifications are blocked for this app — allow them in the phone’s settings, then try again.',
+                )
+                return
+              }
+              setReminderNotice(null)
               void changeSecurity({ remindersEnabled: enable })
             }}
           />
           Daily reminder — the notification only ever says “You have a reminder”, never
           who it's about
         </label>
+        {reminderNotice && (
+          <p className="hint error" role="alert">
+            {reminderNotice}
+          </p>
+        )}
+        {isIosBrowserTab() && (
+          <p className="hint">
+            On iPhone, reminders only work from the Home Screen app (and only while it's
+            open) — see “Add to Home Screen” below.
+          </p>
+        )}
       </div>
+    </section>
+  )
+}
+
+/**
+ * iOS-only: a Safari tab and the Home Screen app are separate worlds
+ * (storage, notifications, Face ID prompts). Say so before someone
+ * builds up a vault in the tab and finds the app empty.
+ */
+function InstallSection() {
+  const records = useVaultStore((s) => s.records)
+  const hasContent = selectPeople(records).some((p) => !p.isSelf)
+  return (
+    <section>
+      <h2>Add to Home Screen</h2>
+      <p className="hint">
+        You're using this in a browser tab. Added to the Home Screen (in Safari: Share →
+        Add to Home Screen) it opens full-screen and can show reminders while it's open.
+      </p>
+      <p className="hint">
+        The Home Screen app keeps its own storage, separate from the browser — and vice
+        versa.{' '}
+        {hasContent
+          ? 'Your notes here won’t appear in it by themselves: save a backup below, open the app, and restore it there.'
+          : 'Set up your passphrase inside the app, not here.'}
+      </p>
     </section>
   )
 }
@@ -383,6 +433,18 @@ function DisguiseSection() {
   )
 }
 
+function downloadBlob(text: string, name: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // Revoking synchronously races the (async) download start.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000)
+}
+
 /**
  * Encrypted export (§4.5): re-entering the passphrase both keys the bundle
  * and proves the user still knows it. The unlock check must open THIS
@@ -408,15 +470,28 @@ function ExportSection() {
       }
       const blobs = await loadAllBlobs(vault)
       const text = await exportBundle(passphrase, [...records.values()], blobs)
-      const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
-      const a = document.createElement('a')
-      a.href = url
-      a.download = exportFileName()
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      // Revoking synchronously races the (async) download start.
-      setTimeout(() => URL.revokeObjectURL(url), 30_000)
+      const name = exportFileName()
+      // iOS: an <a download> of a blob: URL is unreliable from a Home
+      // Screen app (it can navigate the app to the raw JSON with no way
+      // back). The share sheet saves to Files/AirDrop from both a tab and
+      // the installed app. Cancelling the sheet is not a failure.
+      const file = new File([text], name, { type: 'application/json' })
+      const nav = navigator as Navigator & {
+        canShare?: (data: { files: File[] }) => boolean
+      }
+      if (isIos() && nav.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: name })
+        } catch (err) {
+          if ((err as { name?: string }).name === 'AbortError') {
+            setState('idle')
+            return
+          }
+          downloadBlob(text, name)
+        }
+      } else {
+        downloadBlob(text, name)
+      }
       await markExported()
       setState('done')
     } catch {
@@ -526,7 +601,9 @@ function ImportSection() {
           <input
             ref={fileRef}
             type="file"
-            accept=".ledger,application/json"
+            // iOS maps accept to UTIs and can grey out a .ledger file in
+            // the Files picker; the importer validates the contents anyway.
+            accept={isIos() ? undefined : '.ledger,application/json'}
             aria-label="Backup file"
           />
         </label>
@@ -609,6 +686,78 @@ function SampleDataSection() {
         {busy ? 'Adding…' : 'Load sample people'}
       </button>
       {/* Always mounted so the polite live region reliably announces. */}
+      <p className="hint status-slot" role="status">
+        {message}
+      </p>
+    </section>
+  )
+}
+
+/**
+ * Scale testing (§7): bulk-load a fictional crowd in one write, and take
+ * it away again. Dev-only (`?dev=1`); the counts and timing feed the
+ * profiling script.
+ */
+function StressSection() {
+  const records = useVaultStore((s) => s.records)
+  const [size, setSize] = useState(300)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const total = records.size
+
+  const add = async () => {
+    if (busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const r = await loadStressCast(size)
+      setMessage(
+        `Added ${r.people} people, ${r.notes} notes, ${r.edges} relationships, ${r.circles} circles, ${r.followUps} follow-ups, ${r.photos} photos in ${r.ms} ms.`,
+      )
+    } catch {
+      setMessage('Could not load the crowd — try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const remove = async () => {
+    if (busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const t0 = performance.now()
+      const n = await removeStressCast()
+      setMessage(`Removed ${n} people in ${Math.round(performance.now() - t0)} ms.`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="stress">
+      <h2>Stress test</h2>
+      <p className="hint">
+        Adds a large fictional crowd (tagged ‘stress-test’) to see how the app copes.
+        Currently holding {total} records.
+      </p>
+      <div className="row wrap">
+        <label className="stress-size">
+          People
+          <select value={size} onChange={(e) => setSize(Number(e.target.value))}>
+            {[100, 300, 1000, 3000].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button onClick={() => void add()} disabled={busy} aria-busy={busy}>
+          {busy ? 'Working…' : 'Add crowd'}
+        </button>
+        <button className="danger" onClick={() => void remove()} disabled={busy}>
+          Remove crowd
+        </button>
+      </div>
       <p className="hint status-slot" role="status">
         {message}
       </p>
