@@ -169,10 +169,12 @@ export default function App() {
   // accident-prone, so unlike the deliberate Lock button it DOES flush
   // the capture draft before locking.
   const shakeToLock = settings?.shakeToLock ?? false
+  const [motionBlocked, setMotionBlocked] = useState(false)
   useEffect(() => {
     if (!unlocked || !shakeToLock || typeof DeviceMotionEvent === 'undefined') return
     let spikes: number[] = []
     let fired = false
+    let listening = false
     const onMotion = (e: DeviceMotionEvent) => {
       if (fired) return
       const a = e.acceleration ?? e.accelerationIncludingGravity
@@ -190,8 +192,38 @@ export default function App() {
         }
       }
     }
-    window.addEventListener('devicemotion', onMotion)
-    return () => window.removeEventListener('devicemotion', onMotion)
+    const listen = () => {
+      if (listening) return
+      listening = true
+      window.addEventListener('devicemotion', onMotion)
+    }
+    // iOS 13+ delivers no motion events until requestPermission() is
+    // granted, and the grant lasts one page load — it must be re-asked
+    // (from a user gesture) on every launch, not just when the toggle
+    // was first switched on in Settings.
+    const DME = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> }
+    const onFirstTap = () => {
+      window.removeEventListener('pointerdown', onFirstTap, true)
+      DME.requestPermission!()
+        .then((state) => {
+          if (state === 'granted') {
+            setMotionBlocked(false)
+            listen()
+          } else {
+            setMotionBlocked(true)
+          }
+        })
+        .catch(() => setMotionBlocked(true))
+    }
+    if (typeof DME.requestPermission === 'function') {
+      window.addEventListener('pointerdown', onFirstTap, true)
+    } else {
+      listen()
+    }
+    return () => {
+      window.removeEventListener('pointerdown', onFirstTap, true)
+      window.removeEventListener('devicemotion', onMotion)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlocked, shakeToLock, panicLock])
 
@@ -265,6 +297,15 @@ export default function App() {
       {lockWarning && (
         <p className="banner lock-warning" role="status">
           Locking soon — touch anywhere to stay unlocked.
+        </p>
+      )}
+      {motionBlocked && unlocked && (
+        <p className="banner" role="status">
+          Shake to lock is off: the phone didn't allow motion access. Allow it in
+          Settings → Safari → Motion &amp; Orientation Access, or turn the option off.{' '}
+          <button className="subtle" onClick={() => setMotionBlocked(false)}>
+            Dismiss
+          </button>
         </p>
       )}
       <main id="main">

@@ -113,7 +113,15 @@ function PinUnlock({ onUsePassphrase }: { onUsePassphrase: () => void }) {
         <h1>Enter PIN</h1>
         {/* One dot per typed digit — no empty slots: the locked screen
             must not disclose the armed PIN's length (§6.5). */}
-        <div className="pin-dots" aria-hidden="true">
+        <div
+          className="pin-dots"
+          aria-hidden="true"
+          // iOS shows no keyboard for autofocus; tapping the dots must.
+          onPointerDown={(e) => {
+            e.preventDefault()
+            document.querySelector<HTMLInputElement>('.pin-input')?.focus()
+          }}
+        >
           {Array.from({ length: pin.length }, (_, i) => (
             <span key={i} className="on" />
           ))}
@@ -128,6 +136,8 @@ function PinUnlock({ onUsePassphrase }: { onUsePassphrase: () => void }) {
           inputMode="numeric"
           pattern="[0-9]*"
           maxLength={8}
+          autoCorrect="off"
+          spellCheck={false}
           autoFocus
           value={pin}
           onChange={(e) => {

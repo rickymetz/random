@@ -76,17 +76,36 @@ function toDoc(
   }
 }
 
+/** One pass over the records (not one per person: at 1,000 people that
+ * was a second of unlock time on a phone), then a single addAll. */
 export function rebuildIndex(
   index: MiniSearch<PersonDoc>,
   records: Map<string, DomainRecord>,
 ): void {
   index.removeAll()
+  const people: Person[] = []
+  const notes = new Map<string, NoteEntry[]>()
+  const edgeNotes = new Map<string, string[]>()
+  const circleNames = new Map<string, string[]>()
+  const push = <T,>(map: Map<string, T[]>, key: string, value: T) => {
+    const list = map.get(key)
+    if (list) list.push(value)
+    else map.set(key, [value])
+  }
   for (const r of records.values()) {
-    if (r.kind === 'person') {
-      const { notes, edgeNotes, circleNames } = personTexts(records, r.id)
-      index.add(toDoc(r, notes, edgeNotes, circleNames))
+    if (r.kind === 'person') people.push(r)
+    else if (r.kind === 'note') push(notes, r.personId, r)
+    else if (r.kind === 'circle') for (const id of r.memberIds) push(circleNames, id, r.name)
+    else if (r.kind === 'relationship' && r.note) {
+      push(edgeNotes, r.fromId, r.note)
+      push(edgeNotes, r.toId, r.note)
     }
   }
+  index.addAll(
+    people.map((p) =>
+      toDoc(p, notes.get(p.id) ?? [], edgeNotes.get(p.id) ?? [], circleNames.get(p.id) ?? []),
+    ),
+  )
 }
 
 /** Re-index one person after they, their notes, or their edges changed. */

@@ -351,7 +351,16 @@ created:
     viewport (`interactive-widget=resizes-content` is Android-only), so
     the app tracks `visualViewport` and lifts its bottom-anchored bars
     (capture bar, form Save row) by the covered height (`--kb`).
-  - `100dvh` with a `100vh` fallback for iOS < 15.4.
+  - Keyboard lifting and `dvh` need iOS 15.4+ (`:has()`); older iOS
+    degrades to bars that stay put and `100vh`, never to a broken layout.
+    The graph uses `svh` so a Safari tab's collapsing toolbar doesn't
+    re-fit the canvas on every scroll.
+  - Motion access for shake-to-lock is re-requested on the first tap of
+    every launch (iOS grants it per page load); the backup is offered
+    through the share sheet on iOS (an `<a download>` of a blob is
+    unreliable from a Home Screen app); Face ID enrolment is skipped up
+    front where the browser reports no PRF support, so no orphan passkey
+    is minted.
 - **Scale targets** (a "several hundred people" address book, §4.4):
   300 people / 1,000 notes must feel instant on a mid-range phone —
   search keystroke under ~100 ms, People list and dossier open under

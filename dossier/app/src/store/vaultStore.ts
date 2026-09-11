@@ -955,12 +955,13 @@ export const useVaultStore = create<VaultState>((set, get) => {
       const merged = new Map(get().records)
       for (const record of puts) merged.set(record.id, record)
       const avatarSeen = new Set<string>()
+      const putIds = new Set(puts.map((p) => p.id))
       for (const record of puts) {
         if (record.kind === 'photo' && record.isAvatar) avatarSeen.add(record.personId)
       }
       for (const [rid, record] of merged) {
         if (record.kind !== 'photo' || !record.isAvatar) continue
-        const isIncoming = puts.some((p) => p.id === rid)
+        const isIncoming = putIds.has(rid)
         if (avatarSeen.has(record.personId) && !isIncoming) {
           puts.push({ ...record, isAvatar: false })
           merged.set(rid, { ...record, isAvatar: false })
@@ -976,7 +977,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
             record.kind === 'person' &&
             record.isSelf &&
             rid !== incomingSelf.id &&
-            !puts.some((p) => p.id === rid)
+            !putIds.has(rid)
           ) {
             const demoted = { ...record, isSelf: undefined }
             puts.push(demoted)

@@ -86,10 +86,18 @@ export default function PeoplePage() {
   // The window is keyed on the query/circle so a new search starts back
   // at one page in the same render (no flash of the old, longer list).
   const pageKey = `${circle?.id ?? ''}|${query.trim()}`
+  const pageKeyRef = useRef(pageKey)
+  pageKeyRef.current = pageKey
   const [window_, setWindow] = useState({ key: pageKey, limit: PAGE })
   const limit = window_.key === pageKey ? window_.limit : PAGE
+  // Reads the key through a ref: the observer callback below is created
+  // once per (hasMore, limit) and would otherwise grow a stale key's
+  // window after the query changed.
   const setLimit = (grow: (n: number) => number) =>
-    setWindow((w) => ({ key: pageKey, limit: grow(w.key === pageKey ? w.limit : PAGE) }))
+    setWindow((w) => {
+      const key = pageKeyRef.current
+      return { key, limit: grow(w.key === key ? w.limit : PAGE) }
+    })
   const sentinelRef = useRef<HTMLLIElement>(null)
   const hasMore = people.length > limit
   useEffect(() => {

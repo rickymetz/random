@@ -19,12 +19,21 @@ import {
   type FollowUp,
   type NoteEntry,
   type Person,
+  type Photo,
   type Relationship,
   type RelationshipType,
 } from './models'
 import { selectPeople, selectRelationshipTypes, useVaultStore } from '../store/vaultStore'
 
 export const STRESS_TAG = 'stress-test'
+
+/** A valid 4×4 PNG (one flat accent tint); enough for the avatar draw path. */
+const TINY_PNG_B64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAEUlEQVR4nGO4sSwcjhiI4wAAApEdUY2f+KIAAAAASUVORK5CYII='
+export function tinyPngBytes(): Uint8Array {
+  const bin = atob(TINY_PNG_B64)
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0))
+}
 
 const FIRST = [
   'Amara', 'Bea', 'Caleb', 'Dev', 'Esme', 'Farid', 'Gwen', 'Hugo', 'Ines', 'Jonah',
@@ -130,13 +139,14 @@ export interface StressCounts {
   edges: number
   circles: number
   followUps: number
+  photos: number
 }
 
 /** Pure generator: the records to import for a crowd of `n` people. */
 export function buildStressRecords(
   n: number,
   opts: StressBuildOptions,
-): { records: DomainRecord[]; counts: StressCounts } {
+): { records: DomainRecord[]; blobs: { id: string; bytes: Uint8Array }[]; counts: StressCounts } {
   const rand = rng(opts.seed ?? 20260911)
   const now = opts.now ?? Date.now()
   const pick = <T,>(arr: T[]): T => arr[Math.floor(rand() * arr.length)]
@@ -328,15 +338,44 @@ export function buildStressRecords(
     })
   }
 
-  const records: DomainRecord[] = [...people, ...edges, ...mentionEdges, ...notes, ...circles, ...followUps]
+  // Avatars for ~a quarter of the crowd, so the list and graph exercise
+  // the photo path (blob decode, clipped drawImage) — not just initials.
+  const photos: Photo[] = []
+  const blobs: { id: string; bytes: Uint8Array }[] = []
+  for (const p of people) {
+    if (!chance(0.25)) continue
+    const blobRecordId = crypto.randomUUID()
+    blobs.push({ id: blobRecordId, bytes: tinyPngBytes() })
+    photos.push({
+      kind: 'photo',
+      id: crypto.randomUUID(),
+      personId: p.id,
+      isAvatar: true,
+      mimeType: 'image/png',
+      blobRecordId,
+      createdAt: p.createdAt,
+    })
+  }
+
+  const records: DomainRecord[] = [
+    ...people,
+    ...edges,
+    ...mentionEdges,
+    ...notes,
+    ...circles,
+    ...followUps,
+    ...photos,
+  ]
   return {
     records,
+    blobs,
     counts: {
       people: people.length,
       notes: notes.length,
       edges: edges.length + mentionEdges.length,
       circles: circles.length,
       followUps: followUps.length,
+      photos: photos.length,
     },
   }
 }
@@ -355,7 +394,7 @@ export async function loadStressCast(n = 300, seed?: number): Promise<StressResu
     seed,
   })
   const t0 = performance.now()
-  await state.importRecords(built.records)
+  await state.importRecords(built.records, built.blobs)
   return { ...built.counts, ms: Math.round(performance.now() - t0) }
 }
 

@@ -60,7 +60,27 @@ export type EnrollResult =
  * PRF is unsupported, the OS-side passkey cannot be deleted from JS — an
  * orphan remains in the system credential manager (surfaced in the UI).
  */
+/**
+ * Safari 17.4+ can say up front whether the PRF extension exists
+ * (iOS 18+). Where it says no, skip creation entirely — a passkey
+ * minted first and found useless afterwards stays in the system
+ * credential list as an orphan.
+ */
+async function prfKnownUnsupported(): Promise<boolean> {
+  const PKC = PublicKeyCredential as unknown as {
+    getClientCapabilities?: () => Promise<Record<string, boolean>>
+  }
+  if (typeof PKC.getClientCapabilities !== 'function') return false
+  try {
+    const caps = await PKC.getClientCapabilities()
+    return caps['extension:prf'] === false
+  } catch {
+    return false
+  }
+}
+
 export async function enrollBiometric(rawDek: Uint8Array): Promise<EnrollResult> {
+  if (await prfKnownUnsupported()) return { status: 'unsupported' }
   const prfSalt = randomBytes(32)
   const userId = randomBytes(16)
   const created = (await navigator.credentials.create({

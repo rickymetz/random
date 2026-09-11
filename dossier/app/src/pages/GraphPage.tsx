@@ -1014,8 +1014,10 @@ function useCanvasGraph(
     simRef.current = {
       render: scheduleRender,
       reheat: () => {
-        if (!reduceMotion) simulation.alpha(0.06).restart()
-        else scheduleRender()
+        if (!reduceMotion) {
+          canvas.dataset.layout = 'running'
+          simulation.alpha(0.06).restart()
+        } else scheduleRender()
       },
     }
 
@@ -1028,6 +1030,8 @@ function useCanvasGraph(
     // Painting hundreds of nodes costs far more than stepping the
     // simulation, so on a big cast the layout phase paints every other
     // tick (dragging always paints — a finger needs every frame).
+    // `dragging` is owned by the pointer handlers further down.
+    let dragging = false
     const big = simNodes.length > 150
     let tickCount = 0
     simulation.on('tick', () => {
@@ -1146,7 +1150,11 @@ function useCanvasGraph(
         else groups.set(key, [link])
         if (link.directed) arrows.push(link)
       }
-      for (const list of groups.values()) {
+      // Highlighted (path) edges stroke last so nothing overdraws them.
+      const ordered = [...groups.values()].sort(
+        (a, b) => Number(a[0].highlighted) - Number(b[0].highlighted),
+      )
+      for (const list of ordered) {
         const first = list[0]
         ctx.beginPath()
         for (const link of list) {
@@ -1190,49 +1198,19 @@ function useCanvasGraph(
       ctx.font = '11px system-ui'
       const visibleNodes: GraphNode[] = []
       const plain: GraphNode[] = []
+      const special: GraphNode[] = []
       const avatarImages = avatarImagesRef.current
       for (const node of simNodes) {
         if (node.x == null || node.y == null || !inView(node.x, node.y)) continue
         visibleNodes.push(node)
-        const isFocus = node.id === focusId
         const image = node.avatar ? avatarImages.get(node.avatar.blobRecordId) : undefined
-        if (!(image instanceof HTMLImageElement) && !isFocus && !node.isSelf) {
+        if (!(image instanceof HTMLImageElement) && node.id !== focusId && !node.isSelf) {
           plain.push(node)
-          continue
-        }
-        // The self node is the anchor of every "how you connect" query:
-        // it gets the accent ring even when not focused.
-        const ring = isFocus || node.isSelf ? '#d8a657' : '#4a463f'
-        const r = node.r
-        if (image instanceof HTMLImageElement) {
-          ctx.save()
-          ctx.beginPath()
-          ctx.arc(node.x, node.y, r, 0, Math.PI * 2)
-          ctx.clip()
-          // Cover-crop from a centered square so faces aren't stretched.
-          const side = Math.min(image.naturalWidth, image.naturalHeight)
-          const sx = (image.naturalWidth - side) / 2
-          const sy = (image.naturalHeight - side) / 2
-          ctx.drawImage(image, sx, sy, side, side, node.x - r, node.y - r, r * 2, r * 2)
-          ctx.restore()
-          ctx.beginPath()
-          ctx.arc(node.x, node.y, r, 0, Math.PI * 2)
-          ctx.lineWidth = (node.isSelf ? 2.5 : 1.5) / k
-          ctx.strokeStyle = ring
-          ctx.stroke()
         } else {
-          ctx.beginPath()
-          ctx.arc(node.x, node.y, r, 0, Math.PI * 2)
-          ctx.fillStyle = isFocus ? '#d8a657' : '#2b2926'
-          ctx.fill()
-          ctx.lineWidth = (node.isSelf ? 2.5 : 1.5) / k
-          ctx.strokeStyle = ring
-          ctx.stroke()
-          ctx.fillStyle = isFocus ? '#17140f' : '#ece8e1'
-          ctx.fillText(node.initials, node.x, node.y)
+          special.push(node)
         }
-        ctx.lineWidth = 1.5 / k
       }
+      // Plain batch first: focused/self/photo nodes paint over it.
       if (plain.length > 0) {
         ctx.beginPath()
         for (const node of plain) {
@@ -1248,6 +1226,42 @@ function useCanvasGraph(
           ctx.fillStyle = '#ece8e1'
           for (const node of plain) ctx.fillText(node.initials, node.x!, node.y!)
         }
+      }
+      for (const node of special) {
+        const isFocus = node.id === focusId
+        const image = node.avatar ? avatarImages.get(node.avatar.blobRecordId) : undefined
+        // The self node is the anchor of every "how you connect" query:
+        // it gets the accent ring even when not focused.
+        const ring = isFocus || node.isSelf ? '#d8a657' : '#4a463f'
+        const r = node.r
+        if (image instanceof HTMLImageElement) {
+          ctx.save()
+          ctx.beginPath()
+          ctx.arc(node.x!, node.y!, r, 0, Math.PI * 2)
+          ctx.clip()
+          // Cover-crop from a centered square so faces aren't stretched.
+          const side = Math.min(image.naturalWidth, image.naturalHeight)
+          const sx = (image.naturalWidth - side) / 2
+          const sy = (image.naturalHeight - side) / 2
+          ctx.drawImage(image, sx, sy, side, side, node.x! - r, node.y! - r, r * 2, r * 2)
+          ctx.restore()
+          ctx.beginPath()
+          ctx.arc(node.x!, node.y!, r, 0, Math.PI * 2)
+          ctx.lineWidth = (node.isSelf ? 2.5 : 1.5) / k
+          ctx.strokeStyle = ring
+          ctx.stroke()
+        } else {
+          ctx.beginPath()
+          ctx.arc(node.x!, node.y!, r, 0, Math.PI * 2)
+          ctx.fillStyle = isFocus ? '#d8a657' : '#2b2926'
+          ctx.fill()
+          ctx.lineWidth = (node.isSelf ? 2.5 : 1.5) / k
+          ctx.strokeStyle = ring
+          ctx.stroke()
+          ctx.fillStyle = isFocus ? '#17140f' : '#ece8e1'
+          ctx.fillText(node.initials, node.x!, node.y!)
+        }
+        ctx.lineWidth = 1.5 / k
       }
       // Pass 2: name labels — thinned out on big graphs (§4.3 degradation).
       const labelZoom = simNodes.length > LABEL_MAX_NODES ? 1.2 : LABEL_ZOOM
@@ -1463,7 +1477,6 @@ function useCanvasGraph(
 
     const pointers = new Map<number, { x: number; y: number }>()
     let dragNode: GraphNode | null = null
-    let dragging = false
     let moved = 0
     let pinchDist = 0
 
@@ -1525,6 +1538,7 @@ function useCanvasGraph(
         // shift the layout.
         if (!dragging && moved > 6) {
           dragging = true
+          canvas.dataset.layout = 'running'
           simulation.alphaTarget(0.3).restart()
         }
         if (dragging) {
