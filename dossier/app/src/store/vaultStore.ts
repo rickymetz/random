@@ -11,7 +11,7 @@
  */
 import { create } from 'zustand'
 import { extractMentions, renameMentionsOf, stripMentionsOf } from '../lib/mentions'
-import { CIRCLE_COLORS, type Circle } from '../lib/models'
+import { CIRCLE_COLORS, RECENT_LIMIT, type Circle } from '../lib/models'
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
   SETTINGS_ID,
@@ -166,6 +166,8 @@ interface VaultState {
     directed: boolean,
   ) => Promise<RelationshipType>
   markExported: () => Promise<void>
+  /** Remember a dossier was opened (the home screen's Recent row). */
+  noteVisit: (personId: string) => Promise<void>
   importRecords: (
     incoming: unknown,
     blobs?: { id: string; bytes: Uint8Array }[],
@@ -391,6 +393,8 @@ export const useVaultStore = create<VaultState>((set, get) => {
         const memberIds = r.memberIds.filter((m) => !gone.has(m))
         if (dropEmptiedCircles && memberIds.length === 0) deletes.push(r.id)
         else puts.push({ ...r, memberIds })
+      } else if (r.kind === 'settings' && r.recentIds?.some((id) => gone.has(id))) {
+        puts.push({ ...r, recentIds: r.recentIds.filter((id) => !gone.has(id)) })
       } else if (r.kind === 'note' && r.mentions.some((m) => gone.has(m))) {
         // Rewrite dangling mention tokens in other people's notes to the
         // plain name, so no dead @links survive the delete.
@@ -880,6 +884,24 @@ export const useVaultStore = create<VaultState>((set, get) => {
           }
         }
         if (puts.length > 0) await apply(puts, [], [personId])
+      }),
+
+    noteVisit: (personId) =>
+      enqueue(async () => {
+        const { records } = get()
+        const person = records.get(personId)
+        // Yourself isn't a "recent contact"; a vanished person isn't either.
+        if (!person || person.kind !== 'person' || person.isSelf) return
+        const existing = records.get(SETTINGS_ID)
+        const current = existing?.kind === 'settings' ? (existing.recentIds ?? []) : []
+        if (current[0] === personId) return
+        const settings: Settings = {
+          ...(existing?.kind === 'settings' ? existing : {}),
+          kind: 'settings',
+          id: SETTINGS_ID,
+          recentIds: [personId, ...current.filter((id) => id !== personId)].slice(0, RECENT_LIMIT),
+        }
+        await apply([settings])
       }),
 
     markExported: () =>

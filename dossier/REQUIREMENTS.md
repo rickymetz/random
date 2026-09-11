@@ -372,7 +372,11 @@ created:
   photos, avatar, circles) instead of record scans per row; the People
   list renders in pages of 60 (sentinel + "Show more") with letter
   headers and a capped Upcoming strip so the list stays above the fold;
-  search combines words with AND and every hit says why it matched
+  a Recent row (last dossiers opened, kept in the encrypted device-local
+  Settings record; falls back to recently updated) and a right-edge A–Z
+  jump rail (tap or drag; grows the paging window, then scrolls the
+  letter's first row under the app bar) make hundreds of names two taps
+  away; search combines words with AND and every hit says why it matched
   (field, tag, circle, or note snippet); the graph batches draw calls
   by style, cools faster and paints every other tick above 150 nodes,
   and past the label limit opens on your own connections (§4.3) with
@@ -477,6 +481,7 @@ From the requirements interview (2026-09-09):
 | Media | Person photos only in v1 |
 | Graph UX | Core feature, fully interactive |
 | Circles (§4.6) | First-class entity (not tags); many-to-many, flat; hull bubbles + gentle clustering; chips to show/hide + tap-to-focus; auto color with override; managed from the person page; empty circles persist, delete is explicit; name + color + members only; seeded in the sample cast |
+| Home at scale (§4.4) | Recent = last opened dossiers, stored encrypted and device-local (not in backups); fallback to recently updated; A–Z rail with drag + keyboard buttons, letters without people dimmed |
 | Scale + iOS (§7) | Stress crowd behind `?dev=1`, not a user feature; per-snapshot selector indexes; paged People list; batched graph painting; `visualViewport`-driven keyboard inset for bottom bars; iOS-tab install guidance (separate storage) |
 | Discretion | Instant lock/panic, neutral disguise, decoy vault (designed now, built v2) |
 | Platform | Mobile-first, desktop works |

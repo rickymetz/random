@@ -1,4 +1,4 @@
-import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import { daysUntilDue, daysUntilNext, formatPartialDate } from '../lib/dates'
@@ -17,6 +17,23 @@ import {
 /** Rows rendered before the list asks for more (scroll or button). */
 const PAGE = 60
 const collator = new Intl.Collator(undefined, { sensitivity: 'base' })
+/** Below this many people the plain list needs neither Recent nor a rail. */
+const RECENT_MIN_PEOPLE = 8
+const RAIL_MIN_PEOPLE = 40
+const RAIL_LETTERS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', '#']
+
+/** "Ada K." — a first name alone is ambiguous in a row of six. */
+function shortName(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length < 2) return name
+  return `${parts[0]} ${parts[parts.length - 1].charAt(0).toLocaleUpperCase()}.`
+}
+
+/** Letter a name files under on the rail: A–Z, or # for anything else. */
+function letterOf(name: string): string {
+  const c = name.trim().charAt(0).toLocaleUpperCase()
+  return c >= 'A' && c <= 'Z' ? c : /\p{L}/u.test(c) ? c : '#'
+}
 
 /**
  * Search-first home screen (scenario S2): as-you-type full-text search over
@@ -116,7 +133,34 @@ export default function PeoplePage() {
   }, [hasMore, limit, pageKey])
   // Letter headers make a long A–Z scroll navigable; only for the plain
   // list (a search or a circle is already a short, ranked set).
-  const browsing = !query.trim() && !circle && people.length > 40
+  const plainList = !query.trim() && !circle
+  const showRecent = plainList && people.length > RECENT_MIN_PEOPLE
+  // Letter headers, the count and the rail only once the list is long
+  // enough to need them.
+  const browsing = plainList && people.length > RAIL_MIN_PEOPLE
+  const showRail = browsing
+
+  // Jump rail: reveal enough rows for the letter, then scroll its header
+  // under the app bar once those rows exist.
+  const pendingJump = useRef<string | null>(null)
+  const jumpTo = useCallback(
+    (letter: string) => {
+      const index = people.findIndex((p) => letterOf(p.displayName) === letter)
+      if (index < 0) return
+      pendingJump.current = letter
+      const needed = Math.ceil((index + 1) / PAGE) * PAGE
+      const cur = useVaultStore.getState().homePage
+      const have = cur.key === pageKeyRef.current && cur.limit > 0 ? cur.limit : PAGE
+      if (needed > have) setHomePage({ key: pageKeyRef.current, limit: needed })
+      else scrollToLetter(letter)
+    },
+    [people, setHomePage],
+  )
+  useEffect(() => {
+    const letter = pendingJump.current
+    if (!letter) return
+    if (scrollToLetter(letter)) pendingJump.current = null
+  })
 
   const create = async () => {
     if (busy) return
@@ -223,19 +267,21 @@ export default function PeoplePage() {
           + Add “{trimmed}”{circle ? ` to ${circle.name}` : ''}
         </button>
       )}
+      {showRecent && <Recent people={sorted} />}
       {browsing && (
         <p className="hint list-count" aria-live="polite">
           {people.length} people, A to Z
         </p>
       )}
-      <ul>
+      {showRail && <LetterRail people={people} onJump={jumpTo} />}
+      <ul className={showRail ? 'with-rail' : undefined}>
         {people.slice(0, limit).map((p, i, shown) => {
-          const letter = p.displayName.charAt(0).toLocaleUpperCase()
-          const prev = i > 0 ? shown[i - 1].displayName.charAt(0).toLocaleUpperCase() : null
+          const letter = letterOf(p.displayName)
+          const prev = i > 0 ? letterOf(shown[i - 1].displayName) : null
           return (
             <Fragment key={p.id}>
               {browsing && letter !== prev && (
-                <li className="letter" aria-hidden="true">
+                <li className="letter" data-letter={letter} aria-hidden="true">
                   {letter}
                 </li>
               )}
@@ -270,6 +316,138 @@ export default function PeoplePage() {
         </button>
       )}
     </div>
+  )
+}
+
+/**
+ * Scroll so the letter's first row sits right under the app bar and its
+ * sticky header. Not scrollIntoView on the header itself: a stuck sticky
+ * header is "already in view", so the browser wouldn't move.
+ */
+function scrollToLetter(letter: string): boolean {
+  const header = document.querySelector<HTMLElement>(`li.letter[data-letter="${letter}"]`)
+  const row = header?.nextElementSibling as HTMLElement | null
+  if (!header || !row) return false
+  const bar = document.querySelector<HTMLElement>('.app-bar')?.getBoundingClientRect().height ?? 0
+  const top = row.getBoundingClientRect().top + window.scrollY - bar - header.offsetHeight
+  window.scrollTo({ top: Math.max(0, top), behavior: 'instant' as ScrollBehavior })
+  return true
+}
+
+/**
+ * Right-edge A–Z rail (§4.4): tap or drag to jump. Letters nobody files
+ * under are dimmed; a drag over one snaps to the next letter that has
+ * people. Real buttons underneath, so it also works by keyboard and
+ * screen reader.
+ */
+function LetterRail({ people, onJump }: { people: Person[]; onJump: (letter: string) => void }) {
+  const present = useMemo(() => new Set(people.map((p) => letterOf(p.displayName))), [people])
+  const railRef = useRef<HTMLDivElement>(null)
+  const [active, setActive] = useState<string | null>(null)
+  const lastJump = useRef<string | null>(null)
+
+  const letterAt = (clientY: number): string | null => {
+    const rail = railRef.current
+    if (!rail) return null
+    const rect = rail.getBoundingClientRect()
+    const i = Math.floor(((clientY - rect.top) / rect.height) * RAIL_LETTERS.length)
+    const clamped = Math.max(0, Math.min(RAIL_LETTERS.length - 1, i))
+    // Snap to the nearest letter (looking down, then up) that has people.
+    for (let j = clamped; j < RAIL_LETTERS.length; j++) {
+      if (present.has(RAIL_LETTERS[j])) return RAIL_LETTERS[j]
+    }
+    for (let j = clamped - 1; j >= 0; j--) {
+      if (present.has(RAIL_LETTERS[j])) return RAIL_LETTERS[j]
+    }
+    return null
+  }
+  const drag = (e: React.PointerEvent) => {
+    const letter = letterAt(e.clientY)
+    if (!letter) return
+    setActive(letter)
+    if (lastJump.current !== letter) {
+      lastJump.current = letter
+      onJump(letter)
+    }
+  }
+  return (
+    <nav
+      ref={railRef}
+      className={`letter-rail ${active ? 'dragging' : ''}`}
+      aria-label="Jump to letter"
+      onPointerDown={(e) => {
+        e.preventDefault()
+        railRef.current?.setPointerCapture(e.pointerId)
+        lastJump.current = null
+        drag(e)
+      }}
+      onPointerMove={(e) => {
+        if (e.buttons === 0) return
+        drag(e)
+      }}
+      onPointerUp={() => {
+        setActive(null)
+        lastJump.current = null
+      }}
+      onPointerCancel={() => setActive(null)}
+    >
+      {RAIL_LETTERS.map((l) => (
+        <button
+          key={l}
+          type="button"
+          tabIndex={present.has(l) ? 0 : -1}
+          aria-disabled={!present.has(l)}
+          className={l === active ? 'active' : ''}
+          onClick={() => present.has(l) && onJump(l)}
+          aria-label={`Jump to ${l === '#' ? 'other' : l}`}
+        >
+          {l}
+        </button>
+      ))}
+      {active && (
+        <span className="rail-bubble" aria-hidden="true">
+          {active}
+        </span>
+      )}
+    </nav>
+  )
+}
+
+/**
+ * The last few dossiers you opened (§4.4), newest first — with hundreds
+ * of people, who you touched this week is what you scroll for. Kept in
+ * the encrypted, device-local Settings record; a fresh device (or a
+ * restore) falls back to the most recently updated people.
+ */
+function Recent({ people }: { people: Person[] }) {
+  const records = useVaultStore((s) => s.records)
+  const recentIds = selectSettings(records)?.recentIds
+  const items = useMemo(() => {
+    const byId = new Map(people.map((p) => [p.id, p]))
+    const fromVisits = (recentIds ?? [])
+      .map((id) => byId.get(id))
+      .filter((p): p is Person => Boolean(p) && !p!.isSelf)
+    if (fromVisits.length > 0) return fromVisits.slice(0, 6)
+    return [...people]
+      .filter((p) => !p.isSelf)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 6)
+  }, [people, recentIds])
+  if (items.length === 0) return null
+  return (
+    <section className="recent" aria-label="Recent">
+      <h2>{recentIds?.length ? 'Recent' : 'Recently updated'}</h2>
+      <ul>
+        {items.map((p) => (
+          <li key={p.id}>
+            <Link to={`/person/${p.id}`} className="recent-item">
+              <Avatar person={p} size={40} />
+              <span className="recent-name">{shortName(p.displayName)}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
