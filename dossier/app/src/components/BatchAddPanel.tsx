@@ -140,6 +140,8 @@ export default function BatchAddPanel({
         if (e.key === 'Escape' && !busy) {
           e.preventDefault()
           e.stopPropagation()
+          // Escape never throws away a typed list without asking.
+          if (text.trim() && !status && !confirm('Discard the list you typed?')) return
           onClose()
         }
       }}

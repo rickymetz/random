@@ -23,6 +23,7 @@
   --surface-3: #2b2926;
   --line:      #2a2825;
   --line-2:    #38352f;
+  --line-3:    #716c64; /* ≥3:1 boundary for inputs and chips (1.4.11) */
 
   /* Ink — the whole ramp stays ≥4.5:1 on every surface it's used on
      (verified numerically in the a11y review); de-emphasis comes from
@@ -30,7 +31,7 @@
   --text:   #ece8e1;
   --text-2: #b5afa5;
   --text-3: #958f84;
-  --text-4: #8b857a;
+  --text-4: #989287;
 
   /* Accent — one, warm, rationed */
   --accent:       #d8a657;
@@ -106,6 +107,7 @@
    field up) from parking a control under the sticky capture bar / tab
    bar at the bottom edge. */
 html {
+  scroll-padding-top: calc(var(--appbar-h) + env(safe-area-inset-top) + 3rem);
   scroll-padding-bottom: 9rem;
 }
 @media (max-width: 48rem) {
@@ -292,6 +294,7 @@ main {
      doesn't make the bar jump under the finger mid-tap. */
   body:has(.capture-bar:focus-within) .tabbar {
     transform: translateY(110%);
+    visibility: hidden;
   }
   body:has(.capture-bar:focus-within) .capture-bar {
     bottom: 0;
@@ -303,6 +306,7 @@ main {
      Save or Cancel are the only exits. */
   body:has(.facts-form) .tabbar {
     transform: translateY(110%);
+    visibility: hidden;
   }
   body:has(.facts-form) .form-actions {
     bottom: 0;
@@ -320,7 +324,7 @@ textarea {
   padding: 0 var(--s3);
   background: var(--surface-2);
   color: var(--text);
-  border: 1px solid var(--line-2);
+  border: 1px solid var(--line-3);
   border-radius: var(--r-sm);
   font-family: var(--font-ui);
   font-size: var(--fs-body); /* 16px — iOS focus-zoom floor */
@@ -990,9 +994,9 @@ body:has(.facts-form) .app-bar .back {
   font-weight: 650;
   letter-spacing: -0.015em;
   line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  
+  white-space: normal;
 }
 .person-title {
   min-width: 0;
@@ -1001,9 +1005,9 @@ body:has(.facts-form) .app-bar .back {
   margin: 0.1rem 0 0;
   color: var(--text-3);
   font-size: var(--fs-meta);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  
+  white-space: normal;
 }
 
 .fact {
@@ -1616,7 +1620,7 @@ body:has(.promote-panel) .capture-bar {
   min-height: 2.25rem;
   padding: 0 var(--s3);
   background: var(--surface-2);
-  border: 1px solid var(--line-2);
+  border: 1px solid var(--line-3);
   border-radius: var(--r-full);
   color: var(--text-2);
   font-size: var(--fs-meta);
@@ -3072,4 +3076,137 @@ body:has(.facts-form) .app-bar nav {
 }
 .field-group .toggle-row {
   margin-top: var(--s3);
+}
+
+
+/* ---- accessibility round (screen reader, keyboard/switch, low vision) ---- */
+.tabbar {
+  transition: transform var(--dur) ease, visibility 0s linear var(--dur);
+}
+.batch-row {
+  flex-wrap: wrap;
+}
+/* Field labels that must not be <label>s (a label wrapping a chip field
+   sends clicks to the first chip's remove button). */
+.facts-form .field-label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+.facts-form .field-label > span:not(.sr-only) {
+  font: 600 var(--fs-label) / 1.2 var(--font-ui);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+/* Two real buttons in one pill on the graph rail. */
+.chip-group {
+  display: inline-flex;
+  align-items: stretch;
+}
+.chip-group .chip {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+  padding-right: var(--s2);
+}
+.chip-group .chip-edit {
+  min-width: 2rem;
+  min-height: 2.25rem;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line-3);
+  border-left: 1px solid var(--line-2);
+  border-radius: 0 var(--r-full) var(--r-full) 0;
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+  box-shadow: none;
+}
+.chip-group.off .chip-edit {
+  background: transparent;
+  border-color: var(--line-2);
+}
+/* Staged "Set type…" on a mention edge. */
+.edge-retype-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-left: auto;
+}
+.edges .edge-retype {
+  margin-left: 0;
+}
+.edge-retype-group .apply {
+  min-height: 2.25rem;
+  font-size: var(--fs-meta);
+}
+/* The graph as text. */
+.graph-list {
+  margin: 0 0 var(--s2);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+.graph-list summary {
+  cursor: pointer;
+  min-height: var(--ctl-h);
+  display: flex;
+  align-items: center;
+  color: var(--text-3);
+}
+.graph-list ul {
+  margin: 0 0 var(--s2);
+  padding: 0 0 0 var(--s4);
+}
+.graph-list li {
+  margin: 0.15rem 0;
+}
+/* Focus rings inside horizontal strips must not be clipped. */
+.recent ul,
+.graph-controls,
+.looks-like-chips {
+  padding-top: 4px;
+  margin-top: -4px;
+  padding-bottom: 4px;
+}
+/* A–Z rail at large text: every other letter shows; all stay focusable. */
+.letter-rail.sparse button:nth-child(even) {
+  font-size: 0;
+}
+.letter-rail.sparse button:nth-child(even)::before {
+  content: '·';
+  font-size: 0.6875rem;
+  color: var(--text-4);
+}
+/* Very short viewports: the capture bar rides in flow so the page has room. */
+@media (max-height: 30rem) {
+  .capture-bar {
+    position: static;
+    margin-bottom: 0;
+  }
+}
+/* Windows High Contrast / forced colours: keep state visible without our palette. */
+@media (forced-colors: active) {
+  .tabbar a.active,
+  .tabbar a[aria-current='page'] {
+    border-top: 3px solid Highlight;
+  }
+  .chip::before,
+  .edge-type::before,
+  .circle-dots i,
+  .swatch {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+  }
+  .chip[aria-pressed='true'],
+  .disguise-option.selected,
+  .swatch.selected {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+  }
+  .app-bar,
+  .tabbar,
+  .capture-bar {
+    background: Canvas;
+    border-color: CanvasText;
+  }
 }

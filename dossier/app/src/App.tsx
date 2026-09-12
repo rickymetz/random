@@ -87,7 +87,19 @@ function useScrollReset() {
   const { pathname } = useLocation()
   const navType = useNavigationType()
   useEffect(() => {
-    if (navType === 'PUSH') window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+    if (navType !== 'PUSH') return
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+    // A route change announces nothing on its own (the title stays the
+    // disguise): land focus on the new view's heading unless the view
+    // already placed it (search box, fresh capture bar).
+    const t = window.setTimeout(() => {
+      if (document.activeElement && document.activeElement !== document.body) return
+      const h1 = document.querySelector<HTMLElement>('main h1')
+      if (!h1) return
+      h1.tabIndex = -1
+      h1.focus({ preventScroll: true })
+    }, 60)
+    return () => window.clearTimeout(t)
   }, [pathname, navType])
 }
 
@@ -143,7 +155,7 @@ function LockIcon() {
 }
 
 /** Warn this long before the inactivity lock fires (when the timer allows). */
-const LOCK_WARNING_MS = 15_000
+const LOCK_WARNING_MS = 20_000
 
 export default function App() {
   const status = useVaultStore((s) => s.status)
@@ -228,7 +240,9 @@ export default function App() {
       }, totalMs)
     }
     reset()
-    const events: (keyof DocumentEventMap)[] = ['pointerdown', 'keydown', 'wheel', 'input']
+    // focusin counts: a screen-reader user reading a long dossier moves
+    // focus, not the pointer.
+    const events: (keyof DocumentEventMap)[] = ['pointerdown', 'keydown', 'wheel', 'input', 'focusin']
     for (const ev of events) document.addEventListener(ev, reset, { passive: true })
     return () => {
       clearTimeout(lockTimer)
@@ -334,11 +348,24 @@ export default function App() {
   void disguiseId
 
   if (status === 'unknown') return null
-  if (status !== 'unlocked') return <UnlockPage mode={status === 'no-vault' ? 'create' : 'unlock'} />
+  if (status !== 'unlocked')
+    return (
+      <main id="main" className="unlock-main" tabIndex={-1}>
+        <UnlockPage mode={status === 'no-vault' ? 'create' : 'unlock'} />
+      </main>
+    )
 
   return (
     <div className="app">
-      <a className="skip-link" href="#main">
+      <a
+        className="skip-link"
+        href="#main"
+        // Under a hash router "#main" is a route; skip by moving focus.
+        onClick={(e) => {
+          e.preventDefault()
+          document.getElementById('main')?.focus()
+        }}
+      >
         Skip to content
       </a>
       <header className="app-bar">
@@ -381,8 +408,8 @@ export default function App() {
           onClick={() => void flushDrafts().finally(() => panicLock())}
           aria-label={
             pinArmed
-              ? 'Lock and forget the PIN (passphrase or biometrics to reopen)'
-              : 'Lock (passphrase or biometrics to reopen)'
+              ? 'Lock & forget PIN — passphrase or biometrics to reopen'
+              : 'Lock — passphrase or biometrics to reopen'
           }
           title={
             pinArmed
@@ -395,7 +422,7 @@ export default function App() {
       </header>
       {lockWarning && (
         <p className="banner lock-warning" role="status">
-          Locking soon — touch anywhere to stay unlocked.
+          Locks in 20 seconds — tap, press any key or move focus to stay unlocked. Drafts are saved either way.
         </p>
       )}
       {motionBlocked && unlocked && (
@@ -407,7 +434,7 @@ export default function App() {
           </button>
         </p>
       )}
-      <main id="main">
+      <main id="main" tabIndex={-1}>
         <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<PeoplePage />} />
@@ -440,7 +467,7 @@ export default function App() {
             tap must never eat the fact you just typed. */}
         <button
           onClick={() => void timerLock()}
-          aria-label="Lock (drafts are saved; quick unlock stays armed)"
+          aria-label="Lock — drafts are saved; quick unlock stays armed"
         >
           <LockIcon />
           Lock

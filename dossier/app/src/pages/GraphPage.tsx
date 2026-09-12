@@ -124,6 +124,8 @@ function nodeRadius(degree: number): number {
 interface GraphLink extends SimulationLinkDatum<GraphNode> {
   edgeId: string
   color: string
+  /** Relationship type label — for the text list and for line style. */
+  label: string
   dashed: boolean
   directed: boolean
   /** Part of the highlighted "how you connect" path (§4.4). */
@@ -313,7 +315,8 @@ export default function GraphPage() {
         edgeId: e.id,
         source: e.fromId,
         target: e.toId,
-        color: typeById.get(e.typeId)?.color ?? '#5a554c',
+        color: typeById.get(e.typeId)?.color ?? '#8a8a94',
+        label: typeById.get(e.typeId)?.label ?? 'linked',
         dashed: e.origin === 'mention',
         directed: (typeById.get(e.typeId)?.directed ?? false) && e.origin === 'explicit',
         highlighted: pathInfo?.edgeIds.has(e.id) ?? false,
@@ -424,7 +427,7 @@ export default function GraphPage() {
                 if (bigGraph) next.set('all', '1')
                 setParams(next)
               }}
-              aria-label={bigGraph ? `Show everyone (${peopleCount})` : 'Show everyone'}
+              aria-label={bigGraph ? `All ${peopleCount} — show everyone` : 'Show everyone'}
               title={bigGraph ? `Show everyone (${peopleCount})` : 'Show everyone'}
             >
               {bigGraph ? `All ${peopleCount}` : '×'}
@@ -489,36 +492,32 @@ export default function GraphPage() {
               return (
                 <span
                   key={c.id}
-                  className={`chip circle-filter ${on ? '' : 'off'}`}
+                  className={`chip-group ${on ? '' : 'off'}`}
                   style={{ '--chip-color': c.color } as React.CSSProperties}
-                  aria-pressed={on}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`${c.name} circle, ${n} ${n === 1 ? 'person' : 'people'} — ${on ? 'shown' : 'hidden'}`}
-                  onClick={() =>
-                    setHiddenCircles((prev) => {
-                      const next = new Set(prev)
-                      if (next.has(c.id)) next.delete(c.id)
-                      else next.add(c.id)
-                      return next
-                    })
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      ;(e.currentTarget as HTMLElement).click()
-                    }
-                  }}
                 >
-                  <span className="name">{c.name}</span>
-                  {/* Keyboard/AT path to the card — and the only path for an
-                      empty circle, which draws no bubble to tap. */}
+                  {/* Two real buttons side by side (never one inside the
+                      other): toggle, and the keyboard/AT path to the card —
+                      the only path for an empty circle, which draws no bubble. */}
                   <button
-                    className="edit"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setPeek({ kind: 'circle', id: c.id })
-                    }}
+                    type="button"
+                    className={`chip circle-filter ${on ? '' : 'off'}`}
+                    aria-pressed={on}
+                    aria-label={`${c.name} circle, ${n} ${n === 1 ? 'person' : 'people'} — ${on ? 'shown' : 'hidden'}`}
+                    onClick={() =>
+                      setHiddenCircles((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(c.id)) next.delete(c.id)
+                        else next.add(c.id)
+                        return next
+                      })
+                    }
+                  >
+                    <span className="name">{c.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="chip-edit"
+                    onClick={() => setPeek({ kind: 'circle', id: c.id })}
                     aria-label={`Edit ${c.name}`}
                     title="Edit circle"
                   >
@@ -551,6 +550,33 @@ export default function GraphPage() {
           ? 'Too many people to name at once: zoom in to see names, or pick a person or circle above.'
           : 'Tap a label to filter. Dotted lines are mentions; tinted areas are circles — tap one to edit, tap a person for details.'}
       </p>
+      {/* The text equivalent of the canvas (2.1.1 / 1.1.1): everyone shown
+          and who they are linked to. */}
+      <details className="graph-list">
+        <summary>See as list ({nodes.length} people)</summary>
+        <ul>
+          {nodes.map((n) => {
+            const mine = links.filter((l) => l.source === n.id || l.target === n.id)
+            return (
+              <li key={n.id}>
+                <Link to={`/person/${n.id}`}>{n.isSelf ? `${n.name} (you)` : n.name}</Link>
+                {mine.length > 0 && (
+                  <span className="hint">
+                    {' — '}
+                    {mine
+                      .map((l) => {
+                        const otherId = l.source === n.id ? l.target : l.source
+                        const other = nodes.find((o) => o.id === otherId)
+                        return `${other?.name ?? '?'} (${l.dashed ? 'mentioned' : l.label})`
+                      })
+                      .join(', ')}
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      </details>
       <div className="graph-canvas-wrap">
         {arranging && nodes.length > 150 && (
           <p className="graph-status" role="status">
@@ -597,7 +623,7 @@ export default function GraphPage() {
               className="graph-canvas"
               tabIndex={0}
               role="application"
-              aria-label={`Relationship graph: ${nodes.length} people, ${links.length} connections, ${circles.length} circles. Arrow keys pan, plus and minus zoom, 0 fits everyone. Person pages list the same relationships and circle membership as text.`}
+              aria-label={`Relationship graph: ${nodes.length} people, ${links.length} connections, ${circles.length} circles. Arrow keys pan, plus and minus zoom, 0 fits everyone. "See as list" below has the same people and links as text.`}
             />
             <div className="graph-view-controls" role="group" aria-label="View">
               <button onClick={() => viewApiRef.current?.zoom(1.25)} aria-label="Zoom in">
@@ -1231,7 +1257,7 @@ function useCanvasGraph(
         const t = link.target as GraphNode
         if (s.x == null || t.x == null) continue
         if (!inView(s.x, s.y!) && !inView(t.x, t.y!)) continue
-        const key = `${link.color}|${link.dashed ? 1 : 0}|${link.highlighted ? 1 : 0}`
+        const key = `${link.color}|${link.dashed ? 1 : 0}|${link.highlighted ? 1 : 0}|${link.label}`
         const list = groups.get(key)
         if (list) list.push(link)
         else groups.set(key, [link])
@@ -1251,9 +1277,11 @@ function useCanvasGraph(
           ctx.lineTo(t.x!, t.y!)
         }
         ctx.strokeStyle = first.color
-        ctx.globalAlpha = first.highlighted ? 1 : first.dashed ? 0.5 : 0.8
-        ctx.lineWidth = (first.highlighted ? 3.5 : 1.5) / k
-        ctx.setLineDash(first.dashed ? dash : solid)
+        // Full-strength lines: every edge must clear 3:1 on the canvas.
+        ctx.globalAlpha = first.highlighted ? 1 : 0.95
+        ctx.lineWidth = (first.highlighted ? 3.5 : first.label === 'partner' || first.label === 'married' ? 2.5 : 1.5) / k
+        // Shape, not just hue: mentions dotted, exes long-dashed, partners thick.
+        ctx.setLineDash(first.dashed ? dash : first.label === 'ex' ? [10 / k, 5 / k] : solid)
         ctx.stroke()
       }
       ctx.setLineDash(solid)
@@ -1307,7 +1335,7 @@ function useCanvasGraph(
         ctx.fillStyle = '#2b2926'
         ctx.fill()
         ctx.lineWidth = 1.5 / k
-        ctx.strokeStyle = '#5a554c'
+        ctx.strokeStyle = '#7d786f'
         ctx.stroke()
         if (k * 11 >= 7) {
           ctx.fillStyle = '#ece8e1'
@@ -1319,7 +1347,7 @@ function useCanvasGraph(
         const image = node.avatar ? avatarImages.get(node.avatar.blobRecordId) : undefined
         // The self node is the anchor of every "how you connect" query:
         // it gets the accent ring even when not focused.
-        const ring = isFocus || node.isSelf ? '#d8a657' : '#5a554c'
+        const ring = isFocus || node.isSelf ? '#d8a657' : '#7d786f'
         const r = node.r
         if (image instanceof HTMLImageElement) {
           ctx.save()

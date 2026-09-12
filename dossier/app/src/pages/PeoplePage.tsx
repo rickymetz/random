@@ -64,12 +64,12 @@ export default function PeoplePage() {
     requestAnimationFrame(() => batchToggleRef.current?.focus())
   }
   const searchRef = useRef<HTMLInputElement>(null)
-  // "/" focuses search from anywhere on the page (Obsidian/GitHub habit).
+  // Ctrl/Cmd+K focuses search from anywhere on the page. (A bare "/"
+  // would be a single-character shortcut, which speech and switch users
+  // trip over — WCAG 2.1.4.)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return
-      const t = e.target as HTMLElement | null
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey) || e.altKey) return
       e.preventDefault()
       searchRef.current?.focus()
     }
@@ -256,9 +256,29 @@ export default function PeoplePage() {
     return selectCircles(records).filter((c) => c.name.toLowerCase().includes(q))
   }, [records, trimmed, circle])
   const exactCircle = circleHits.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())
+  // Results are announced (debounced) — the list narrows silently otherwise.
+  const [resultNote, setResultNote] = useState('')
+  useEffect(() => {
+    if (!trimmed) {
+      setResultNote('')
+      return
+    }
+    const t = window.setTimeout(() => {
+      setResultNote(
+        people.length === 0
+          ? `No one matches — Enter adds “${trimmed}”`
+          : `${people.length} ${people.length === 1 ? 'person matches' : 'people match'}`,
+      )
+    }, 400)
+    return () => window.clearTimeout(t)
+  }, [trimmed, people.length])
+
   return (
     <div className="people">
       <h1 className="sr-only">People</h1>
+      <span className="sr-only" role="status">
+        {resultNote}
+      </span>
       <form onSubmit={submit}>
         <input
           ref={searchRef}
@@ -462,6 +482,20 @@ function LetterRail({
   const present = useMemo(() => new Set(people.map((p) => letterOf(p.displayName))), [people])
   const usable = useMemo(() => RAIL_LETTERS.filter((l) => present.has(l)), [present])
   const railRef = useRef<HTMLElement>(null)
+  // At large text sizes 27 letters no longer fit: show every other one
+  // (all stay focusable and announced).
+  const [sparse, setSparse] = useState(false)
+  useEffect(() => {
+    const rail = railRef.current
+    if (!rail || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(([entry]) => {
+      const perLetter = entry.contentRect.height / RAIL_LETTERS.length
+      const em = parseFloat(getComputedStyle(rail).fontSize) || 11
+      setSparse(perLetter < em * 1.5)
+    })
+    ro.observe(rail)
+    return () => ro.disconnect()
+  }, [])
   const [active, setActive] = useState<string | null>(null)
   const [focusLetter, setFocusLetter] = useState<string>(usable[0] ?? 'A')
   const lastJump = useRef<string | null>(null)
@@ -518,9 +552,8 @@ function LetterRail({
   return (
     <nav
       ref={railRef}
-      className={`letter-rail ${active ? 'dragging' : ''} ${visible ? 'visible' : ''}`}
+      className={`letter-rail ${active ? 'dragging' : ''} ${visible ? 'visible' : ''} ${sparse ? 'sparse' : ''}`}
       aria-label="Jump to letter"
-      aria-hidden={!visible}
       onPointerDown={(e) => {
         e.preventDefault()
         railRef.current?.setPointerCapture(e.pointerId)

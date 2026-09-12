@@ -14,6 +14,7 @@ export default function ChipInput({
   suggestions = [],
   placeholder,
   label,
+  labelId,
   suggestOnFocus = false,
   capitalize = 'none',
 }: {
@@ -22,6 +23,8 @@ export default function ChipInput({
   suggestions?: string[]
   placeholder?: string
   label: string
+  /** id of the visible label text; the group is labelled by it. */
+  labelId?: string
   /** Offer the existing vocabulary as soon as the field is focused. */
   suggestOnFocus?: boolean
   /** Phone keyboard capitalisation: names and circles want 'words'. */
@@ -90,7 +93,7 @@ export default function ChipInput({
   }
 
   return (
-    <div className="chip-input" role="group" aria-label={label}>
+    <div className="chip-input" role="group" aria-label={labelId ? undefined : label} aria-labelledby={labelId}>
       <div className="chip-row">
         {values.map((value, i) => (
           <span key={`${value}-${i}`} className="value-chip">
