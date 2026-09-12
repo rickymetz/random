@@ -666,7 +666,14 @@ export const useVaultStore = create<VaultState>((set, get) => {
       const puts: Relationship[] = []
       const deletes: string[] = []
       const touched = new Set<string>()
+      // Pairs already joined by an explicit edge are left alone: a batch
+      // must never stack a second link on someone you already linked.
       const pairs = new Set<string>()
+      for (const r of records.values()) {
+        if (r.kind === 'relationship' && r.origin !== 'mention') {
+          pairs.add([r.fromId, r.toId].sort().join('|'))
+        }
+      }
       for (const e of edges) {
         const type = records.get(e.typeId)
         if (!type || type.kind !== 'relationshipType') continue

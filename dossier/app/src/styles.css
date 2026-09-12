@@ -2598,9 +2598,14 @@ body:has(.facts-form) .app-bar nav {
   font: 450 var(--fs-ui) / 1.3 var(--font-ui);
   color: var(--text-2);
 }
-.add-form .add-submit {
+.add-form .add-actions {
   grid-column: 1 / -1;
-  justify-self: end;
+  justify-content: flex-end;
+  align-items: center;
+}
+.add-form .add-actions .quiet {
+  text-transform: none;
+  letter-spacing: 0;
 }
 /* Settings: a column form's field must not take a 12rem *height*. */
 .settings form.column .field {
@@ -2749,7 +2754,39 @@ body:has(.facts-form) .app-bar nav {
 .section-head button.quiet + a {
   margin-left: 0;
 }
-.section-head a,
-.section-head button.quiet {
+
+.batch-panel h2.panel-title,
+.batch-panel h3.panel-title {
+  margin: 0;
+  font: 600 var(--fs-meta) / 1.2 var(--font-ui);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-2);
+}
+.batch-preview:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.batch-preview li {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.batch-preview li .hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+}
+.batch-preview .tag {
+  white-space: nowrap;
+}
+.batch-panel .row {
+  flex-wrap: wrap;
+}
+.batch-panel .status-slot {
+  white-space: nowrap;
+}
+.people .batch-row {
+  justify-content: center;
+  margin: var(--s3) 0 0;
 }

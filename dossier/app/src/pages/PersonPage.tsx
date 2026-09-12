@@ -910,6 +910,11 @@ function RelationshipSection({ person }: { person: Person }) {
   const [typeId, setTypeId] = useState('')
   const [focusToken, setFocusToken] = useState(0)
   const [batchOpen, setBatchOpen] = useState(false)
+  const batchToggleRef = useRef<HTMLButtonElement>(null)
+  const closeBatch = () => {
+    setBatchOpen(false)
+    requestAnimationFrame(() => batchToggleRef.current?.focus())
+  }
   const [newType, setNewType] = useState('')
   const [newTypeColor, setNewTypeColor] = useState(CUSTOM_TYPE_COLORS[0])
   const [newTypeDirected, setNewTypeDirected] = useState(false)
@@ -981,6 +986,8 @@ function RelationshipSection({ person }: { person: Person }) {
       setOtherId('')
       setTypeId(resolvedTypeId)
       setNewType('')
+      setNewTypeColor(CUSTOM_TYPE_COLORS[0])
+      setNewTypeDirected(false)
       setOutward(true)
       setFocusToken((n) => n + 1)
     } finally {
@@ -992,21 +999,17 @@ function RelationshipSection({ person }: { person: Person }) {
     <section>
       <div className="section-head">
         <h2>Relationships</h2>
-        <button
-          type="button"
-          className="quiet"
-          onClick={() => setBatchOpen((v) => !v)}
-          aria-expanded={batchOpen}
-        >
-          Add several…
-        </button>
         <Link to={`/graph?focus=${person.id}`}>See on graph →</Link>
       </div>
+      {/* The batch panel sits above the list so freshly linked rows
+          appear right under its status line. */}
+      {batchOpen && (
+        <BatchAddPanel id="batch-add-links" anchor={person} headingLevel={3} onClose={closeBatch} />
+      )}
       {edges.length === 0 && (
         <p className="empty-inline">No one linked yet — pick a person and how you know them.</p>
       )}
       <ul className="edges">{edges.map(describe)}</ul>
-      {batchOpen && <BatchAddPanel anchor={person} onClose={() => setBatchOpen(false)} />}
       <form className="add-form" onSubmit={add}>
         {/* A div, not a label: once the chip shows, a label's control would
             become the × button and clicking "Person" would un-pick. */}
@@ -1024,6 +1027,17 @@ function RelationshipSection({ person }: { person: Person }) {
             placeholder="Type a name…"
             preferIds={recentIds}
             focusToken={focusToken}
+            // Keyboard loop: name, Enter, Enter. With a type chosen the
+            // pick sends focus to Add; without one, to the type select.
+            onPicked={() =>
+              requestAnimationFrame(() => {
+                const form = document.querySelector<HTMLFormElement>('form.add-form:has(.person-picker)')
+                const target = typeId
+                  ? form?.querySelector<HTMLElement>('.add-submit')
+                  : form?.querySelector<HTMLElement>('select[aria-label="Relationship type"]')
+                target?.focus()
+              })
+            }
           />
         </div>
         <label>
@@ -1096,13 +1110,25 @@ function RelationshipSection({ person }: { person: Person }) {
             })()}
           </button>
         )}
-        <button
-          className="add-submit"
-          type="submit"
-          disabled={busy || !otherId || !typeId || (typeId === 'new' && !newType.trim())}
-        >
-          Add
-        </button>
+        <div className="row add-actions">
+          <button
+            ref={batchToggleRef}
+            type="button"
+            className="quiet"
+            onClick={() => (batchOpen ? closeBatch() : setBatchOpen(true))}
+            aria-expanded={batchOpen}
+            aria-controls={batchOpen ? 'batch-add-links' : undefined}
+          >
+            Add several…
+          </button>
+          <button
+            className="add-submit"
+            type="submit"
+            disabled={busy || !otherId || !typeId || (typeId === 'new' && !newType.trim())}
+          >
+            Add
+          </button>
+        </div>
       </form>
     </section>
   )

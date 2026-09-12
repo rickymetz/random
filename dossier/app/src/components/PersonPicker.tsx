@@ -33,6 +33,7 @@ export default function PersonPicker({
   listAbove,
   preferIds,
   focusToken,
+  onPicked,
   className,
 }: {
   /** Everyone who could be named — used for the exact-name check too. */
@@ -57,6 +58,10 @@ export default function PersonPicker({
   /** Bump to put the caret back in the field without opening the list
    * (the relationship form's "keep adding" flow). */
   focusToken?: number
+  /** Where focus goes after a pick instead of the chip's change button —
+   * a form can send it straight to its submit. The status region still
+   * announces the pick. */
+  onPicked?: (person: Person) => void
   className?: string
 }) {
   const listId = useId()
@@ -78,6 +83,8 @@ export default function PersonPicker({
     if (!focusToken) return
     quietFocus.current = true
     inputRef.current?.focus()
+    // onFocus runs synchronously inside focus(); never leave the flag up.
+    quietFocus.current = false
   }, [focusToken])
 
   const excluded = useMemo(() => new Set(excludeIds ?? []), [excludeIds])
@@ -181,7 +188,8 @@ export default function PersonPicker({
     setEditing(false)
     setStatus(pickedMessage ? pickedMessage(person) : `${person.displayName} selected`)
     onChange(person.id)
-    setFocusChip(true)
+    if (onPicked) onPicked(person)
+    else setFocusChip(true)
   }
   const startEditing = () => {
     onChange('')

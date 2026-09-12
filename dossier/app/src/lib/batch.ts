@@ -18,6 +18,7 @@ export interface BatchEntry {
 }
 
 const SEPARATOR = /\s+[—–-]\s+|\s*:\s+/
+const TRAILING_SEPARATOR = /(\s+[—–-]|\s*:)$/
 
 /**
  * Lines are entries. A line without a dash-separator may hold several
@@ -29,16 +30,21 @@ export function parseBatch(
   text: string,
   types: readonly RelationshipType[],
   people: readonly Person[],
+  /** Without a dossier to link to, a dash is just part of the name. */
+  withTypes = true,
 ): BatchEntry[] {
   const typeByLabel = new Map(types.map((t) => [t.label.toLowerCase(), t]))
   const personByName = new Map(people.map((p) => [p.displayName.toLowerCase(), p]))
   const seen = new Set<string>()
   const out: BatchEntry[] = []
   for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim()
+    const line = rawLine.trim().replace(TRAILING_SEPARATOR, '')
     if (!line) continue
-    const parts = line.split(SEPARATOR)
-    const names = parts.length > 1 ? [parts[0]] : line.split(',')
+    const parts = withTypes ? line.split(SEPARATOR) : [line]
+    // "Sam, Priya — coworker": the type applies to every name before it.
+    const names = parts[0].split(',')
+    // Two separators ("Sam — friend, Priya — coworker") make no sense;
+    // keep the tail as one unknown label so the UI can flag it.
     const typeLabel = parts.length > 1 ? parts.slice(1).join(' ').trim() : undefined
     for (const raw of names) {
       const name = raw.trim().replace(/^[@+]\s*/, '')

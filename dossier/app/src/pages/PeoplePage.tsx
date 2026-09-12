@@ -51,6 +51,11 @@ export default function PeoplePage() {
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const [batchOpen, setBatchOpen] = useState(false)
+  const batchToggleRef = useRef<HTMLButtonElement>(null)
+  const closeBatch = () => {
+    setBatchOpen(false)
+    requestAnimationFrame(() => batchToggleRef.current?.focus())
+  }
   const searchRef = useRef<HTMLInputElement>(null)
 
   // Facet links (a tag or like on a dossier) arrive as ?q=…: adopt the
@@ -255,19 +260,6 @@ export default function PeoplePage() {
           aria-label="Search names, details, and notes"
         />
       </form>
-      {!trimmed && !circle && (
-        <div className="row batch-row">
-          <button
-            type="button"
-            className="quiet"
-            onClick={() => setBatchOpen((v) => !v)}
-            aria-expanded={batchOpen}
-          >
-            Add several…
-          </button>
-        </div>
-      )}
-      {batchOpen && !trimmed && !circle && <BatchAddPanel onClose={() => setBatchOpen(false)} />}
       {circle && (
         <p
           className="banner circle-banner"
@@ -285,7 +277,8 @@ export default function PeoplePage() {
       )}
       {!trimmed && !circle && !people.some((p) => !p.isSelf) && (
         <p className="empty">
-          Just you so far. Type a name above to add the first person.
+          Just you so far. Type a name above to add the first person, or add several at
+          once below.
         </p>
       )}
       {corrupted > 0 && (
@@ -358,6 +351,25 @@ export default function PeoplePage() {
           + Add “{trimmed}”{circle ? ` to ${circle.name}` : ''}
         </button>
       )}
+      {/* Bulk entry lives at the list's tail (a rare action shouldn't
+          spend a row above Recent on every visit). The open panel stays
+          mounted while a search is typed so a pasted list survives. */}
+      {!circle && (!trimmed || batchOpen) && (
+        <div className="row batch-row">
+          {!batchOpen && (
+            <button
+              ref={batchToggleRef}
+              type="button"
+              className="quiet"
+              onClick={() => setBatchOpen(true)}
+              aria-expanded={false}
+            >
+              + Add several…
+            </button>
+          )}
+        </div>
+      )}
+      {batchOpen && !circle && <BatchAddPanel id="batch-add-people" onClose={closeBatch} />}
       {!trimmed && (
         <button
           className="add-person fab"

@@ -52,3 +52,25 @@ describe('parseBatch', () => {
     expect(e.typeLabel).toBeUndefined()
   })
 })
+
+describe('parseBatch edge cases', () => {
+  it('drops a trailing separator instead of keeping it in the name', () => {
+    expect(parseBatch('Sam —\nPriya -\nTheo:', types, []).map((e) => e.name)).toEqual([
+      'Sam',
+      'Priya',
+      'Theo',
+    ])
+  })
+  it('applies a line type to every comma-separated name before it', () => {
+    const out = parseBatch('Sam, Priya — coworker', types, [])
+    expect(out.map((e) => [e.name, e.type?.label])).toEqual([
+      ['Sam', 'coworker'],
+      ['Priya', 'coworker'],
+    ])
+  })
+  it('never splits on dashes when there is nothing to link to', () => {
+    const [e] = parseBatch('Jean - Luc', types, [], false)
+    expect(e.name).toBe('Jean - Luc')
+    expect(e.typeLabel).toBeUndefined()
+  })
+})
