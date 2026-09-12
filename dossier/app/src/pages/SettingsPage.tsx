@@ -366,6 +366,15 @@ function SecuritySection() {
           Daily reminder — the notification only ever says “You have a reminder”, never
           who it's about
         </label>
+        <label className="inline-check">
+          <input
+            type="checkbox"
+            checked={settings?.nameSuggestions ?? true}
+            onChange={(e) => void changeSecurity({ nameSuggestions: e.target.checked })}
+          />
+          Suggest people from names in notes — a simple pattern match on this device;
+          nothing is sent anywhere and declined names aren't saved
+        </label>
         {reminderNotice && (
           <p className="hint error" role="alert">
             {reminderNotice}

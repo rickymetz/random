@@ -2791,48 +2791,90 @@ body:has(.facts-form) .app-bar nav {
   margin: var(--s3) 0 0;
 }
 
-/* "Looks like people": name offers shown in the capture bar after a save. */
+/* "Looks like people": name offers shown in the capture bar after a save.
+   Two rows at most: a header (title, status, Undo / all / Not now) and one
+   horizontally scrolling row of chips — the bar sits over the keyboard. */
 .looks-like {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s1) var(--s2);
+  flex-direction: column;
+  gap: var(--s1);
   padding: 0 0 var(--s2);
   animation: rise var(--dur) ease-out;
 }
-.looks-like-title {
-  display: inline-flex;
+.looks-like-head {
+  display: flex;
   align-items: center;
   gap: var(--s2);
+  min-height: var(--ctl-h);
+}
+.looks-like-title {
   font-size: var(--fs-meta);
   color: var(--text-2);
-  min-height: 2.25rem;
+  white-space: nowrap;
 }
-.looks-like ul {
-  display: contents;
+.looks-like-head .hint.saved {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.looks-like-head .hint.saved:empty {
+  flex: 1 1 auto;
+}
+.looks-like-head button.quiet {
+  min-height: var(--ctl-h);
+  white-space: nowrap;
+  padding: 0 var(--s2);
+}
+.looks-like-head button.undo {
+  color: var(--accent);
+}
+.looks-like-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--s2);
   list-style: none;
-  margin: 0;
-  padding: 0;
+  margin: 0 calc(var(--gutter) * -1);
+  padding: 0 var(--gutter) 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
 }
-.looks-like li {
+.looks-like-chips::-webkit-scrollbar {
+  display: none;
+}
+.looks-like-chips li {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
-  max-width: 100%;
+  max-width: 85vw;
   border: 1px solid var(--line-2);
   border-radius: var(--r-full);
   background: var(--surface-2);
+  scroll-snap-align: start;
 }
-.looks-like li.known {
+.looks-like-chips li.known,
+.looks-like-chips li.ambiguous,
+.looks-like-chips li.choose {
   border-color: var(--accent-line);
   background: var(--accent-tint);
 }
-.looks-like button.name {
+.looks-like-chips li.choose {
+  gap: 0;
+}
+.looks-like-chips li.choose button.name + button.name {
+  border-left: 1px solid var(--accent-line);
+}
+.looks-like-chips button.name {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  min-height: 2.25rem;
+  min-height: var(--ctl-h);
   min-width: 0;
-  padding: 0 var(--s1) 0 var(--s3);
+  padding: 0 var(--s3);
   border: none;
   background: none;
   box-shadow: none;
@@ -2840,31 +2882,18 @@ body:has(.facts-form) .app-bar nav {
   font-size: var(--fs-ui);
   font-weight: 500;
 }
-.looks-like button.name .mark {
+.looks-like-chips button.name .verb {
   color: var(--accent);
   font-weight: 600;
 }
-.looks-like button.name .text,
-.looks-like button.name .who {
+.looks-like-chips button.name .text,
+.looks-like-chips button.name .who {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.looks-like button.name .who {
+.looks-like-chips button.name .who {
   color: var(--text-2);
   font-weight: 400;
   font-size: var(--fs-meta);
-}
-.looks-like button.skip {
-  min-width: 2.25rem;
-  min-height: 2.25rem;
-  color: var(--text-3);
-}
-.looks-like button.all {
-  min-height: 2.25rem;
-}
-.looks-like button.dismiss {
-  margin-left: auto;
-  min-width: 2.25rem;
-  min-height: 2.25rem;
 }

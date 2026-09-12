@@ -677,13 +677,16 @@ describe('looks like people (linkNamesInNote)', () => {
     const priya = await store().addPerson('Priya Raman')
     const note = await store().saveNote(sam.id, "Lunch with Theo Martins and Priya. Theo's treat.")
     expect(note?.kind).toBe('note')
-    const linked = await store().linkNamesInNote(note!.id, [
+    const { linked, created } = await store().linkNamesInNote(note!.id, [
       { phrase: 'Theo Martins' },
       { phrase: 'Priya', personId: priya.id },
       { phrase: 'Nobody Here' }, // not in the text → no person created
       { phrase: 'Sam Okafor', personId: sam.id }, // the note's own person → ignored
+      { phrase: 'Sam Okafor' }, // by name, still the owner → ignored
     ])
     expect(linked.map((p) => p.displayName)).toEqual(['Theo Martins', 'Priya Raman'])
+    expect(created.map((p) => p.displayName)).toEqual(['Theo Martins'])
+    expect(selectPeople(store().records).filter((p) => p.displayName === 'Sam Okafor')).toHaveLength(1)
     const theo = selectPeople(store().records).find((p) => p.displayName === 'Theo Martins')!
     expect(theo).toBeDefined()
     expect(selectPeople(store().records).some((p) => p.displayName === 'Nobody Here')).toBe(false)
@@ -704,11 +707,25 @@ describe('looks like people (linkNamesInNote)', () => {
     expect(searchPeopleIds('Theo')).toContain(theo.id)
   })
 
+  it('links the longest phrase first and reuses a person created in the same batch', async () => {
+    const sam = await store().addPerson('Sam Okafor')
+    const note = await store().saveNote(sam.id, 'Theo called. Then met Theo Martins, and Theo again.')
+    const { linked, created } = await store().linkNamesInNote(note!.id, [{ phrase: 'Theo' }, { phrase: 'Theo Martins' }])
+    expect(created.map((p) => p.displayName)).toEqual(['Theo Martins'])
+    expect(linked).toHaveLength(1)
+    const theo = created[0]
+    const saved = store().records.get(note!.id)
+    expect(saved?.kind === 'note' && saved.body).toBe(
+      `${mentionToken(theo)} called. Then met ${mentionToken(theo)}, and ${mentionToken(theo)} again.`,
+    )
+    expect(selectPeople(store().records).filter((p) => p.displayName.startsWith('Theo'))).toHaveLength(1)
+  })
+
   it('is a no-op write when nothing matches', async () => {
     const sam = await store().addPerson('Sam Okafor')
     const note = await store().saveNote(sam.id, 'Quiet day.')
     const before = store().records
-    expect(await store().linkNamesInNote(note!.id, [{ phrase: 'Theo' }])).toEqual([])
+    expect(await store().linkNamesInNote(note!.id, [{ phrase: 'Theo' }])).toEqual({ linked: [], created: [] })
     expect(store().records).toBe(before)
   })
 })

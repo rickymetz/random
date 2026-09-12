@@ -124,6 +124,7 @@ interface VaultState {
         | 'autoLockMinutes'
         | 'backgroundGraceSeconds'
         | 'shakeToLock'
+        | 'nameSuggestions'
         | 'remindersEnabled'
         | 'lastReminderDay'
       >
@@ -152,7 +153,10 @@ interface VaultState {
    * new one called after the phrase. One encrypted write; mention edges
    * follow the rewritten text. Returns the people linked, in order.
    */
-  linkNamesInNote: (noteId: string, links: { phrase: string; personId?: string }[]) => Promise<Person[]>
+  linkNamesInNote: (
+    noteId: string,
+    links: { phrase: string; personId?: string }[],
+  ) => Promise<{ linked: Person[]; created: Person[] }>
   removeNote: (noteId: string) => Promise<void>
   updateNote: (noteId: string, body: string) => Promise<void>
   /** Circles (§4.6): named, colored groups drawn as bubbles on the graph. */
@@ -771,39 +775,57 @@ export const useVaultStore = create<VaultState>((set, get) => {
     linkNamesInNote: (noteId, links) =>
       enqueue(async () => {
       const note = get().records.get(noteId)
-      if (!note || note.kind !== 'note') return []
+      if (!note || note.kind !== 'note') return { linked: [], created: [] }
+      const owner = get().records.get(note.personId)
+      const ownerKeys = new Set(
+        owner?.kind === 'person' ? [owner.displayName, ...owner.nicknames].map((n) => n.trim().toLowerCase()) : [],
+      )
       const now = Date.now()
       const created: Person[] = []
       const linked: Person[] = []
       let body = note.body
-      for (const link of links) {
-        const phrase = link.phrase.trim()
-        if (!phrase) continue
+      // Longest phrase first: linking "Theo" before "Theo Martins" would
+      // leave "@[Theo](id) Martins" behind.
+      const ordered = [...links]
+        .map((l) => ({ ...l, phrase: l.phrase.trim() }))
+        .filter((l) => l.phrase)
+        .sort((a, b) => b.phrase.split(/\s+/).length - a.phrase.split(/\s+/).length || b.phrase.length - a.phrase.length)
+      for (const link of ordered) {
+        const key = link.phrase.toLowerCase()
+        if (ownerKeys.has(key)) continue
         let target: Person | undefined
         if (link.personId) {
           const r = get().records.get(link.personId)
           if (r?.kind === 'person') target = r
         } else {
-          target = {
-            kind: 'person',
-            id: crypto.randomUUID(),
-            displayName: phrase,
-            nicknames: [],
-            likes: [],
-            dislikes: [],
-            tags: [],
-            createdAt: now,
-            updatedAt: now,
+          // "Theo Martins" then "Theo" in one batch is one person, not two.
+          const first = key.split(/\s+/)[0]
+          const sameFirst = created.filter((p) => p.displayName.toLowerCase().split(/\s+/)[0] === first)
+          target =
+            created.find((p) => p.displayName.toLowerCase() === key) ??
+            (!key.includes(' ') && sameFirst.length === 1 ? sameFirst[0] : undefined)
+          if (!target) {
+            target = {
+              kind: 'person',
+              id: crypto.randomUUID(),
+              displayName: link.phrase,
+              nicknames: [],
+              likes: [],
+              dislikes: [],
+              tags: [],
+              createdAt: now,
+              updatedAt: now,
+            }
+            created.push(target)
           }
-          created.push(target)
         }
         if (!target || target.id === note.personId) continue
-        const next = linkPhrase(body, phrase, target)
+        const next = linkPhrase(body, link.phrase, target)
         if (next === body) continue
         body = next
-        linked.push(target)
+        if (!linked.includes(target)) linked.push(target)
       }
-      if (body === note.body) return []
+      if (body === note.body) return { linked: [], created: [] }
       // Only people whose phrase was actually found get created.
       const kept = created.filter((p) => linked.includes(p))
       const edited: NoteEntry = { ...note, body, mentions: extractMentions(body) }
@@ -812,7 +834,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       withEdit.set(noteId, edited)
       const { puts, deletes } = diffMentionEdges(withEdit, note.personId)
       await apply([...kept, edited, ...puts], deletes, [note.personId, ...kept.map((p) => p.id)])
-      return linked
+      return { linked, created: kept }
     }),
 
     updateNote: (noteId, body) =>

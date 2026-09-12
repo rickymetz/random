@@ -105,6 +105,8 @@ export interface Settings {
    * Device-local like the rest of Settings: a restored backup starts
    * the row again from what was recently updated. */
   recentIds?: string[]
+  /** "Looks like people" chips after saving a note (§4.2). Default on. */
+  nameSuggestions?: boolean
 }
 
 /** How many recently opened dossiers the home screen remembers. */

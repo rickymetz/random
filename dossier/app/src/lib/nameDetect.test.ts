@@ -53,10 +53,41 @@ describe('detectNames', () => {
     expect(out).toEqual([])
   })
 
-  it('skips ambiguous lone first names and dedupes case-insensitively', () => {
-    const twoSams = [...people, person('Sam Reyes')]
+  it('offers a choice for an ambiguous first name mid-sentence, drops it at a sentence start, dedupes', () => {
+    const reyes = person('Sam Reyes')
+    const twoSams = [...people, reyes]
     const out = detectNames('Sam came by with Theo. Later theo left, then Sam again.', twoSams)
-    expect(out.map((c) => c.phrase)).toEqual(['Theo'])
+    expect(out.map((c) => c.phrase)).toEqual(['Theo', 'Sam'])
+    expect(out[1].options?.map((p) => p.id)).toEqual([sam.id, reyes.id])
+    expect(detectNames('Sam came by.', twoSams)).toEqual([])
+  })
+
+  it('handles curly apostrophes, particles, dotted titles and initials', () => {
+    const out = detectNames(
+      "I’m told Jan van der Berg and Dr. Patel met J.R. Smith and O’Brien too, and Sam’s here.",
+      [person("Aoife O'Brien")],
+    )
+    expect(out.map((c) => [c.phrase, c.existing?.displayName])).toEqual([
+      ['Jan van der Berg', undefined],
+      ['Dr. Patel', undefined],
+      ['J.R. Smith', undefined],
+      ['O’Brien', undefined],
+      ['Sam', undefined],
+    ])
+  })
+
+  it('links a stop-word first name that is really someone and strips brand/holiday heads', () => {
+    const june = person('June Webb')
+    const out = detectNames('June called. Bought an Apple Watch on Christmas Eve with Amazon Prime. Using Ledger daily.', [june])
+    expect(out.map((c) => [c.phrase, c.existing?.id])).toEqual([['June', june.id]])
+  })
+
+  it('drops -ing/-ed sentence openers and address fragments', () => {
+    const out = detectNames(
+      'Texting Theo Martins later. Chased Rosa Delgado. See github.com/Foo/Bar or Anna.Smith@Example.com or #Priya',
+      [],
+    )
+    expect(out.map((c) => c.phrase)).toEqual(['Theo Martins', 'Rosa Delgado'])
   })
 
   it('splits runs on commas and keeps titles', () => {
@@ -69,17 +100,29 @@ describe('detectNames', () => {
     expect(out.map((c) => c.phrase)).toEqual(['Theo Martins', 'June Webb', 'May Chen'])
   })
 
-  it('caps the offer at six names', () => {
-    const body = 'With Ann Bee, Cal Dee, Eve Eff, Gus Hay, Ivy Jay, Kim Lee, Max Nye and Odd Pip.'
-    expect(detectNames(body, [])).toHaveLength(6)
+  it('caps the offer at eight names', () => {
+    const body = 'With Ann Bee, Cal Dee, Eve Eff, Gus Hay, Ivy Jay, Kim Lee, Max Nye, Odd Pip and Uma Vee.'
+    expect(detectNames(body, [])).toHaveLength(8)
   })
 })
 
 describe('linkPhrase', () => {
-  it('rewrites whole-word occurrences into mention tokens and keeps possessives', () => {
-    const out = linkPhrase("Theo's plan: Theo and Theodora meet theo later.", 'Theo', sam)
+  it('rewrites whole-word, same-case occurrences into mention tokens and keeps possessives', () => {
+    const out = linkPhrase("Theo's plan: Theo and Theodora meet theo, Theo-Ann and #Theo later.", 'Theo', sam)
     const t = mentionToken(sam)
-    expect(out).toBe(`${t}'s plan: ${t} and Theodora meet ${t} later.`)
+    expect(out).toBe(`${t}'s plan: ${t} and Theodora meet theo, Theo-Ann and #Theo later.`)
+  })
+
+  it('does not swallow common words that share a name, and matches curly apostrophes', () => {
+    const mark = person('Mark Hale')
+    expect(linkPhrase('Mark said mark it down.', 'Mark', mark)).toBe(`${mentionToken(mark)} said mark it down.`)
+    const ob = person("Aoife O'Brien")
+    expect(linkPhrase("O'Brien and O’Brien", "O'Brien", ob)).toBe(`${mentionToken(ob)} and ${mentionToken(ob)}`)
+  })
+
+  it('links names in scripts without case', () => {
+    const li = person('李雷')
+    expect(linkPhrase('李雷来了 李雷雷', '李雷', li)).toBe(`${mentionToken(li)}来了 ${mentionToken(li)}雷`)
   })
 
   it('leaves existing tokens alone and matches across whitespace', () => {
