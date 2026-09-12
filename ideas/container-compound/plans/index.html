@@ -430,13 +430,19 @@ function render() {
   s += `<rect x="${X(-L / 2)}" y="${Y(-W / 2)}" width="${L * S}" height="${W * S}" fill="none" stroke="#23231f" stroke-width="4"/>`;
   s += `<rect x="${X(-L / 2 + 0.55)}" y="${Y(-W / 2 + 0.42)}" width="${(L - 1.1) * S}" height="${(W - 0.84) * S}" fill="none" stroke="#b8b2a6" stroke-width="1.5" stroke-dasharray="7 6"/>`;
 
-  // apertures + door swings
+  // apertures + door swings (window-fill ends get glazing only)
+  const endKind = (tt, e2) =>
+    (tt.variant === "tunnel" ? tt.ends || ["door", "door"] : ["door"])[e2 === 1 ? 0 : 1] || "door";
   const ends = t.variant === "tunnel" ? [1, -1] : [1];
   for (const e of ends) {
     s += `<line x1="${X(e * (L / 2 - 0.5))}" y1="${Y(-W / 2 + 0.5)}" x2="${X(e * (L / 2 - 0.5))}" y2="${Y(W / 2 - 0.5)}" stroke="#4a90c2" stroke-width="4"/>`;
-    const hx = X(e * L / 2), hy = Y(-3.1), r = 3 * S;
-    s += `<line x1="${hx}" y1="${hy}" x2="${hx + e * r * 0.6}" y2="${hy + r * 0.6}" stroke="#55524c" stroke-width="2"/>`;
-    s += `<path d="M ${hx + e * r * 0.6} ${hy + r * 0.6} A ${r} ${r} 0 0 ${e === 1 ? 0 : 1} ${hx} ${hy + r}" fill="none" stroke="#55524c" stroke-width="1" stroke-dasharray="4 4"/>`;
+    if (endKind(t, e) === "door") {
+      const hx = X(e * L / 2), hy = Y(-3.1), r = 3 * S;
+      s += `<line x1="${hx}" y1="${hy}" x2="${hx + e * r * 0.6}" y2="${hy + r * 0.6}" stroke="#55524c" stroke-width="2"/>`;
+      s += `<path d="M ${hx + e * r * 0.6} ${hy + r * 0.6} A ${r} ${r} 0 0 ${e === 1 ? 0 : 1} ${hx} ${hy + r}" fill="none" stroke="#55524c" stroke-width="1" stroke-dasharray="4 4"/>`;
+    } else {
+      s += `<line x1="${X(e * (L / 2 - 0.85))}" y1="${Y(-W / 2 + 0.7)}" x2="${X(e * (L / 2 - 0.85))}" y2="${Y(W / 2 - 0.7)}" stroke="#4a90c2" stroke-width="1.5"/>`;
+    }
   }
   if (t.variant === "openside")
     s += `<line x1="${X(-L / 2 + 0.9)}" y1="${Y(W / 2 - 0.35)}" x2="${X(L / 2 - 0.9)}" y2="${Y(W / 2 - 0.35)}" stroke="#4a90c2" stroke-width="4"/>`;
