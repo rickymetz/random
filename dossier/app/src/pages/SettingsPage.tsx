@@ -618,7 +618,8 @@ function ImportSection() {
       <p className="hint">
         Bring back notes from a backup file. What's already here stays; where both
         have the same entry, the newer one wins. On a new phone: set a passphrase,
-        then restore here.
+        then restore here. Looking to bring in your phone’s contacts instead? Use
+        “Import contacts…” at the end of the People list.
       </p>
       <form className="column" onSubmit={doImport}>
         <label className="field">

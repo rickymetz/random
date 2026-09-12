@@ -23,6 +23,8 @@ export interface ImportedContact extends ContactDraft {
   key: string
   /** Someone already in the vault with this name, email or phone. */
   existing?: Person
+  /** `existing` matched by name only while the e-mail or phone disagree: probably a namesake. */
+  conflict?: boolean
 }
 
 // ---------- vCard ----------
@@ -111,10 +113,7 @@ export function parseVCardDate(raw: string, omitYear = false): PartialDate | und
   const year = Number(m[1])
   const d: PartialDate = { month: Number(m[2]), day: Number(m[3]) }
   if (!omitYear && year !== 1604 && year > 1800) d.year = year
-  if (!d.month || d.month > 12 || !d.day || d.day > 31) return undefined
-  const daysIn = new Date(Date.UTC(d.year ?? 2000, d.month, 0)).getUTCDate() // leap-safe; 2000 is a leap year
-  if (d.day > daysIn) return undefined
-  return d
+  return validDate(d)
 }
 
 const clean = (s: string | undefined) => s?.replace(/\s+/g, ' ').trim() || undefined
@@ -127,14 +126,32 @@ const cleanText = (s: string | undefined) =>
     .replace(/\n{3,}/g, '\n\n')
     .trim() || undefined
 
+/** vCard 3 marks the preferred entry with TYPE=PREF; vCard 4 ranks with PREF=1..100. */
+function prefRank(p: Prop): number {
+  if (p.params.get('TYPE')?.includes('PREF')) return 1
+  const n = Number(p.params.get('PREF')?.[0])
+  return Number.isFinite(n) && n > 0 ? n : 101
+}
 function pickPreferred(props: Prop[]): Prop | undefined {
-  const pref = props.find((p) => p.params.get('TYPE')?.includes('PREF') || p.params.has('PREF'))
-  return pref ?? props[0]
+  return [...props].sort((a, b) => prefRank(a) - prefRank(b))[0]
+}
+
+/** Phones as people type them, minus URI/spreadsheet noise: "tel:+1-555-0100;ext=42" → "+1-555-0100 ext. 42". */
+export function cleanPhone(raw: string | undefined): string | undefined {
+  const v = clean(raw)?.replace(/^tel:/i, '').replace(/^'/, '').replace(/;ext=(\d+)$/i, ' ext. $1')
+  return clean(v)
 }
 
 export function parseVCard(text: string): ContactDraft[] {
-  // Unfold continuation lines, then walk cards.
-  const unfolded = text.replace(/\r?\n[ \t]/g, '')
+  // vCard 2.1 quoted-printable soft breaks ("=" at line end, no leading
+  // space on the next line — Android exports) are joined first, on QP
+  // lines only so base64 "=" padding on PHOTO lines stays put; then
+  // RFC 2425 folds (leading space/tab) are unfolded.
+  const joined = text.replace(
+    /^[^\r\n]*;ENCODING=QUOTED-PRINTABLE[^\r\n]*?(?:=\r?\n[^\r\n]*?)*(?=\r?\n|$)/gim,
+    (m) => m.replace(/=\r?\n/g, ''),
+  )
+  const unfolded = joined.replace(/\r?\n[ \t]/g, '')
   const lines = unfolded.split(/\r?\n/)
   const cards: Prop[][] = []
   let cur: Prop[] | null = null
@@ -154,10 +171,9 @@ export function parseVCard(text: string): ContactDraft[] {
     const fn = clean(unescapeValue(get('FN')[0]?.value ?? ''))
     const n = get('N')[0] ? splitUnescaped(get('N')[0].value, ';').map((s) => clean(unescapeValue(s)) ?? '') : []
     const fromN = clean([n[3], n[1], n[2], n[0], n[4]].filter(Boolean).join(' '))
-    const tel = pickPreferred(
-      // Mobile first: it is the number people actually reach each other on.
-      [...get('TEL')].sort((a, b) => Number(isMobile(b)) - Number(isMobile(a))),
-    )
+    // Mobile first (it is the number people actually reach each other on), then PREF.
+    const tels = [...get('TEL')].sort((a, b) => Number(isMobile(b)) - Number(isMobile(a)) || prefRank(a) - prefRank(b))
+    const tel = tels[0]
     const email = pickPreferred(get('EMAIL'))
     const org = get('ORG')[0] ? clean(unescapeValue(splitUnescaped(get('ORG')[0].value, ';')[0])) : undefined
     const title = clean(unescapeValue(get('TITLE')[0]?.value ?? ''))
@@ -172,7 +188,7 @@ export function parseVCard(text: string): ContactDraft[] {
     const adrParts = adr ? splitUnescaped(adr.value, ';').map((s) => clean(unescapeValue(s))) : []
     const location = clean([adrParts[3], adrParts[6] ?? adrParts[4]].filter(Boolean).join(', '))
     const note = cleanText(unescapeValue(get('NOTE')[0]?.value ?? ''))
-    const phone = clean(tel?.value)
+    const phone = cleanPhone(tel?.value)
     const mail = clean(email?.value)?.toLowerCase()
     const displayName = fn ?? fromN ?? org ?? mail?.split('@')[0] ?? phone
     if (!displayName) continue
@@ -197,12 +213,12 @@ function isMobile(p: Prop): boolean {
 // ---------- CSV ----------
 
 /** RFC 4180-ish: quoted fields, doubled quotes, CRLF or LF, embedded newlines. */
-export function parseCsvRows(text: string): string[][] {
+export function parseCsvRows(text: string, delimiter = ','): string[][] {
   const rows: string[][] = []
   let row: string[] = []
   let field = ''
   let quoted = false
-  const src = text.replace(/^﻿/, '')
+  const src = text.replace(/^\ufeff/, '')
   for (let i = 0; i < src.length; i++) {
     const c = src[i]
     if (quoted) {
@@ -213,7 +229,7 @@ export function parseCsvRows(text: string): string[][] {
         } else quoted = false
       } else field += c
     } else if (c === '"') quoted = true
-    else if (c === ',') {
+    else if (c === delimiter) {
       row.push(field)
       field = ''
     } else if (c === '\n' || c === '\r') {
@@ -238,7 +254,10 @@ const first = (row: string[], idx: number[]): string | undefined => {
 }
 
 export function parseCsv(text: string): ContactDraft[] {
-  const rows = parseCsvRows(text)
+  // Excel in many locales writes ";"-separated files.
+  const headLine = text.replace(/^\ufeff/, '').split(/\r?\n|\r/)[0] ?? ''
+  const delimiter = !headLine.includes(',') && headLine.includes(';') ? ';' : ','
+  const rows = parseCsvRows(text, delimiter)
   if (rows.length < 2) return []
   const headers = rows[0].map((h) => h.trim().toLowerCase())
   const find = (...res: RegExp[]) =>
@@ -248,10 +267,26 @@ export function parseCsv(text: string): ContactDraft[] {
     given: find(/^(given name|first name|first)$/),
     middle: find(/^(additional name|middle name)$/),
     family: find(/^(family name|last name|surname|last)$/),
-    email: find(/^e-?mail 1 - value$/, /^e-?mail( address)?( 1)?$/, /e-?mail.*value/, /e-?mail/),
-    phone: find(/^phone 1 - value$/, /^(mobile|mobile phone|cell|cell phone|mobile number)$/, /phone.*value/, /phone|tel/),
-    employer: find(/^organization 1 - name$/, /^(company|organi[sz]ation|employer)$/, /organi[sz]ation.*name/),
-    title: find(/^organization 1 - title$/, /^(job title|title|position|role)$/, /organi[sz]ation.*title/),
+    email: find(
+      /^e-?mail 1 - value$/,
+      /^e-?mail( address)?( 1)?$/,
+      /^(?!.*(label|type|display name))e-?mail.*value/,
+      /^(?!.*(label|type|display name))e-?mail/,
+    ),
+    phone: find(
+      /^phone 1 - value$/,
+      /^(mobile|mobile phone|cell|cell phone|mobile number)$/,
+      /^(?!.*(label|type))phone.*value/,
+      /^(?!.*(label|type))(phone|tel)/,
+    ),
+    employer: find(/^organization 1 - name$/, /^(company|organi[sz]ation|organization name|employer)$/, /organi[sz]ation.*name/),
+    title: find(
+      /^organization( 1)?( -)? ?title$/,
+      /^job title$/,
+      /^(position|role)$/,
+      // Outlook's bare "Title" is the honorific (Mr., Dr.) — only a job title when nothing better exists.
+      ...(headers.some((h) => /job title|organization.*title/.test(h)) ? [] : [/^title$/]),
+    ),
     birthday: find(/^birthday$/, /birthday|date of birth|dob/),
     nickname: find(/^nickname$/, /nick/),
     note: find(/^notes?$/),
@@ -262,7 +297,7 @@ export function parseCsv(text: string): ContactDraft[] {
   for (const row of rows.slice(1)) {
     const built = clean([first(row, col.given), first(row, col.middle), first(row, col.family)].filter(Boolean).join(' '))
     const email = first(row, col.email)?.toLowerCase()
-    const phone = first(row, col.phone)
+    const phone = cleanPhone(first(row, col.phone))
     const employer = first(row, col.employer)
     const displayName = first(row, col.name) ?? built ?? employer ?? email?.split('@')[0] ?? phone
     if (!displayName) continue
@@ -285,15 +320,26 @@ export function parseCsv(text: string): ContactDraft[] {
   return out
 }
 
+function validDate(d: PartialDate): PartialDate | undefined {
+  if (!d.month || d.month > 12 || !d.day || d.day > 31) return undefined
+  const daysIn = new Date(Date.UTC(d.year ?? 2000, d.month, 0)).getUTCDate()
+  return d.day > daysIn ? undefined : d
+}
+
 function parseCsvDate(s: string): PartialDate | undefined {
   const v = parseVCardDate(s)
   if (v) return v
-  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/) // US m/d/yyyy (Outlook)
-  if (m) return { year: Number(m[3]), month: Number(m[1]), day: Number(m[2]) }
+  let m = s.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/) // m/d/yyyy (Outlook US) or d/m/yyyy elsewhere
+  if (m) {
+    let month = Number(m[1])
+    let day = Number(m[2])
+    if (month > 12 && day <= 12) [month, day] = [day, month]
+    return validDate({ year: Number(m[3]), month, day })
+  }
   m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/)
-  if (m) return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) }
+  if (m) return validDate({ year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) })
   m = s.match(/^--(\d{1,2})-(\d{1,2})$/)
-  if (m) return { month: Number(m[1]), day: Number(m[2]) }
+  if (m) return validDate({ month: Number(m[1]), day: Number(m[2]) })
   return undefined
 }
 
@@ -317,11 +363,31 @@ export function parseContacts(text: string, fileName = ''): { format: ContactFor
   return { format, contacts: [] }
 }
 
-const digits = (s: string | undefined) => (s ?? '').replace(/\D/g, '')
+/** Digits of a phone without its extension; the key is the last 10 (or all, when shorter). */
+function phoneKey(s: string | undefined): string {
+  const d = (s ?? '').replace(/\s*(x|ext\.?|#|;ext=)\s*\d+$/i, '').replace(/\D/g, '')
+  if (d.length < 7) return ''
+  return d.length >= 10 ? d.slice(-10) : d
+}
+
+/** Case- and accent-insensitive name key ("Zoë Ørn" ≈ "zoe orn"). */
+export function nameKey(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[Øø]/g, 'o')
+    .replace(/[Łł]/g, 'l')
+    .replace(/ß/g, 'ss')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
 
 /**
- * Attach existing people (by name or nickname, then e-mail, then phone
- * digits) and drop duplicates within the import itself.
+ * Attach existing people (by name or nickname, then e-mail, then phone)
+ * and drop duplicates within the import itself. A name match whose
+ * e-mail or phone contradicts the person here is only a *possible*
+ * match (`conflict`): shown, but still importable.
  */
 export function matchContacts(drafts: ContactDraft[], people: Person[]): ImportedContact[] {
   const byName = new Map<string, Person>()
@@ -329,29 +395,43 @@ export function matchContacts(drafts: ContactDraft[], people: Person[]): Importe
   const byPhone = new Map<string, Person>()
   for (const p of people) {
     for (const n of [p.displayName, ...p.nicknames]) {
-      const k = n.trim().toLowerCase()
+      const k = nameKey(n)
       if (k && !byName.has(k)) byName.set(k, p)
     }
     const e = p.contact?.email?.trim().toLowerCase()
     if (e && !byEmail.has(e)) byEmail.set(e, p)
-    const d = digits(p.contact?.phone)
-    if (d.length >= 7 && !byPhone.has(d.slice(-9))) byPhone.set(d.slice(-9), p)
+    const d = phoneKey(p.contact?.phone)
+    if (d && !byPhone.has(d)) byPhone.set(d, p)
   }
-  const seen = new Set<string>()
+  const seenNames = new Set<string>()
+  const seenContact = new Map<string, string>() // e-mail/phone key → name key it belonged to
   const out: ImportedContact[] = []
   drafts.forEach((d, i) => {
-    const nameKey = d.displayName.toLowerCase()
-    const email = d.contact?.email?.toLowerCase()
-    const phone = digits(d.contact?.phone)
-    const dupKey = email || (phone.length >= 7 ? phone.slice(-9) : '') || nameKey
-    if (seen.has(dupKey) || (dupKey !== nameKey && seen.has(nameKey))) return
-    seen.add(dupKey)
-    seen.add(nameKey)
-    const existing =
-      byName.get(nameKey) ??
-      (email ? byEmail.get(email) : undefined) ??
-      (phone.length >= 7 ? byPhone.get(phone.slice(-9)) : undefined)
-    out.push({ ...d, key: `${i}`, existing })
+    const name = nameKey(d.displayName)
+    const email = d.contact?.email?.trim().toLowerCase() || ''
+    const phone = phoneKey(d.contact?.phone)
+    const keys = [email, phone].filter(Boolean)
+    // Duplicate: same name and (no way to tell them apart, or same e-mail/phone);
+    // or same e-mail/phone already seen under this very name. Two people who
+    // share a household address stay two people.
+    const sameNameSeen = seenNames.has(name)
+    const sameContactSeen = keys.some((k) => seenContact.has(k))
+    const contactUnderThisName = keys.some((k) => seenContact.get(k) === name)
+    if ((sameNameSeen && (keys.length === 0 || sameContactSeen)) || contactUnderThisName) return
+    seenNames.add(name)
+    for (const k of keys) if (!seenContact.has(k)) seenContact.set(k, name)
+
+    const byContact = (email ? byEmail.get(email) : undefined) ?? (phone ? byPhone.get(phone) : undefined)
+    const named = byName.get(name)
+    let existing = byContact ?? named
+    let conflict = false
+    if (!byContact && named) {
+      const theirEmail = named.contact?.email?.trim().toLowerCase() || ''
+      const theirPhone = phoneKey(named.contact?.phone)
+      conflict = Boolean((email && theirEmail && email !== theirEmail) || (phone && theirPhone && phone !== theirPhone))
+    }
+    if (!existing) existing = undefined
+    out.push({ ...d, key: `${i}`, existing, ...(conflict ? { conflict: true } : {}) })
   })
   return out
 }

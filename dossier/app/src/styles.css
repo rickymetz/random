@@ -2911,8 +2911,9 @@ body:has(.facts-form) .app-bar nav {
   padding: 0;
   display: flex;
   flex-direction: column;
-  max-height: 24rem;
+  max-height: min(24rem, 45dvh);
   overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   background: var(--surface-1);
@@ -2948,11 +2949,28 @@ body:has(.facts-form) .app-bar nav {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.import-list .import-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  padding-top: 2px;
+}
 .import-list .tag {
-  flex: 0 0 auto;
-  font-size: var(--fs-meta);
+  font-size: var(--fs-micro);
+  padding: 0.05rem 0.45rem;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
   color: var(--text-2);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+.import-list .tag.known {
+  color: var(--text-3);
+}
+.import-panel .status-slot:empty {
+  display: none;
 }
 .import-list li.list-more,
 .import-list li.hint {

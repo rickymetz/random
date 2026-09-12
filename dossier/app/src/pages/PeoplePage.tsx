@@ -284,8 +284,8 @@ export default function PeoplePage() {
       )}
       {!trimmed && !circle && !people.some((p) => !p.isSelf) && (
         <p className="empty">
-          Just you so far. Type a name above to add the first person, or add several at
-          once below.
+          Just you so far. Type a name above to add the first person, add several at once
+          below, or import your phone’s contacts.
         </p>
       )}
       {corrupted > 0 && (

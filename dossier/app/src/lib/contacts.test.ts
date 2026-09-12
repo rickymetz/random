@@ -79,6 +79,17 @@ describe('parseVCard', () => {
     expect(parseVCard(text)).toEqual([{ displayName: 'Theo Martins', contact: { email: 'theo@example.com' } }])
   })
 
+  it('joins 2.1 quoted-printable soft line breaks, ranks PREF=n and cleans tel: URIs', () => {
+    const text =
+      'BEGIN:VCARD\r\nVERSION:2.1\r\nN;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:M=C3=\r\n=BCller;J=C3=BCrgen;;;\r\n' +
+      'PHOTO;ENCODING=BASE64;TYPE=JPEG:AAAA=\r\n\r\nEND:VCARD\r\n' +
+      'BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Ann Lee\r\nEMAIL;PREF=2:second@example.org\r\nEMAIL;PREF=1:first@example.org\r\n' +
+      'TEL;VALUE=uri;TYPE=cell:tel:+1-555-0100;ext=42\r\nEND:VCARD\r\n'
+    const [jurgen, ann] = parseVCard(text)
+    expect(jurgen.displayName).toBe('Jürgen Müller')
+    expect(ann.contact).toEqual({ email: 'first@example.org', phone: '+1-555-0100 ext. 42' })
+  })
+
   it('parses birthday forms', () => {
     expect(parseVCardDate('1985-06-12')).toEqual({ year: 1985, month: 6, day: 12 })
     expect(parseVCardDate('19850612')).toEqual({ year: 1985, month: 6, day: 12 })
@@ -119,6 +130,23 @@ describe('parseCsv', () => {
     expect(parseCsv(csv)).toHaveLength(2)
   })
 
+  it('keeps Outlook honorifics out of the job title, validates d/m dates, skips label columns, reads ; files', () => {
+    const outlook = 'First Name,Last Name,Title,Company,Job Title,E-mail Address,E-mail Type,Mobile Phone,Birthday\nTheo,Martins,Mr.,Beta Co,Engineer,theo@example.com,SMTP,\'07700 900456,13/12/1985\nJune,Webb,Ms.,,,,SMTP,,31/01/1990\n'
+    const [theo, june] = parseCsv(outlook)
+    expect(theo).toEqual({
+      displayName: 'Theo Martins',
+      jobTitle: 'Engineer',
+      employer: 'Beta Co',
+      birthday: { year: 1985, month: 12, day: 13 },
+      contact: { phone: '07700 900456', email: 'theo@example.com' },
+    })
+    expect(june).toEqual({ displayName: 'June Webb', birthday: { year: 1990, month: 1, day: 31 } })
+    expect(parseCsv('name;email\nAna Silva;ana@example.com\n')).toEqual([
+      { displayName: 'Ana Silva', contact: { email: 'ana@example.com' } },
+    ])
+    expect(parseCsv('Name,Birthday\nX,31/31/1990\n')).toEqual([{ displayName: 'X' }])
+  })
+
   it('reads an Outlook export and a generic sheet', () => {
     const outlook = 'First Name,Last Name,Company,Job Title,E-mail Address,Mobile Phone,Birthday\nTheo,Martins,Beta Co,Engineer,theo@example.com,07700 900456,6/12/1985\n'
     expect(parseCsv(outlook)).toEqual([
@@ -155,16 +183,37 @@ describe('parseContacts + matchContacts', () => {
         { displayName: 'Priya Raman', contact: { email: 'Priya@Example.org' } },
         { displayName: 'T. Martins', contact: { phone: '07700 900456' } },
         { displayName: 'Rosa Delgado', contact: { email: 'rosa@example.com' } },
-        { displayName: 'Rosa D.', contact: { email: 'rosa@example.com' } },
+        { displayName: 'Rosa Delgado', contact: { email: 'rosa@example.com', phone: '555 0100' } },
         { displayName: 'Rosa Delgado' },
+        { displayName: 'Rui Delgado', contact: { email: 'rosa@example.com' } }, // shared household address
+        { displayName: 'Zoe Orn' },
       ],
-      [sam, priya, theo],
+      [sam, priya, theo, person('Zoë Ørn')],
     )
-    expect(out.map((c) => [c.displayName, c.existing?.id])).toEqual([
-      ['sam okafor', sam.id],
-      ['Priya Raman', priya.id],
-      ['T. Martins', theo.id],
+    expect(out.map((c) => [c.displayName, c.existing?.displayName])).toEqual([
+      ['sam okafor', 'Sam Okafor'],
+      ['Priya Raman', 'P. Raman'],
+      ['T. Martins', 'Theo'],
       ['Rosa Delgado', undefined],
+      ['Rui Delgado', undefined],
+      ['Zoe Orn', 'Zoë Ørn'],
+    ])
+  })
+
+  it('flags a namesake with a different e-mail or phone as a possible match, not a lock', () => {
+    const sam = person('Sam Okafor', { contact: { email: 'sam@example.com', phone: '+1 212 555 0100 x123' } })
+    const out = matchContacts(
+      [
+        { displayName: 'Sam Okafor', contact: { email: 'other@example.com' } },
+        { displayName: 'Sam Okafor', contact: { phone: '+1 (212) 555-0100' } },
+        { displayName: 'S. Okafor', contact: { phone: '+44 7700 900456' } },
+      ],
+      [sam],
+    )
+    expect(out.map((c) => [c.existing?.id, c.conflict])).toEqual([
+      [sam.id, true],
+      [sam.id, undefined],
+      [undefined, undefined],
     ])
   })
 })
