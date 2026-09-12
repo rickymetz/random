@@ -136,6 +136,10 @@ interface VaultState {
   setHomePage: (page: { key: string; limit: number }) => void
 
   addPerson: (displayName: string) => Promise<Person>
+  /** Several people in one encrypted write ("Add several"). */
+  addPeople: (displayNames: string[]) => Promise<Person[]>
+  /** Several explicit edges in one write; each replaces a mention edge on its pair. */
+  addRelationships: (edges: { fromId: string; toId: string; typeId: string }[]) => Promise<void>
   updatePerson: (person: Person) => Promise<void>
   removePerson: (personId: string) => Promise<void>
   /** Bulk delete; circles left with no members are removed too. */
@@ -636,6 +640,64 @@ export const useVaultStore = create<VaultState>((set, get) => {
       }
       await apply([person], [], [person.id])
       return person
+    }),
+
+    addPeople: (displayNames) =>
+      enqueue(async () => {
+      const now = Date.now()
+      const people: Person[] = displayNames.map((displayName) => ({
+        kind: 'person',
+        id: crypto.randomUUID(),
+        displayName: displayName.trim() || 'Unnamed',
+        nicknames: [],
+        likes: [],
+        dislikes: [],
+        tags: [],
+        createdAt: now,
+        updatedAt: now,
+      }))
+      if (people.length > 0) await apply(people, [], people.map((p) => p.id))
+      return people
+    }),
+
+    addRelationships: (edges) =>
+      enqueue(async () => {
+      const { records } = get()
+      const puts: Relationship[] = []
+      const deletes: string[] = []
+      const touched = new Set<string>()
+      const pairs = new Set<string>()
+      for (const e of edges) {
+        const type = records.get(e.typeId)
+        if (!type || type.kind !== 'relationshipType') continue
+        if (!records.has(e.fromId) || !records.has(e.toId) || e.fromId === e.toId) continue
+        const key = [e.fromId, e.toId].sort().join('|')
+        if (pairs.has(key)) continue
+        pairs.add(key)
+        for (const r of records.values()) {
+          if (
+            r.kind === 'relationship' &&
+            r.origin === 'mention' &&
+            ((r.fromId === e.fromId && r.toId === e.toId) ||
+              (r.fromId === e.toId && r.toId === e.fromId))
+          ) {
+            deletes.push(r.id)
+          }
+        }
+        puts.push({
+          kind: 'relationship',
+          id: crypto.randomUUID(),
+          fromId: e.fromId,
+          toId: e.toId,
+          typeId: e.typeId,
+          directed: type.directed,
+          origin: 'explicit',
+          createdAt: Date.now(),
+        })
+        touched.add(e.fromId)
+        touched.add(e.toId)
+      }
+      if (puts.length > 0 || deletes.length > 0) await apply(puts, deletes, [...touched])
     }),
 
     updatePerson: (person) =>

@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import BatchAddPanel from '../components/BatchAddPanel'
 import { daysUntilDue, daysUntilNext, formatPartialDate } from '../lib/dates'
 import type { Person } from '../lib/models'
 import { RAIL_LETTERS, letterOf, rowsToReveal, shortName } from '../lib/names'
@@ -49,6 +50,7 @@ export default function PeoplePage() {
   const corrupted = useVaultStore((s) => s.corrupted)
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
+  const [batchOpen, setBatchOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
   // Facet links (a tag or like on a dossier) arrive as ?q=…: adopt the
@@ -253,6 +255,19 @@ export default function PeoplePage() {
           aria-label="Search names, details, and notes"
         />
       </form>
+      {!trimmed && !circle && (
+        <div className="row batch-row">
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => setBatchOpen((v) => !v)}
+            aria-expanded={batchOpen}
+          >
+            Add several…
+          </button>
+        </div>
+      )}
+      {batchOpen && !trimmed && !circle && <BatchAddPanel onClose={() => setBatchOpen(false)} />}
       {circle && (
         <p
           className="banner circle-banner"

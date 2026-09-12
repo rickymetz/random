@@ -1,0 +1,58 @@
+/**
+ * "Add several" (§4.1 quick capture at scale): parse a pasted or typed
+ * list of people, one per line, with an optional relationship after a
+ * dash — "Sam Okafor — coworker". Pure and testable; the panel decides
+ * what to do with the result.
+ */
+import type { Person, RelationshipType } from './models'
+
+export interface BatchEntry {
+  /** As typed, trimmed. */
+  name: string
+  /** Relationship label typed after the dash, if any (as typed). */
+  typeLabel?: string
+  /** Resolved type when the label matched one (case-insensitive). */
+  type?: RelationshipType
+  /** Someone with this name already exists — link, don't duplicate. */
+  existing?: Person
+}
+
+const SEPARATOR = /\s+[—–-]\s+|\s*:\s+/
+
+/**
+ * Lines are entries. A line without a dash-separator may hold several
+ * comma-separated names ("Sam, Priya, Theo"). Duplicates within the
+ * batch collapse (case-insensitive) keeping the first spelling; empty
+ * lines are skipped.
+ */
+export function parseBatch(
+  text: string,
+  types: readonly RelationshipType[],
+  people: readonly Person[],
+): BatchEntry[] {
+  const typeByLabel = new Map(types.map((t) => [t.label.toLowerCase(), t]))
+  const personByName = new Map(people.map((p) => [p.displayName.toLowerCase(), p]))
+  const seen = new Set<string>()
+  const out: BatchEntry[] = []
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (!line) continue
+    const parts = line.split(SEPARATOR)
+    const names = parts.length > 1 ? [parts[0]] : line.split(',')
+    const typeLabel = parts.length > 1 ? parts.slice(1).join(' ').trim() : undefined
+    for (const raw of names) {
+      const name = raw.trim().replace(/^[@+]\s*/, '')
+      if (!name) continue
+      const key = name.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push({
+        name,
+        typeLabel: typeLabel || undefined,
+        type: typeLabel ? typeByLabel.get(typeLabel.toLowerCase()) : undefined,
+        existing: personByName.get(key),
+      })
+    }
+  }
+  return out
+}

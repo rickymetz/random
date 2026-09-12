@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import BatchAddPanel from '../components/BatchAddPanel'
 import PersonPicker from '../components/PersonPicker'
 import ChipInput from '../components/ChipInput'
 import MentionTextarea from '../components/MentionTextarea'
@@ -907,6 +908,8 @@ function RelationshipSection({ person }: { person: Person }) {
 
   const [otherId, setOtherId] = useState('')
   const [typeId, setTypeId] = useState('')
+  const [focusToken, setFocusToken] = useState(0)
+  const [batchOpen, setBatchOpen] = useState(false)
   const [newType, setNewType] = useState('')
   const [newTypeColor, setNewTypeColor] = useState(CUSTOM_TYPE_COLORS[0])
   const [newTypeDirected, setNewTypeDirected] = useState(false)
@@ -972,10 +975,14 @@ function RelationshipSection({ person }: { person: Person }) {
       const [fromId, toId] =
         directed && !outward ? [otherId, person.id] : [person.id, otherId]
       await addRelationship(fromId, toId, resolvedTypeId)
+      // Keep adding: the type stays selected and the caret returns to the
+      // person field (quietly — no list until you type), so "Sam, Priya,
+      // Theo — all coworkers" is name, Enter, Add, name, Enter, Add.
       setOtherId('')
-      setTypeId('')
+      setTypeId(resolvedTypeId)
       setNewType('')
       setOutward(true)
+      setFocusToken((n) => n + 1)
     } finally {
       setBusy(false)
     }
@@ -985,12 +992,21 @@ function RelationshipSection({ person }: { person: Person }) {
     <section>
       <div className="section-head">
         <h2>Relationships</h2>
+        <button
+          type="button"
+          className="quiet"
+          onClick={() => setBatchOpen((v) => !v)}
+          aria-expanded={batchOpen}
+        >
+          Add several…
+        </button>
         <Link to={`/graph?focus=${person.id}`}>See on graph →</Link>
       </div>
       {edges.length === 0 && (
         <p className="empty-inline">No one linked yet — pick a person and how you know them.</p>
       )}
       <ul className="edges">{edges.map(describe)}</ul>
+      {batchOpen && <BatchAddPanel anchor={person} onClose={() => setBatchOpen(false)} />}
       <form className="add-form" onSubmit={add}>
         {/* A div, not a label: once the chip shows, a label's control would
             become the × button and clicking "Person" would un-pick. */}
@@ -1007,6 +1023,7 @@ function RelationshipSection({ person }: { person: Person }) {
             label="Person"
             placeholder="Type a name…"
             preferIds={recentIds}
+            focusToken={focusToken}
           />
         </div>
         <label>

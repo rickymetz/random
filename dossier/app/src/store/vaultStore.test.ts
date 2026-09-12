@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../lib/db'
 import { mentionToken } from '../lib/mentions'
 import {
+  searchPeopleIds,
   selectCircles,
   selectCirclesOf,
   selectNotes,
@@ -612,5 +613,45 @@ describe('recent dossiers (noteVisit)', () => {
     await store().removePerson(extra[9].id)
     expect(selectSettings(store().records)?.recentIds?.[0]).toBe(extra[8].id)
     expect(selectSettings(store().records)?.recentIds).not.toContain(extra[9].id)
+  })
+})
+
+describe('bulk add (addPeople / addRelationships)', () => {
+  beforeEach(async () => {
+    await db.slots.clear()
+    await db.records.clear()
+    await db.blobs.clear()
+    await db.auth.clear()
+    useVaultStore.setState({
+      status: 'unknown',
+      vault: null,
+      records: new Map(),
+      corrupted: 0,
+      homeQuery: '',
+    })
+    await store().create('open sesame')
+  })
+
+  it('creates several people in one write and links them, upgrading mention edges', async () => {
+    const anchor = await store().addPerson('Anchor')
+    const [sam, priya] = await store().addPeople(['Sam Okafor', 'Priya Raman'])
+    expect(selectPeople(store().records).map((p) => p.displayName)).toEqual(
+      expect.arrayContaining(['Sam Okafor', 'Priya Raman']),
+    )
+    // A prior mention edge anchor → sam gets replaced by the explicit one.
+    await store().saveNote(anchor.id, `Met ${mentionToken(sam)}`)
+    expect(selectRelationships(store().records).filter((r) => r.origin === 'mention')).toHaveLength(1)
+    const friend = selectRelationshipTypes(store().records).find((t) => t.label === 'friend')!
+    const coworker = selectRelationshipTypes(store().records).find((t) => t.label === 'coworker')!
+    await store().addRelationships([
+      { fromId: anchor.id, toId: sam.id, typeId: friend.id },
+      { fromId: anchor.id, toId: priya.id, typeId: coworker.id },
+      { fromId: anchor.id, toId: priya.id, typeId: friend.id }, // duplicate pair: skipped
+      { fromId: anchor.id, toId: 'nope', typeId: friend.id }, // unknown person: skipped
+    ])
+    const rels = selectRelationships(store().records)
+    expect(rels.filter((r) => r.origin === 'mention')).toHaveLength(0)
+    expect(rels.filter((r) => r.origin === 'explicit')).toHaveLength(2)
+    expect(searchPeopleIds('Priya').length).toBe(1)
   })
 })
