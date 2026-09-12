@@ -15,6 +15,10 @@ import {
  * with the per-line type or the batch default. Existing names are never
  * duplicated: they're linked instead.
  */
+/** Keyboard shortcuts are for keyboards: phones get no "Ctrl+Enter". */
+const shortcutHint =
+  typeof matchMedia === 'function' && matchMedia('(pointer: fine)').matches ? ' Ctrl+Enter adds.' : ''
+
 export default function BatchAddPanel({
   anchor,
   onClose,
@@ -151,8 +155,8 @@ export default function BatchAddPanel({
       )}
       <p className="hint" id={hintId}>
         {anchor
-          ? `One per line. Add how you know them after a dash — “June Webb — parent of” means June is ${first}'s parent. Ctrl+Enter adds.`
-          : 'One per line, or separated by commas. Ctrl+Enter adds.'}
+          ? `One per line. Add how you know them after a dash — “June Webb — parent of” means June is ${first}'s parent.${shortcutHint}`
+          : `One per line, or separated by commas.${shortcutHint}`}
       </p>
       <textarea
         ref={textareaRef}
@@ -240,7 +244,7 @@ export default function BatchAddPanel({
         >
           {busy ? 'Adding…' : label}
         </button>
-        <button type="button" className="subtle" onClick={onClose} disabled={busy}>
+        <button type="button" className="quiet" onClick={onClose} disabled={busy}>
           {status ? 'Done' : 'Cancel'}
         </button>
         <span className="hint status-slot" role="status">

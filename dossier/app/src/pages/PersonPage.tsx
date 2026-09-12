@@ -11,7 +11,7 @@ import { GALLERY_MAX_DIM, downscaleImage } from '../lib/image'
 import { getPhotoUrl, peekPhotoUrl } from '../lib/photoCache'
 import type { Photo } from '../lib/models'
 import { formatPartialDate, parsePartialDate, timeAgo } from '../lib/dates'
-import { plainText, segmentBody } from '../lib/mentions'
+import { plainText, retokenize, segmentBody } from '../lib/mentions'
 import { CUSTOM_TYPE_COLORS, type Person, type Relationship } from '../lib/models'
 import {
   selectCircles,
@@ -41,7 +41,6 @@ const relOf = (label: string | undefined, name: string) => {
  */
 export default function PersonPage() {
   const { id } = useParams()
-  const navigate = useNavigate()
   const records = useVaultStore((s) => s.records)
   const person = id ? records.get(id) : undefined
   // Lifted so the sticky capture bar yields the bottom edge to the facts
@@ -69,23 +68,9 @@ export default function PersonPage() {
 
   return (
     <article className="person">
+      {/* Back lives in the sticky app bar (App.tsx) so it is reachable
+          after scrolling; while editing, Save/Cancel are the only exits. */}
       <header className="person-header">
-        <button
-          className="subtle back icon"
-          // Save/Cancel are the only exits while editing (a stray Back
-          // would discard the edits). A deep link (notification, pasted
-          // URL) has nothing behind it: Back must land on People, not
-          // leave the app.
-          hidden={editing}
-          onClick={() => {
-            const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0
-            if (idx > 0) navigate(-1)
-            else navigate('/', { replace: true })
-          }}
-          aria-label="Back"
-        >
-          ←
-        </button>
         <Avatar person={person} size={44} />
         <div className="person-title">
           <h1>
@@ -110,10 +95,10 @@ export default function PersonPage() {
       <Facts person={person} editing={editing} setEditing={setEditing} />
       <FollowUpSection personId={person.id} />
       <NotesSection personId={person.id} />
+      <MentionedInSection personId={person.id} />
       <RelationshipSection person={person} />
       <ConnectionSection person={person} />
       <PhotoSection personId={person.id} />
-      <MentionedInSection personId={person.id} />
       <footer className="person-footer" />
       {/* Hidden, not unmounted, while the facts form is open: unmounting
           would flush a half-typed draft into a permanent note with no
@@ -231,11 +216,43 @@ function CopyAsTextButton({ person }: { person: Person }) {
     if (person.likes.length) lines.push(`Likes: ${csv(person.likes)}`)
     if (person.dislikes.length) lines.push(`Dislikes: ${csv(person.dislikes)}`)
     if (person.tags.length) lines.push(`Tags: ${csv(person.tags)}`)
+    const iso = (t: number) => new Date(t).toISOString().slice(0, 10)
+    const nameOf = (id: string) => {
+      const r = records.get(id)
+      return r?.kind === 'person' ? r.displayName : 'Someone'
+    }
+    const circles = selectCirclesOf(records, person.id)
+    if (circles.length) lines.push(`Circles: ${csv(circles.map((c) => c.name))}`)
+    const types = new Map(selectRelationshipTypes(records).map((t) => [t.id, t]))
+    const edges = selectRelationships(records).filter((e) => e.fromId === person.id || e.toId === person.id)
+    if (edges.length) {
+      lines.push('', 'Relationships:')
+      for (const e of edges) {
+        const type = types.get(e.typeId)
+        const other = nameOf(e.fromId === person.id ? e.toId : e.fromId)
+        if (e.origin === 'mention') lines.push(`- ${other} (mentioned in a note)`)
+        else if (type?.directed)
+          lines.push(e.fromId === person.id ? `- ${person.displayName} is ${type.label} ${other}` : `- ${other} is ${type.label} ${person.displayName}`)
+        else lines.push(`- ${other}: ${type?.label ?? 'linked'}`)
+      }
+    }
+    const followUps = selectFollowUps(records, person.id).filter((f) => !f.done)
+    if (followUps.length) {
+      lines.push('', 'Follow-ups:')
+      for (const f of followUps) lines.push(`- ${f.text}${f.dueDate ? ` (due ${formatPartialDate(f.dueDate)})` : ''}`)
+    }
     const notes = selectNotes(records, person.id)
     if (notes.length) {
       lines.push('', 'Notes:')
-      for (const n of notes) {
-        lines.push(`- ${new Date(n.createdAt).toLocaleDateString()}: ${plainText(n.body)}`)
+      for (const n of notes) lines.push(`- ${iso(n.createdAt)}: ${plainText(n.body)}`)
+    }
+    const mentionedBy = [...records.values()].filter(
+      (r) => r.kind === 'note' && r.personId !== person.id && r.mentions.includes(person.id),
+    )
+    if (mentionedBy.length) {
+      lines.push('', 'Mentioned in:')
+      for (const n of mentionedBy) {
+        if (n.kind === 'note') lines.push(`- ${nameOf(n.personId)}, ${iso(n.createdAt)}: ${plainText(n.body)}`)
       }
     }
     try {
@@ -453,7 +470,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         <input type="checkbox" checked={isSelf} onChange={(e) => setIsSelf(e.target.checked)} />
         <span>
           This is me
-          <span className="hint"> — only one card can be you; it lets the app show how you know people through others.</span>
+          <span className="hint"> — only one card can be you</span>
         </span>
       </label>
       </fieldset>
@@ -768,6 +785,10 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
         onCreatePerson={addPerson}
         placeholder="Jot something… type @ to link a person"
         autoFocus={isFresh}
+        // One row when idle: the bar sits on the tab bar and shouldn't
+        // spend a fifth of the screen before you've typed. Grows on focus
+        // (CSS) and with content.
+        rows={draft.trim() ? 3 : 1}
       />
       {/* The Save row appears only once there is something to save — an
           idle bar shouldn't spend two rows of bottom chrome. */}
@@ -967,16 +988,43 @@ function RelationshipSection({ person }: { person: Person }) {
         <span className="edge-type" style={{ '--edge-color': type?.color } as React.CSSProperties}>
           {label}
         </span>
-        <button
-          className="subtle icon"
-          onClick={() => {
-            if (confirm(`Remove the ${type?.label ?? ''} link to ${other.displayName}?`))
-              void removeRelationship(edge.id)
-          }}
-          aria-label={`Remove relationship with ${other.displayName}`}
-        >
-          ×
-        </button>
+        {edge.origin === 'mention' ? (
+          // A derived edge can't be deleted (the note still mentions them);
+          // what it can do is become a real one (§4.2).
+          <select
+            className="edge-retype"
+            aria-label={`Set relationship type with ${other.displayName}`}
+            value=""
+            onChange={(e) => {
+              const id = e.target.value
+              if (!id) return
+              void (async () => {
+                await removeRelationship(edge.id)
+                await addRelationship(edge.fromId, edge.toId, id)
+              })()
+            }}
+          >
+            <option value="">Set type…</option>
+            {types
+              .filter((t) => t.label !== 'mentioned')
+              .map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+          </select>
+        ) : (
+          <button
+            className="subtle icon"
+            onClick={() => {
+              if (confirm(`Remove the ${type?.label ?? ''} link to ${other.displayName}?`))
+                void removeRelationship(edge.id)
+            }}
+            aria-label={`Remove relationship with ${other.displayName}`}
+          >
+            ×
+          </button>
+        )}
       </li>
     )
   }
@@ -1467,17 +1515,20 @@ function NoteEditor({
   const records = useVaultStore((s) => s.records)
   const updateNote = useVaultStore((s) => s.updateNote)
   const addPerson = useVaultStore((s) => s.addPerson)
-  const [draft, setDraft] = useState(body)
+  // Edit the readable form ("@Ivy Chen"), never the raw token with its
+  // uuid; links are restored on save for every known name.
+  const [draft, setDraft] = useState(() => plainText(body))
   const [busy, setBusy] = useState(false)
   const others = useMemo(
     () => selectPeople(records).filter((p) => p.id !== personId),
     [records, personId],
   )
   const save = async () => {
-    const next = draft.trim()
-    if (!next || busy) return
+    if (!draft.trim() || busy) return
     setBusy(true)
     try {
+      const mentioned = segmentBody(body).flatMap((s) => (s.type === 'mention' ? [{ id: s.personId, displayName: s.name }] : []))
+      const next = retokenize(draft.trim(), [...mentioned, ...selectPeople(records)])
       if (next !== body) await updateNote(noteId, next)
       onDone()
       onSaved?.()

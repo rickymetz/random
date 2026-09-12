@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractMentions, mentionToken, plainText, segmentBody } from './mentions'
+import { extractMentions, mentionToken, plainText, retokenize, segmentBody } from './mentions'
 
 const ada = { id: '11111111-1111-1111-1111-111111111111', displayName: 'Ada Lovelace' }
 const bob = { id: '22222222-2222-2222-2222-222222222222', displayName: 'Bob [B] (Bobby)' }
@@ -49,5 +49,16 @@ describe('renameMentionsOf', () => {
     const body = `x ${mentionToken(a)} y ${mentionToken(b)} z`
     const out = renameMentionsOf(body, a.id, 'Ann New')
     expect(out).toBe(`x ${mentionToken({ ...a, displayName: 'Ann New' })} y ${mentionToken(b)} z`)
+  })
+})
+
+describe('retokenize', () => {
+  it('turns plain @Name back into tokens, longest names first, leaving tokens alone', () => {
+    const ivy = { id: '11111111-1111-4111-8111-111111111111', displayName: 'Ivy Chen' }
+    const ivyLee = { id: '22222222-2222-4222-8222-222222222222', displayName: 'Ivy Chen Lee' }
+    const out = retokenize(`Saw @Ivy Chen and @Ivy Chen Lee; ${mentionToken(ivy)} again. @Ivy alone, ivy@example.com`, [ivy, ivyLee])
+    expect(out).toBe(
+      `Saw ${mentionToken(ivy)} and ${mentionToken(ivyLee)}; ${mentionToken(ivy)} again. @Ivy alone, ivy@example.com`,
+    )
   })
 })

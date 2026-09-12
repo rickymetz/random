@@ -31,6 +31,7 @@ export default function MentionTextarea({
   onCreatePerson,
   placeholder,
   autoFocus,
+  rows = 3,
 }: {
   people: Person[]
   value: string
@@ -40,6 +41,7 @@ export default function MentionTextarea({
   onCreatePerson?: (name: string) => Promise<Person>
   placeholder?: string
   autoFocus?: boolean
+  rows?: number
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const listId = useId()
@@ -115,7 +117,7 @@ export default function MentionTextarea({
     <div className="mention-box">
       <textarea
         ref={ref}
-        rows={3}
+        rows={rows}
         value={value}
         placeholder={placeholder}
         aria-label={placeholder ?? 'Note'}

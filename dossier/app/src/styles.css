@@ -176,11 +176,19 @@ h3 {
   align-items: center;
   gap: var(--s3);
   min-height: calc(var(--appbar-h) + env(safe-area-inset-top));
-  padding: calc(var(--s2) + env(safe-area-inset-top)) var(--gutter) var(--s2);
-  background: rgba(26, 25, 24, 0.85);
+  padding: calc(var(--s2) + env(safe-area-inset-top)) max(var(--gutter), env(safe-area-inset-right)) var(--s2)
+    max(var(--gutter), env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--surface-1) 96%, transparent);
   -webkit-backdrop-filter: saturate(160%) blur(20px);
   backdrop-filter: saturate(160%) blur(20px);
   border-bottom: 1px solid var(--line);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .app-bar,
+  .tabbar,
+  .capture-bar {
+    background: var(--surface-1);
+  }
 }
 
 .brand {
@@ -246,7 +254,7 @@ main {
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: 1fr;
-    background: rgba(26, 25, 24, 0.88);
+    background: color-mix(in srgb, var(--surface-1) 96%, transparent);
     -webkit-backdrop-filter: saturate(160%) blur(20px);
     backdrop-filter: saturate(160%) blur(20px);
     border-top: 1px solid var(--line);
@@ -401,9 +409,11 @@ button {
   box-shadow: var(--bevel);
   transition: background var(--dur) ease, border-color var(--dur) ease,
     transform var(--dur) ease;
-}
+}@media (hover: hover) {
+
 button:hover {
   background: var(--surface-3);
+}
 }
 button:active {
   transform: scale(0.97);
@@ -422,14 +432,16 @@ button.primary {
   color: var(--accent-ink);
   border-color: transparent;
   font-weight: 650;
-}
+}@media (hover: hover) {
+
 button.primary:hover {
   background: var(--accent-hover);
 }
+}
 button.primary:disabled {
-  background: var(--surface-1);
-  color: var(--text-4);
-  border-color: var(--line);
+  background: var(--accent-tint);
+  color: var(--text-3);
+  border-color: var(--accent-line);
 }
 
 button.subtle {
@@ -437,10 +449,12 @@ button.subtle {
   color: var(--text-3);
   border-color: var(--line-2);
   box-shadow: none;
-}
+}@media (hover: hover) {
+
 button.subtle:hover {
   background: var(--surface-2);
   color: var(--text-2);
+}
 }
 
 button.quiet {
@@ -448,10 +462,12 @@ button.quiet {
   border: none;
   color: var(--text-3);
   box-shadow: none;
-}
+}@media (hover: hover) {
+
 button.quiet:hover {
   background: var(--surface-2);
   color: var(--text);
+}
 }
 
 button.danger {
@@ -459,9 +475,11 @@ button.danger {
   color: var(--danger);
   border-color: var(--danger-line);
   box-shadow: none;
-}
+}@media (hover: hover) {
+
 button.danger:hover {
   background: var(--danger-tint);
+}
 }
 button.danger.filled {
   background: var(--danger);
@@ -594,6 +612,9 @@ section h2 {
 .section-head h2 {
   margin: 0;
 }
+.section-head .row {
+  margin: 0;
+}
 .section-head a,
 .section-head button.quiet {
   font-size: var(--fs-meta);
@@ -601,17 +622,18 @@ section h2 {
   text-decoration: none;
   min-height: 2.25rem;
   padding: 0 var(--s2);
-}
+}@media (hover: hover) {
+
 .section-head a:hover,
 .section-head button.quiet:hover {
   color: var(--text);
 }
+}
 
 .empty,
 .empty-inline {
-  color: var(--text-4);
+  color: var(--text-3);
   font-size: var(--fs-meta);
-  font-style: italic;
 }
 .empty {
   border: 1px dashed var(--line-2);
@@ -676,11 +698,13 @@ section h2 {
 .mention-suggestions li[role='option'] {
   align-items: center;
   cursor: pointer;
-}
+}@media (hover: hover) {
+
 .mention-suggestions li[role='option']:hover,
 .mention-suggestions button:hover,
 .chip-suggestions button:hover {
   background: var(--surface-3);
+}
 }
 
 /* ---------------------------------------------------------------- unlock */
@@ -846,7 +870,7 @@ section h2 {
 @media (max-width: 48rem) {
   .add-person.fab {
     position: fixed;
-    right: var(--s4);
+    right: max(var(--s4), env(safe-area-inset-right));
     bottom: calc(var(--tabbar-h) + var(--s4) + env(safe-area-inset-bottom));
     z-index: 25;
     width: 3.25rem;
@@ -928,7 +952,21 @@ section h2 {
 .person {
   display: flex;
   flex-direction: column;
+  /* Flex columns don't collapse margins: the gap IS the section spacing. */
+  gap: var(--s6);
   min-height: calc(100dvh - var(--appbar-h) - var(--s6));
+}
+.person > section,
+.person > .person-header {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+/* While the facts form is open, Save/Cancel are the only exits: the
+   rest of the dossier steps aside instead of stretching the page. */
+body:has(.facts-form) .person > section:not(:has(.facts-form)),
+body:has(.facts-form) .person > .person-footer,
+body:has(.facts-form) .app-bar .back {
+  display: none;
 }
 .person > .capture-bar {
   margin-top: auto;
@@ -1018,17 +1056,12 @@ section h2 {
   margin: 0;
   padding: 0;
 }
-.field-group + .field-group {
-  /* The divider lives on a pseudo-element: a border on the fieldset
-     itself is drawn through the legend ("CONTACT ———"). */
+.field-group + .field-group > legend {
+  /* The divider rides the legend (full width): a border on the fieldset
+     is drawn through the title, and a ::before paints below it. */
+  width: 100%;
+  border-top: 1px solid var(--line);
   padding-top: var(--s4);
-}
-.field-group + .field-group::before {
-  content: '';
-  display: block;
-  height: 1px;
-  background: var(--line);
-  margin-bottom: var(--s4);
 }
 /* Group titles speak in a different voice from field labels, so
    "Identity / NAME" doesn't read as one two-line label. */
@@ -1142,7 +1175,7 @@ section h2 {
   flex-direction: column;
   gap: var(--s2);
   background: var(--surface-1);
-  border-left: 2px solid var(--accent-line);
+  border-left: 2px solid var(--line-2);
   border-radius: var(--r-xs);
   padding: var(--s3);
 }
@@ -1165,6 +1198,18 @@ section h2 {
   gap: var(--s2);
   min-height: var(--ctl-h);
   padding: var(--s1) 0;
+}
+.edges li + li {
+  border-top: 1px solid var(--line);
+}
+.edges .edge-retype {
+  width: auto;
+  min-height: 2.25rem;
+  padding: 0 var(--s2);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  background: var(--surface-1);
+  margin-left: auto;
 }
 .follow-ups li.done .check span {
   color: var(--text-4);
@@ -1206,12 +1251,14 @@ section h2 {
   border: none;
   color: var(--text-4);
   box-shadow: none;
-}
+}@media (hover: hover) {
+
 .edges li button.icon:hover,
 .follow-ups li button.icon:hover,
 .notes li button.icon:hover {
   color: var(--text-2);
   background: var(--surface-2);
+}
 }
 
 .notes li {
@@ -1246,7 +1293,7 @@ section h2 {
 .note-actions .subtle {
   border: none;
   font-size: var(--fs-meta);
-  min-height: 2.25rem;
+  min-height: var(--ctl-h);
   padding: 0 var(--s2);
 }
 .notes .mention,
@@ -1263,7 +1310,7 @@ a.mention {
   gap: var(--s2);
   background: var(--surface-2);
   border: 1px solid var(--line-2);
-  border-left: 2px solid var(--accent-line);
+  border-left: 2px solid var(--line-2);
   border-radius: var(--r-md);
   padding: var(--s3);
   margin-top: var(--s2);
@@ -1318,7 +1365,7 @@ body:has(.promote-panel) .capture-bar {
   z-index: 25;
   margin: var(--s5) calc(var(--gutter) * -1) calc(-1 * var(--s4) - env(safe-area-inset-bottom));
   padding: var(--s2) var(--gutter) calc(var(--s2) + env(safe-area-inset-bottom));
-  background: rgba(18, 17, 16, 0.92);
+  background: color-mix(in srgb, var(--surface-1) 96%, transparent);
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   border-top: 1px solid var(--line);
@@ -1332,6 +1379,11 @@ body:has(.promote-panel) .capture-bar {
 }
 .capture-bar textarea {
   background: var(--surface-2);
+  min-height: var(--ctl-h);
+  transition: min-height var(--dur) ease-out;
+}
+.capture-bar textarea:focus {
+  min-height: 5.5rem;
 }
 .capture-bar .row {
   margin-bottom: 0;
@@ -1381,11 +1433,13 @@ body:has(.promote-panel) .capture-bar {
   font-size: var(--fs-meta);
   min-height: 0;
   box-shadow: none;
-}
+}@media (hover: hover) {
+
 .photo-add-tile:hover {
   border-color: var(--text-4);
   color: var(--text);
   background: transparent;
+}
 }
 
 .lightbox {
@@ -1496,10 +1550,12 @@ body:has(.promote-panel) .capture-bar {
   width: var(--ctl-h);
   height: var(--ctl-h);
   transform: translate(-50%, -50%);
-}
+}@media (hover: hover) {
+
 .value-chip button:hover {
   background: var(--line-2);
   color: var(--text);
+}
 }
 
 /* ----------------------------------------------------------------- graph */
@@ -1538,6 +1594,9 @@ body:has(.promote-panel) .capture-bar {
     overflow-x: auto;
     scrollbar-width: none;
     padding-bottom: var(--s1);
+    /* A fade says "more chips this way" where the strip is clipped. */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
     -webkit-mask-image: linear-gradient(90deg, #000 90%, transparent);
     mask-image: linear-gradient(90deg, #000 90%, transparent);
   }
@@ -1624,7 +1683,7 @@ body:has(.promote-panel) .capture-bar {
   touch-action: none;
   border-radius: var(--r-lg);
   border: 1px solid var(--line);
-  background: #0d0c0b;
+  background: var(--bg);
 }
 .graph-canvas:focus-visible {
   outline: 2px solid var(--focus);
@@ -1679,9 +1738,11 @@ body:has(.promote-panel) .capture-bar {
   color: var(--text-3);
   font-size: var(--fs-meta);
   text-decoration: none;
-}
+}@media (hover: hover) {
+
 .path-graph-link:hover {
   color: var(--text);
+}
 }
 
 /* -------------------------------------------------------------- settings */
@@ -1820,9 +1881,11 @@ a.facet {
   color: var(--text);
   text-decoration: underline dotted var(--line-2);
   text-underline-offset: 3px;
-}
+}@media (hover: hover) {
+
 a.facet:hover {
   text-decoration-color: var(--text-3);
+}
 }
 
 /* Inline note editor */
@@ -1928,6 +1991,9 @@ a.facet:hover {
   height: 7px;
   border-radius: 50%;
   display: inline-block;
+  /* Hollow like the graph rail: bubbles are hollow, edges are solid. */
+  background: transparent;
+  border: 1.5px solid var(--text-3);
 }
 
 /* Bubble card on the graph */
@@ -2341,7 +2407,7 @@ input[type='search']::-webkit-search-cancel-button {
   -webkit-user-select: none;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms ease;
+  transition: opacity var(--dur) ease;
 }
 .letter-rail.visible {
   opacity: 1;
@@ -2367,9 +2433,11 @@ input[type='search']::-webkit-search-cancel-button {
 }
 .letter-rail.dragging {
   background: var(--surface-2);
-}
+}@media (hover: hover) {
+
 .letter-rail:hover button {
   color: var(--text-2);
+}
 }
 .letter-rail button,
 .letter-rail .absent {
@@ -2685,7 +2753,6 @@ body:has(.facts-form) .app-bar nav {
   gap: var(--s2);
   background: var(--surface-2);
   border: 1px solid var(--line-2);
-  border-left: 2px solid var(--accent-line);
   border-radius: var(--r-md);
   padding: var(--s3);
   margin: var(--s2) 0 var(--s3);
@@ -2859,8 +2926,8 @@ body:has(.facts-form) .app-bar nav {
 .looks-like-chips li.known,
 .looks-like-chips li.ambiguous,
 .looks-like-chips li.choose {
-  border-color: var(--accent-line);
-  background: var(--accent-tint);
+  border-color: var(--line-2);
+  background: var(--surface-3);
 }
 .looks-like-chips li.choose {
   gap: 0;
@@ -2976,4 +3043,33 @@ body:has(.facts-form) .app-bar nav {
 .import-list li.hint {
   padding: var(--s2);
   text-align: center;
+}
+
+
+/* Body copy in settings shouldn't run 90 characters wide on desktop. */
+.settings p.hint,
+.settings .hint {
+  max-width: 62ch;
+}
+/* Touch feedback for rows that had none. */
+.person-row:active,
+.recent-item:active {
+  background: var(--surface-2);
+}
+.snippet mark {
+  background: var(--accent-tint);
+  color: var(--text);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.app-bar .back {
+  min-width: var(--ctl-h);
+  margin-left: calc(var(--s2) * -1);
+}
+
+.app-bar .brand {
+  margin-right: auto;
+}
+.field-group .toggle-row {
+  margin-top: var(--s3);
 }

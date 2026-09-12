@@ -5,6 +5,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useNavigate,
   useNavigationType,
   useParams,
 } from 'react-router-dom'
@@ -146,6 +147,8 @@ const LOCK_WARNING_MS = 15_000
 
 export default function App() {
   const status = useVaultStore((s) => s.status)
+  const { pathname } = useLocation()
+  const navigate = useNavigate()
   const init = useVaultStore((s) => s.init)
   const lock = useVaultStore((s) => s.lock)
   const panicLock = useVaultStore((s) => s.panicLock)
@@ -339,6 +342,25 @@ export default function App() {
         Skip to content
       </a>
       <header className="app-bar">
+        {/* Back rides the sticky bar so it's reachable however far a
+            dossier is scrolled. A deep link (notification, pasted URL)
+            has nothing behind it: Back must land on People, not leave
+            the app. Hidden by CSS while the facts form is open. */}
+        {pathname.startsWith('/person/') && (
+          <button
+            className="subtle back icon"
+            onClick={() => {
+              const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0
+              if (idx > 0) navigate(-1)
+              else navigate('/', { replace: true })
+            }}
+            aria-label="Back"
+          >
+            <svg {...iconProps} aria-hidden="true">
+              <path d="M15 5l-7 7 7 7" />
+            </svg>
+          </button>
+        )}
         {/* The brand echoes the disguise, not the product (§6.5). */}
         <span className="brand">{currentDisguise().name}</span>
         <nav aria-label="Main">

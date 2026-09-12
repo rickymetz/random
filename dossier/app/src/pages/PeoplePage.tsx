@@ -64,6 +64,18 @@ export default function PeoplePage() {
     requestAnimationFrame(() => batchToggleRef.current?.focus())
   }
   const searchRef = useRef<HTMLInputElement>(null)
+  // "/" focuses search from anywhere on the page (Obsidian/GitHub habit).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      e.preventDefault()
+      searchRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
   // Facet links (a tag or like on a dossier) arrive as ?q=…: adopt the
   // query, then drop the param so back/forward stays clean.
@@ -353,7 +365,9 @@ export default function PeoplePage() {
           </li>
         )}
       </ul>
-      {trimmed && !exactCircle && people.length > 0 && (
+      {/* With hits, offer creation only for something name-shaped — a
+          lowercase fragment like "ma" is a lookup, not a new person. */}
+      {trimmed && !exactCircle && people.length > 0 && (/^\p{Lu}/u.test(trimmed) || /\s/.test(trimmed)) && (
         <button className="add-person after-list" onClick={create} disabled={busy}>
           + Add “{trimmed}”{circle ? ` to ${circle.name}` : ''}
         </button>
@@ -652,14 +666,14 @@ const PersonRow = memo(function PersonRow({ person, query }: { person: Person; q
             {circles.length > 0 && (
               <span className="circle-dots" title={circles.map((c) => c.name).join(', ')}>
                 {circles.map((c) => (
-                  <i key={c.id} style={{ background: c.color }} />
+                  <i key={c.id} style={{ borderColor: c.color }} />
                 ))}
                 <span className="sr-only">in {circles.map((c) => c.name).join(', ')}</span>
               </span>
             )}
           </strong>
           {detail && <span className="hint"> {detail}</span>}
-          {snippet && <span className="snippet">{snippet}</span>}
+          {snippet && <span className="snippet">{highlight(snippet, query)}</span>}
         </span>
         <span className="chev" aria-hidden="true">
           {'›'}
@@ -825,5 +839,24 @@ function Upcoming() {
         ))}
       </ul>
     </section>
+  )
+}
+
+
+/** Wrap the matched term in <mark> so a snippet shows *why* it matched. */
+function highlight(text: string, query: string) {
+  const q = query.trim().toLowerCase()
+  const first = q.split(/\s+/)[0]
+  if (!first) return text
+  const lower = text.toLowerCase()
+  const idx = lower.indexOf(q) >= 0 ? lower.indexOf(q) : lower.indexOf(first)
+  if (idx < 0) return text
+  const len = lower.indexOf(q) >= 0 ? q.length : first.length
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark>{text.slice(idx, idx + len)}</mark>
+      {text.slice(idx + len)}
+    </>
   )
 }

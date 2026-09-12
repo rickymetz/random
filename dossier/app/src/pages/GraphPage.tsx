@@ -549,7 +549,7 @@ export default function GraphPage() {
       <p className="graph-legend">
         {nodes.length > LABEL_MAX_NODES
           ? 'Too many people to name at once: zoom in to see names, or pick a person or circle above.'
-          : 'Tap a label to hide or show that kind of link or circle. A dotted line means they were mentioned in a note. Tinted areas are circles — tap one (or its ✎) to edit it; tap a person for details.'}
+          : 'Tap a label to filter. Dotted lines are mentions; tinted areas are circles — tap one to edit, tap a person for details.'}
       </p>
       <div className="graph-canvas-wrap">
         {arranging && nodes.length > 150 && (
@@ -1357,14 +1357,24 @@ function useCanvasGraph(
       const n = simNodes.length
       const labelZoom = n > LABEL_MAX_NODES ? 1.2 : n > 60 ? 1.0 : n <= 30 ? 0.55 : LABEL_ZOOM
       if (k >= labelZoom) {
+        // Names get the same dark halo as circle labels and skip when
+        // they'd overprint a neighbour's name (the first one drawn wins).
         ctx.font = `${11 / k}px system-ui`
-        ctx.fillStyle = '#8b857a'
+        ctx.lineJoin = 'round'
+        ctx.lineWidth = 3 / k
+        ctx.strokeStyle = 'rgba(13, 12, 11, 0.85)'
+        const lineH = 13 / k
+        const nameBoxes: { x: number; y: number; w: number; h: number }[] = []
         for (const node of visibleNodes) {
-          ctx.fillText(
-            node.isSelf ? `${node.name} (you)` : node.name,
-            node.x!,
-            node.y! + node.r + 12 / k,
-          )
+          const text = node.isSelf ? `${node.name} (you)` : node.name
+          const w = ctx.measureText(text).width
+          const y = node.y! + node.r + 12 / k
+          const box = { x: node.x! - w / 2, y: y - lineH, w, h: lineH }
+          if (nameBoxes.some((o) => box.x < o.x + o.w && box.x + box.w > o.x && box.y < o.y + o.h && box.y + box.h > o.y)) continue
+          nameBoxes.push(box)
+          ctx.strokeText(text, node.x!, y)
+          ctx.fillStyle = '#8b857a'
+          ctx.fillText(text, node.x!, y)
         }
       }
       // Circle names last, over everything, with a dark halo. They scale

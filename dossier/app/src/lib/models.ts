@@ -153,7 +153,7 @@ export const BUILT_IN_RELATIONSHIP_TYPES: Omit<RelationshipType, 'id'>[] = [
   { kind: 'relationshipType', label: 'ex', color: '#8a8a94', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'sibling', color: '#4fbf8b', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'parent of', color: '#2aa8b8', directed: true, builtIn: true },
-  { kind: 'relationshipType', label: 'coworker', color: '#c9a23f', directed: false, builtIn: true },
+  { kind: 'relationshipType', label: 'coworker', color: '#a3a24a', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'boss of', color: '#e0763c', directed: true, builtIn: true },
   { kind: 'relationshipType', label: 'roommate', color: '#9a6fd0', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'mentioned', color: '#55555e', directed: true, builtIn: true },
