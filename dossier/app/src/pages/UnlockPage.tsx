@@ -62,7 +62,7 @@ function BiometricButton({ onError }: { onError: (message: string | null) => voi
         }
       }}
     >
-      {busy ? '…' : 'Unlock with biometrics'}
+      {busy ? '…' : 'Use Face ID / fingerprint'}
     </button>
   )
 }
@@ -195,7 +195,7 @@ function PassphraseForm({
     setError(null)
     if (mode === 'create') {
       if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
-        setError(`Use at least ${MIN_PASSPHRASE_LENGTH} characters — a short sentence works well.`)
+        setError(`At least ${MIN_PASSPHRASE_LENGTH} characters.`)
         return
       }
       if (passphrase !== confirm) {
@@ -211,7 +211,7 @@ function PassphraseForm({
         setError('Wrong passphrase — check for autocorrect or a stray capital.')
       }
     } catch {
-      setError('Something went wrong opening the vault. Try again.')
+      setError('Couldn’t open — try again.')
     } finally {
       setBusy(false)
       // Keep what was typed on a failure — retyping a long passphrase for
@@ -238,33 +238,31 @@ function PassphraseForm({
         {mode === 'create' ? (
           <p className="hint">
             Notes about the people you meet, kept only on this device and locked with a
-            passphrase only you know. Nobody else holds it, so it can't be reset —
-            pick something you'll remember, like three or four words.
+            passphrase only you know.
           </p>
         ) : (
           <p className="hint">Locked — everything is still here.</p>
         )}
         {mode === 'create' && isIosBrowserTab() && (
           <p className="notice-warn" role="note">
-            On iPhone, add this page to your Home Screen first (Share → Add to Home
-            Screen) and set up in there. Safari and the Home Screen app keep separate
-            storage, so notes made here won't appear in the app.
+            On iPhone, first add this page to your Home Screen (Share → Add to Home
+            Screen) and set up there — Safari and the Home Screen app don’t share notes.
           </p>
         )}
         {mode === 'unlock' && pinLockedOut && (
           <p className="notice-warn" role="status">
-            The quick-unlock PIN was disabled after too many wrong tries. Unlock with
-            your passphrase, then re-arm a PIN in Settings if you want one.
+            PIN turned off after too many wrong tries. Unlock with your passphrase, then
+            set a new one in Settings.
           </p>
         )}
         <label>
           Passphrase
           <input
             type="password"
+            enterKeyHint="go"
             autoFocus
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
-            placeholder={mode === 'create' ? 'Choose a passphrase' : 'Passphrase'}
             aria-label={mode === 'create' ? 'Choose a passphrase' : 'Passphrase'}
             autoComplete="off"
           />
@@ -275,16 +273,16 @@ function PassphraseForm({
               Repeat passphrase
               <input
                 type="password"
+            enterKeyHint="go"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
-                placeholder="Repeat passphrase"
                 aria-label="Repeat passphrase"
                 autoComplete="off"
               />
             </label>
             <p className="hint">
-              At least {MIN_PASSPHRASE_LENGTH} characters. There is no reset: if you forget
-              it, the notes can't be opened.
+              At least {MIN_PASSPHRASE_LENGTH} characters. Nobody can reset it — pick a few
+              words you’ll remember.
             </p>
           </>
         )}

@@ -15,6 +15,10 @@ import {
  * with the per-line type or the batch default. Existing names are never
  * duplicated: they're linked instead.
  */
+/** Keyboard shortcuts are for keyboards: phones get no "Ctrl+Enter". */
+const shortcutHint =
+  typeof matchMedia === 'function' && matchMedia('(pointer: fine)').matches ? ' Ctrl+Enter adds.' : ''
+
 export default function BatchAddPanel({
   anchor,
   onClose,
@@ -77,7 +81,6 @@ export default function BatchAddPanel({
   const fresh = entries.filter((e) => !e.existing)
   const toLink = entries.filter((e) => e.existing && !linkedIds.has(e.existing.id))
   const alreadyLinked = entries.filter((e) => e.existing && linkedIds.has(e.existing.id))
-  const unknownTypes = entries.filter((e) => e.typeLabel && !e.type).map((e) => e.typeLabel!)
   const defaultType = types.find((t) => t.id === defaultTypeId) ?? types[0]
   const first = anchor?.displayName.split(' ')[0]
 
@@ -110,7 +113,7 @@ export default function BatchAddPanel({
       const parts = [`Added ${created.length} ${created.length === 1 ? 'person' : 'people'}`]
       if (anchor) parts.push(`linked ${linked}`)
       if (alreadyLinked.length) parts.push(`${alreadyLinked.length} already linked`)
-      setStatus(`${parts.join(', ')} ✓`)
+      setStatus(`${parts.join(', ')}`)
       setText('')
       // Ready for the next paste; the disabled Add would drop focus.
       requestAnimationFrame(() => textareaRef.current?.focus())
@@ -136,6 +139,8 @@ export default function BatchAddPanel({
         if (e.key === 'Escape' && !busy) {
           e.preventDefault()
           e.stopPropagation()
+          // Escape never throws away a typed list without asking.
+          if (text.trim() && !status && !confirm('Discard the list you typed?')) return
           onClose()
         }
       }}
@@ -151,8 +156,8 @@ export default function BatchAddPanel({
       )}
       <p className="hint" id={hintId}>
         {anchor
-          ? `One per line. Add how you know them after a dash — “June Webb — parent of” means June is ${first}'s parent. Ctrl+Enter adds.`
-          : 'One per line, or separated by commas. Ctrl+Enter adds.'}
+          ? `One name per line. After a dash, add how they relate to ${first}: “June Webb — parent of” means June is ${first}’s parent.${shortcutHint}`
+          : `One per line, or separated by commas.${shortcutHint}`}
       </p>
       <textarea
         ref={textareaRef}
@@ -226,12 +231,6 @@ export default function BatchAddPanel({
           })}
         </ul>
       )}
-      {anchor && unknownTypes.length > 0 && (
-        <p className="hint">
-          Unknown relationship{unknownTypes.length > 1 ? 's' : ''}: {unknownTypes.join(', ')} —
-          those lines get the default. New types are created from the relationship form.
-        </p>
-      )}
       <div className="row">
         <button
           type="submit"
@@ -240,7 +239,7 @@ export default function BatchAddPanel({
         >
           {busy ? 'Adding…' : label}
         </button>
-        <button type="button" className="subtle" onClick={onClose} disabled={busy}>
+        <button type="button" className="quiet" onClick={onClose} disabled={busy}>
           {status ? 'Done' : 'Cancel'}
         </button>
         <span className="hint status-slot" role="status">

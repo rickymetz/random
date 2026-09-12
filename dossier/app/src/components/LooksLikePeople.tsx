@@ -15,7 +15,7 @@ import { selectPeople, useVaultStore } from '../store/vaultStore'
  */
 const declinedThisSession = new Set<string>()
 
-const UNDO_MS = 6000
+const UNDO_MS = 30000
 
 interface Undo {
   prevBody: string
@@ -111,7 +111,7 @@ export default function LooksLikePeople({
       if (linked.length === 0) {
         flash('Nothing to link')
       } else if (linked.length === 1) {
-        flash(created.length ? `Added ${linked[0].displayName} ✓` : `Linked ${linked[0].displayName} ✓`, {
+        flash(created.length ? `Added ${linked[0].displayName}` : `Linked ${linked[0].displayName}`, {
           prevBody,
           createdIds: created.map((p) => p.id),
         })
@@ -119,7 +119,7 @@ export default function LooksLikePeople({
         const parts = []
         if (created.length) parts.push(`added ${created.length}`)
         if (linkedExisting) parts.push(`linked ${linkedExisting}`)
-        flash(parts.join(', ').replace(/^./, (c) => c.toUpperCase()) + ' ✓', {
+        flash(parts.join(', ').replace(/^./, (c) => c.toUpperCase()) + '', {
           prevBody,
           createdIds: created.map((p) => p.id),
         })
@@ -151,6 +151,10 @@ export default function LooksLikePeople({
     for (const c of visible) declinedThisSession.add(c.phrase.toLowerCase())
     setHidden(new Set(visible.map((c) => c.phrase.toLowerCase())))
     setChoosing(null)
+    // "Not now" means close: don't keep the card up for the Undo window.
+    window.clearTimeout(timer.current)
+    setStatus('')
+    setUndo(null)
   }
 
   const fresh = visible.filter((c) => !c.existing && !c.options)
