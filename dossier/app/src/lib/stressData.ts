@@ -27,9 +27,9 @@ import { selectPeople, selectRelationshipTypes, useVaultStore } from '../store/v
 
 export const STRESS_TAG = 'stress-test'
 
-/** A valid 4×4 PNG (one flat accent tint); enough for the avatar draw path. */
+/** A valid 4×4 PNG (a flat neutral grey — the accent is budgeted for actions). */
 const TINY_PNG_B64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAEUlEQVR4nGO4sSwcjhiI4wAAApEdUY2f+KIAAAAASUVORK5CYII='
+  'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAEElEQVR4nGPwcrOHIwbiOABRUwzxc/bWYwAAAABJRU5ErkJggg=='
 export function tinyPngBytes(): Uint8Array {
   const bin = atob(TINY_PNG_B64)
   return Uint8Array.from(bin, (c) => c.charCodeAt(0))

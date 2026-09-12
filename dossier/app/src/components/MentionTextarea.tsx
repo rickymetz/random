@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { mentionToken } from '../lib/mentions'
 import { rankPeople } from '../lib/names'
+import Avatar from './Avatar'
 import type { Person } from '../lib/models'
 
 /** Word characters for a mention query — Unicode-aware so "@José" works. */
@@ -45,6 +46,7 @@ export default function MentionTextarea({
   const [caret, setCaret] = useState(0)
   const [dismissed, setDismissed] = useState(false)
   const [active, setActive] = useState(0)
+  const pointerPicked = useRef(false)
 
   // An active mention query is a trailing "@word" (at most two words)
   // right before the caret — bounded so a stray "@" doesn't keep the
@@ -170,11 +172,32 @@ export default function MentionTextarea({
               // keeps focus in the textarea so the keyboard stays up and
               // the caret math stays valid; click activates, which is
               // also what a screen reader's double-tap sends.
-              onPointerDown={(e) => e.preventDefault()}
-              onClick={() => void pick(s)}
+              onPointerDown={(e) => {
+                e.preventDefault()
+                pointerPicked.current = true
+                void pick(s)
+              }}
+              onClick={() => {
+                if (!pointerPicked.current) void pick(s)
+                pointerPicked.current = false
+              }}
               onPointerEnter={() => setActive(i)}
             >
-              {s.kind === 'person' ? s.person.displayName : `+ Add “${s.name}”`}
+              {s.kind === 'person' ? (
+                <>
+                  <Avatar person={s.person} size={28} />
+                  <span className="picker-name">
+                    <span className="picker-name-text">{s.person.displayName}</span>
+                    {(s.person.jobTitle || s.person.employer) && (
+                      <span className="hint">
+                        {[s.person.jobTitle, s.person.employer].filter(Boolean).join(' @ ')}
+                      </span>
+                    )}
+                  </span>
+                </>
+              ) : (
+                <span className="picker-create">+ Add “{s.name}”</span>
+              )}
             </li>
           ))}
         </ul>

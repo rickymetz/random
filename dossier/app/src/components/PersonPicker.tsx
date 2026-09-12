@@ -66,6 +66,9 @@ export default function PersonPicker({
   const [editing, setEditing] = useState(false)
   const [status, setStatus] = useState('')
   const [focusChip, setFocusChip] = useState(false)
+  // Pointer picks happen on pointerdown, before the field can blur; the
+  // click that follows is skipped. A bare click (keyboard/AT) still picks.
+  const pointerPicked = useRef(false)
 
   const excluded = useMemo(() => new Set(excludeIds ?? []), [excludeIds])
   const candidates = useMemo(
@@ -291,10 +294,15 @@ export default function PersonPicker({
                   role="option"
                   aria-selected={i === active}
                   className={i === active ? 'active' : undefined}
-                  // Keep focus in the input on press; activate on click so
-                  // assistive tech and keyboards reach the same path.
-                  onPointerDown={(e) => e.preventDefault()}
-                  onClick={() => void pick(s)}
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    pointerPicked.current = true
+                    void pick(s)
+                  }}
+                  onClick={() => {
+                    if (!pointerPicked.current) void pick(s)
+                    pointerPicked.current = false
+                  }}
                   onPointerEnter={() => setActive(i)}
                 >
                   {s.kind === 'person' ? (

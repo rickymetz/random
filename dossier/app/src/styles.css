@@ -539,7 +539,7 @@ button.icon {
   display: block;
   background: var(--surface-1);
   border: none;
-  border-left: 2px solid var(--accent);
+  border-left: 2px solid var(--line-2);
   border-radius: var(--r-xs);
   padding: var(--s3) var(--s4);
   font-size: var(--fs-meta);
@@ -564,6 +564,7 @@ button.icon {
   position: sticky;
   top: calc(var(--appbar-h) + env(safe-area-inset-top) + var(--s2));
   z-index: 15;
+  width: calc(100% - 2 * var(--gutter));
   max-width: 40rem;
   margin: var(--s2) auto 0;
   border-left-color: var(--accent);
@@ -943,8 +944,6 @@ section h2 {
   margin-bottom: var(--s4);
 }
 .person-header .back {
-  min-width: 2.25rem;
-  min-height: 2.25rem;
   padding: 0;
 }
 .person-header h1 {
@@ -1020,16 +1019,27 @@ section h2 {
   padding: 0;
 }
 .field-group + .field-group {
-  border-top: 1px solid var(--line);
+  /* The divider lives on a pseudo-element: a border on the fieldset
+     itself is drawn through the legend ("CONTACT ———"). */
   padding-top: var(--s4);
 }
-.field-group > legend {
+.field-group + .field-group::before {
+  content: '';
+  display: block;
+  height: 1px;
+  background: var(--line);
+  margin-bottom: var(--s4);
+}
+/* Group titles speak in a different voice from field labels, so
+   "Identity / NAME" doesn't read as one two-line label. */
+.field-group > legend,
+.promote-panel .panel-title {
   padding: 0;
-  margin-bottom: var(--s3);
-  font: 650 var(--fs-label) / 1.2 var(--font-ui);
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-3);
+  margin: 0 0 var(--s3);
+  font: 600 var(--fs-meta) / 1.2 var(--font-ui);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-2);
 }
 .field-grid {
   display: grid;
@@ -1165,7 +1175,20 @@ section h2 {
   text-decoration: none;
   font-weight: 550;
 }
-.edges .edge-type {
+.edges .edge-type::before,
+.path-rel::before {
+  content: '';
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--edge-color, var(--text-4));
+  margin-right: 0.35rem;
+  vertical-align: 0.05rem;
+}
+.edge-type {
+  /* The hue is a dot; the word is ink (some type colours fail contrast as text). */
+  color: var(--text-3);
   font-size: var(--fs-meta);
   color: var(--text-3);
 }
@@ -1248,10 +1271,6 @@ a.mention {
 }
 .promote-panel .panel-title {
   margin: 0;
-  font: 650 var(--fs-label) / 1.2 var(--font-ui);
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-3);
 }
 .promote-panel label {
   display: flex;
@@ -1444,10 +1463,14 @@ body:has(.promote-panel) .capture-bar {
   display: inline-flex;
   align-items: center;
   gap: 0.15rem;
+  min-height: 1.75rem;
   background: var(--surface-3);
   border-radius: var(--r-full);
   padding: 0.2rem 0.2rem 0.2rem 0.7rem;
-  font-size: var(--fs-meta);
+  font: 500 var(--fs-meta) / 1.3 var(--font-ui);
+  /* Inside a form label: never inherit its small-caps voice. */
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--text);
 }
 .value-chip button {
@@ -1675,6 +1698,7 @@ body:has(.promote-panel) .capture-bar {
   border-color: var(--danger-line);
 }
 .settings h2 {
+  font-family: var(--font-display);
   font-size: var(--fs-h2);
   font-weight: 650;
   letter-spacing: 0;
@@ -1683,11 +1707,13 @@ body:has(.promote-panel) .capture-bar {
   margin: 0 0 var(--s2);
 }
 .settings h3 {
-  font: 650 var(--fs-label) / 1.2 var(--font-ui);
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin: var(--s4) 0 var(--s2);
+  /* Sub-headings speak in the legend voice, not the field-label voice,
+     so "Face ID / fingerprint unlock" and "YOUR PASSPHRASE" don't fuse. */
+  font: 600 var(--fs-meta) / 1.2 var(--font-ui);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-2);
+  margin: var(--s5) 0 var(--s3);
 }
 .settings section > :is(h3:first-of-type) {
   margin-top: var(--s3);
@@ -2212,10 +2238,24 @@ input[type='search']::-webkit-search-cancel-button {
 }
 .upcoming h2 button.subtle {
   font-size: var(--fs-meta);
-  font-weight: 500;
+  font-weight: 550;
+  border: none;
+  min-height: 2.25rem;
+  padding: 0 var(--s2);
+  letter-spacing: 0;
+  text-transform: none;
 }
 .graph-status {
-  margin: 0 0 var(--s2);
+  /* A status of the canvas, not a paragraph of the page: overlaid so the
+     canvas doesn't shift when it appears and disappears. */
+  position: absolute;
+  top: var(--s3);
+  left: var(--s3);
+  z-index: 3;
+  margin: 0;
+  padding: 0.125rem var(--s2);
+  border-radius: var(--r-xs);
+  background: rgba(18, 17, 16, 0.75);
   font-size: var(--fs-meta);
   color: var(--text-3);
 }
@@ -2229,10 +2269,15 @@ input[type='search']::-webkit-search-cancel-button {
 }
 .list-heading {
   margin: var(--s4) 0 var(--s1);
+  font: 650 var(--fs-label) / 1.2 var(--font-ui);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-3);
 }
 .list-heading .hint {
   font-family: var(--font-ui);
   font-weight: 500;
+  letter-spacing: 0;
   margin-left: var(--s1);
 }
 .recent ul {
@@ -2488,4 +2533,142 @@ input[type='search']::-webkit-search-cancel-button {
 }
 .compare-with .person-picker {
   flex: 1 1 12rem;
+}
+
+/* ------------------------------------------------- IA review round */
+@media (max-width: 48rem) {
+  /* The tab bar has the everyday Lock; the header one only earns its
+     place when it also forgets an armed PIN. */
+  .lock-button.plain {
+    display: none;
+  }
+}
+.tabbar .glyph {
+  display: block;
+}
+.add-person.after-list {
+  margin-top: var(--s3);
+}
+.peek-card .subtle-link {
+  align-self: center;
+  font-size: var(--fs-meta);
+}
+
+/* --------------------------------------------- design review round */
+.banner.lock-warning {
+  border-left-color: var(--accent);
+}
+/* Desktop nav yields while the facts form is open: Save/Cancel are the
+   exits (the mobile tab bar already hides). */
+body:has(.facts-form) .app-bar nav {
+  visibility: hidden;
+}
+/* Chips: two heights — 36px control chips (filters, picked person) and
+   28px value chips — instead of five. */
+.picked-chip {
+  min-height: 2.25rem;
+  padding: 0 0.25rem 0 var(--s2);
+}
+.picked-chip .avatar {
+  width: 1.375rem !important;
+  height: 1.375rem !important;
+  font-size: 0.55rem !important;
+}
+.picked-chip .icon {
+  position: relative;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  font-size: 1rem;
+}
+.picked-chip .icon::after {
+  content: '';
+  position: absolute;
+  inset: -0.5rem;
+}
+/* One-way checkbox inside the relationship subform: a row, not a
+   shouting column. */
+.add-form label.inline-check {
+  flex-direction: row;
+  align-items: center;
+  text-transform: none;
+  letter-spacing: 0;
+  font: 450 var(--fs-ui) / 1.3 var(--font-ui);
+  color: var(--text-2);
+}
+.add-form .add-submit {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+/* Settings: a column form's field must not take a 12rem *height*. */
+.settings form.column .field {
+  flex-basis: auto;
+}
+/* Section-head actions share one weight. */
+.section-head a {
+  font-weight: 550;
+}
+/* Icon glyphs: one size. */
+.note-actions .subtle.icon,
+.chip.circle-filter .edit {
+  font-size: 1rem;
+}
+/* Depth control reads as a segmented chip, like every other selection. */
+.focus-chip.depth button[aria-pressed='true'] {
+  background: var(--surface-3);
+  color: var(--text);
+  text-decoration: none;
+  border-radius: var(--r-full);
+}
+/* Circle card: delete on its own line, away from "Only this circle". */
+.peek-card .peek-danger {
+  justify-content: flex-end;
+}
+/* Mention suggestions share the picker's row anatomy. */
+.mention-suggestions li[role='option'] {
+  gap: var(--s2);
+}
+
+/* ---------------------------------------------- polish review round */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.peek-card,
+.mention-suggestions,
+.chip-suggestions,
+.rail-bubble,
+.banner,
+.saved,
+.graph-status {
+  animation: rise var(--dur) ease-out;
+}
+/* Bare graph (no links, no circles): the how-to-start copy replaces the
+   chip rail and legend. */
+.graph.bare .graph-controls,
+.graph.bare .graph-legend {
+  display: none;
+}
+/* Chip-input suggestions are <li>s now: same row anatomy as the picker,
+   and never the label's small caps. */
+.chip-input .chip-suggestions li[role='option'] {
+  display: flex;
+  align-items: center;
+  min-height: var(--ctl-h);
+  padding: 0 var(--s3);
+  color: var(--text);
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: normal;
+  font: 450 var(--fs-ui) / 1.3 var(--font-ui);
+}
+.chip-input .chip-suggestions li + li {
+  border-top: 1px solid var(--line);
+}
+.chip-input .chip-suggestions li.active {
+  background: var(--surface-3);
 }
