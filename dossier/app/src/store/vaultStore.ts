@@ -12,6 +12,7 @@
 import { create } from 'zustand'
 import { extractMentions, renameMentionsOf, stripMentionsOf } from '../lib/mentions'
 import { linkPhrase } from '../lib/nameDetect'
+import type { ContactDraft } from '../lib/contacts'
 import { CIRCLE_COLORS, RECENT_LIMIT, type Circle } from '../lib/models'
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
@@ -142,6 +143,9 @@ interface VaultState {
   addPeople: (displayNames: string[]) => Promise<Person[]>
   /** Several explicit edges in one write; each replaces a mention edge on its pair. */
   addRelationships: (edges: { fromId: string; toId: string; typeId: string }[]) => Promise<void>
+  /** Contacts import: people with details (and a first note where the
+   * contact carried one) in one encrypted write. Returns the people. */
+  importPeople: (drafts: ContactDraft[]) => Promise<Person[]>
   updatePerson: (person: Person) => Promise<void>
   removePerson: (personId: string) => Promise<void>
   /** Bulk delete; circles left with no members are removed too. */
@@ -669,6 +673,47 @@ export const useVaultStore = create<VaultState>((set, get) => {
         updatedAt: now,
       }))
       if (people.length > 0) await apply(people, [], people.map((p) => p.id))
+      return people
+    }),
+
+    importPeople: (drafts) =>
+      enqueue(async () => {
+      const now = Date.now()
+      const puts: DomainRecord[] = []
+      const people: Person[] = []
+      for (const d of drafts) {
+        const displayName = d.displayName.trim()
+        if (!displayName) continue
+        const person: Person = {
+          kind: 'person',
+          id: crypto.randomUUID(),
+          displayName,
+          nicknames: (d.nicknames ?? []).map((n) => n.trim()).filter(Boolean),
+          likes: [],
+          dislikes: [],
+          tags: [],
+          createdAt: now,
+          updatedAt: now,
+        }
+        if (d.jobTitle) person.jobTitle = d.jobTitle
+        if (d.employer) person.employer = d.employer
+        if (d.location) person.location = d.location
+        if (d.birthday) person.birthday = d.birthday
+        if (d.contact?.phone || d.contact?.email) person.contact = { ...d.contact }
+        people.push(person)
+        puts.push(person)
+        if (d.note?.trim()) {
+          puts.push({
+            kind: 'note',
+            id: crypto.randomUUID(),
+            personId: person.id,
+            body: d.note.trim(),
+            mentions: [],
+            createdAt: now,
+          })
+        }
+      }
+      if (puts.length > 0) await apply(puts, [], people.map((p) => p.id))
       return people
     }),
 

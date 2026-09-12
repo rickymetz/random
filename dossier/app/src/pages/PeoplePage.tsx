@@ -11,6 +11,7 @@ import {
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import BatchAddPanel from '../components/BatchAddPanel'
+import ContactImportPanel from '../components/ContactImportPanel'
 import { daysUntilDue, daysUntilNext, formatPartialDate } from '../lib/dates'
 import type { Person } from '../lib/models'
 import { RAIL_LETTERS, letterOf, rowsToReveal, shortName } from '../lib/names'
@@ -52,6 +53,12 @@ export default function PeoplePage() {
   const [busy, setBusy] = useState(false)
   const [batchOpen, setBatchOpen] = useState(false)
   const batchToggleRef = useRef<HTMLButtonElement>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const importToggleRef = useRef<HTMLButtonElement>(null)
+  const closeImport = () => {
+    setImportOpen(false)
+    requestAnimationFrame(() => importToggleRef.current?.focus())
+  }
   const closeBatch = () => {
     setBatchOpen(false)
     requestAnimationFrame(() => batchToggleRef.current?.focus())
@@ -354,23 +361,37 @@ export default function PeoplePage() {
       {/* Bulk entry lives at the list's tail (a rare action shouldn't
           spend a row above Recent on every visit). The open panel stays
           mounted while a search is typed so a pasted list survives. */}
-      {!circle && (!trimmed || batchOpen) && (
+      {!circle && (!trimmed || batchOpen || importOpen) && (
         <div className="row batch-row">
-          {!batchOpen && (
-            <button
-              ref={batchToggleRef}
-              type="button"
-              className="quiet"
-              onClick={() => setBatchOpen(true)}
-              aria-expanded={false}
-            >
-              + Add several…
-            </button>
+          {!batchOpen && !importOpen && (
+            <>
+              <button
+                ref={batchToggleRef}
+                type="button"
+                className="quiet"
+                onClick={() => setBatchOpen(true)}
+                aria-expanded={false}
+                aria-controls="batch-add-people"
+              >
+                + Add several…
+              </button>
+              <button
+                ref={importToggleRef}
+                type="button"
+                className="quiet"
+                onClick={() => setImportOpen(true)}
+                aria-expanded={false}
+                aria-controls="import-contacts"
+              >
+                Import contacts…
+              </button>
+            </>
           )}
         </div>
       )}
       {batchOpen && !circle && <BatchAddPanel id="batch-add-people" onClose={closeBatch} />}
-      {!trimmed && (
+      {importOpen && !circle && <ContactImportPanel id="import-contacts" onClose={closeImport} />}
+      {!trimmed && !batchOpen && !importOpen && (
         <button
           className="add-person fab"
           // Name first: a nameless "New person" dumped at the bottom of a

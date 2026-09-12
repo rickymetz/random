@@ -729,3 +729,56 @@ describe('looks like people (linkNamesInNote)', () => {
     expect(store().records).toBe(before)
   })
 })
+
+describe('contacts import (importPeople)', () => {
+  beforeEach(async () => {
+    await db.slots.clear()
+    await db.records.clear()
+    await db.blobs.clear()
+    await db.auth.clear()
+    useVaultStore.setState({
+      status: 'unknown',
+      vault: null,
+      records: new Map(),
+      corrupted: 0,
+      homeQuery: '',
+    })
+    await store().create('open sesame')
+  })
+
+  it('creates people with details and a first note in one write, and indexes them', async () => {
+    const people = await store().importPeople([
+      {
+        displayName: 'Sam Okafor',
+        nicknames: ['Sammy', ' '],
+        jobTitle: 'Head of Design',
+        employer: 'Acme Ltd',
+        location: 'Brighton, UK',
+        birthday: { month: 6, day: 12 },
+        contact: { phone: '+44 7700 900123', email: 'sam@example.com' },
+        note: 'Met at the conference.',
+      },
+      { displayName: '  ' },
+      { displayName: 'Priya Raman' },
+    ])
+    expect(people.map((p) => p.displayName)).toEqual(['Sam Okafor', 'Priya Raman'])
+    const sam = store().records.get(people[0].id)
+    expect(sam).toMatchObject({
+      kind: 'person',
+      nicknames: ['Sammy'],
+      jobTitle: 'Head of Design',
+      employer: 'Acme Ltd',
+      location: 'Brighton, UK',
+      birthday: { month: 6, day: 12 },
+      contact: { phone: '+44 7700 900123', email: 'sam@example.com' },
+    })
+    const notes = [...store().records.values()].filter((r) => r.kind === 'note' && r.personId === people[0].id)
+    expect(notes).toHaveLength(1)
+    expect(notes[0].kind === 'note' && notes[0].body).toBe('Met at the conference.')
+    expect(searchPeopleIds('Acme')).toContain(people[0].id)
+    expect(searchPeopleIds('Priya')).toContain(people[1].id)
+    // Undo path: removing them drops the note too.
+    await store().removePeople(people.map((p) => p.id))
+    expect([...store().records.values()].some((r) => r.kind === 'note')).toBe(false)
+  })
+})

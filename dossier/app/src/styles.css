@@ -2897,3 +2897,65 @@ body:has(.facts-form) .app-bar nav {
   font-weight: 400;
   font-size: var(--fs-meta);
 }
+
+/* Contacts import panel: a checklist of parsed contacts. */
+.import-panel .import-filter {
+  width: 100%;
+}
+.import-panel .import-bulk {
+  margin-bottom: 0;
+}
+.import-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 24rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+}
+.import-list li + li {
+  border-top: 1px solid var(--line);
+}
+.import-list .import-row {
+  display: flex;
+  width: 100%;
+  gap: var(--s2);
+  align-items: center;
+  padding: 0 var(--s2);
+  color: var(--text);
+  font-size: var(--fs-ui);
+}
+.import-list .import-row input {
+  flex: 0 0 auto;
+}
+.import-list .import-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: var(--s1) 0;
+}
+.import-list .import-text .name {
+  font-weight: 550;
+}
+.import-list .import-text .hint,
+.import-list .import-text .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-list .tag {
+  flex: 0 0 auto;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.import-list li.list-more,
+.import-list li.hint {
+  padding: var(--s2);
+  text-align: center;
+}
