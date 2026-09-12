@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../lib/db'
 import { mentionToken } from '../lib/mentions'
 import {
+  searchPeopleIds,
   selectCircles,
   selectCirclesOf,
   selectNotes,
@@ -612,5 +613,172 @@ describe('recent dossiers (noteVisit)', () => {
     await store().removePerson(extra[9].id)
     expect(selectSettings(store().records)?.recentIds?.[0]).toBe(extra[8].id)
     expect(selectSettings(store().records)?.recentIds).not.toContain(extra[9].id)
+  })
+})
+
+describe('bulk add (addPeople / addRelationships)', () => {
+  beforeEach(async () => {
+    await db.slots.clear()
+    await db.records.clear()
+    await db.blobs.clear()
+    await db.auth.clear()
+    useVaultStore.setState({
+      status: 'unknown',
+      vault: null,
+      records: new Map(),
+      corrupted: 0,
+      homeQuery: '',
+    })
+    await store().create('open sesame')
+  })
+
+  it('creates several people in one write and links them, upgrading mention edges', async () => {
+    const anchor = await store().addPerson('Anchor')
+    const [sam, priya] = await store().addPeople(['Sam Okafor', 'Priya Raman'])
+    expect(selectPeople(store().records).map((p) => p.displayName)).toEqual(
+      expect.arrayContaining(['Sam Okafor', 'Priya Raman']),
+    )
+    // A prior mention edge anchor → sam gets replaced by the explicit one.
+    await store().saveNote(anchor.id, `Met ${mentionToken(sam)}`)
+    expect(selectRelationships(store().records).filter((r) => r.origin === 'mention')).toHaveLength(1)
+    const friend = selectRelationshipTypes(store().records).find((t) => t.label === 'friend')!
+    const coworker = selectRelationshipTypes(store().records).find((t) => t.label === 'coworker')!
+    await store().addRelationships([
+      { fromId: anchor.id, toId: sam.id, typeId: friend.id },
+      { fromId: anchor.id, toId: priya.id, typeId: coworker.id },
+      { fromId: anchor.id, toId: priya.id, typeId: friend.id }, // duplicate pair: skipped
+      { fromId: anchor.id, toId: 'nope', typeId: friend.id }, // unknown person: skipped
+    ])
+    const rels = selectRelationships(store().records)
+    expect(rels.filter((r) => r.origin === 'mention')).toHaveLength(0)
+    expect(rels.filter((r) => r.origin === 'explicit')).toHaveLength(2)
+    expect(searchPeopleIds('Priya').length).toBe(1)
+  })
+})
+
+describe('looks like people (linkNamesInNote)', () => {
+  beforeEach(async () => {
+    await db.slots.clear()
+    await db.records.clear()
+    await db.blobs.clear()
+    await db.auth.clear()
+    useVaultStore.setState({
+      status: 'unknown',
+      vault: null,
+      records: new Map(),
+      corrupted: 0,
+      homeQuery: '',
+    })
+    await store().create('open sesame')
+  })
+
+  it('creates people, rewrites the note to @mentions and derives mention edges in one go', async () => {
+    const sam = await store().addPerson('Sam Okafor')
+    const priya = await store().addPerson('Priya Raman')
+    const note = await store().saveNote(sam.id, "Lunch with Theo Martins and Priya. Theo's treat.")
+    expect(note?.kind).toBe('note')
+    const { linked, created } = await store().linkNamesInNote(note!.id, [
+      { phrase: 'Theo Martins' },
+      { phrase: 'Priya', personId: priya.id },
+      { phrase: 'Nobody Here' }, // not in the text → no person created
+      { phrase: 'Sam Okafor', personId: sam.id }, // the note's own person → ignored
+      { phrase: 'Sam Okafor' }, // by name, still the owner → ignored
+    ])
+    expect(linked.map((p) => p.displayName)).toEqual(['Theo Martins', 'Priya Raman'])
+    expect(created.map((p) => p.displayName)).toEqual(['Theo Martins'])
+    expect(selectPeople(store().records).filter((p) => p.displayName === 'Sam Okafor')).toHaveLength(1)
+    const theo = selectPeople(store().records).find((p) => p.displayName === 'Theo Martins')!
+    expect(theo).toBeDefined()
+    expect(selectPeople(store().records).some((p) => p.displayName === 'Nobody Here')).toBe(false)
+    const saved = store().records.get(note!.id)
+    expect(saved?.kind === 'note' && saved.body).toBe(
+      `Lunch with ${mentionToken(theo)} and ${mentionToken(priya)}. Theo's treat.`,
+    )
+    // A second pass links the lone first name now that Theo exists (possessive kept).
+    await store().linkNamesInNote(note!.id, [{ phrase: 'Theo', personId: theo.id }])
+    const again = store().records.get(note!.id)
+    expect(again?.kind === 'note' && again.body.endsWith(`${mentionToken(theo)}'s treat.`)).toBe(true)
+    expect(saved?.kind === 'note' && saved.mentions).toEqual([theo.id, priya.id])
+    const edges = [...store().records.values()].filter(
+      (r) => r.kind === 'relationship' && r.origin === 'mention' && r.fromId === sam.id,
+    )
+    expect(edges.map((e) => e.kind === 'relationship' && e.toId).sort()).toEqual([theo.id, priya.id].sort())
+    // The new person is searchable straight away.
+    expect(searchPeopleIds('Theo')).toContain(theo.id)
+  })
+
+  it('links the longest phrase first and reuses a person created in the same batch', async () => {
+    const sam = await store().addPerson('Sam Okafor')
+    const note = await store().saveNote(sam.id, 'Theo called. Then met Theo Martins, and Theo again.')
+    const { linked, created } = await store().linkNamesInNote(note!.id, [{ phrase: 'Theo' }, { phrase: 'Theo Martins' }])
+    expect(created.map((p) => p.displayName)).toEqual(['Theo Martins'])
+    expect(linked).toHaveLength(1)
+    const theo = created[0]
+    const saved = store().records.get(note!.id)
+    expect(saved?.kind === 'note' && saved.body).toBe(
+      `${mentionToken(theo)} called. Then met ${mentionToken(theo)}, and ${mentionToken(theo)} again.`,
+    )
+    expect(selectPeople(store().records).filter((p) => p.displayName.startsWith('Theo'))).toHaveLength(1)
+  })
+
+  it('is a no-op write when nothing matches', async () => {
+    const sam = await store().addPerson('Sam Okafor')
+    const note = await store().saveNote(sam.id, 'Quiet day.')
+    const before = store().records
+    expect(await store().linkNamesInNote(note!.id, [{ phrase: 'Theo' }])).toEqual({ linked: [], created: [] })
+    expect(store().records).toBe(before)
+  })
+})
+
+describe('contacts import (importPeople)', () => {
+  beforeEach(async () => {
+    await db.slots.clear()
+    await db.records.clear()
+    await db.blobs.clear()
+    await db.auth.clear()
+    useVaultStore.setState({
+      status: 'unknown',
+      vault: null,
+      records: new Map(),
+      corrupted: 0,
+      homeQuery: '',
+    })
+    await store().create('open sesame')
+  })
+
+  it('creates people with details and a first note in one write, and indexes them', async () => {
+    const people = await store().importPeople([
+      {
+        displayName: 'Sam Okafor',
+        nicknames: ['Sammy', ' '],
+        jobTitle: 'Head of Design',
+        employer: 'Acme Ltd',
+        location: 'Brighton, UK',
+        birthday: { month: 6, day: 12 },
+        contact: { phone: '+44 7700 900123', email: 'sam@example.com' },
+        note: 'Met at the conference.',
+      },
+      { displayName: '  ' },
+      { displayName: 'Priya Raman' },
+    ])
+    expect(people.map((p) => p.displayName)).toEqual(['Sam Okafor', 'Priya Raman'])
+    const sam = store().records.get(people[0].id)
+    expect(sam).toMatchObject({
+      kind: 'person',
+      nicknames: ['Sammy'],
+      jobTitle: 'Head of Design',
+      employer: 'Acme Ltd',
+      location: 'Brighton, UK',
+      birthday: { month: 6, day: 12 },
+      contact: { phone: '+44 7700 900123', email: 'sam@example.com' },
+    })
+    const notes = [...store().records.values()].filter((r) => r.kind === 'note' && r.personId === people[0].id)
+    expect(notes).toHaveLength(1)
+    expect(notes[0].kind === 'note' && notes[0].body).toBe('Met at the conference.')
+    expect(searchPeopleIds('Acme')).toContain(people[0].id)
+    expect(searchPeopleIds('Priya')).toContain(people[1].id)
+    // Undo path: removing them drops the note too.
+    await store().removePeople(people.map((p) => p.id))
+    expect([...store().records.values()].some((r) => r.kind === 'note')).toBe(false)
   })
 })

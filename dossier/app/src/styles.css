@@ -2598,9 +2598,14 @@ body:has(.facts-form) .app-bar nav {
   font: 450 var(--fs-ui) / 1.3 var(--font-ui);
   color: var(--text-2);
 }
-.add-form .add-submit {
+.add-form .add-actions {
   grid-column: 1 / -1;
-  justify-self: end;
+  justify-content: flex-end;
+  align-items: center;
+}
+.add-form .add-actions .quiet {
+  text-transform: none;
+  letter-spacing: 0;
 }
 /* Settings: a column form's field must not take a 12rem *height*. */
 .settings form.column .field {
@@ -2671,4 +2676,304 @@ body:has(.facts-form) .app-bar nav {
 }
 .chip-input .chip-suggestions li.active {
   background: var(--surface-3);
+}
+
+/* -------------------------------------------------------- add several */
+.batch-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-left: 2px solid var(--accent-line);
+  border-radius: var(--r-md);
+  padding: var(--s3);
+  margin: var(--s2) 0 var(--s3);
+  box-shadow: var(--e-1);
+  animation: rise var(--dur) ease-out;
+}
+.batch-panel .panel-title {
+  margin: 0;
+  font: 600 var(--fs-meta) / 1.2 var(--font-ui);
+  color: var(--text-2);
+}
+.batch-panel textarea {
+  background: var(--surface-1);
+  font-family: var(--font-ui);
+}
+.batch-default {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+.batch-default select {
+  width: auto;
+}
+.batch-preview {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+.batch-preview li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+  font-size: var(--fs-meta);
+}
+.batch-preview .name {
+  font-weight: 550;
+  color: var(--text);
+}
+.batch-preview .tag {
+  font-size: var(--fs-micro);
+  padding: 0.05rem 0.45rem;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+.batch-preview .tag.known {
+  color: var(--text-3);
+}
+.people .batch-row {
+  justify-content: flex-end;
+  margin: calc(-1 * var(--s2)) 0 0;
+}
+.section-head button.quiet {
+  margin-left: auto;
+  margin-right: var(--s2);
+}
+.section-head button.quiet + a {
+  margin-left: 0;
+}
+
+.batch-panel h2.panel-title,
+.batch-panel h3.panel-title {
+  margin: 0;
+  font: 600 var(--fs-meta) / 1.2 var(--font-ui);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-2);
+}
+.batch-preview:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.batch-preview li {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.batch-preview li .hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.batch-preview .tag {
+  white-space: nowrap;
+}
+.batch-panel .row {
+  flex-wrap: wrap;
+}
+.batch-panel .status-slot {
+  white-space: nowrap;
+}
+.people .batch-row {
+  justify-content: center;
+  margin: var(--s3) 0 0;
+}
+
+/* "Looks like people": name offers shown in the capture bar after a save.
+   Two rows at most: a header (title, status, Undo / all / Not now) and one
+   horizontally scrolling row of chips — the bar sits over the keyboard. */
+.looks-like {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: 0 0 var(--s2);
+  animation: rise var(--dur) ease-out;
+}
+.looks-like-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: var(--ctl-h);
+}
+.looks-like-title {
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.looks-like-head .hint.saved {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.looks-like-head .hint.saved:empty {
+  flex: 1 1 auto;
+}
+.looks-like-head button.quiet {
+  min-height: var(--ctl-h);
+  white-space: nowrap;
+  padding: 0 var(--s2);
+}
+.looks-like-head button.undo {
+  color: var(--accent);
+}
+.looks-like-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--s2);
+  list-style: none;
+  margin: 0 calc(var(--gutter) * -1);
+  padding: 0 var(--gutter) 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+.looks-like-chips::-webkit-scrollbar {
+  display: none;
+}
+.looks-like-chips li {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  max-width: 85vw;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  scroll-snap-align: start;
+}
+.looks-like-chips li.known,
+.looks-like-chips li.ambiguous,
+.looks-like-chips li.choose {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+}
+.looks-like-chips li.choose {
+  gap: 0;
+}
+.looks-like-chips li.choose button.name + button.name {
+  border-left: 1px solid var(--accent-line);
+}
+.looks-like-chips button.name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: var(--ctl-h);
+  min-width: 0;
+  padding: 0 var(--s3);
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--text);
+  font-size: var(--fs-ui);
+  font-weight: 500;
+}
+.looks-like-chips button.name .verb {
+  color: var(--accent);
+  font-weight: 600;
+}
+.looks-like-chips button.name .text,
+.looks-like-chips button.name .who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.looks-like-chips button.name .who {
+  color: var(--text-2);
+  font-weight: 400;
+  font-size: var(--fs-meta);
+}
+
+/* Contacts import panel: a checklist of parsed contacts. */
+.import-panel .import-filter {
+  width: 100%;
+}
+.import-panel .import-bulk {
+  margin-bottom: 0;
+}
+.import-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: min(24rem, 45dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+}
+.import-list li + li {
+  border-top: 1px solid var(--line);
+}
+.import-list .import-row {
+  display: flex;
+  width: 100%;
+  gap: var(--s2);
+  align-items: center;
+  padding: 0 var(--s2);
+  color: var(--text);
+  font-size: var(--fs-ui);
+}
+.import-list .import-row input {
+  flex: 0 0 auto;
+}
+.import-list .import-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: var(--s1) 0;
+}
+.import-list .import-text .name {
+  font-weight: 550;
+}
+.import-list .import-text .hint,
+.import-list .import-text .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-list .import-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  padding-top: 2px;
+}
+.import-list .tag {
+  font-size: var(--fs-micro);
+  padding: 0.05rem 0.45rem;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  color: var(--text-2);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-list .tag.known {
+  color: var(--text-3);
+}
+.import-panel .status-slot:empty {
+  display: none;
+}
+.import-list li.list-more,
+.import-list li.hint {
+  padding: var(--s2);
+  text-align: center;
 }

@@ -366,6 +366,15 @@ function SecuritySection() {
           Daily reminder — the notification only ever says “You have a reminder”, never
           who it's about
         </label>
+        <label className="inline-check">
+          <input
+            type="checkbox"
+            checked={settings?.nameSuggestions ?? true}
+            onChange={(e) => void changeSecurity({ nameSuggestions: e.target.checked })}
+          />
+          Suggest people from names in notes — a simple pattern match on this device;
+          nothing is sent anywhere and declined names aren't saved
+        </label>
         {reminderNotice && (
           <p className="hint error" role="alert">
             {reminderNotice}
@@ -609,7 +618,8 @@ function ImportSection() {
       <p className="hint">
         Bring back notes from a backup file. What's already here stays; where both
         have the same entry, the newer one wins. On a new phone: set a passphrase,
-        then restore here.
+        then restore here. Looking to bring in your phone’s contacts instead? Use
+        “Import contacts…” at the end of the People list.
       </p>
       <form className="column" onSubmit={doImport}>
         <label className="field">

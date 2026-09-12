@@ -11,6 +11,8 @@
  */
 import { create } from 'zustand'
 import { extractMentions, renameMentionsOf, stripMentionsOf } from '../lib/mentions'
+import { linkPhrase } from '../lib/nameDetect'
+import type { ContactDraft } from '../lib/contacts'
 import { CIRCLE_COLORS, RECENT_LIMIT, type Circle } from '../lib/models'
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
@@ -123,6 +125,7 @@ interface VaultState {
         | 'autoLockMinutes'
         | 'backgroundGraceSeconds'
         | 'shakeToLock'
+        | 'nameSuggestions'
         | 'remindersEnabled'
         | 'lastReminderDay'
       >
@@ -136,11 +139,28 @@ interface VaultState {
   setHomePage: (page: { key: string; limit: number }) => void
 
   addPerson: (displayName: string) => Promise<Person>
+  /** Several people in one encrypted write ("Add several"). */
+  addPeople: (displayNames: string[]) => Promise<Person[]>
+  /** Several explicit edges in one write; each replaces a mention edge on its pair. */
+  addRelationships: (edges: { fromId: string; toId: string; typeId: string }[]) => Promise<void>
+  /** Contacts import: people with details (and a first note where the
+   * contact carried one) in one encrypted write. Returns the people. */
+  importPeople: (drafts: ContactDraft[]) => Promise<Person[]>
   updatePerson: (person: Person) => Promise<void>
   removePerson: (personId: string) => Promise<void>
   /** Bulk delete; circles left with no members are removed too. */
   removePeople: (personIds: string[]) => Promise<void>
-  saveNote: (personId: string, body: string) => Promise<void>
+  saveNote: (personId: string, body: string) => Promise<NoteEntry | undefined>
+  /**
+   * "Looks like people": turn plain names in a note into @mentions. Each
+   * link names a phrase and either an existing person or (no personId) a
+   * new one called after the phrase. One encrypted write; mention edges
+   * follow the rewritten text. Returns the people linked, in order.
+   */
+  linkNamesInNote: (
+    noteId: string,
+    links: { phrase: string; personId?: string }[],
+  ) => Promise<{ linked: Person[]; created: Person[] }>
   removeNote: (noteId: string) => Promise<void>
   updateNote: (noteId: string, body: string) => Promise<void>
   /** Circles (§4.6): named, colored groups drawn as bubbles on the graph. */
@@ -638,6 +658,112 @@ export const useVaultStore = create<VaultState>((set, get) => {
       return person
     }),
 
+    addPeople: (displayNames) =>
+      enqueue(async () => {
+      const now = Date.now()
+      const people: Person[] = displayNames.map((displayName) => ({
+        kind: 'person',
+        id: crypto.randomUUID(),
+        displayName: displayName.trim() || 'Unnamed',
+        nicknames: [],
+        likes: [],
+        dislikes: [],
+        tags: [],
+        createdAt: now,
+        updatedAt: now,
+      }))
+      if (people.length > 0) await apply(people, [], people.map((p) => p.id))
+      return people
+    }),
+
+    importPeople: (drafts) =>
+      enqueue(async () => {
+      const now = Date.now()
+      const puts: DomainRecord[] = []
+      const people: Person[] = []
+      for (const d of drafts) {
+        const displayName = d.displayName.trim()
+        if (!displayName) continue
+        const person: Person = {
+          kind: 'person',
+          id: crypto.randomUUID(),
+          displayName,
+          nicknames: (d.nicknames ?? []).map((n) => n.trim()).filter(Boolean),
+          likes: [],
+          dislikes: [],
+          tags: [],
+          createdAt: now,
+          updatedAt: now,
+        }
+        if (d.jobTitle) person.jobTitle = d.jobTitle
+        if (d.employer) person.employer = d.employer
+        if (d.location) person.location = d.location
+        if (d.birthday) person.birthday = d.birthday
+        if (d.contact?.phone || d.contact?.email) person.contact = { ...d.contact }
+        people.push(person)
+        puts.push(person)
+        if (d.note?.trim()) {
+          puts.push({
+            kind: 'note',
+            id: crypto.randomUUID(),
+            personId: person.id,
+            body: d.note.trim(),
+            mentions: [],
+            createdAt: now,
+          })
+        }
+      }
+      if (puts.length > 0) await apply(puts, [], people.map((p) => p.id))
+      return people
+    }),
+
+    addRelationships: (edges) =>
+      enqueue(async () => {
+      const { records } = get()
+      const puts: Relationship[] = []
+      const deletes: string[] = []
+      const touched = new Set<string>()
+      // Pairs already joined by an explicit edge are left alone: a batch
+      // must never stack a second link on someone you already linked.
+      const pairs = new Set<string>()
+      for (const r of records.values()) {
+        if (r.kind === 'relationship' && r.origin !== 'mention') {
+          pairs.add([r.fromId, r.toId].sort().join('|'))
+        }
+      }
+      for (const e of edges) {
+        const type = records.get(e.typeId)
+        if (!type || type.kind !== 'relationshipType') continue
+        if (!records.has(e.fromId) || !records.has(e.toId) || e.fromId === e.toId) continue
+        const key = [e.fromId, e.toId].sort().join('|')
+        if (pairs.has(key)) continue
+        pairs.add(key)
+        for (const r of records.values()) {
+          if (
+            r.kind === 'relationship' &&
+            r.origin === 'mention' &&
+            ((r.fromId === e.fromId && r.toId === e.toId) ||
+              (r.fromId === e.toId && r.toId === e.fromId))
+          ) {
+            deletes.push(r.id)
+          }
+        }
+        puts.push({
+          kind: 'relationship',
+          id: crypto.randomUUID(),
+          fromId: e.fromId,
+          toId: e.toId,
+          typeId: e.typeId,
+          directed: type.directed,
+          origin: 'explicit',
+          createdAt: Date.now(),
+        })
+        touched.add(e.fromId)
+        touched.add(e.toId)
+      }
+      if (puts.length > 0 || deletes.length > 0) await apply(puts, deletes, [...touched])
+    }),
+
     updatePerson: (person) =>
       enqueue(async () => {
       const puts: DomainRecord[] = [{ ...person, updatedAt: Date.now() }]
@@ -688,6 +814,72 @@ export const useVaultStore = create<VaultState>((set, get) => {
       withNote.set(note.id, note)
       const { puts, deletes } = diffMentionEdges(withNote, personId)
       await apply([note, ...puts], deletes, [personId])
+      return note
+    }),
+
+    linkNamesInNote: (noteId, links) =>
+      enqueue(async () => {
+      const note = get().records.get(noteId)
+      if (!note || note.kind !== 'note') return { linked: [], created: [] }
+      const owner = get().records.get(note.personId)
+      const ownerKeys = new Set(
+        owner?.kind === 'person' ? [owner.displayName, ...owner.nicknames].map((n) => n.trim().toLowerCase()) : [],
+      )
+      const now = Date.now()
+      const created: Person[] = []
+      const linked: Person[] = []
+      let body = note.body
+      // Longest phrase first: linking "Theo" before "Theo Martins" would
+      // leave "@[Theo](id) Martins" behind.
+      const ordered = [...links]
+        .map((l) => ({ ...l, phrase: l.phrase.trim() }))
+        .filter((l) => l.phrase)
+        .sort((a, b) => b.phrase.split(/\s+/).length - a.phrase.split(/\s+/).length || b.phrase.length - a.phrase.length)
+      for (const link of ordered) {
+        const key = link.phrase.toLowerCase()
+        if (ownerKeys.has(key)) continue
+        let target: Person | undefined
+        if (link.personId) {
+          const r = get().records.get(link.personId)
+          if (r?.kind === 'person') target = r
+        } else {
+          // "Theo Martins" then "Theo" in one batch is one person, not two.
+          const first = key.split(/\s+/)[0]
+          const sameFirst = created.filter((p) => p.displayName.toLowerCase().split(/\s+/)[0] === first)
+          target =
+            created.find((p) => p.displayName.toLowerCase() === key) ??
+            (!key.includes(' ') && sameFirst.length === 1 ? sameFirst[0] : undefined)
+          if (!target) {
+            target = {
+              kind: 'person',
+              id: crypto.randomUUID(),
+              displayName: link.phrase,
+              nicknames: [],
+              likes: [],
+              dislikes: [],
+              tags: [],
+              createdAt: now,
+              updatedAt: now,
+            }
+            created.push(target)
+          }
+        }
+        if (!target || target.id === note.personId) continue
+        const next = linkPhrase(body, link.phrase, target)
+        if (next === body) continue
+        body = next
+        if (!linked.includes(target)) linked.push(target)
+      }
+      if (body === note.body) return { linked: [], created: [] }
+      // Only people whose phrase was actually found get created.
+      const kept = created.filter((p) => linked.includes(p))
+      const edited: NoteEntry = { ...note, body, mentions: extractMentions(body) }
+      const withEdit = new Map(get().records)
+      for (const p of kept) withEdit.set(p.id, p)
+      withEdit.set(noteId, edited)
+      const { puts, deletes } = diffMentionEdges(withEdit, note.personId)
+      await apply([...kept, edited, ...puts], deletes, [note.personId, ...kept.map((p) => p.id)])
+      return { linked, created: kept }
     }),
 
     updateNote: (noteId, body) =>

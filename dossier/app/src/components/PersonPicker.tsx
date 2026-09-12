@@ -32,6 +32,8 @@ export default function PersonPicker({
   pickedMessage,
   listAbove,
   preferIds,
+  focusToken,
+  onPicked,
   className,
 }: {
   /** Everyone who could be named — used for the exact-name check too. */
@@ -53,6 +55,13 @@ export default function PersonPicker({
   listAbove?: boolean
   /** Ids to list first when nothing is typed (recently opened dossiers). */
   preferIds?: readonly string[]
+  /** Bump to put the caret back in the field without opening the list
+   * (the relationship form's "keep adding" flow). */
+  focusToken?: number
+  /** Where focus goes after a pick instead of the chip's change button —
+   * a form can send it straight to its submit. The status region still
+   * announces the pick. */
+  onPicked?: (person: Person) => void
   className?: string
 }) {
   const listId = useId()
@@ -69,6 +78,14 @@ export default function PersonPicker({
   // Pointer picks happen on pointerdown, before the field can blur; the
   // click that follows is skipped. A bare click (keyboard/AT) still picks.
   const pointerPicked = useRef(false)
+  const quietFocus = useRef(false)
+  useEffect(() => {
+    if (!focusToken) return
+    quietFocus.current = true
+    inputRef.current?.focus()
+    // onFocus runs synchronously inside focus(); never leave the flag up.
+    quietFocus.current = false
+  }, [focusToken])
 
   const excluded = useMemo(() => new Set(excludeIds ?? []), [excludeIds])
   const candidates = useMemo(
@@ -171,7 +188,8 @@ export default function PersonPicker({
     setEditing(false)
     setStatus(pickedMessage ? pickedMessage(person) : `${person.displayName} selected`)
     onChange(person.id)
-    setFocusChip(true)
+    if (onPicked) onPicked(person)
+    else setFocusChip(true)
   }
   const startEditing = () => {
     onChange('')
@@ -240,6 +258,10 @@ export default function PersonPicker({
               setOpen(true)
             }}
             onFocus={() => {
+              if (quietFocus.current) {
+                quietFocus.current = false
+                return
+              }
               setOpen(true)
               // The keyboard's own reveal parks the field under the sticky
               // app bar; bring it (and room for the list) into view.

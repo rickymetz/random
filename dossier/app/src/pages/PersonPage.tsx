@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import BatchAddPanel from '../components/BatchAddPanel'
 import PersonPicker from '../components/PersonPicker'
 import ChipInput from '../components/ChipInput'
+import LooksLikePeople from '../components/LooksLikePeople'
 import MentionTextarea from '../components/MentionTextarea'
 import { mutualConnections, selectSelf, shortestPath } from '../lib/graphQueries'
 import { GALLERY_MAX_DIM, downscaleImage } from '../lib/image'
@@ -693,6 +695,13 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
+  // The note just saved, while its "Looks like people" offer is showing.
+  const [offerNoteId, setOfferNoteId] = useState<string | null>(null)
+  const offering = useRef(false)
+  offering.current = offerNoteId !== null
+  const clearOffer = useCallback(() => setOfferNoteId(null), [])
+  const suggestNames = useVaultStore((s) => selectSettings(s.records)?.nameSuggestions ?? true)
+  const focusBox = useCallback(() => document.querySelector<HTMLElement>('.capture-bar textarea'), [])
   const draftRef = useRef('')
   draftRef.current = draft
 
@@ -731,9 +740,15 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
     draftRef.current = ''
     setDraft('')
     try {
-      await saveNote(person.id, body)
-      setSavedFlash(true)
-      setTimeout(() => setSavedFlash(false), 2000)
+      const note = await saveNote(person.id, body)
+      // Only offer names when the setting is on; an offer still showing
+      // for the previous note stays until it is dealt with.
+      const offer = suggestNames && note ? note.id : null
+      setOfferNoteId((prev) => (prev && offering.current ? prev : offer))
+      if (!offer || !offering.current) {
+        setSavedFlash(true)
+        setTimeout(() => setSavedFlash(false), 2000)
+      }
     } catch {
       setDraft(body) // restore on failure
     } finally {
@@ -742,6 +757,9 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
   }
   return (
     <section className="capture-bar" hidden={hidden}>
+      {offerNoteId && (
+        <LooksLikePeople key={offerNoteId} noteId={offerNoteId} person={person} onDone={clearOffer} refocus={focusBox} />
+      )}
       <MentionTextarea
         people={others}
         value={draft}
@@ -753,7 +771,7 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
       />
       {/* The Save row appears only once there is something to save — an
           idle bar shouldn't spend two rows of bottom chrome. */}
-      {(draft.trim() !== '' || savedFlash || busy) && (
+      {(draft.trim() !== '' || (savedFlash && !offerNoteId) || busy) && (
         <div className="row">
           <button
             className="primary"
@@ -765,7 +783,7 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
           >
             {busy ? '…' : 'Save note'}
           </button>
-          {savedFlash && (
+          {savedFlash && !offerNoteId && (
             <span className="hint saved" role="status">
               Saved ✓
             </span>
@@ -907,6 +925,13 @@ function RelationshipSection({ person }: { person: Person }) {
 
   const [otherId, setOtherId] = useState('')
   const [typeId, setTypeId] = useState('')
+  const [focusToken, setFocusToken] = useState(0)
+  const [batchOpen, setBatchOpen] = useState(false)
+  const batchToggleRef = useRef<HTMLButtonElement>(null)
+  const closeBatch = () => {
+    setBatchOpen(false)
+    requestAnimationFrame(() => batchToggleRef.current?.focus())
+  }
   const [newType, setNewType] = useState('')
   const [newTypeColor, setNewTypeColor] = useState(CUSTOM_TYPE_COLORS[0])
   const [newTypeDirected, setNewTypeDirected] = useState(false)
@@ -972,10 +997,16 @@ function RelationshipSection({ person }: { person: Person }) {
       const [fromId, toId] =
         directed && !outward ? [otherId, person.id] : [person.id, otherId]
       await addRelationship(fromId, toId, resolvedTypeId)
+      // Keep adding: the type stays selected and the caret returns to the
+      // person field (quietly — no list until you type), so "Sam, Priya,
+      // Theo — all coworkers" is name, Enter, Add, name, Enter, Add.
       setOtherId('')
-      setTypeId('')
+      setTypeId(resolvedTypeId)
       setNewType('')
+      setNewTypeColor(CUSTOM_TYPE_COLORS[0])
+      setNewTypeDirected(false)
       setOutward(true)
+      setFocusToken((n) => n + 1)
     } finally {
       setBusy(false)
     }
@@ -987,6 +1018,11 @@ function RelationshipSection({ person }: { person: Person }) {
         <h2>Relationships</h2>
         <Link to={`/graph?focus=${person.id}`}>See on graph →</Link>
       </div>
+      {/* The batch panel sits above the list so freshly linked rows
+          appear right under its status line. */}
+      {batchOpen && (
+        <BatchAddPanel id="batch-add-links" anchor={person} headingLevel={3} onClose={closeBatch} />
+      )}
       {edges.length === 0 && (
         <p className="empty-inline">No one linked yet — pick a person and how you know them.</p>
       )}
@@ -1007,6 +1043,18 @@ function RelationshipSection({ person }: { person: Person }) {
             label="Person"
             placeholder="Type a name…"
             preferIds={recentIds}
+            focusToken={focusToken}
+            // Keyboard loop: name, Enter, Enter. With a type chosen the
+            // pick sends focus to Add; without one, to the type select.
+            onPicked={() =>
+              requestAnimationFrame(() => {
+                const form = document.querySelector<HTMLFormElement>('form.add-form:has(.person-picker)')
+                const target = typeId
+                  ? form?.querySelector<HTMLElement>('.add-submit')
+                  : form?.querySelector<HTMLElement>('select[aria-label="Relationship type"]')
+                target?.focus()
+              })
+            }
           />
         </div>
         <label>
@@ -1079,13 +1127,25 @@ function RelationshipSection({ person }: { person: Person }) {
             })()}
           </button>
         )}
-        <button
-          className="add-submit"
-          type="submit"
-          disabled={busy || !otherId || !typeId || (typeId === 'new' && !newType.trim())}
-        >
-          Add
-        </button>
+        <div className="row add-actions">
+          <button
+            ref={batchToggleRef}
+            type="button"
+            className="quiet"
+            onClick={() => (batchOpen ? closeBatch() : setBatchOpen(true))}
+            aria-expanded={batchOpen}
+            aria-controls={batchOpen ? 'batch-add-links' : undefined}
+          >
+            Add several…
+          </button>
+          <button
+            className="add-submit"
+            type="submit"
+            disabled={busy || !otherId || !typeId || (typeId === 'new' && !newType.trim())}
+          >
+            Add
+          </button>
+        </div>
       </form>
     </section>
   )
@@ -1308,6 +1368,13 @@ function NotesSection({ personId }: { personId: string }) {
   const notes = useMemo(() => selectNotes(records, personId), [records, personId])
   const [promotingId, setPromotingId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  // "Looks like people" after an inline edit — the way into notes written
+  // before the feature existed (✎, Save).
+  const [offerId, setOfferId] = useState<string | null>(null)
+  const clearOffer = useCallback(() => setOfferId(null), [])
+  const suggestNames = useVaultStore((s) => selectSettings(s.records)?.nameSuggestions ?? true)
+  const owner = records.get(personId)
+  const person = owner?.kind === 'person' ? owner : undefined
 
   return (
     <section>
@@ -1327,9 +1394,13 @@ function NotesSection({ personId }: { personId: string }) {
                 noteId={note.id}
                 body={note.body}
                 onDone={() => setEditingId(null)}
+                onSaved={() => setOfferId(suggestNames ? note.id : null)}
               />
             ) : (
               <NoteBody body={note.body} />
+            )}
+            {offerId === note.id && editingId !== note.id && person && (
+              <LooksLikePeople key={note.id} noteId={note.id} person={person} onDone={clearOffer} />
             )}
             {editingId !== note.id && (
               <div className="note-actions">
@@ -1385,11 +1456,13 @@ function NoteEditor({
   noteId,
   body,
   onDone,
+  onSaved,
 }: {
   personId: string
   noteId: string
   body: string
   onDone: () => void
+  onSaved?: () => void
 }) {
   const records = useVaultStore((s) => s.records)
   const updateNote = useVaultStore((s) => s.updateNote)
@@ -1407,6 +1480,7 @@ function NoteEditor({
     try {
       if (next !== body) await updateNote(noteId, next)
       onDone()
+      onSaved?.()
     } finally {
       setBusy(false)
     }
