@@ -488,6 +488,7 @@ From the requirements interview (2026-09-09):
 | Home at scale (§4.4) | Recent = last opened dossiers, stored encrypted and device-local (not in backups), padded to six with recently updated; A–Z rail scoped to the list (hidden at the top of the page), drag + roving-tabindex keyboard, accents fold to the base letter, `#` first for digits/symbols/other scripts |
 | Scale + iOS (§7) | Stress crowd behind `?dev=1`, not a user feature; per-snapshot selector indexes; paged People list; batched graph painting; `visualViewport`-driven keyboard inset for bottom bars; iOS-tab install guidance (separate storage) |
 | Discretion | Instant lock/panic, neutral disguise, decoy vault (designed now, built v2) |
+| Looks like people (§4.2) | After a note is saved, capitalised name-shaped phrases (1–3 words) that match nobody appear as chips in the capture bar: “+ Name” creates the person, “@ Phrase → Person” links an existing one (whole name, nickname, or a first name that belongs to exactly one person); either rewrites the note to an @mention in one write so the mention edge follows. Per-chip “Not a person” and a Dismiss are session-only; nothing about declined names is stored, and old notes are never re-scanned. Heuristic only and entirely on-device: stop words, dates, acronyms, existing mentions, the dossier’s own person and ambiguous first names are skipped |
 | Platform | Mobile-first, desktop works |
 | Legal/ethics section | Skipped for now (revisit before public release) |
 | Deliverable | This document + scaffolded React/TS PWA |
