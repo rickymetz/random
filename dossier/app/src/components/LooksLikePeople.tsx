@@ -111,7 +111,7 @@ export default function LooksLikePeople({
       if (linked.length === 0) {
         flash('Nothing to link')
       } else if (linked.length === 1) {
-        flash(created.length ? `Added ${linked[0].displayName} ✓` : `Linked ${linked[0].displayName} ✓`, {
+        flash(created.length ? `Added ${linked[0].displayName}` : `Linked ${linked[0].displayName}`, {
           prevBody,
           createdIds: created.map((p) => p.id),
         })
@@ -119,7 +119,7 @@ export default function LooksLikePeople({
         const parts = []
         if (created.length) parts.push(`added ${created.length}`)
         if (linkedExisting) parts.push(`linked ${linkedExisting}`)
-        flash(parts.join(', ').replace(/^./, (c) => c.toUpperCase()) + ' ✓', {
+        flash(parts.join(', ').replace(/^./, (c) => c.toUpperCase()) + '', {
           prevBody,
           createdIds: created.map((p) => p.id),
         })

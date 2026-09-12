@@ -408,8 +408,8 @@ export default function App() {
           onClick={() => void flushDrafts().finally(() => panicLock())}
           aria-label={
             pinArmed
-              ? 'Lock & forget PIN — passphrase or biometrics to reopen'
-              : 'Lock — passphrase or biometrics to reopen'
+              ? 'Lock & forget PIN — reopen with your passphrase or Face ID'
+              : 'Lock — reopen with your passphrase or Face ID'
           }
           title={
             pinArmed
@@ -422,13 +422,13 @@ export default function App() {
       </header>
       {lockWarning && (
         <p className="banner lock-warning" role="status">
-          Locks in 20 seconds — tap, press any key or move focus to stay unlocked. Drafts are saved either way.
+          Locks in 20 seconds — tap or press a key to stay unlocked. Drafts are saved either way.
         </p>
       )}
       {motionBlocked && unlocked && (
         <p className="banner" role="status">
-          Shake to lock is off: the phone didn't allow motion access. Allow it in
-          Settings → Safari → Motion &amp; Orientation Access, or turn the option off.{' '}
+          Shake to lock is off — motion access was denied. Allow it in Settings → Safari →
+          Motion &amp; Orientation Access.{' '}
           <button className="subtle" onClick={() => setMotionBlocked(false)}>
             Dismiss
           </button>
@@ -467,7 +467,7 @@ export default function App() {
             tap must never eat the fact you just typed. */}
         <button
           onClick={() => void timerLock()}
-          aria-label="Lock — drafts are saved; quick unlock stays armed"
+          aria-label="Lock — your draft is saved and the PIN still works"
         >
           <LockIcon />
           Lock

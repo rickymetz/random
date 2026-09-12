@@ -86,8 +86,7 @@ export default function PersonPage() {
       </header>
       {person.isSelf && (
         <p className="banner">
-          This card is you. Link people to it and the app can show how you know
-          someone through others.
+          This is you. Relationships added here power “How you connect”.
         </p>
       )}
       {/* Lookup order (§4.1): what to remember and what you last wrote
@@ -185,7 +184,7 @@ function Facts({
       </div>
       {filled.length === 0 ? (
         <p className="empty-inline">
-          Nothing recorded yet — tap Edit to add a job, birthday, likes or circles.
+          Nothing yet — tap Edit.
         </p>
       ) : (
         <div className="facts-card">
@@ -275,7 +274,7 @@ function CopyAsTextButton({ person }: { person: Person }) {
   }
   return (
     <button className="quiet" onClick={() => void copy()} aria-live="polite">
-      {state === 'copied' ? 'Copied ✓' : state === 'failed' ? 'Copy failed' : 'Copy as text'}
+      {state === 'copied' ? 'Copied' : state === 'failed' ? 'Copy failed' : 'Copy as text'}
     </button>
   )
 }
@@ -388,7 +387,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     // this app exists to keep).
     const birthday = parsePartialDate(form.birthday)
     if (form.birthday.trim() && !birthday) {
-      setDateError('Birthday not understood — try Jun 21, 1984-06-21, or just June.')
+      setDateError('Try a date like Jun 21 or 1984-06-21, or just June.')
       requestAnimationFrame(() =>
         document.querySelector<HTMLInputElement>('.facts-form input[aria-invalid="true"]')?.focus(),
       )
@@ -473,7 +472,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
             },
             'span-2',
           )}
-          {chips('nicknames', 'Nicknames', undefined, { capitalize: 'words' })}
+          {chips('nicknames', 'Nicknames', undefined, { capitalize: 'words', placeholder: 'Danny' })}
           {field('pronouns', 'Pronouns')}
           {field('birthday', 'Birthday', 'Jun 21 or 1984-06-21', {
             onInput: () => setDateError(null),
@@ -490,15 +489,13 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         <input type="checkbox" checked={isSelf} onChange={(e) => setIsSelf(e.target.checked)} />
         <span>
           This is me
-          <span className="hint"> — only one card can be you</span>
         </span>
       </label>
       </fieldset>
       <fieldset className="field-group">
         <legend>Circles</legend>
         <p className="hint">
-          The circles this person is part of — “book club”, “Meridian Labs” — shown as a
-          tinted area on the graph. Pick an existing circle or type a new name.
+          Groups they belong to, shown as tinted areas on the graph.
         </p>
         <div className="field-grid">
           {chips('circles', 'Circles', vocab.circles, {
@@ -521,7 +518,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
               rows={2}
               value={form.howWeMet}
               onChange={(e) => setForm({ ...form, howWeMet: e.target.value })}
-              placeholder="the story, in a line or two"
+              placeholder="at Priya’s wedding"
             />
           </label>
         </div>
@@ -536,9 +533,9 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
       <fieldset className="field-group">
         <legend>Preferences</legend>
         <div className="field-grid">
-          {chips('likes', 'Likes', vocab.likes)}
-          {chips('dislikes', 'Dislikes', vocab.dislikes)}
-          {chips('tags', 'Tags', vocab.tags)}
+          {chips('likes', 'Likes', vocab.likes, { placeholder: 'karaoke' })}
+          {chips('dislikes', 'Dislikes', vocab.dislikes, { placeholder: 'small talk' })}
+          {chips('tags', 'Tags', vocab.tags, { placeholder: 'college' })}
         </div>
       </fieldset>
       {/* Deleting lives in edit mode, not next to the everyday note box. */}
@@ -610,8 +607,7 @@ function ConnectionSection({ person }: { person: Person }) {
       <section>
         <h2>How you connect</h2>
         <p className="hint">
-          No “me” set — tick “This is me” in someone's Edit details to enable
-          connection queries.
+          Tick “This is me” on your own entry first.
         </p>
       </section>
     )
@@ -662,7 +658,7 @@ function ConnectionSection({ person }: { person: Person }) {
           </Link>
         </p>
       ) : (
-        <p className="hint">No known chain connects you yet.</p>
+        <p className="hint">No known path connects you yet.</p>
       )}
       <div className="row wrap">
         <div className="inline-check compare-with">
@@ -682,7 +678,7 @@ function ConnectionSection({ person }: { person: Person }) {
       </div>
       {mutuals.length === 0 ? (
         <p className="hint">
-          No mutual connections between {person.displayName} and {otherName}.
+          No one in common.
         </p>
       ) : (
         <ul className="edges">
@@ -822,7 +818,7 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
         onChange={setDraft}
         onSubmit={() => void save()}
         onCreatePerson={addPerson}
-        placeholder="Jot something… type @ to link a person"
+        placeholder="Jot something… @ links a person"
         autoFocus={isFresh}
         // One row when idle: the bar sits on the tab bar and shouldn't
         // spend a fifth of the screen before you've typed. Grows on focus
@@ -845,7 +841,7 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
           </button>
           {savedFlash && !offerNoteId && (
             <span className="hint saved" role="status">
-              Saved ✓
+              Saved
             </span>
           )}
         </div>
@@ -873,7 +869,7 @@ function FollowUpSection({ personId }: { personId: string }) {
     if (!text.trim() || busy) return
     const dueDate = parsePartialDate(due)
     if (due.trim() && !dueDate) {
-      setDueError('Date not understood — try Sep 20 or 2026-09-20.')
+      setDueError('Try a date like Sep 20 or 2026-09-20.')
       return
     }
     setDueError(null)
@@ -894,7 +890,7 @@ function FollowUpSection({ personId }: { personId: string }) {
         Follow-ups
       </h2>
       {items.length === 0 && (
-        <p className="empty-inline">Nothing to remember for next time.</p>
+        <p className="empty-inline">Nothing yet.</p>
       )}
       <ul className="follow-ups">
         {items.map((f) => (
@@ -944,12 +940,12 @@ function FollowUpSection({ personId }: { personId: string }) {
           />
         </label>
         <label>
-          <span>Due <span className="optional">— optional</span></span>
+          <span>Due</span>
           <input
             className="due"
             value={due}
             onChange={(e) => setDue(e.target.value)}
-            placeholder="Sep 20 (year optional)"
+            placeholder="Sep 20"
             aria-invalid={dueError ? true : undefined}
             aria-describedby={dueError ? 'due-error' : undefined}
           />
@@ -1028,7 +1024,7 @@ function RelationshipSection({ person }: { person: Person }) {
     // "June is parent of Marcus" / "mentioned Ivy in a note".
     let label: string
     if (edge.origin === 'mention') {
-      label = outgoing ? `${first} mentioned them in a note` : `mentioned ${first} in a note`
+      label = outgoing ? 'mentioned in a note' : `mentioned ${first} in a note`
     } else if (type?.directed) {
       label = outgoing
         ? `${first} is ${type.label} ${other.displayName.split(' ')[0]}`
@@ -1148,7 +1144,7 @@ function RelationshipSection({ person }: { person: Person }) {
         <BatchAddPanel id="batch-add-links" anchor={person} headingLevel={3} onClose={closeBatch} />
       )}
       {edges.length === 0 && (
-        <p className="empty-inline">No one linked yet — pick a person and how you know them.</p>
+        <p className="empty-inline">No one linked yet.</p>
       )}
       <ul className="edges">{edges.map(describe)}</ul>
       <form className="add-form" onSubmit={add}>
@@ -1510,7 +1506,7 @@ function NotesSection({ personId }: { personId: string }) {
         Notes
       </h2>
       {notes.length === 0 && (
-        <p className="empty-inline">Nothing yet — use the note box at the bottom of the screen.</p>
+        <p className="empty-inline">Nothing yet.</p>
       )}
       <ul className="notes">
         {notes.map((note) => (
@@ -1743,7 +1739,7 @@ function PromotePanel({
       case 'birthday': {
         const parsed = parsePartialDate(value)
         if (!parsed) {
-          setError('Date not understood — try "Jun 21" or "1984-06-21".')
+          setError('Try a date like Jun 21 or 1984-06-21.')
           return
         }
         next.birthday = parsed

@@ -450,7 +450,7 @@ export default function GraphPage() {
             {pathInfo.reason === 'ok'
               ? pathInfo.names.join(' → ')
               : pathInfo.reason === 'no-self'
-                ? 'no “me” set — mark yourself in Edit details'
+                ? 'mark yourself first: Edit → “This is me”'
                 : 'no known path'}
             <button
               className="subtle"
@@ -548,7 +548,7 @@ export default function GraphPage() {
       <p className="graph-legend">
         {nodes.length > LABEL_MAX_NODES
           ? 'Too many people to name at once: zoom in to see names, or pick a person or circle above.'
-          : 'Tap a label to filter. Dotted lines are mentions; tinted areas are circles — tap one to edit, tap a person for details.'}
+          : 'Tap a label to filter, a circle to edit it, a person to open them. Dotted lines are mentions.'}
       </p>
       {/* The text equivalent of the canvas (2.1.1 / 1.1.1): everyone shown
           and who they are linked to. */}
@@ -613,8 +613,8 @@ export default function GraphPage() {
           </p>
         ) : bare ? (
           <p className="empty">
-            Nothing to connect yet. Open someone's page and add a relationship, or load the
-            sample people in <Link to="/settings">Settings</Link>.
+            No relationships yet. Add one from a person’s page, or load the sample people
+            in <Link to="/settings">Settings</Link>.
           </p>
         ) : (
           <>
@@ -881,7 +881,7 @@ function CirclePeek({
     if (result === 'name-taken') {
       setStatus({ text: `A circle called “${next}” already exists.`, error: true })
     } else {
-      setStatus({ text: 'Saved ✓' })
+      setStatus({ text: 'Saved' })
       setTimeout(() => setStatus(null), 1800)
     }
   }

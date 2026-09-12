@@ -198,9 +198,9 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
         chosen.map(({ key: _k, existing: _e, conflict: _c, note, ...d }) => (withNotes && note ? { ...d, note } : d)),
       )
       setDone({ count: created.length, ids: created.map((p) => p.id) })
-      setStatus(`Imported ${created.length} ${created.length === 1 ? 'person' : 'people'} ✓`)
+      setStatus(`Imported ${created.length} ${created.length === 1 ? 'person' : 'people'}`)
     } catch {
-      setStatus('Could not save — check storage and try again.')
+      setStatus('Couldn’t save. Your device may be out of space.')
     } finally {
       setBusy(false)
     }
@@ -253,12 +253,11 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
         <>
           <p className="hint">
             {ios
-              ? 'In Contacts, open a person, tap Share Contact, then Save to Files — choose that file here. For many people at once, export a vCard from iCloud.com on a computer.'
+              ? 'In Contacts, open a person, tap Share Contact, then Save to Files, and choose that file here. For many at once, export a .vcf from iCloud.com.'
               : picker
-                ? 'Pick people straight from your contacts, or choose a .vcf or .csv exported from a contacts app.'
-                : 'Export a .vcf or .csv from your contacts app (Google Contacts, Outlook, or the Contacts app on a computer) and choose it here.'}{' '}
-            The file is read on this device only — nothing is uploaded — and you pick who to keep: name,
-            nickname, job, company, city, birthday, phone and e-mail.
+                ? 'Pick from your contacts, or choose an exported .vcf or .csv.'
+                : 'Choose a .vcf or .csv exported from your contacts app.'}{' '}
+            You pick who to keep; nothing leaves this device.
           </p>
           <input
             ref={fileRef}
@@ -284,9 +283,6 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
               Cancel
             </button>
           </div>
-          {!picker && !ios && (
-            <p className="hint">Picking straight from Contacts isn’t available in this browser.</p>
-          )}
           {error && (
             <p className="hint error" role="alert">
               {error}
@@ -302,7 +298,7 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
             {` · ${selectedCount} selected`}
           </p>
           {contacts.length > PRESELECT_MAX && selectedCount === 0 && (
-            <p className="hint">Search for the people you want to keep, or select them below.</p>
+            <p className="hint">None selected yet — search or tick the ones to keep.</p>
           )}
           {contacts.length > 8 && (
             <input
@@ -392,7 +388,7 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
       )}
       {/* One live region for the whole panel, mounted from the start so
           announcements land; errors use the alert above. */}
-      <p className={`hint status-slot${/Could not/.test(status) ? ' error' : ' saved'}`} role="status">
+      <p className={`hint status-slot${/Couldn’t|Could not/.test(status) ? ' error' : ' saved'}`} role="status">
         {status}
       </p>
     </section>

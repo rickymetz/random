@@ -316,14 +316,13 @@ export default function PeoplePage() {
       )}
       {!trimmed && !circle && !people.some((p) => !p.isSelf) && (
         <p className="empty">
-          Just you so far. Type a name above to add the first person, add several at once
-          below, or import your phone’s contacts.
+          Just you so far. Type a name above to add someone.
         </p>
       )}
       {corrupted > 0 && (
         <p className="banner" role="alert">
-          {corrupted} record{corrupted === 1 ? '' : 's'} could not be read and were
-          skipped. Restore from a backup if something is missing.
+          {corrupted} {corrupted === 1 ? 'entry' : 'entries'} couldn’t be read and got
+          skipped. If something is missing, restore a backup.
         </p>
       )}
       <KdfUpgradeNag />
@@ -434,7 +433,7 @@ export default function PeoplePage() {
           onClick={() => {
             const el = searchRef.current
             if (!el) return
-            el.placeholder = 'Who did you meet? Type their name'
+            el.placeholder = 'Who did you meet?'
             el.focus()
           }}
           disabled={busy}
@@ -722,8 +721,8 @@ function KdfUpgradeNag() {
   if (!kdfLegacy) return null
   return (
     <p className="banner">
-      Security upgrade pending — lock and unlock once with your <em>passphrase</em> to
-      finish upgrading the vault's key protection.
+      Security update waiting — lock, then unlock with your <em>passphrase</em> (not the
+      PIN) to finish.
     </p>
   )
 }
@@ -785,8 +784,7 @@ function BackupNag() {
       {last
         ? `Last backup ${Math.floor((Date.now() - last) / 86_400_000)} days ago.`
         : 'Nothing backed up yet.'}{' '}
-      Your notes live only on this device —{' '}
-      <Link to="/settings">save a backup copy</Link> so they survive a cleared browser.
+      <Link to="/settings">Save a backup</Link> — your notes live only on this device.
     </p>
   )
 }
@@ -818,7 +816,7 @@ function Upcoming() {
           overdue: false,
           personId: p.id,
           personName: p.displayName,
-          label: `birthday (${formatPartialDate(p.birthday)})`,
+          label: `birthday · ${formatPartialDate(p.birthday)}`,
         })
       }
     }

@@ -81,7 +81,6 @@ export default function BatchAddPanel({
   const fresh = entries.filter((e) => !e.existing)
   const toLink = entries.filter((e) => e.existing && !linkedIds.has(e.existing.id))
   const alreadyLinked = entries.filter((e) => e.existing && linkedIds.has(e.existing.id))
-  const unknownTypes = entries.filter((e) => e.typeLabel && !e.type).map((e) => e.typeLabel!)
   const defaultType = types.find((t) => t.id === defaultTypeId) ?? types[0]
   const first = anchor?.displayName.split(' ')[0]
 
@@ -114,7 +113,7 @@ export default function BatchAddPanel({
       const parts = [`Added ${created.length} ${created.length === 1 ? 'person' : 'people'}`]
       if (anchor) parts.push(`linked ${linked}`)
       if (alreadyLinked.length) parts.push(`${alreadyLinked.length} already linked`)
-      setStatus(`${parts.join(', ')} ✓`)
+      setStatus(`${parts.join(', ')}`)
       setText('')
       // Ready for the next paste; the disabled Add would drop focus.
       requestAnimationFrame(() => textareaRef.current?.focus())
@@ -157,7 +156,7 @@ export default function BatchAddPanel({
       )}
       <p className="hint" id={hintId}>
         {anchor
-          ? `One per line. Add how you know them after a dash — “June Webb — parent of” means June is ${first}'s parent.${shortcutHint}`
+          ? `One name per line. After a dash, add how they relate to ${first}: “June Webb — parent of” means June is ${first}’s parent.${shortcutHint}`
           : `One per line, or separated by commas.${shortcutHint}`}
       </p>
       <textarea
@@ -231,12 +230,6 @@ export default function BatchAddPanel({
             )
           })}
         </ul>
-      )}
-      {anchor && unknownTypes.length > 0 && (
-        <p className="hint">
-          Unknown relationship{unknownTypes.length > 1 ? 's' : ''}: {unknownTypes.join(', ')} —
-          those lines get the default. New types are created from the relationship form.
-        </p>
       )}
       <div className="row">
         <button

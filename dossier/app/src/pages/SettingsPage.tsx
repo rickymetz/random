@@ -28,7 +28,7 @@ export default function SettingsPage() {
   const dev = params.get('dev') === '1'
 
   const destroy = async () => {
-    const answer = prompt('Type DELETE to destroy all data on this device. There is no undo.')
+    const answer = prompt('Type DELETE to confirm. There is no undo.')
     if (answer !== 'DELETE') return
     await destroyAllData()
     lock()
@@ -51,8 +51,7 @@ export default function SettingsPage() {
       <section className="danger-zone">
         <h2>Delete everything</h2>
         <p className="hint">
-          Wipes every note and person from this device. There's no copy anywhere else
-          unless you saved a backup, so this really is gone.
+          Wipes every note and person from this device. Without a backup, they’re gone.
         </p>
         <button className="danger" onClick={destroy}>
           Delete everything
@@ -131,7 +130,7 @@ function SecuritySection() {
       else if (result === 'cancelled') setBioMsg(null)
       else if (result === 'unsupported')
         setBioMsg(
-          "Your phone or browser can't do this kind of unlock — use the PIN instead. If a passkey for this app was created anyway, you can remove it in your phone's password settings.",
+          'Your phone or browser can’t do this. Use the PIN instead. If a passkey for this app was made anyway, delete it in the phone’s password settings.',
         )
     } finally {
       setBioBusy(false)
@@ -147,7 +146,7 @@ function SecuritySection() {
       await updateSecurity(patch)
       setLockMsg('Saved.')
     } catch {
-      setLockMsg('Could not save — check storage and try again.')
+      setLockMsg('Couldn’t save. Your device may be out of space.')
     }
   }
 
@@ -155,10 +154,10 @@ function SecuritySection() {
     <section>
       <h2>Security</h2>
 
-      <h3>Quick unlock PIN</h3>
+      <h3>PIN</h3>
       {pinArmed ? (
         <div className="row">
-          <p role="status">PIN is on ✓</p>
+          <p role="status">PIN is on</p>
           <button className="subtle" onClick={forgetPin}>
             Turn off
           </button>
@@ -167,8 +166,8 @@ function SecuritySection() {
       {pinArmed ? (
         <div>
           <p className="hint">
-            Works until you fully close the app; cleared after {MAX_PIN_ATTEMPTS} wrong
-            tries or by “Lock &amp; forget PIN” at the top. Auto-lock keeps it.
+            Lasts until you fully close the app, {MAX_PIN_ATTEMPTS} wrong tries, or “Lock
+            &amp; forget PIN”. Auto-lock keeps it.
           </p>
         </div>
       ) : (
@@ -210,8 +209,7 @@ function SecuritySection() {
                 type="password"
                 value={pinPass}
                 onChange={(e) => setPinPass(e.target.value)}
-                placeholder="to confirm it's you"
-                aria-label="Vault passphrase to authorize the PIN"
+                aria-label="Your passphrase"
                 autoComplete="off"
               />
             </label>
@@ -225,8 +223,8 @@ function SecuritySection() {
             </p>
           )}
           <p className="hint">
-            A short code for quick unlocking. It works until you fully close the app;
-            after that, enter your passphrase once and set it again here.
+            Lasts until you fully close the app; after that, unlock with your passphrase
+            and set one again.
           </p>
         </form>
       )}
@@ -236,8 +234,8 @@ function SecuritySection() {
       ) : biometricEnrolled ? (
         <div className="row">
           <p className="hint" role="status">
-            On — your face or fingerprint opens the app. Turning it off here removes
-            the app's copy; the passkey itself lives in your device's password settings.
+            On. Turning it off here leaves the passkey in your device’s password settings —
+            remove it there too if you want.
           </p>
           <button className="subtle" onClick={() => void removeBiometric().catch(() => {})}>
             Turn off
@@ -251,8 +249,7 @@ function SecuritySection() {
               type="password"
               value={bioPass}
               onChange={(e) => setBioPass(e.target.value)}
-              placeholder="to confirm it's you"
-              aria-label="Vault passphrase to authorize biometrics"
+              aria-label="Your passphrase"
               autoComplete="off"
             />
           </label>
@@ -278,7 +275,7 @@ function SecuritySection() {
               if (
                 minutes === 0 &&
                 !confirm(
-                  'Disable the inactivity lock? A borrowed or forgotten open phone would stay unlocked indefinitely.',
+                  'Turn off auto-lock? If you leave your phone unlocked, the app stays open until you lock it yourself.',
                 )
               ) {
                 return
@@ -345,7 +342,7 @@ function SecuritySection() {
               void changeSecurity({ shakeToLock: enable })
             }}
           />
-          Shake the phone three times to lock instantly
+          Shake three times to lock
         </label>
         <label className="inline-check">
           <input
@@ -363,8 +360,7 @@ function SecuritySection() {
               void changeSecurity({ remindersEnabled: enable })
             }}
           />
-          Daily reminder — the notification only ever says “You have a reminder”, never
-          who it's about
+          Daily reminder (the notification never names anyone)
         </label>
         <label className="inline-check">
           <input
@@ -372,8 +368,7 @@ function SecuritySection() {
             checked={settings?.nameSuggestions ?? true}
             onChange={(e) => void changeSecurity({ nameSuggestions: e.target.checked })}
           />
-          Suggest people from names in notes — a simple pattern match on this device;
-          nothing is sent anywhere and declined names aren't saved
+          Suggest people from names in notes
         </label>
         {reminderNotice && (
           <p className="hint error" role="alert">
@@ -382,8 +377,8 @@ function SecuritySection() {
         )}
         {isIosBrowserTab() && (
           <p className="hint">
-            On iPhone, reminders only work from the Home Screen app (and only while it's
-            open) — see “Add to Home Screen” below.
+            On iPhone, reminders only work in the Home Screen app, and only while it’s
+            open. See “Add to Home Screen” below.
           </p>
         )}
       </div>
@@ -403,15 +398,13 @@ function InstallSection() {
     <section>
       <h2>Add to Home Screen</h2>
       <p className="hint">
-        You're using this in a browser tab. Added to the Home Screen (in Safari: Share →
-        Add to Home Screen) it opens full-screen and can show reminders while it's open.
+        Share → Add to Home Screen gives you a full-screen app that can show reminders.
+        It keeps its own notes, separate from this tab.
       </p>
       <p className="hint">
-        The Home Screen app keeps its own storage, separate from the browser — and vice
-        versa.{' '}
         {hasContent
-          ? 'Your notes here won’t appear in it by themselves: save a backup below, open the app, and restore it there.'
-          : 'Set up your passphrase inside the app, not here.'}
+          ? 'Save a backup below, then restore it in the app.'
+          : 'Set your passphrase there, not here.'}
       </p>
     </section>
   )
@@ -426,9 +419,8 @@ function DisguiseSection() {
     <section>
       <h2>Name &amp; icon on your Home Screen</h2>
       <p className="hint">
-        If you add this app to your home screen (Share → Add to Home Screen), this is
-        the name and icon it shows — pick whatever blends in. On iPhone, re-add it
-        after changing to update the icon.
+        Pick whatever blends in. On iPhone, re-add the app after changing to update the
+        icon.
       </p>
       <div className="row wrap">
         {DISGUISES.map((d) => (
@@ -449,7 +441,7 @@ function DisguiseSection() {
         ))}
       </div>
       <p className="hint status-slot" role="status">
-        {changed && `Now showing as ${changed} ✓ — on iPhone, re-add to your Home Screen to update the icon.`}
+        {changed && `Now showing as ${changed}`}
       </p>
     </section>
   )
@@ -527,9 +519,8 @@ function ExportSection() {
     <section>
       <h2>Backup</h2>
       <p className="hint">
-        Saves a copy of everything to a file. It's scrambled with your passphrase, so
-        only you can open it — keep it somewhere safe like iCloud or Drive, and use
-        Restore below to bring it back on a new phone.
+        Saves everything to a file only your passphrase can open. Keep it in iCloud or
+        Drive; Restore brings it back on a new phone.
         {settings?.lastExportAt && (
           <> Last backup: {new Date(settings.lastExportAt).toLocaleDateString()}.</>
         )}
@@ -541,7 +532,6 @@ function ExportSection() {
             type="password"
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
-            placeholder="to confirm it's you"
             aria-label="Confirm passphrase"
             autoComplete="off"
           />
@@ -552,21 +542,21 @@ function ExportSection() {
       </form>
       {state === 'busy' && (
         <p className="hint" role="status">
-          Preparing encrypted backup — large photo collections take a moment…
+          Making your backup — lots of photos take a moment…
         </p>
       )}
       {state === 'wrong' && (
         <p className="hint error" role="alert">
-          That's not this vault's passphrase.
+          Wrong passphrase.
         </p>
       )}
       {state === 'failed' && (
         <p className="hint error" role="alert">
-          Export failed — try again.
+          Couldn’t save the backup — try again.
         </p>
       )}
       {state === 'done' && (
-        <p className="hint">Backup saved ✓</p>
+        <p className="hint">Backup saved</p>
       )}
     </section>
   )
@@ -602,10 +592,10 @@ function ImportSection() {
         return
       }
       const count = await importRecords(restored.records, restored.blobs)
-      setMessage(`Restored ✓ — ${count} items`)
+      setMessage(`Restored ${count} items`)
       if (fileRef.current) fileRef.current.value = ''
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import failed.')
+      setError(err instanceof Error && err.message ? err.message : 'Couldn’t restore that file.')
     } finally {
       setBusy(false)
       setPassphrase('')
@@ -616,10 +606,8 @@ function ImportSection() {
     <section>
       <h2>Restore</h2>
       <p className="hint">
-        Bring back notes from a backup file. What's already here stays; where both
-        have the same entry, the newer one wins. On a new phone: set a passphrase,
-        then restore here. Looking to bring in your phone’s contacts instead? Use
-        “Import contacts…” at the end of the People list.
+        Brings a backup file back in. Nothing here is removed; if an entry is in both,
+        the newer one wins. For phone contacts, use “Import contacts…” on the People page.
       </p>
       <form className="column" onSubmit={doImport}>
         <label className="field">
@@ -640,7 +628,6 @@ function ImportSection() {
               type="password"
               value={passphrase}
               onChange={(e) => setPassphrase(e.target.value)}
-              placeholder="the passphrase it was made with"
               aria-label="Backup passphrase"
               autoComplete="off"
             />
@@ -673,7 +660,7 @@ function SampleDataSection() {
     if (busy) return
     if (
       !confirm(
-        "Add 14 fictional people (tagged 'sample'), their relationships, and 3 circles to explore the graph? You can delete them individually later.",
+        'Add 14 fictional people (tagged ‘sample’) with relationships and 3 circles? You can delete them later.',
       )
     ) {
       return
@@ -683,14 +670,14 @@ function SampleDataSection() {
     try {
       const { peopleAdded, edgesAdded, skippedNoSelf, circlesAdded } = await loadSampleData()
       if (peopleAdded === 0 && edgesAdded === 0 && circlesAdded === 0) {
-        setMessage('Sample cast is already here.')
+        setMessage('Sample people are already here.')
       } else {
         setMessage(
           <>
-            Added {peopleAdded} people, {edgesAdded} relationships, and {circlesAdded} circles —
-            open the <Link to="/graph">Graph</Link> (tap a tinted area to edit a circle).
+            Added {peopleAdded} people, {edgesAdded} relationships and {circlesAdded} circles —
+            open the <Link to="/graph">Graph</Link>.
             {skippedNoSelf > 0 &&
-              ` ${skippedNoSelf} relationships to you were skipped because no person is marked "This is me" — mark one and load again.`}
+              ` ${skippedNoSelf} relationships to you were left out: no one is marked “This is me”. Mark yourself, then load again.`}
           </>,
         )
       }
@@ -705,8 +692,7 @@ function SampleDataSection() {
     <section>
       <h2>Sample data</h2>
       <p className="hint">
-        Load a small fictional cast — overlapping work, family, and climbing circles —
-        to see what the relationship graph can do. Running it again only fills gaps.
+        A small fictional cast to try the graph with. Loading again only fills gaps.
       </p>
       <button onClick={() => void seed()} disabled={busy} aria-busy={busy}>
         {busy ? 'Adding…' : 'Load sample people'}
@@ -796,10 +782,10 @@ function StorageSection() {
   const status = getStorageStatus()
   const label =
     status.persisted === true
-      ? 'Your notes live only on this device, and the browser has agreed to keep them even if you don’t open the app for a long time.'
+      ? 'Kept only on this device; the browser has agreed not to clear them.'
       : status.persisted === false
-        ? 'Your notes live only on this device. If you don’t open the app for a long time, the browser may clear them to free space — so save a backup now and then.'
-        : 'Your notes live only on this device. This browser didn’t say whether it might clear them — save a backup now and then.'
+        ? 'Kept only on this device. The browser may clear them if you don’t open the app for a while — save a backup now and then.'
+        : 'Kept only on this device. The browser didn’t say whether it might clear them — save a backup now and then.'
   return (
     <section>
       <h2>Storage</h2>
