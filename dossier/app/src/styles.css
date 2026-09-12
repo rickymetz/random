@@ -2790,3 +2790,81 @@ body:has(.facts-form) .app-bar nav {
   justify-content: center;
   margin: var(--s3) 0 0;
 }
+
+/* "Looks like people": name offers shown in the capture bar after a save. */
+.looks-like {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1) var(--s2);
+  padding: 0 0 var(--s2);
+  animation: rise var(--dur) ease-out;
+}
+.looks-like-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  min-height: 2.25rem;
+}
+.looks-like ul {
+  display: contents;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.looks-like li {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+}
+.looks-like li.known {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+}
+.looks-like button.name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.25rem;
+  min-width: 0;
+  padding: 0 var(--s1) 0 var(--s3);
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--text);
+  font-size: var(--fs-ui);
+  font-weight: 500;
+}
+.looks-like button.name .mark {
+  color: var(--accent);
+  font-weight: 600;
+}
+.looks-like button.name .text,
+.looks-like button.name .who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.looks-like button.name .who {
+  color: var(--text-2);
+  font-weight: 400;
+  font-size: var(--fs-meta);
+}
+.looks-like button.skip {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  color: var(--text-3);
+}
+.looks-like button.all {
+  min-height: 2.25rem;
+}
+.looks-like button.dismiss {
+  margin-left: auto;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+}

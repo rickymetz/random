@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import BatchAddPanel from '../components/BatchAddPanel'
 import PersonPicker from '../components/PersonPicker'
 import ChipInput from '../components/ChipInput'
+import LooksLikePeople from '../components/LooksLikePeople'
 import MentionTextarea from '../components/MentionTextarea'
 import { mutualConnections, selectSelf, shortestPath } from '../lib/graphQueries'
 import { GALLERY_MAX_DIM, downscaleImage } from '../lib/image'
@@ -694,6 +695,9 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
+  // The note just saved, while its "Looks like people" offer is showing.
+  const [offerNoteId, setOfferNoteId] = useState<string | null>(null)
+  const clearOffer = useCallback(() => setOfferNoteId(null), [])
   const draftRef = useRef('')
   draftRef.current = draft
 
@@ -732,9 +736,10 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
     draftRef.current = ''
     setDraft('')
     try {
-      await saveNote(person.id, body)
+      const note = await saveNote(person.id, body)
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 2000)
+      setOfferNoteId(note?.id ?? null)
     } catch {
       setDraft(body) // restore on failure
     } finally {
@@ -743,6 +748,7 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
   }
   return (
     <section className="capture-bar" hidden={hidden}>
+      {offerNoteId && <LooksLikePeople noteId={offerNoteId} person={person} onDone={clearOffer} />}
       <MentionTextarea
         people={others}
         value={draft}

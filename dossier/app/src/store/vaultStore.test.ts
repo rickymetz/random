@@ -655,3 +655,60 @@ describe('bulk add (addPeople / addRelationships)', () => {
     expect(searchPeopleIds('Priya').length).toBe(1)
   })
 })
+
+describe('looks like people (linkNamesInNote)', () => {
+  beforeEach(async () => {
+    await db.slots.clear()
+    await db.records.clear()
+    await db.blobs.clear()
+    await db.auth.clear()
+    useVaultStore.setState({
+      status: 'unknown',
+      vault: null,
+      records: new Map(),
+      corrupted: 0,
+      homeQuery: '',
+    })
+    await store().create('open sesame')
+  })
+
+  it('creates people, rewrites the note to @mentions and derives mention edges in one go', async () => {
+    const sam = await store().addPerson('Sam Okafor')
+    const priya = await store().addPerson('Priya Raman')
+    const note = await store().saveNote(sam.id, "Lunch with Theo Martins and Priya. Theo's treat.")
+    expect(note?.kind).toBe('note')
+    const linked = await store().linkNamesInNote(note!.id, [
+      { phrase: 'Theo Martins' },
+      { phrase: 'Priya', personId: priya.id },
+      { phrase: 'Nobody Here' }, // not in the text → no person created
+      { phrase: 'Sam Okafor', personId: sam.id }, // the note's own person → ignored
+    ])
+    expect(linked.map((p) => p.displayName)).toEqual(['Theo Martins', 'Priya Raman'])
+    const theo = selectPeople(store().records).find((p) => p.displayName === 'Theo Martins')!
+    expect(theo).toBeDefined()
+    expect(selectPeople(store().records).some((p) => p.displayName === 'Nobody Here')).toBe(false)
+    const saved = store().records.get(note!.id)
+    expect(saved?.kind === 'note' && saved.body).toBe(
+      `Lunch with ${mentionToken(theo)} and ${mentionToken(priya)}. Theo's treat.`,
+    )
+    // A second pass links the lone first name now that Theo exists (possessive kept).
+    await store().linkNamesInNote(note!.id, [{ phrase: 'Theo', personId: theo.id }])
+    const again = store().records.get(note!.id)
+    expect(again?.kind === 'note' && again.body.endsWith(`${mentionToken(theo)}'s treat.`)).toBe(true)
+    expect(saved?.kind === 'note' && saved.mentions).toEqual([theo.id, priya.id])
+    const edges = [...store().records.values()].filter(
+      (r) => r.kind === 'relationship' && r.origin === 'mention' && r.fromId === sam.id,
+    )
+    expect(edges.map((e) => e.kind === 'relationship' && e.toId).sort()).toEqual([theo.id, priya.id].sort())
+    // The new person is searchable straight away.
+    expect(searchPeopleIds('Theo')).toContain(theo.id)
+  })
+
+  it('is a no-op write when nothing matches', async () => {
+    const sam = await store().addPerson('Sam Okafor')
+    const note = await store().saveNote(sam.id, 'Quiet day.')
+    const before = store().records
+    expect(await store().linkNamesInNote(note!.id, [{ phrase: 'Theo' }])).toEqual([])
+    expect(store().records).toBe(before)
+  })
+})

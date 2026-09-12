@@ -11,6 +11,7 @@
  */
 import { create } from 'zustand'
 import { extractMentions, renameMentionsOf, stripMentionsOf } from '../lib/mentions'
+import { linkPhrase } from '../lib/nameDetect'
 import { CIRCLE_COLORS, RECENT_LIMIT, type Circle } from '../lib/models'
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
@@ -144,7 +145,14 @@ interface VaultState {
   removePerson: (personId: string) => Promise<void>
   /** Bulk delete; circles left with no members are removed too. */
   removePeople: (personIds: string[]) => Promise<void>
-  saveNote: (personId: string, body: string) => Promise<void>
+  saveNote: (personId: string, body: string) => Promise<NoteEntry | undefined>
+  /**
+   * "Looks like people": turn plain names in a note into @mentions. Each
+   * link names a phrase and either an existing person or (no personId) a
+   * new one called after the phrase. One encrypted write; mention edges
+   * follow the rewritten text. Returns the people linked, in order.
+   */
+  linkNamesInNote: (noteId: string, links: { phrase: string; personId?: string }[]) => Promise<Person[]>
   removeNote: (noteId: string) => Promise<void>
   updateNote: (noteId: string, body: string) => Promise<void>
   /** Circles (§4.6): named, colored groups drawn as bubbles on the graph. */
@@ -757,6 +765,54 @@ export const useVaultStore = create<VaultState>((set, get) => {
       withNote.set(note.id, note)
       const { puts, deletes } = diffMentionEdges(withNote, personId)
       await apply([note, ...puts], deletes, [personId])
+      return note
+    }),
+
+    linkNamesInNote: (noteId, links) =>
+      enqueue(async () => {
+      const note = get().records.get(noteId)
+      if (!note || note.kind !== 'note') return []
+      const now = Date.now()
+      const created: Person[] = []
+      const linked: Person[] = []
+      let body = note.body
+      for (const link of links) {
+        const phrase = link.phrase.trim()
+        if (!phrase) continue
+        let target: Person | undefined
+        if (link.personId) {
+          const r = get().records.get(link.personId)
+          if (r?.kind === 'person') target = r
+        } else {
+          target = {
+            kind: 'person',
+            id: crypto.randomUUID(),
+            displayName: phrase,
+            nicknames: [],
+            likes: [],
+            dislikes: [],
+            tags: [],
+            createdAt: now,
+            updatedAt: now,
+          }
+          created.push(target)
+        }
+        if (!target || target.id === note.personId) continue
+        const next = linkPhrase(body, phrase, target)
+        if (next === body) continue
+        body = next
+        linked.push(target)
+      }
+      if (body === note.body) return []
+      // Only people whose phrase was actually found get created.
+      const kept = created.filter((p) => linked.includes(p))
+      const edited: NoteEntry = { ...note, body, mentions: extractMentions(body) }
+      const withEdit = new Map(get().records)
+      for (const p of kept) withEdit.set(p.id, p)
+      withEdit.set(noteId, edited)
+      const { puts, deletes } = diffMentionEdges(withEdit, note.personId)
+      await apply([...kept, edited, ...puts], deletes, [note.personId, ...kept.map((p) => p.id)])
+      return linked
     }),
 
     updateNote: (noteId, body) =>
