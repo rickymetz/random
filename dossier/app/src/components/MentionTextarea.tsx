@@ -1,5 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { mentionToken } from '../lib/mentions'
+import { rankPeople } from '../lib/names'
+import Avatar from './Avatar'
 import type { Person } from '../lib/models'
 
 /** Word characters for a mention query — Unicode-aware so "@José" works. */
@@ -44,6 +46,7 @@ export default function MentionTextarea({
   const [caret, setCaret] = useState(0)
   const [dismissed, setDismissed] = useState(false)
   const [active, setActive] = useState(0)
+  const pointerPicked = useRef(false)
 
   // An active mention query is a trailing "@word" (at most two words)
   // right before the caret — bounded so a stray "@" doesn't keep the
@@ -57,20 +60,10 @@ export default function MentionTextarea({
   const suggestions = useMemo((): Suggestion[] => {
     if (query === null || dismissed) return []
     const q = query.toLowerCase().trim()
-    const rank = (p: Person): number => {
-      const names = [p.displayName, ...p.nicknames].map((n) => n.toLowerCase())
-      if (q === '') return 3
-      if (names.some((n) => n.startsWith(q))) return 0
-      if (names.some((n) => n.split(/\s+/).some((w) => w.startsWith(q)))) return 1
-      if (names.some((n) => n.includes(q))) return 2
-      return -1
-    }
-    const ranked = people
-      .map((p) => ({ p, r: rank(p) }))
-      .filter(({ r }) => r >= 0)
-      .sort((a, b) => a.r - b.r || a.p.displayName.localeCompare(b.p.displayName))
-      .slice(0, MAX_SUGGESTIONS)
-      .map(({ p }): Suggestion => ({ kind: 'person', person: p }))
+    const ranked: Suggestion[] = rankPeople(people, q, MAX_SUGGESTIONS).map((person) => ({
+      kind: 'person',
+      person,
+    }))
     const exact = people.some((p) => p.displayName.toLowerCase() === q)
     if (q.length >= 2 && !exact && onCreatePerson) {
       ranked.push({ kind: 'create', name: query.trim() })
@@ -174,20 +167,37 @@ export default function MentionTextarea({
               role="option"
               aria-selected={i === active}
               className={i === active ? 'active' : undefined}
+              // The option itself is the target (no nested button — an
+              // option's children are presentational). pointerdown only
+              // keeps focus in the textarea so the keyboard stays up and
+              // the caret math stays valid; click activates, which is
+              // also what a screen reader's double-tap sends.
+              onPointerDown={(e) => {
+                e.preventDefault()
+                pointerPicked.current = true
+                void pick(s)
+              }}
+              onClick={() => {
+                if (!pointerPicked.current) void pick(s)
+                pointerPicked.current = false
+              }}
+              onPointerEnter={() => setActive(i)}
             >
-              <button
-                type="button"
-                tabIndex={-1}
-                // pointerdown fires before the textarea's blur, so the
-                // keyboard stays up and the caret math stays valid.
-                onPointerDown={(e) => {
-                  e.preventDefault()
-                  void pick(s)
-                }}
-                onPointerEnter={() => setActive(i)}
-              >
-                {s.kind === 'person' ? s.person.displayName : `+ Add “${s.name}”`}
-              </button>
+              {s.kind === 'person' ? (
+                <>
+                  <Avatar person={s.person} size={28} />
+                  <span className="picker-name">
+                    <span className="picker-name-text">{s.person.displayName}</span>
+                    {(s.person.jobTitle || s.person.employer) && (
+                      <span className="hint">
+                        {[s.person.jobTitle, s.person.employer].filter(Boolean).join(' @ ')}
+                      </span>
+                    )}
+                  </span>
+                </>
+              ) : (
+                <span className="picker-create">+ Add “{s.name}”</span>
+              )}
             </li>
           ))}
         </ul>

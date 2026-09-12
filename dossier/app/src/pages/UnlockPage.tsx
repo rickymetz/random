@@ -111,6 +111,7 @@ function PinUnlock({ onUsePassphrase }: { onUsePassphrase: () => void }) {
       <div className="unlock-card">
         <UnlockMark />
         <h1>Enter PIN</h1>
+        <p className="hint">Locked — everything is still here.</p>
         {/* One dot per typed digit — no empty slots: the locked screen
             must not disclose the armed PIN's length (§6.5). */}
         <div
@@ -213,8 +214,19 @@ function PassphraseForm({
       setError('Something went wrong opening the vault. Try again.')
     } finally {
       setBusy(false)
-      setPassphrase('')
-      setConfirm('')
+      // Keep what was typed on a failure — retyping a long passphrase for
+      // a stray capital is the retry path fighting the user — and put the
+      // caret back so the phone keyboard comes straight up.
+      if (useVaultStore.getState().status === 'unlocked') {
+        setPassphrase('')
+        setConfirm('')
+      } else {
+        requestAnimationFrame(() => {
+          const el = document.querySelector<HTMLInputElement>('.unlock input[type="password"]')
+          el?.focus()
+          el?.select()
+        })
+      }
     }
   }
 

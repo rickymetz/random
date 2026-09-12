@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState, useSyncExternalStore } from 'react'
 import {
   NavLink,
+  Navigate,
   Route,
   Routes,
   useLocation,
@@ -89,6 +90,57 @@ function useScrollReset() {
   }, [pathname, navType])
 }
 
+/* Tab-bar icons: one stroke weight, one size, so the four read as a set
+   (the Unicode glyphs they replace were four different weights). */
+const iconProps = {
+  className: 'glyph',
+  width: 22,
+  height: 22,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.75,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+}
+function PeopleIcon() {
+  return (
+    <svg {...iconProps}>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 19.5c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5" />
+      <circle cx="17" cy="9" r="2.5" />
+      <path d="M16 14.2c3 0 5.5 1.9 5.5 4.8" />
+    </svg>
+  )
+}
+function GraphIcon() {
+  return (
+    <svg {...iconProps}>
+      <circle cx="6" cy="17" r="2.5" />
+      <circle cx="18" cy="17" r="2.5" />
+      <circle cx="12" cy="6" r="2.5" />
+      <path d="M8.2 15.6 10.8 8.3M15.8 15.6 13.2 8.3M8.5 17h7" />
+    </svg>
+  )
+}
+function GearIcon() {
+  return (
+    <svg {...iconProps}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" />
+    </svg>
+  )
+}
+function LockIcon() {
+  return (
+    <svg {...iconProps}>
+      <rect x="5" y="10.5" width="14" height="10" rx="2" />
+      <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+    </svg>
+  )
+}
+
 /** Warn this long before the inactivity lock fires (when the timer allows). */
 const LOCK_WARNING_MS = 15_000
 
@@ -99,6 +151,7 @@ export default function App() {
   const panicLock = useVaultStore((s) => s.panicLock)
   const flushDrafts = useVaultStore((s) => s.flushDrafts)
   const pinArmed = useVaultStore((s) => s.pinArmed)
+  const setHomeQuery = useVaultStore((s) => s.setHomeQuery)
   const settings = useVaultStore((s) =>
     s.status === 'unlocked' ? selectSettings(s.records) : undefined,
   )
@@ -299,7 +352,10 @@ export default function App() {
             saves a capture draft first — data loss is a shake's job, not a
             button's. Named so it can't be confused with the tab-bar Lock. */}
         <button
-          className="lock-button"
+          // On a phone the tab bar already has an everyday Lock; the header
+          // one earns its place only when it does something more (dropping
+          // an armed PIN), so it hides until then.
+          className={`lock-button ${pinArmed ? 'panic' : 'plain'}`}
           onClick={() => void flushDrafts().finally(() => panicLock())}
           aria-label={
             pinArmed
@@ -336,28 +392,25 @@ export default function App() {
             <Route path="/person/:id" element={<KeyedPersonPage />} />
             <Route path="/graph" element={<GraphPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
       </main>
       {/* Mobile-only bottom tabs (hidden ≥48rem): nav where the thumb
           lives, with Lock as the most reachable control in the app. */}
       <nav className="tabbar" aria-label="Main">
-        <NavLink to="/" end>
-          <span className="glyph" aria-hidden="true">
-            {'☰'}
-          </span>
+        {/* Tapping People from another tab starts a fresh lookup; the query
+            persists only for Back from a dossier. */}
+        <NavLink to="/" end onClick={() => setHomeQuery('')}>
+          <PeopleIcon />
           People
         </NavLink>
         <NavLink to="/graph">
-          <span className="glyph" aria-hidden="true">
-            {'⁂'}
-          </span>
+          <GraphIcon />
           Graph
         </NavLink>
         <NavLink to="/settings">
-          <span className="glyph" aria-hidden="true">
-            {'⚙︎'}
-          </span>
+          <GearIcon />
           Settings
         </NavLink>
         {/* The everyday lock: unlike the header's panic Lock it flushes
@@ -367,9 +420,7 @@ export default function App() {
           onClick={() => void timerLock()}
           aria-label="Lock (drafts are saved; quick unlock stays armed)"
         >
-          <span className="glyph" aria-hidden="true">
-            {'◉'}
-          </span>
+          <LockIcon />
           Lock
         </button>
       </nav>

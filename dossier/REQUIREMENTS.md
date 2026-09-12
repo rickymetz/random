@@ -377,7 +377,8 @@ created:
   right-edge A–Z jump rail that belongs to the list — shown only once the
   list has scrolled up, tap or drag, one keyboard stop with arrow keys,
   focus follows a keyboard jump — make hundreds of names two taps away; search combines words with AND and every hit says why it matched
-  (field, tag, circle, or note snippet); the graph batches draw calls
+  (field, tag, circle, or note snippet); every person-choosing field is
+  a typeahead (a native select of 300 names is a picker wheel on iOS); the graph batches draw calls
   by style, cools faster and paints every other tick above 150 nodes,
   and past the label limit opens on your own connections (§4.3) with
   "Show everyone" one tap away.
@@ -481,6 +482,8 @@ From the requirements interview (2026-09-09):
 | Media | Person photos only in v1 |
 | Graph UX | Core feature, fully interactive |
 | Circles (§4.6) | First-class entity (not tags); many-to-many, flat; hull bubbles + gentle clustering; chips to show/hide + tap-to-focus; auto color with override; managed from the person page; empty circles persist, delete is explicit; name + color + members only; seeded in the sample cast |
+| Design review round 3 | Dossier reads for lookup (Details → Follow-ups → Notes → Relationships → How you connect); group titles and settings sub-headings speak in a sentence-case voice distinct from field labels; relationship-type colour is a dot, the word is ink; two chip heights; SVG tab icons at one stroke weight; header Lock hidden on phones unless it also forgets a PIN; forward Back never leaves the app; suggestion lists pick on pointerdown (Chrome moves focus even when it's cancelled) and also on click for assistive tech; the capture bar's Save row appears only with content (holding it while focused shifted the page under a tap) |
+| Person fields (§4.2) | Every "pick a person" field (add relationship, mutual connections, add to circle) is one typeahead component (ranked prefix matches, keyboard combobox, create-if-missing), never a native select of the whole address book |
 | Home at scale (§4.4) | Recent = last opened dossiers, stored encrypted and device-local (not in backups), padded to six with recently updated; A–Z rail scoped to the list (hidden at the top of the page), drag + roving-tabindex keyboard, accents fold to the base letter, `#` first for digits/symbols/other scripts |
 | Scale + iOS (§7) | Stress crowd behind `?dev=1`, not a user feature; per-snapshot selector indexes; paged People list; batched graph painting; `visualViewport`-driven keyboard inset for bottom bars; iOS-tab install guidance (separate storage) |
 | Discretion | Instant lock/panic, neutral disguise, decoy vault (designed now, built v2) |

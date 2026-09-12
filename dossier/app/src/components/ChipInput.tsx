@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 /**
  * Chip-style list editor for tags/likes/dislikes/nicknames (§4.1
@@ -15,6 +15,7 @@ export default function ChipInput({
   placeholder,
   label,
   suggestOnFocus = false,
+  capitalize = 'none',
 }: {
   values: string[]
   onChange: (values: string[]) => void
@@ -23,9 +24,22 @@ export default function ChipInput({
   label: string
   /** Offer the existing vocabulary as soon as the field is focused. */
   suggestOnFocus?: boolean
+  /** Phone keyboard capitalisation: names and circles want 'words'. */
+  capitalize?: 'none' | 'words'
 }) {
   const [draft, setDraft] = useState('')
   const [focused, setFocused] = useState(false)
+  // Highlighted suggestion: Enter commits it (not the raw draft) so
+  // "clim" becomes "Climbing crew" rather than a new "clim" value.
+  const [active, setActive] = useState(-1)
+  const listId = useId()
+  // A pointer pick fires on pointerdown (before the field can blur — Chrome
+  // still moves focus even when pointerdown is cancelled); the click that
+  // follows must not add twice. Keyboard/AT activation arrives as a bare
+  // click and goes through.
+  const pointerPicked = useRef(false)
+  const valuesRef = useRef(values)
+  valuesRef.current = values
 
   const matches = useMemo(() => {
     const q = draft.trim().toLowerCase()
@@ -42,10 +56,17 @@ export default function ChipInput({
       .slice(0, 6)
   }, [draft, suggestions, values, suggestOnFocus, focused])
 
+  useEffect(() => {
+    setActive(-1)
+  }, [draft, matches.length])
+
   // One onChange per call, even for multiple entries — two add() calls
   // against the same render's `values` would overwrite each other.
   const add = (...raws: string[]) => {
-    let next = values
+    // Always from the latest values: a blur-commit and a pick can land in
+    // the same tick, and the second must not overwrite the first.
+    const current = valuesRef.current
+    let next = current
     for (const raw of raws) {
       const value = raw.trim()
       if (!value) continue
@@ -57,7 +78,10 @@ export default function ChipInput({
         next = [...next, canonical]
       }
     }
-    if (next !== values) onChange(next)
+    if (next !== current) {
+      valuesRef.current = next
+      onChange(next)
+    }
     setDraft('')
   }
 
@@ -84,8 +108,14 @@ export default function ChipInput({
           value={draft}
           placeholder={values.length === 0 ? placeholder : undefined}
           aria-label={`Add ${label}`}
-          autoCapitalize="none"
+          autoCapitalize={capitalize}
           autoComplete="off"
+          enterKeyHint="done"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={matches.length > 0}
+          aria-controls={matches.length > 0 ? listId : undefined}
+          aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
           onChange={(e) => {
             // A typed comma commits the value — the old habit keeps working.
             if (e.target.value.includes(',')) {
@@ -96,37 +126,60 @@ export default function ChipInput({
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
-              if (draft.trim()) {
-                e.preventDefault()
-                add(draft)
-              }
+              // Never let Enter fall through to the form: an empty chip
+              // field would submit and close the whole edit.
+              e.preventDefault()
+              if (active >= 0 && matches[active]) add(matches[active])
+              else if (draft.trim()) add(draft)
+            } else if (e.key === 'ArrowDown' && matches.length > 0) {
+              e.preventDefault()
+              setActive((i) => (i + 1) % matches.length)
+            } else if (e.key === 'ArrowUp' && matches.length > 0) {
+              e.preventDefault()
+              setActive((i) => (i <= 0 ? matches.length - 1 : i - 1))
+            } else if (e.key === 'Escape' && matches.length > 0) {
+              e.preventDefault()
+              setActive(-1)
+              setFocused(false)
             } else if (e.key === 'Backspace' && !draft && values.length > 0) {
               removeAt(values.length - 1)
             }
           }}
           onFocus={() => setFocused(true)}
-          onBlur={() => {
+          onBlur={(e) => {
             setFocused(false)
-            if (draft.trim()) add(draft)
+            // Commit a real word left in the field, not a stray keystroke,
+            // and not when the blur is a tap on Cancel/Save.
+            const toButton = (e.relatedTarget as HTMLElement | null)?.tagName === 'BUTTON'
+            if (draft.trim().length >= 2 && !toButton) add(draft)
+            else if (draft.trim().length < 2) setDraft('')
           }}
         />
       </div>
       {matches.length > 0 && (
-        <div className="chip-suggestions">
-          {matches.map((s) => (
-            <button
+        <ul className="chip-suggestions" id={listId} role="listbox" aria-label={`${label} suggestions`}>
+          {matches.map((s, i) => (
+            <li
               key={s}
-              type="button"
-              tabIndex={-1}
+              id={`${listId}-${i}`}
+              role="option"
+              aria-selected={i === active}
+              className={i === active ? 'active' : undefined}
               onPointerDown={(e) => {
                 e.preventDefault()
+                pointerPicked.current = true
                 add(s)
               }}
+              onClick={() => {
+                if (!pointerPicked.current) add(s)
+                pointerPicked.current = false
+              }}
+              onPointerEnter={() => setActive(i)}
             >
               {s}
-            </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   )

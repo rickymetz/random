@@ -248,7 +248,7 @@ export default function PeoplePage() {
           placeholder={
             circle
               ? `Search in ${circle.name}… or type a name to add`
-              : 'Search names, details, notes — or type a new name'
+              : 'Search, or type a new name'
           }
           aria-label="Search names, details, and notes"
         />
@@ -261,7 +261,8 @@ export default function PeoplePage() {
         >
           <span className="circle-chip">{circle.name}</span> — {circle.memberIds.length}{' '}
           {circle.memberIds.length === 1 ? 'person' : 'people'} ·{' '}
-          <Link to={`/graph?circle=${circle.id}`}>see on graph</Link>
+          <Link to={`/graph?circle=${circle.id}`}>See on graph →</Link> ·{' '}
+          <Link to={`/graph?circle=${circle.id}&edit=1`}>Edit circle</Link>
           <button className="subtle" onClick={() => setParams({}, { replace: true })}>
             Show everyone
           </button>
@@ -269,8 +270,7 @@ export default function PeoplePage() {
       )}
       {!trimmed && !circle && !people.some((p) => !p.isSelf) && (
         <p className="empty">
-          No one here yet. Type a name above and tap <strong>Add</strong>, or tap{' '}
-          <strong>+</strong>.
+          Just you so far. Type a name above to add the first person.
         </p>
       )}
       {corrupted > 0 && (
@@ -282,8 +282,8 @@ export default function PeoplePage() {
       <KdfUpgradeNag />
       <PinFailureNotice />
       {showRecent && <Recent people={sorted} withRail={showRail} />}
-      {!trimmed && <BackupNag />}
-      {!trimmed && <Upcoming />}
+      {!trimmed && !circle && <Upcoming />}
+      {!trimmed && !circle && <BackupNag />}
       {circleHits.length > 0 && (
         <ul className="circle-results" aria-label="Circles">
           {circleHits.map((c) => (
@@ -302,7 +302,9 @@ export default function PeoplePage() {
           ))}
         </ul>
       )}
-      {trimmed && !exactCircle && (
+      {/* Creation leads only when nothing matched; with hits it follows
+          the list so a lookup isn't headed by "Add". */}
+      {trimmed && !exactCircle && people.length === 0 && (
         <button className="add-person" onClick={create} disabled={busy}>
           + Add “{trimmed}”{circle ? ` to ${circle.name}` : ''}
         </button>
@@ -336,6 +338,11 @@ export default function PeoplePage() {
           </li>
         )}
       </ul>
+      {trimmed && !exactCircle && people.length > 0 && (
+        <button className="add-person after-list" onClick={create} disabled={busy}>
+          + Add “{trimmed}”{circle ? ` to ${circle.name}` : ''}
+        </button>
+      )}
       {!trimmed && (
         <button
           className="add-person fab"
@@ -585,20 +592,24 @@ const PersonRow = memo(function PersonRow({ person, query }: { person: Person; q
       <Link to={`/person/${person.id}`} className="person-row">
         <Avatar person={person} size={36} />
         <span className="person-row-text">
-          <strong>{person.displayName}</strong>
-          {person.isSelf && (
-            <span className="you-badge" title="This is you">
-              you
-            </span>
-          )}
-          {circles.length > 0 && (
-            <span className="circle-dots" title={circles.map((c) => c.name).join(', ')}>
-              {circles.map((c) => (
-                <i key={c.id} style={{ background: c.color }} />
-              ))}
-              <span className="sr-only">in {circles.map((c) => c.name).join(', ')}</span>
-            </span>
-          )}
+          {/* Badges and circle dots share the name line: a row must not
+              grow taller because someone is in a circle. */}
+          <strong>
+            {person.displayName}
+            {person.isSelf && (
+              <span className="you-badge" title="This is you">
+                you
+              </span>
+            )}
+            {circles.length > 0 && (
+              <span className="circle-dots" title={circles.map((c) => c.name).join(', ')}>
+                {circles.map((c) => (
+                  <i key={c.id} style={{ background: c.color }} />
+                ))}
+                <span className="sr-only">in {circles.map((c) => c.name).join(', ')}</span>
+              </span>
+            )}
+          </strong>
           {detail && <span className="hint"> {detail}</span>}
           {snippet && <span className="snippet">{snippet}</span>}
         </span>
@@ -660,10 +671,16 @@ function BackupNag() {
   const records = useVaultStore((s) => s.records)
   const settings = selectSettings(records)
   // The seeded "Me" person alone is not content worth nagging about.
-  const hasContent = useMemo(
-    () => selectPeople(records).some((p) => !p.isSelf),
-    [records],
-  )
+  // Nag once there is something worth losing — not on person #1.
+  const hasContent = useMemo(() => {
+    let people = 0
+    let notes = 0
+    for (const r of records.values()) {
+      if (r.kind === 'person' && !r.isSelf) people += 1
+      else if (r.kind === 'note') notes += 1
+    }
+    return people >= 2 || notes >= 3
+  }, [records])
   if (!hasContent) return null
   const last = settings?.lastExportAt
   const stale = !last || Date.now() - last > EXPORT_NAG_DAYS * 86_400_000

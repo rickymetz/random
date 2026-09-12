@@ -17,6 +17,7 @@ import {
   useState,
   type MutableRefObject,
 } from 'react'
+import PersonPicker from '../components/PersonPicker'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
 import { CIRCLE_COLORS, colorName, type Person, type Relationship } from '../lib/models'
@@ -187,6 +188,15 @@ export default function GraphPage() {
       ? (self?.id ?? null)
       : null
   const focusId = focusParam ?? autoFocusId
+  // "Edit circle" from the People banner lands on the circle's card.
+  const editParam = params.get('edit') === '1'
+  useEffect(() => {
+    if (!editParam || !circleFocusId) return
+    setPeek({ kind: 'circle', id: circleFocusId })
+    const next = new URLSearchParams(params)
+    next.delete('edit')
+    setParams(next, { replace: true })
+  }, [editParam, circleFocusId, params, setParams])
   useEffect(() => {
     if (!autoFocusId) return
     const next = new URLSearchParams(params)
@@ -342,6 +352,10 @@ export default function GraphPage() {
     return allCircles.filter((c) => c.memberIds.some((id) => visible.has(id)))
   }, [allCircles, focusId, nodes])
 
+  // A graph with no links and no circles is two dots and a legend about
+  // dotted lines: show the "how to start" copy instead of the rail.
+  const bare = !focusedCircle && !focusId && links.length === 0 && circles.length === 0
+
   const focusName = useMemo(() => {
     if (!focusId) return undefined
     const p = records.get(focusId)
@@ -381,7 +395,7 @@ export default function GraphPage() {
   }
 
   return (
-    <div className="graph">
+    <div className={`graph ${bare ? 'bare' : ''}`}>
       <h1 className="sr-only">Graph</h1>
       <div className="graph-controls">
         {focusName && (
@@ -413,7 +427,7 @@ export default function GraphPage() {
               aria-label={bigGraph ? `Show everyone (${peopleCount})` : 'Show everyone'}
               title={bigGraph ? `Show everyone (${peopleCount})` : 'Show everyone'}
             >
-              ×
+              {bigGraph ? `All ${peopleCount}` : '×'}
             </button>
           </span>
         )}
@@ -535,14 +549,14 @@ export default function GraphPage() {
       <p className="graph-legend">
         {nodes.length > LABEL_MAX_NODES
           ? 'Too many people to name at once: zoom in to see names, or pick a person or circle above.'
-          : 'Tap a label to hide or show that kind of link or circle. Dotted line = mentioned in a note. Tinted areas are circles — tap one (or its ✎) to edit it; tap a person for details.'}
+          : 'Tap a label to hide or show that kind of link or circle. A dotted line means they were mentioned in a note. Tinted areas are circles — tap one (or its ✎) to edit it; tap a person for details.'}
       </p>
-      {arranging && nodes.length > 150 && (
-        <p className="graph-status" role="status">
-          Arranging {nodes.length} people…
-        </p>
-      )}
       <div className="graph-canvas-wrap">
+        {arranging && nodes.length > 150 && (
+          <p className="graph-status" role="status">
+            Arranging {nodes.length} people…
+          </p>
+        )}
         {focusedCircle && nodes.length === 0 ? (
           <div className="empty circle-empty" role="status">
             “{focusedCircle.name}” has no members yet — add people from their pages, or
@@ -564,11 +578,17 @@ export default function GraphPage() {
               </button>
             </div>
           </div>
-        ) : nodes.length === 0 ||
-          (!focusedCircle && !focusId && links.length === 0 && nodes.length <= 1) ? (
+        ) : focusParam && records.get(focusParam)?.kind !== 'person' ? (
           <p className="empty">
-            No people yet — <Link to="/">add someone</Link> and connect them, or load the
-            sample cast from <Link to="/settings">Settings</Link> to see the graph in action.
+            That person is no longer here.{' '}
+            <button className="subtle" onClick={() => clearParam('focus')}>
+              Show everyone
+            </button>
+          </p>
+        ) : bare ? (
+          <p className="empty">
+            Nothing to connect yet. Open someone's page and add a relationship, or load the
+            sample people in <Link to="/settings">Settings</Link>.
           </p>
         ) : (
           <>
@@ -758,7 +778,7 @@ function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) 
           onChange={(e) => setPendingType(e.target.value)}
           aria-label="Change type"
         >
-          <option value="">retype…</option>
+          <option value="">Change to…</option>
           {types.map((t) => (
             <option key={t.id} value={t.id}>
               {t.label}
@@ -807,7 +827,12 @@ function CirclePeek({
   const records = useVaultStore((s) => s.records)
   const updateCircle = useVaultStore((s) => s.updateCircle)
   const removeCircle = useVaultStore((s) => s.removeCircle)
-  const cardRef = usePeekFocus(onClose)
+  const cardRef = usePeekFocus(() => {
+    // Escape/outside-tap must not throw away a rename that blur would
+    // have saved: commit first, then close.
+    if (dirty) void commitName()
+    onClose()
+  })
   const circle = records.get(circleId)
   const [name, setName] = useState(circle?.kind === 'circle' ? circle.name : '')
   const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null)
@@ -907,27 +932,22 @@ function CirclePeek({
               </button>
             </li>
           ))}
-          {members.length === 0 && <li className="hint">No one yet.</li>}
+          {members.length === 0 && others.length === 0 && <li className="hint">No one yet.</li>}
         </ul>
         {others.length > 0 && (
-          <label className="add-member">
-            <span className="sr-only">Add a person to {circle.name}</span>
-            <select
+          <div className="add-member">
+            <PersonPicker
+              people={others}
               value=""
-              onChange={(e) => {
-                const id = e.target.value
+              onChange={(id) => {
                 if (id) void updateCircle({ ...circle, memberIds: [...circle.memberIds, id] })
               }}
-              aria-label={`Add a person to ${circle.name}`}
-            >
-              <option value="">+ Add someone…</option>
-              {others.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
+              label={`Add a person to ${circle.name}`}
+              placeholder="Type a name to add…"
+              pickedMessage={(p) => `${p.displayName} added to ${circle.name}`}
+              listAbove
+            />
+          </div>
         )}
       </div>
       <div className="row wrap">
@@ -936,8 +956,13 @@ function CirclePeek({
         ) : (
           <button onClick={onFocus}>Only this circle</button>
         )}
+        <Link className="subtle-link" to={`/?circle=${circle.id}`}>
+          See as list →
+        </Link>
+      </div>
+      <div className="row peek-danger">
         <button
-          className="danger-text"
+          className="danger"
           onClick={() => {
             if (confirm(`Delete the circle “${circle.name}”? The people stay.`)) {
               void removeCircle(circle.id)
@@ -1282,7 +1307,7 @@ function useCanvasGraph(
         ctx.fillStyle = '#2b2926'
         ctx.fill()
         ctx.lineWidth = 1.5 / k
-        ctx.strokeStyle = '#4a463f'
+        ctx.strokeStyle = '#5a554c'
         ctx.stroke()
         if (k * 11 >= 7) {
           ctx.fillStyle = '#ece8e1'
@@ -1294,7 +1319,7 @@ function useCanvasGraph(
         const image = node.avatar ? avatarImages.get(node.avatar.blobRecordId) : undefined
         // The self node is the anchor of every "how you connect" query:
         // it gets the accent ring even when not focused.
-        const ring = isFocus || node.isSelf ? '#d8a657' : '#4a463f'
+        const ring = isFocus || node.isSelf ? '#d8a657' : '#5a554c'
         const r = node.r
         if (image instanceof HTMLImageElement) {
           ctx.save()
@@ -1455,12 +1480,14 @@ function useCanvasGraph(
     } else if (circleFocusId && lastFitKeyRef.current !== `circle:${circleFocusId}`) {
       // Focusing a circle re-frames on its members.
       lastFitKeyRef.current = `circle:${circleFocusId}`
-      fitTimer = setTimeout(fitAll, reduceMotion ? 0 : 400)
+      fitTimer = setTimeout(fitAll, reduceMotion ? 50 : 400)
     } else if (!hasCachedPositions) {
       // First layout of this session: fit everyone once it has settled,
       // so nobody starts off-screen (orphans, big casts on a phone).
       simulation.on('end', fitAll)
-      fitTimer = setTimeout(fitAll, reduceMotion ? 0 : 900)
+      // Reduced motion: still give the ResizeObserver a beat to report a
+      // size, or the fit runs against a zero-width canvas and clips.
+      fitTimer = setTimeout(fitAll, reduceMotion ? 50 : 900)
     }
     if (reduceMotion) scheduleRender()
 

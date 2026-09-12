@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import PersonPicker from '../components/PersonPicker'
 import ChipInput from '../components/ChipInput'
 import MentionTextarea from '../components/MentionTextarea'
 import { mutualConnections, selectSelf, shortestPath } from '../lib/graphQueries'
@@ -19,10 +20,17 @@ import {
   selectPhotos,
   selectRelationships,
   selectRelationshipTypes,
+  selectSettings,
   useVaultStore,
 } from '../store/vaultStore'
 
 const csv = (list: string[]) => list.join(', ')
+
+/** "friend of Ada", but "boss of Ada" — not "boss of of Ada". */
+const relOf = (label: string | undefined, name: string) => {
+  const l = label ?? 'linked'
+  return / of$/.test(l) ? `${l} ${name}` : `${l} of ${name}`
+}
 
 /**
  * The dossier (§4.1), ordered for scenario S2 — facts, relationships, and
@@ -60,7 +68,20 @@ export default function PersonPage() {
   return (
     <article className="person">
       <header className="person-header">
-        <button className="subtle back" onClick={() => navigate(-1)} aria-label="Back">
+        <button
+          className="subtle back icon"
+          // Save/Cancel are the only exits while editing (a stray Back
+          // would discard the edits). A deep link (notification, pasted
+          // URL) has nothing behind it: Back must land on People, not
+          // leave the app.
+          hidden={editing}
+          onClick={() => {
+            const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0
+            if (idx > 0) navigate(-1)
+            else navigate('/', { replace: true })
+          }}
+          aria-label="Back"
+        >
           ←
         </button>
         <Avatar person={person} size={44} />
@@ -82,12 +103,14 @@ export default function PersonPage() {
           someone through others.
         </p>
       )}
+      {/* Lookup order (§4.1): what to remember and what you last wrote
+          come before the link-building sections. */}
       <Facts person={person} editing={editing} setEditing={setEditing} />
+      <FollowUpSection personId={person.id} />
+      <NotesSection personId={person.id} />
       <RelationshipSection person={person} />
       <ConnectionSection person={person} />
-      <FollowUpSection personId={person.id} />
       <PhotoSection personId={person.id} />
-      <NotesSection personId={person.id} />
       <MentionedInSection personId={person.id} />
       <footer className="person-footer" />
       {/* Hidden, not unmounted, while the facts form is open: unmounting
@@ -140,7 +163,7 @@ function Facts({
         ))
   const rows: [string, ReactNode][] = [
     ['Circles', circleChips],
-    ['Also called', person.nicknames.length ? csv(person.nicknames) : undefined],
+    ['Nicknames', person.nicknames.length ? csv(person.nicknames) : undefined],
     ['Job', [person.jobTitle, person.employer].filter(Boolean).join(' @ ') || undefined],
     ['Location', person.location],
     ['Birthday', person.birthday && formatPartialDate(person.birthday)],
@@ -164,8 +187,8 @@ function Facts({
         </span>
       </div>
       {filled.length === 0 ? (
-        <p className="empty">
-          Nothing recorded yet — Edit adds job, birthday, likes, circles, and more.
+        <p className="empty-inline">
+          Nothing recorded yet — tap Edit to add a job, birthday, likes or circles.
         </p>
       ) : (
         <div className="facts-card">
@@ -194,7 +217,7 @@ function CopyAsTextButton({ person }: { person: Person }) {
   const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const copy = async () => {
     const lines: string[] = [person.displayName]
-    if (person.nicknames.length) lines.push(`Also called: ${csv(person.nicknames)}`)
+    if (person.nicknames.length) lines.push(`Nicknames: ${csv(person.nicknames)}`)
     if (person.pronouns) lines.push(`Pronouns: ${person.pronouns}`)
     const job = [person.jobTitle, person.employer].filter(Boolean).join(' @ ')
     if (job) lines.push(`Job: ${job}`)
@@ -271,7 +294,8 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
   const [isSelf, setIsSelf] = useState(Boolean(person.isSelf))
   const [dateError, setDateError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const dirty = JSON.stringify(form) !== JSON.stringify(initial)
+  const dirty =
+    JSON.stringify(form) !== JSON.stringify(initial) || isSelf !== Boolean(person.isSelf)
 
   type TextKey =
     | 'displayName'
@@ -304,7 +328,12 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     key: 'nicknames' | 'likes' | 'dislikes' | 'tags' | 'circles',
     label: string,
     suggestions: string[] = [],
-    opts: { placeholder?: string; hideLabel?: boolean; suggestOnFocus?: boolean } = {},
+    opts: {
+      placeholder?: string
+      hideLabel?: boolean
+      suggestOnFocus?: boolean
+      capitalize?: 'none' | 'words'
+    } = {},
   ) => (
     <label className="span-2">
       {opts.hideLabel ? <span className="sr-only">{label}</span> : label}
@@ -313,7 +342,8 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         values={form[key]}
         onChange={(values) => setForm({ ...form, [key]: values })}
         suggestions={suggestions}
-        placeholder={opts.placeholder ?? 'type a word, then Enter'}
+        capitalize={opts.capitalize}
+        placeholder={opts.placeholder ?? 'one per entry'}
         suggestOnFocus={opts.suggestOnFocus}
       />
     </label>
@@ -326,7 +356,10 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     // this app exists to keep).
     const birthday = parsePartialDate(form.birthday)
     if (form.birthday.trim() && !birthday) {
-      setDateError('Birthday not understood — try "Jun 21", "1984-06-21", or "June".')
+      setDateError('Birthday not understood — try Jun 21, 1984-06-21, or just June.')
+      requestAnimationFrame(() =>
+        document.querySelector<HTMLInputElement>('.facts-form input[aria-invalid="true"]')?.focus(),
+      )
       return
     }
     setDateError(null)
@@ -384,14 +417,28 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
 
   return (
     <form className="facts-form" onSubmit={save}>
-      <h2 className="form-title">Edit details</h2>
+      <h2 className="form-title">Edit {person.displayName}</h2>
       <fieldset className="field-group">
         <legend>Identity</legend>
         <div className="field-grid">
-          {field('displayName', 'Name', '', {}, 'span-2')}
-          {chips('nicknames', 'Nicknames')}
+          {field(
+            'displayName',
+            'Name',
+            '',
+            {
+              required: true,
+              autoCapitalize: 'words',
+              autoComplete: 'off',
+              onInvalid: (e: React.FormEvent<HTMLInputElement>) =>
+                e.currentTarget.setCustomValidity('A name is needed'),
+              onInput: (e: React.FormEvent<HTMLInputElement>) => e.currentTarget.setCustomValidity(''),
+            },
+            'span-2',
+          )}
+          {chips('nicknames', 'Nicknames', undefined, { capitalize: 'words' })}
           {field('pronouns', 'Pronouns')}
-          {field('birthday', 'Birthday', 'Jun 21 (year optional)', {
+          {field('birthday', 'Birthday', 'Jun 21 or 1984-06-21', {
+            onInput: () => setDateError(null),
             'aria-invalid': dateError ? true : undefined,
           })}
           {dateError && (
@@ -400,6 +447,13 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
             </p>
           )}
         </div>
+        <label className="toggle-row">
+        <input type="checkbox" checked={isSelf} onChange={(e) => setIsSelf(e.target.checked)} />
+        <span>
+          This is me
+          <span className="hint"> — only one card can be you; it lets the app show how you know people through others.</span>
+        </span>
+      </label>
       </fieldset>
       <fieldset className="field-group">
         <legend>Circles</legend>
@@ -409,7 +463,8 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         </p>
         <div className="field-grid">
           {chips('circles', 'Circles', vocab.circles, {
-            placeholder: 'circle name — existing ones are suggested',
+            capitalize: 'words',
+            placeholder: 'e.g. book club',
             hideLabel: true,
             suggestOnFocus: true,
           })}
@@ -447,13 +502,6 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
           {chips('tags', 'Tags', vocab.tags)}
         </div>
       </fieldset>
-      <label className="toggle-row">
-        <input type="checkbox" checked={isSelf} onChange={(e) => setIsSelf(e.target.checked)} />
-        <span>
-          This is me
-          <span className="hint"> — only one card can be you; it lets the app show how you know people through others.</span>
-        </span>
-      </label>
       {/* Deleting lives in edit mode, not next to the everyday note box. */}
       <button
         type="button"
@@ -506,6 +554,10 @@ function ConnectionSection({ person }: { person: Person }) {
   const otherId = compareId && records.has(compareId) ? compareId : selfId
   const path = useMemoPath(records, selfId, person.id)
   const mutuals = useMemoMutuals(records, otherId, person.id)
+  const compareExclude = useMemo(
+    () => [person.id, ...people.filter((p) => p.isSelf).map((p) => p.id)],
+    [people, person.id],
+  )
   const hasAnyEdge = useMemo(
     () =>
       [...records.values()].some(
@@ -552,7 +604,10 @@ function ConnectionSection({ person }: { person: Person }) {
           {path.map((step, i) => (
             <span key={step.person.id}>
               {i > 0 && (
-                <span className="path-rel" style={{ color: typeById.get(step.via!.typeId)?.color }}>
+                <span
+                  className="path-rel"
+                  style={{ '--edge-color': typeById.get(step.via!.typeId)?.color } as React.CSSProperties}
+                >
                   {edgeLabel(i)}
                 </span>
               )}
@@ -564,30 +619,27 @@ function ConnectionSection({ person }: { person: Person }) {
             </span>
           ))}
           <Link className="path-graph-link" to={`/graph?path=${person.id}`}>
-            show on graph →
+            See on graph →
           </Link>
         </p>
       ) : (
         <p className="hint">No known chain connects you yet.</p>
       )}
       <div className="row wrap">
-        <label className="inline-check">
-          Mutual connections with
-          <select
+        <div className="inline-check compare-with">
+          <span className="field-label" aria-hidden="true">
+            Mutual connections with
+          </span>
+          <PersonPicker
+            people={people}
+            excludeIds={compareExclude}
             value={compareId}
-            onChange={(e) => setCompareId(e.target.value)}
-            aria-label="Compare mutual connections with"
-          >
-            <option value="">you</option>
-            {people
-              .filter((p) => !p.isSelf)
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.displayName}
-                </option>
-              ))}
-          </select>
-        </label>
+            onChange={setCompareId}
+            label="Compare mutual connections with"
+            placeholder="Type a name…"
+            emptyLabel="You"
+          />
+        </div>
       </div>
       {mutuals.length === 0 ? (
         <p className="hint">
@@ -599,8 +651,8 @@ function ConnectionSection({ person }: { person: Person }) {
             <li key={m.person.id}>
               <Link to={`/person/${m.person.id}`}>{m.person.displayName}</Link>
               <span className="hint">
-                {typeById.get(m.edgeToB.typeId)?.label ?? 'linked'} of {person.displayName} ·{' '}
-                {typeById.get(m.edgeToA.typeId)?.label ?? 'linked'} of {otherName}
+                {relOf(typeById.get(m.edgeToB.typeId)?.label, person.displayName)} ·{' '}
+                {relOf(typeById.get(m.edgeToA.typeId)?.label, otherName)}
               </span>
             </li>
           ))}
@@ -743,7 +795,7 @@ function FollowUpSection({ personId }: { personId: string }) {
     if (!text.trim() || busy) return
     const dueDate = parsePartialDate(due)
     if (due.trim() && !dueDate) {
-      setDueError('Date not understood — try "Sep 20" or "2026-09-20".')
+      setDueError('Date not understood — try Sep 20 or 2026-09-20.')
       return
     }
     setDueError(null)
@@ -800,7 +852,7 @@ function FollowUpSection({ personId }: { personId: string }) {
           />
         </label>
         <label>
-          Due <span className="optional">— optional</span>
+          <span>Due <span className="optional">— optional</span></span>
           <input
             className="due"
             value={due}
@@ -845,6 +897,9 @@ function RelationshipSection({ person }: { person: Person }) {
     [records, person.id],
   )
   const personById = useMemo(() => new Map(people.map((p) => [p.id, p])), [people])
+  const selfExclude = useMemo(() => [person.id], [person.id])
+  const recentIds = selectSettings(records)?.recentIds
+  const addPerson = useVaultStore((s) => s.addPerson)
   const typeById = useMemo(
     () => new Map(selectRelationshipTypes(records).map((t) => [t.id, t])),
     [records],
@@ -884,7 +939,7 @@ function RelationshipSection({ person }: { person: Person }) {
     return (
       <li key={edge.id} className={edge.origin === 'mention' ? 'mention-edge' : ''}>
         <Link to={`/person/${other.id}`}>{other.displayName}</Link>
-        <span className="edge-type" style={{ color: type?.color }}>
+        <span className="edge-type" style={{ '--edge-color': type?.color } as React.CSSProperties}>
           {label}
         </span>
         <button
@@ -937,24 +992,23 @@ function RelationshipSection({ person }: { person: Person }) {
       )}
       <ul className="edges">{edges.map(describe)}</ul>
       <form className="add-form" onSubmit={add}>
-        <label className="span-2">
-          Person
-          <select
+        {/* A div, not a label: once the chip shows, a label's control would
+            become the × button and clicking "Person" would un-pick. */}
+        <div className="span-2 field">
+          <span className="field-label" aria-hidden="true">
+            Person
+          </span>
+          <PersonPicker
+            people={people}
+            excludeIds={selfExclude}
             value={otherId}
-            onChange={(e) => setOtherId(e.target.value)}
-            aria-label="Person"
-          >
-            <option value="">person…</option>
-            {people
-              .filter((p) => p.id !== person.id)
-              .sort((a, b) => a.displayName.localeCompare(b.displayName))
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.displayName}
-                </option>
-              ))}
-          </select>
-        </label>
+            onChange={setOtherId}
+            onCreate={addPerson}
+            label="Person"
+            placeholder="Type a name…"
+            preferIds={recentIds}
+          />
+        </div>
         <label>
           Relationship type
           <select
@@ -962,7 +1016,7 @@ function RelationshipSection({ person }: { person: Person }) {
             onChange={(e) => setTypeId(e.target.value)}
             aria-label="Relationship type"
           >
-            <option value="">type…</option>
+            <option value="">How you know them…</option>
             {types.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.label}
@@ -971,12 +1025,6 @@ function RelationshipSection({ person }: { person: Person }) {
             <option value="new">+ new type…</option>
           </select>
         </label>
-        <button
-          type="submit"
-          disabled={busy || !otherId || !typeId || (typeId === 'new' && !newType.trim())}
-        >
-          Add
-        </button>
         {typeId === 'new' && (
           <div className="subform">
             <label>
@@ -1031,6 +1079,13 @@ function RelationshipSection({ person }: { person: Person }) {
             })()}
           </button>
         )}
+        <button
+          className="add-submit"
+          type="submit"
+          disabled={busy || !otherId || !typeId || (typeId === 'new' && !newType.trim())}
+        >
+          Add
+        </button>
       </form>
     </section>
   )
@@ -1258,7 +1313,7 @@ function NotesSection({ personId }: { personId: string }) {
     <section>
       <h2>Notes</h2>
       {notes.length === 0 && (
-        <p className="empty">Nothing yet — jot something in the box below.</p>
+        <p className="empty-inline">Nothing yet — use the note box at the bottom of the screen.</p>
       )}
       <ul className="notes">
         {notes.map((note) => (
@@ -1515,7 +1570,7 @@ function PromotePanel({
 
   return (
     <form ref={panelRef} className="promote-panel" onSubmit={promote}>
-      <p className="panel-title">Turn this note into a detail</p>
+      <p className="panel-title">Save this note as a detail</p>
       <label>
         Which detail?
         <select

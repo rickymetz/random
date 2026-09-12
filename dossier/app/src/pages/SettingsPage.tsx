@@ -38,12 +38,14 @@ export default function SettingsPage() {
   return (
     <div className="settings">
       <h1 className="sr-only">Settings</h1>
-      <SecuritySection />
+      {/* What a new user needs first: the install caveat (iOS tab) and the
+          backup habit, before the long Security block. */}
       {isIosBrowserTab() && <InstallSection />}
-      <DisguiseSection />
       <ExportSection />
       <ImportSection />
       <StorageSection />
+      <SecuritySection />
+      <DisguiseSection />
       <SampleDataSection />
       {dev && <StressSection />}
       <section className="danger-zone">
@@ -53,7 +55,7 @@ export default function SettingsPage() {
           unless you saved a backup, so this really is gone.
         </p>
         <button className="danger" onClick={destroy}>
-          Destroy all data
+          Delete everything
         </button>
       </section>
     </div>
@@ -105,11 +107,15 @@ function SecuritySection() {
     }
     setPinBusy(true)
     try {
-      setPinMsg((await setPin(pin, pinPass)) ? null : 'Wrong passphrase.')
+      const ok = await setPin(pin, pinPass)
+      setPinMsg(ok ? null : 'Wrong passphrase.')
+      // A passphrase typo shouldn't cost retyping the PIN twice.
+      if (ok) {
+        setPinValue('')
+        setPinConfirm('')
+      }
     } finally {
       setPinBusy(false)
-      setPinValue('')
-      setPinConfirm('')
       setPinPass('')
     }
   }
@@ -152,15 +158,18 @@ function SecuritySection() {
       <h3>Quick unlock PIN</h3>
       {pinArmed ? (
         <div className="row">
-          <p className="hint" role="status">
-            PIN is on. It works until you fully close the app — then you'll enter your
-            passphrase once and can set it again. After {MAX_PIN_ATTEMPTS} wrong tries
-            it's cleared. The “Lock &amp; forget PIN” button at the top clears it too;
-            the tab-bar Lock and auto-lock keep it.
-          </p>
+          <p role="status">PIN is on ✓</p>
           <button className="subtle" onClick={forgetPin}>
             Turn off
           </button>
+        </div>
+      ) : null}
+      {pinArmed ? (
+        <div>
+          <p className="hint">
+            Works until you fully close the app; cleared after {MAX_PIN_ATTEMPTS} wrong
+            tries or by “Lock &amp; forget PIN” at the top. Auto-lock keeps it.
+          </p>
         </div>
       ) : (
         <form className="pin-form" onSubmit={armPin}>
@@ -207,21 +216,20 @@ function SecuritySection() {
               />
             </label>
             <button type="submit" disabled={pinBusy || !pin || !pinConfirm || !pinPass}>
-              {pinBusy ? '…' : 'Turn on'}
+              {pinBusy ? '…' : 'Turn on PIN'}
             </button>
           </div>
+          {pinMsg && (
+            <p className="hint error" role="alert">
+              {pinMsg}
+            </p>
+          )}
           <p className="hint">
             A short code for quick unlocking. It works until you fully close the app;
             after that, enter your passphrase once and set it again here.
           </p>
         </form>
       )}
-      {pinMsg && (
-        <p className="hint error" role="alert">
-          {pinMsg}
-        </p>
-      )}
-
       <h3>Face ID / fingerprint unlock</h3>
       {!webAuthnAvailable() ? (
         <p className="hint">Your browser can't do this — use the PIN instead.</p>
@@ -249,7 +257,7 @@ function SecuritySection() {
             />
           </label>
           <button type="submit" disabled={bioBusy || !bioPass}>
-            {bioBusy ? 'Waiting for your phone…' : 'Turn on'}
+            {bioBusy ? 'Waiting for your phone…' : 'Turn on Face ID'}
           </button>
         </form>
       )}
@@ -403,10 +411,11 @@ function InstallSection() {
 /** Neutral install name/icon (§6.5). The choice is the public face. */
 function DisguiseSection() {
   const [selected, setSelected] = useState(() => currentDisguise().id)
+  const [changed, setChanged] = useState<string | null>(null)
   const base = import.meta.env.BASE_URL
   return (
     <section>
-      <h2>Home-screen name &amp; icon</h2>
+      <h2>Name &amp; icon on your Home Screen</h2>
       <p className="hint">
         If you add this app to your home screen (Share → Add to Home Screen), this is
         the name and icon it shows — pick whatever blends in. On iPhone, re-add it
@@ -422,6 +431,7 @@ function DisguiseSection() {
             onClick={() => {
               setDisguise(d.id)
               setSelected(d.id)
+              setChanged(d.name)
             }}
           >
             <img src={`${base}${d.icon}`} alt="" width={40} height={40} />
@@ -429,6 +439,9 @@ function DisguiseSection() {
           </button>
         ))}
       </div>
+      <p className="hint status-slot" role="status">
+        {changed && `Now showing as ${changed} ✓ — on iPhone, re-add to your Home Screen to update the icon.`}
+      </p>
     </section>
   )
 }
@@ -544,7 +557,7 @@ function ExportSection() {
         </p>
       )}
       {state === 'done' && (
-        <p className="hint">Backup saved. Check your downloads for a .ledger file.</p>
+        <p className="hint">Backup saved ✓</p>
       )}
     </section>
   )
@@ -564,7 +577,10 @@ function ImportSection() {
     setMessage(null)
     setError(null)
     const file = fileRef.current?.files?.[0]
-    if (!file) return
+    if (!file) {
+      setError('Choose a backup file first.')
+      return
+    }
     if (file.size > MAX_IMPORT_FILE_BYTES) {
       setError('That file is too large to be a valid backup.')
       return
@@ -577,7 +593,7 @@ function ImportSection() {
         return
       }
       const count = await importRecords(restored.records, restored.blobs)
-      setMessage(`Restored ${count} records.`)
+      setMessage(`Restored ✓ — ${count} items`)
       if (fileRef.current) fileRef.current.value = ''
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed.')
@@ -780,7 +796,12 @@ function StorageSection() {
       <p className="hint">
         {label}
         {status.usageBytes !== null && (
-          <> Using {(status.usageBytes / 1024 / 1024).toFixed(1)} MB.</>
+          <>
+            {' '}
+            {status.usageBytes < 100_000
+              ? 'Using under 1 MB.'
+              : `Using ${(status.usageBytes / 1024 / 1024).toFixed(1)} MB.`}
+          </>
         )}
       </p>
     </section>
