@@ -261,6 +261,7 @@ function PassphraseForm({
           Passphrase
           <input
             type="password"
+            enterKeyHint="go"
             autoFocus
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
@@ -275,6 +276,7 @@ function PassphraseForm({
               Repeat passphrase
               <input
                 type="password"
+            enterKeyHint="go"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 placeholder="Repeat passphrase"

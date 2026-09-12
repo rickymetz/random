@@ -64,6 +64,18 @@ export default function PeoplePage() {
     requestAnimationFrame(() => batchToggleRef.current?.focus())
   }
   const searchRef = useRef<HTMLInputElement>(null)
+  // Ctrl/Cmd+K focuses search from anywhere on the page. (A bare "/"
+  // would be a single-character shortcut, which speech and switch users
+  // trip over — WCAG 2.1.4.)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey) || e.altKey) return
+      e.preventDefault()
+      searchRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
   // Facet links (a tag or like on a dossier) arrive as ?q=…: adopt the
   // query, then drop the param so back/forward stays clean.
@@ -244,9 +256,29 @@ export default function PeoplePage() {
     return selectCircles(records).filter((c) => c.name.toLowerCase().includes(q))
   }, [records, trimmed, circle])
   const exactCircle = circleHits.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())
+  // Results are announced (debounced) — the list narrows silently otherwise.
+  const [resultNote, setResultNote] = useState('')
+  useEffect(() => {
+    if (!trimmed) {
+      setResultNote('')
+      return
+    }
+    const t = window.setTimeout(() => {
+      setResultNote(
+        people.length === 0
+          ? `No one matches — Enter adds “${trimmed}”`
+          : `${people.length} ${people.length === 1 ? 'person matches' : 'people match'}`,
+      )
+    }, 400)
+    return () => window.clearTimeout(t)
+  }, [trimmed, people.length])
+
   return (
     <div className="people">
       <h1 className="sr-only">People</h1>
+      <span className="sr-only" role="status">
+        {resultNote}
+      </span>
       <form onSubmit={submit}>
         <input
           ref={searchRef}
@@ -353,7 +385,9 @@ export default function PeoplePage() {
           </li>
         )}
       </ul>
-      {trimmed && !exactCircle && people.length > 0 && (
+      {/* With hits, offer creation only for something name-shaped — a
+          lowercase fragment like "ma" is a lookup, not a new person. */}
+      {trimmed && !exactCircle && people.length > 0 && (/^\p{Lu}/u.test(trimmed) || /\s/.test(trimmed)) && (
         <button className="add-person after-list" onClick={create} disabled={busy}>
           + Add “{trimmed}”{circle ? ` to ${circle.name}` : ''}
         </button>
@@ -448,6 +482,20 @@ function LetterRail({
   const present = useMemo(() => new Set(people.map((p) => letterOf(p.displayName))), [people])
   const usable = useMemo(() => RAIL_LETTERS.filter((l) => present.has(l)), [present])
   const railRef = useRef<HTMLElement>(null)
+  // At large text sizes 27 letters no longer fit: show every other one
+  // (all stay focusable and announced).
+  const [sparse, setSparse] = useState(false)
+  useEffect(() => {
+    const rail = railRef.current
+    if (!rail || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(([entry]) => {
+      const perLetter = entry.contentRect.height / RAIL_LETTERS.length
+      const em = parseFloat(getComputedStyle(rail).fontSize) || 11
+      setSparse(perLetter < em * 1.5)
+    })
+    ro.observe(rail)
+    return () => ro.disconnect()
+  }, [])
   const [active, setActive] = useState<string | null>(null)
   const [focusLetter, setFocusLetter] = useState<string>(usable[0] ?? 'A')
   const lastJump = useRef<string | null>(null)
@@ -504,9 +552,8 @@ function LetterRail({
   return (
     <nav
       ref={railRef}
-      className={`letter-rail ${active ? 'dragging' : ''} ${visible ? 'visible' : ''}`}
+      className={`letter-rail ${active ? 'dragging' : ''} ${visible ? 'visible' : ''} ${sparse ? 'sparse' : ''}`}
       aria-label="Jump to letter"
-      aria-hidden={!visible}
       onPointerDown={(e) => {
         e.preventDefault()
         railRef.current?.setPointerCapture(e.pointerId)
@@ -652,14 +699,14 @@ const PersonRow = memo(function PersonRow({ person, query }: { person: Person; q
             {circles.length > 0 && (
               <span className="circle-dots" title={circles.map((c) => c.name).join(', ')}>
                 {circles.map((c) => (
-                  <i key={c.id} style={{ background: c.color }} />
+                  <i key={c.id} style={{ borderColor: c.color }} />
                 ))}
                 <span className="sr-only">in {circles.map((c) => c.name).join(', ')}</span>
               </span>
             )}
           </strong>
           {detail && <span className="hint"> {detail}</span>}
-          {snippet && <span className="snippet">{snippet}</span>}
+          {snippet && <span className="snippet">{highlight(snippet, query)}</span>}
         </span>
         <span className="chev" aria-hidden="true">
           {'›'}
@@ -825,5 +872,24 @@ function Upcoming() {
         ))}
       </ul>
     </section>
+  )
+}
+
+
+/** Wrap the matched term in <mark> so a snippet shows *why* it matched. */
+function highlight(text: string, query: string) {
+  const q = query.trim().toLowerCase()
+  const first = q.split(/\s+/)[0]
+  if (!first) return text
+  const lower = text.toLowerCase()
+  const idx = lower.indexOf(q) >= 0 ? lower.indexOf(q) : lower.indexOf(first)
+  if (idx < 0) return text
+  const len = lower.indexOf(q) >= 0 ? q.length : first.length
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark>{text.slice(idx, idx + len)}</mark>
+      {text.slice(idx + len)}
+    </>
   )
 }

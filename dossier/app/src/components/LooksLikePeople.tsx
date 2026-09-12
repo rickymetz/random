@@ -15,7 +15,7 @@ import { selectPeople, useVaultStore } from '../store/vaultStore'
  */
 const declinedThisSession = new Set<string>()
 
-const UNDO_MS = 6000
+const UNDO_MS = 30000
 
 interface Undo {
   prevBody: string
@@ -151,6 +151,10 @@ export default function LooksLikePeople({
     for (const c of visible) declinedThisSession.add(c.phrase.toLowerCase())
     setHidden(new Set(visible.map((c) => c.phrase.toLowerCase())))
     setChoosing(null)
+    // "Not now" means close: don't keep the card up for the Undo window.
+    window.clearTimeout(timer.current)
+    setStatus('')
+    setUndo(null)
   }
 
   const fresh = visible.filter((c) => !c.existing && !c.options)

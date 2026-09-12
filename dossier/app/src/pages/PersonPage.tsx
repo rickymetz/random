@@ -11,7 +11,7 @@ import { GALLERY_MAX_DIM, downscaleImage } from '../lib/image'
 import { getPhotoUrl, peekPhotoUrl } from '../lib/photoCache'
 import type { Photo } from '../lib/models'
 import { formatPartialDate, parsePartialDate, timeAgo } from '../lib/dates'
-import { plainText, segmentBody } from '../lib/mentions'
+import { plainText, retokenize, segmentBody } from '../lib/mentions'
 import { CUSTOM_TYPE_COLORS, type Person, type Relationship } from '../lib/models'
 import {
   selectCircles,
@@ -41,7 +41,6 @@ const relOf = (label: string | undefined, name: string) => {
  */
 export default function PersonPage() {
   const { id } = useParams()
-  const navigate = useNavigate()
   const records = useVaultStore((s) => s.records)
   const person = id ? records.get(id) : undefined
   // Lifted so the sticky capture bar yields the bottom edge to the facts
@@ -69,23 +68,9 @@ export default function PersonPage() {
 
   return (
     <article className="person">
+      {/* Back lives in the sticky app bar (App.tsx) so it is reachable
+          after scrolling; while editing, Save/Cancel are the only exits. */}
       <header className="person-header">
-        <button
-          className="subtle back icon"
-          // Save/Cancel are the only exits while editing (a stray Back
-          // would discard the edits). A deep link (notification, pasted
-          // URL) has nothing behind it: Back must land on People, not
-          // leave the app.
-          hidden={editing}
-          onClick={() => {
-            const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0
-            if (idx > 0) navigate(-1)
-            else navigate('/', { replace: true })
-          }}
-          aria-label="Back"
-        >
-          ←
-        </button>
         <Avatar person={person} size={44} />
         <div className="person-title">
           <h1>
@@ -110,10 +95,10 @@ export default function PersonPage() {
       <Facts person={person} editing={editing} setEditing={setEditing} />
       <FollowUpSection personId={person.id} />
       <NotesSection personId={person.id} />
+      <MentionedInSection personId={person.id} />
       <RelationshipSection person={person} />
       <ConnectionSection person={person} />
       <PhotoSection personId={person.id} />
-      <MentionedInSection personId={person.id} />
       <footer className="person-footer" />
       {/* Hidden, not unmounted, while the facts form is open: unmounting
           would flush a half-typed draft into a permanent note with no
@@ -135,7 +120,17 @@ function Facts({
 }) {
   const records = useVaultStore((s) => s.records)
   const circles = useMemo(() => selectCirclesOf(records, person.id), [records, person.id])
-  if (editing) return <FactsForm person={person} done={() => setEditing(false)} />
+  if (editing)
+    return (
+      <FactsForm
+        person={person}
+        done={() => {
+          setEditing(false)
+          // Back to the Edit button once the section remounts.
+          requestAnimationFrame(() => document.getElementById('edit-details')?.focus())
+        }}
+      />
+    )
 
   // Tags, likes, and dislikes are facets: each is a link into the home
   // search so "everyone who likes karaoke" is one tap away.
@@ -183,7 +178,7 @@ function Facts({
         <h2>Details</h2>
         <span className="row">
           <CopyAsTextButton person={person} />
-          <button className="quiet" onClick={() => setEditing(true)}>
+          <button id="edit-details" className="quiet" onClick={() => setEditing(true)}>
             Edit
           </button>
         </span>
@@ -231,11 +226,43 @@ function CopyAsTextButton({ person }: { person: Person }) {
     if (person.likes.length) lines.push(`Likes: ${csv(person.likes)}`)
     if (person.dislikes.length) lines.push(`Dislikes: ${csv(person.dislikes)}`)
     if (person.tags.length) lines.push(`Tags: ${csv(person.tags)}`)
+    const iso = (t: number) => new Date(t).toISOString().slice(0, 10)
+    const nameOf = (id: string) => {
+      const r = records.get(id)
+      return r?.kind === 'person' ? r.displayName : 'Someone'
+    }
+    const circles = selectCirclesOf(records, person.id)
+    if (circles.length) lines.push(`Circles: ${csv(circles.map((c) => c.name))}`)
+    const types = new Map(selectRelationshipTypes(records).map((t) => [t.id, t]))
+    const edges = selectRelationships(records).filter((e) => e.fromId === person.id || e.toId === person.id)
+    if (edges.length) {
+      lines.push('', 'Relationships:')
+      for (const e of edges) {
+        const type = types.get(e.typeId)
+        const other = nameOf(e.fromId === person.id ? e.toId : e.fromId)
+        if (e.origin === 'mention') lines.push(`- ${other} (mentioned in a note)`)
+        else if (type?.directed)
+          lines.push(e.fromId === person.id ? `- ${person.displayName} is ${type.label} ${other}` : `- ${other} is ${type.label} ${person.displayName}`)
+        else lines.push(`- ${other}: ${type?.label ?? 'linked'}`)
+      }
+    }
+    const followUps = selectFollowUps(records, person.id).filter((f) => !f.done)
+    if (followUps.length) {
+      lines.push('', 'Follow-ups:')
+      for (const f of followUps) lines.push(`- ${f.text}${f.dueDate ? ` (due ${formatPartialDate(f.dueDate)})` : ''}`)
+    }
     const notes = selectNotes(records, person.id)
     if (notes.length) {
       lines.push('', 'Notes:')
-      for (const n of notes) {
-        lines.push(`- ${new Date(n.createdAt).toLocaleDateString()}: ${plainText(n.body)}`)
+      for (const n of notes) lines.push(`- ${iso(n.createdAt)}: ${plainText(n.body)}`)
+    }
+    const mentionedBy = [...records.values()].filter(
+      (r) => r.kind === 'note' && r.personId !== person.id && r.mentions.includes(person.id),
+    )
+    if (mentionedBy.length) {
+      lines.push('', 'Mentioned in:')
+      for (const n of mentionedBy) {
+        if (n.kind === 'note') lines.push(`- ${nameOf(n.personId)}, ${iso(n.createdAt)}: ${plainText(n.body)}`)
       }
     }
     try {
@@ -337,10 +364,13 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
       capitalize?: 'none' | 'words'
     } = {},
   ) => (
-    <label className="span-2">
-      {opts.hideLabel ? <span className="sr-only">{label}</span> : label}
+    <div className="span-2 field-label">
+      <span id={`chip-label-${key}`} className={opts.hideLabel ? 'sr-only' : undefined}>
+        {label}
+      </span>
       <ChipInput
         label={label}
+        labelId={`chip-label-${key}`}
         values={form[key]}
         onChange={(values) => setForm({ ...form, [key]: values })}
         suggestions={suggestions}
@@ -348,7 +378,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         placeholder={opts.placeholder ?? 'one per entry'}
         suggestOnFocus={opts.suggestOnFocus}
       />
-    </label>
+    </div>
   )
 
   const save = async (e: React.FormEvent) => {
@@ -416,10 +446,16 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     if (dirty && !confirm('Discard your edits?')) return
     done()
   }
+  // The Edit button vanished under us: say where we are.
+  useEffect(() => {
+    focusById('facts-form-title')
+  }, [])
 
   return (
     <form className="facts-form" onSubmit={save}>
-      <h2 className="form-title">Edit {person.displayName}</h2>
+      <h2 className="form-title" id="facts-form-title" tabIndex={-1}>
+        Edit {person.displayName}
+      </h2>
       <fieldset className="field-group">
         <legend>Identity</legend>
         <div className="field-grid">
@@ -442,9 +478,10 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
           {field('birthday', 'Birthday', 'Jun 21 or 1984-06-21', {
             onInput: () => setDateError(null),
             'aria-invalid': dateError ? true : undefined,
+            'aria-describedby': dateError ? 'birthday-error' : undefined,
           })}
           {dateError && (
-            <p className="field-error span-2" role="alert">
+            <p className="field-error span-2" role="alert" id="birthday-error">
               {dateError}
             </p>
           )}
@@ -453,7 +490,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         <input type="checkbox" checked={isSelf} onChange={(e) => setIsSelf(e.target.checked)} />
         <span>
           This is me
-          <span className="hint"> — only one card can be you; it lets the app show how you know people through others.</span>
+          <span className="hint"> — only one card can be you</span>
         </span>
       </label>
       </fieldset>
@@ -686,6 +723,11 @@ function useMemoMutuals(
   )
 }
 
+/** Land focus somewhere sensible after a control unmounts (2.4.3). */
+function focusById(id: string) {
+  requestAnimationFrame(() => document.getElementById(id)?.focus())
+}
+
 function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boolean }) {
   const records = useVaultStore((s) => s.records)
   const saveNote = useVaultStore((s) => s.saveNote)
@@ -697,6 +739,8 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
   const [savedFlash, setSavedFlash] = useState(false)
   // The note just saved, while its "Looks like people" offer is showing.
   const [offerNoteId, setOfferNoteId] = useState<string | null>(null)
+  // Spoken confirmation, mounted from the start so it is announced.
+  const [srSaved, setSrSaved] = useState('')
   const offering = useRef(false)
   offering.current = offerNoteId !== null
   const clearOffer = useCallback(() => setOfferNoteId(null), [])
@@ -744,7 +788,16 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
       // Only offer names when the setting is on; an offer still showing
       // for the previous note stays until it is dealt with.
       const offer = suggestNames && note ? note.id : null
-      setOfferNoteId((prev) => (prev && offering.current ? prev : offer))
+      // A card with names still waiting stays; one showing only its Undo
+      // status gives way to the new note's names.
+      const chipsPending = Boolean(document.querySelector('.capture-bar .looks-like-chips'))
+      setOfferNoteId((prev) => (prev && offering.current && chipsPending ? prev : offer))
+      setSrSaved(offer ? 'Saved. Names found — use the buttons above the note box to add or link them.' : 'Saved')
+      window.setTimeout(() => setSrSaved(''), 4000)
+      // Keyboard Save unmounts its own row: keep the caret in the box.
+      requestAnimationFrame(() => {
+        if (document.activeElement === document.body) document.querySelector<HTMLElement>('.capture-bar textarea')?.focus()
+      })
       if (!offer || !offering.current) {
         setSavedFlash(true)
         setTimeout(() => setSavedFlash(false), 2000)
@@ -757,6 +810,9 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
   }
   return (
     <section className="capture-bar" hidden={hidden}>
+      <span className="sr-only" role="status">
+        {srSaved}
+      </span>
       {offerNoteId && (
         <LooksLikePeople key={offerNoteId} noteId={offerNoteId} person={person} onDone={clearOffer} refocus={focusBox} />
       )}
@@ -768,6 +824,10 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
         onCreatePerson={addPerson}
         placeholder="Jot something… type @ to link a person"
         autoFocus={isFresh}
+        // One row when idle: the bar sits on the tab bar and shouldn't
+        // spend a fifth of the screen before you've typed. Grows on focus
+        // (CSS) and with content.
+        rows={draft.trim() ? 3 : 1}
       />
       {/* The Save row appears only once there is something to save — an
           idle bar shouldn't spend two rows of bottom chrome. */}
@@ -830,7 +890,9 @@ function FollowUpSection({ personId }: { personId: string }) {
   const items = showDone ? [...open, ...doneItems] : open
   return (
     <section>
-      <h2>Follow-ups</h2>
+      <h2 id="followups-heading" tabIndex={-1}>
+        Follow-ups
+      </h2>
       {items.length === 0 && (
         <p className="empty-inline">Nothing to remember for next time.</p>
       )}
@@ -846,7 +908,10 @@ function FollowUpSection({ personId }: { personId: string }) {
             </label>
             <button
               className="subtle icon"
-              onClick={() => removeFollowUp(f.id)}
+              onClick={() => {
+                void removeFollowUp(f.id)
+                focusById('followups-heading')
+              }}
               aria-label={`Remove follow-up: ${f.text}`}
             >
               ×
@@ -859,10 +924,19 @@ function FollowUpSection({ personId }: { personId: string }) {
           {showDone ? 'Hide done' : `Show done (${doneItems.length})`}
         </button>
       )}
-      <form className="add-form" onSubmit={add}>
+      <form
+        className="add-form"
+        onSubmit={(e) => {
+          void add(e)
+          // The submit button disables itself once the text clears; keep
+          // the caret in the field instead of dropping focus.
+          focusById('followup-text')
+        }}
+      >
         <label className="span-2">
           New follow-up
           <input
+            id="followup-text"
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Ask about…"
@@ -876,15 +950,15 @@ function FollowUpSection({ personId }: { personId: string }) {
             value={due}
             onChange={(e) => setDue(e.target.value)}
             placeholder="Sep 20 (year optional)"
-            aria-label="Due date (optional)"
             aria-invalid={dueError ? true : undefined}
+            aria-describedby={dueError ? 'due-error' : undefined}
           />
         </label>
         <button type="submit" disabled={!text.trim() || busy}>
           Add
         </button>
         {dueError && (
-          <p className="field-error span-2" role="alert">
+          <p className="field-error span-2" role="alert" id="due-error">
             {dueError}
           </p>
         )}
@@ -943,6 +1017,7 @@ function RelationshipSection({ person }: { person: Person }) {
   const selectedDirected =
     typeId === 'new' ? newTypeDirected : (typeById.get(typeId)?.directed ?? false)
 
+  const [retype, setRetype] = useState<Record<string, string>>({})
   const first = person.displayName.split(' ')[0]
   const describe = (edge: Relationship) => {
     const type = typeById.get(edge.typeId)
@@ -967,16 +1042,63 @@ function RelationshipSection({ person }: { person: Person }) {
         <span className="edge-type" style={{ '--edge-color': type?.color } as React.CSSProperties}>
           {label}
         </span>
-        <button
-          className="subtle icon"
-          onClick={() => {
-            if (confirm(`Remove the ${type?.label ?? ''} link to ${other.displayName}?`))
-              void removeRelationship(edge.id)
-          }}
-          aria-label={`Remove relationship with ${other.displayName}`}
-        >
-          ×
-        </button>
+        {edge.origin === 'mention' ? (
+          // A derived edge can't be deleted (the note still mentions them);
+          // what it can do is become a real one (§4.2).
+          <span className="edge-retype-group">
+            <select
+              className="edge-retype"
+              aria-label={`Set relationship type with ${other.displayName}`}
+              value={retype[edge.id] ?? ''}
+              // Staged, then applied with the button: arrowing through a
+              // closed select fires change per step on Windows.
+              onChange={(e) => setRetype((m) => ({ ...m, [edge.id]: e.target.value }))}
+            >
+              <option value="">Set type…</option>
+              {types
+                .filter((t) => t.label !== 'mentioned')
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+            </select>
+            {retype[edge.id] && (
+              <button
+                type="button"
+                className="subtle apply"
+                onClick={() => {
+                  const id = retype[edge.id]
+                  void (async () => {
+                    await removeRelationship(edge.id)
+                    await addRelationship(edge.fromId, edge.toId, id)
+                    requestAnimationFrame(() =>
+                      document
+                        .querySelector<HTMLElement>(`button[aria-label="Remove relationship with ${other.displayName}"]`)
+                        ?.focus(),
+                    )
+                  })()
+                }}
+                aria-label={`Apply type for ${other.displayName}`}
+              >
+                Apply
+              </button>
+            )}
+          </span>
+        ) : (
+          <button
+            className="subtle icon"
+            onClick={() => {
+              if (confirm(`Remove the ${type?.label ?? ''} link to ${other.displayName}?`)) {
+                void removeRelationship(edge.id)
+                focusById('relationships-heading')
+              }
+            }}
+            aria-label={`Remove relationship with ${other.displayName}`}
+          >
+            ×
+          </button>
+        )}
       </li>
     )
   }
@@ -1015,7 +1137,9 @@ function RelationshipSection({ person }: { person: Person }) {
   return (
     <section>
       <div className="section-head">
-        <h2>Relationships</h2>
+        <h2 id="relationships-heading" tabIndex={-1}>
+          Relationships
+        </h2>
         <Link to={`/graph?focus=${person.id}`}>See on graph →</Link>
       </div>
       {/* The batch panel sits above the list so freshly linked rows
@@ -1115,7 +1239,6 @@ function RelationshipSection({ person }: { person: Person }) {
             type="button"
             className="subtle span-2"
             onClick={() => setOutward((v) => !v)}
-            aria-label="Swap direction"
           >
             {(() => {
               const label =
@@ -1242,6 +1365,11 @@ function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
     closeRef.current?.focus()
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
+      // Close is the only control: Tab must not reach the page beneath.
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        closeRef.current?.focus()
+      }
     }
     document.addEventListener('keydown', onKey)
     return () => {
@@ -1378,7 +1506,9 @@ function NotesSection({ personId }: { personId: string }) {
 
   return (
     <section>
-      <h2>Notes</h2>
+      <h2 id="notes-heading" tabIndex={-1}>
+        Notes
+      </h2>
       {notes.length === 0 && (
         <p className="empty-inline">Nothing yet — use the note box at the bottom of the screen.</p>
       )}
@@ -1393,7 +1523,10 @@ function NotesSection({ personId }: { personId: string }) {
                 personId={personId}
                 noteId={note.id}
                 body={note.body}
-                onDone={() => setEditingId(null)}
+                onDone={() => {
+                  setEditingId(null)
+                  focusById('notes-heading')
+                }}
                 onSaved={() => setOfferId(suggestNames ? note.id : null)}
               />
             ) : (
@@ -1427,7 +1560,10 @@ function NotesSection({ personId }: { personId: string }) {
                 <button
                   className="subtle icon"
                   onClick={() => {
-                    if (confirm('Delete this note?')) void removeNote(note.id)
+                    if (confirm('Delete this note?')) {
+                      void removeNote(note.id)
+                      focusById('notes-heading')
+                    }
                   }}
                   aria-label="Delete note"
                 >
@@ -1440,7 +1576,10 @@ function NotesSection({ personId }: { personId: string }) {
                 personId={personId}
                 noteId={note.id}
                 noteBody={note.body}
-                onDone={() => setPromotingId(null)}
+                onDone={() => {
+                  setPromotingId(null)
+                  focusById('notes-heading')
+                }}
               />
             )}
           </li>
@@ -1467,17 +1606,20 @@ function NoteEditor({
   const records = useVaultStore((s) => s.records)
   const updateNote = useVaultStore((s) => s.updateNote)
   const addPerson = useVaultStore((s) => s.addPerson)
-  const [draft, setDraft] = useState(body)
+  // Edit the readable form ("@Ivy Chen"), never the raw token with its
+  // uuid; links are restored on save for every known name.
+  const [draft, setDraft] = useState(() => plainText(body))
   const [busy, setBusy] = useState(false)
   const others = useMemo(
     () => selectPeople(records).filter((p) => p.id !== personId),
     [records, personId],
   )
   const save = async () => {
-    const next = draft.trim()
-    if (!next || busy) return
+    if (!draft.trim() || busy) return
     setBusy(true)
     try {
+      const mentioned = segmentBody(body).flatMap((s) => (s.type === 'mention' ? [{ id: s.personId, displayName: s.name }] : []))
+      const next = retokenize(draft.trim(), [...mentioned, ...selectPeople(records)])
       if (next !== body) await updateNote(noteId, next)
       onDone()
       onSaved?.()
@@ -1650,7 +1792,6 @@ function PromotePanel({
         <select
           value={target}
           onChange={(e) => setTarget(e.target.value as PromoteTarget)}
-          aria-label="Promote to field"
         >
           {PROMOTE_TARGETS.map((t) => (
             <option key={t.id} value={t.id}>
@@ -1664,7 +1805,6 @@ function PromotePanel({
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          aria-label="Value to save"
           aria-invalid={error ? true : undefined}
         />
       </label>

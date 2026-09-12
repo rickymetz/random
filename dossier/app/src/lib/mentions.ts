@@ -58,6 +58,29 @@ export function stripMentionsOf(body: string, personId: string): string {
   )
 }
 
+/**
+ * Turn plain "@Name" back into tokens for every known person (longest
+ * names first, existing tokens untouched) — the note editor shows
+ * `@Ivy Chen`, not `@[Ivy Chen](uuid)`, and this restores the links on save.
+ */
+export function retokenize(text: string, people: Pick<Person, 'id' | 'displayName'>[]): string {
+  const sorted = [...people]
+    .filter((p) => p.displayName.trim())
+    .sort((a, b) => b.displayName.length - a.displayName.length)
+  return segmentBody(text)
+    .map((seg) => {
+      if (seg.type === 'mention') return mentionToken({ id: seg.personId, displayName: seg.name })
+      let out = seg.text
+      for (const p of sorted) {
+        const name = p.displayName.replace(/[[\]()]/g, '').trim()
+        const re = new RegExp(`@(?!\\[)${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'gu')
+        out = out.replace(re, mentionToken(p))
+      }
+      return out
+    })
+    .join('')
+}
+
 /** Rewrite the display text of every token pointing at `personId`
  * (renames should not leave stale "@Old Name" labels in other people's
  * notes; the id keeps the link itself intact either way). */

@@ -31,6 +31,7 @@ export default function MentionTextarea({
   onCreatePerson,
   placeholder,
   autoFocus,
+  rows = 3,
 }: {
   people: Person[]
   value: string
@@ -40,12 +41,14 @@ export default function MentionTextarea({
   onCreatePerson?: (name: string) => Promise<Person>
   placeholder?: string
   autoFocus?: boolean
+  rows?: number
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const listId = useId()
   const [caret, setCaret] = useState(0)
   const [dismissed, setDismissed] = useState(false)
   const [active, setActive] = useState(0)
+  const [navigated, setNavigated] = useState(false)
   const pointerPicked = useRef(false)
 
   // An active mention query is a trailing "@word" (at most two words)
@@ -73,7 +76,29 @@ export default function MentionTextarea({
 
   useEffect(() => {
     setActive(0)
+    setNavigated(false)
   }, [query, suggestions.length])
+  // Announce matches without turning the textarea into a combobox (a
+  // textarea cannot carry that role, so the list is described in words).
+  const [announce, setAnnounce] = useState('')
+  useEffect(() => {
+    const n = suggestions.length
+    if (!open) {
+      setAnnounce('')
+      return
+    }
+    const t = window.setTimeout(() => {
+      const create = suggestions.some((s) => s.kind === 'create')
+      const people = create ? n - 1 : n
+      setAnnounce(
+        people === 0
+          ? `No one matches — Enter adds “${query?.trim() ?? ''}” as a new person`
+          : `${people} ${people === 1 ? 'person matches' : 'people match'} — up and down to choose, Enter to insert`,
+      )
+    }, 350)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestions, query])
 
   const insertToken = (person: Person) => {
     if (query === null) return
@@ -115,14 +140,10 @@ export default function MentionTextarea({
     <div className="mention-box">
       <textarea
         ref={ref}
-        rows={3}
+        rows={rows}
         value={value}
         placeholder={placeholder}
         aria-label={placeholder ?? 'Note'}
-        aria-autocomplete="list"
-        aria-expanded={open}
-        aria-controls={open ? listId : undefined}
-        aria-activedescendant={open ? optionId(active) : undefined}
         autoFocus={autoFocus}
         onChange={(e) => {
           onChange(e.target.value)
@@ -141,11 +162,16 @@ export default function MentionTextarea({
             setDismissed(true)
           } else if (e.key === 'ArrowDown') {
             e.preventDefault()
+            setNavigated(true)
             setActive((i) => (i + 1) % suggestions.length)
           } else if (e.key === 'ArrowUp') {
             e.preventDefault()
+            setNavigated(true)
             setActive((i) => (i - 1 + suggestions.length) % suggestions.length)
-          } else if (e.key === 'Enter' || e.key === 'Tab') {
+          } else if (e.key === 'Tab') {
+            // Tab leaves the field; it never inserts.
+            setDismissed(true)
+          } else if (e.key === 'Enter' && (navigated || (query ?? '').trim())) {
             e.preventDefault()
             void pick(suggestions[active])
           }
@@ -153,6 +179,9 @@ export default function MentionTextarea({
         onKeyUp={track}
         onClick={track}
       />
+      <span className="sr-only" role="status">
+        {announce}
+      </span>
       {open && (
         <ul
           id={listId}
