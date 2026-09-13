@@ -3312,3 +3312,209 @@ body:has(.facts-form) .app-bar nav {
 .inline-field.stacked .if-label .lt-desc::after {
   content: none;
 }
+
+/* ------------------------------------------------ graph review round */
+/* The canvas is the screen on a phone: no frame, edge to edge, with the
+   chip strip bleeding to the screen edges too. Desktop keeps the card. */
+@media (max-width: 48rem) {
+  .graph-canvas-wrap {
+    margin-inline: calc(-1 * max(var(--gutter), env(safe-area-inset-left)))
+      calc(-1 * max(var(--gutter), env(safe-area-inset-right)));
+    margin-bottom: calc(-1 * var(--s5));
+  }
+  .graph-canvas {
+    border: 0;
+    border-radius: 0;
+  }
+  .graph-controls {
+    margin-inline: calc(-1 * var(--gutter));
+    padding-inline: var(--gutter);
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: var(--gutter);
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 2rem), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 2rem), transparent);
+  }
+  .graph-controls > * {
+    scroll-snap-align: start;
+  }
+  .graph-canvas-wrap .peek-card {
+    left: var(--gutter);
+    right: var(--gutter);
+    bottom: var(--s3);
+  }
+}
+/* Chips are the legend, not the subject: lighter than the graph. */
+.graph-controls .chip {
+  min-height: 2rem;
+  font-weight: 500;
+}
+.graph-controls .chip-group .chip-edit {
+  min-height: 2rem;
+}
+.graph-controls .chip.find,
+.graph-controls .chip.hidden-status {
+  color: var(--text-2);
+}
+.graph-controls .chip.find.on {
+  background: var(--surface-3);
+}
+.graph-controls .chip.hidden-status {
+  border-style: dashed;
+  /* Stays in view while the strip scrolls: what's hidden is never hidden. */
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg);
+}
+/* View cluster: bottom-right, thumb-sized; +/− only where a pointer
+   can't pinch. The list toggle lives here too. */
+.graph-view-controls {
+  top: auto;
+  bottom: var(--s3);
+  right: var(--s3);
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.graph-view-controls button {
+  width: var(--ctl-h);
+  min-width: var(--ctl-h);
+  min-height: var(--ctl-h);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: var(--text-2);
+  font-size: 1.05rem;
+  box-shadow: none;
+}
+.graph-view-controls button + button {
+  border-top: 1px solid var(--line-2);
+}
+.graph-view-controls button[aria-expanded='true'] {
+  background: var(--surface-3);
+  color: var(--text);
+}
+@media (hover: none) {
+  .graph-view-controls .fine-only {
+    display: none;
+  }
+}
+/* The one-time gesture hint sits in the canvas, not above it. */
+.graph-hint {
+  position: absolute;
+  top: var(--s3);
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  max-width: calc(100% - 2 * var(--s4));
+  padding: 0.35rem 0.8rem;
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+  border: 1px solid var(--line-2);
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+  text-align: center;
+  z-index: 2;
+  pointer-events: none;
+  animation: rise 220ms ease-out;
+}
+/* Find: a picker over the top of the canvas. */
+.graph-find {
+  position: absolute;
+  top: var(--s2);
+  left: var(--s2);
+  right: var(--s2);
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s2);
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  box-shadow: var(--e-3);
+  animation: rise 160ms ease-out;
+}
+.graph-find > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* See as list: an overlay panel, the text twin of the picture. */
+.graph-list {
+  position: absolute;
+  top: var(--s2);
+  left: var(--s2);
+  right: var(--s2);
+  max-height: min(70%, 30rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 3;
+  margin: 0;
+  padding: var(--s2) var(--s3) var(--s3);
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  box-shadow: var(--e-3);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  animation: rise 160ms ease-out;
+}
+.graph-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  color: var(--text);
+  margin-bottom: var(--s1);
+}
+.graph-list ul {
+  margin: 0;
+  padding: 0 0 0 var(--s4);
+}
+@media (min-width: 48rem) {
+  .graph-list,
+  .graph-find {
+    left: var(--s3);
+    right: auto;
+    width: min(26rem, calc(100% - 2 * var(--s3)));
+  }
+}
+/* Cards: a person's card names how you know them; a bubble's light card
+   shows its dot; destructive asks happen in the row. */
+.peek-card .how-known {
+  margin-left: var(--s2);
+  font-weight: 450;
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+}
+.peek-card .hint.meta {
+  color: var(--text-4);
+}
+.peek-card .circle-dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  border: 2px solid var(--chip-color, var(--text-4));
+  vertical-align: 0.05em;
+}
+.confirm-row {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+.confirm-row .hint {
+  color: var(--text-2);
+}
+.peek-card select {
+  min-width: 9rem;
+}
