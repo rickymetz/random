@@ -41,6 +41,8 @@ interface GraphNode extends SimulationNodeDatum {
   initials: string
   /** Drawn radius — hubs are bigger (degree-scaled), like Obsidian. */
   r: number
+  /** Links on the graph as drawn — ranks who stays in full at an overview. */
+  degree: number
   isSelf: boolean
   avatar?: { blobRecordId: string; mimeType: string }
 }
@@ -211,7 +213,6 @@ type Tap =
   | null
 
 const NODE_R = 14
-const LABEL_ZOOM = 0.7
 // Degradation ladder (§4.3): labels thin out first as the graph grows.
 const LABEL_MAX_NODES = 250
 /** Circle chips shown inline before a “+N more” toggle. */
@@ -401,6 +402,7 @@ export default function GraphPage() {
         name: p.displayName,
         initials: initialsOf(p.displayName),
         r: nodeRadius(degree.get(p.id) ?? 0),
+        degree: degree.get(p.id) ?? 0,
         isSelf: Boolean(p.isSelf),
         avatar: avatar
           ? { blobRecordId: avatar.blobRecordId, mimeType: avatar.mimeType }
@@ -698,7 +700,7 @@ export default function GraphPage() {
           a one-time hint on the canvas instead of a permanent sentence. */}
       <p id="graph-help" className="graph-legend sr-only">
         {nodes.length > LABEL_MAX_NODES
-          ? 'Too many people to name at once: zoom in to see names, or pick a person or circle above.'
+          ? 'Zoomed out, only the best-connected people draw in full: zoom in to see names and everyone else, or pick a person or circle above.'
           : 'Tap a person to see who they know, and again to open them. Tap a label to filter. Dotted lines are mentions.'}
       </p>
       <div className="graph-canvas-wrap" ref={wrapRef}>
@@ -711,7 +713,7 @@ export default function GraphPage() {
           nodes.length > LABEL_MAX_NODES ? (
             !gestured && (
               <p className="graph-hint" role="status">
-                Too many to name at once — zoom in, or pick a person or circle above.
+                Zoom in to see everyone by name
               </p>
             )
           ) : (
@@ -1766,6 +1768,36 @@ function useCanvasGraph(
       const unlitNodeAlpha = 1 - dimT * 0.7
       const isLitNode = (id: string) => !active || active.nodes.has(id)
 
+      // Level of detail follows density, like map markers (§4.3): at an
+      // overview only the best-connected people draw in full, the rest
+      // are small dots and the edges among them drop; zooming in thins
+      // the view and brings everyone back. Density is people per
+      // 100×100 css px of canvas, counting only those in view.
+      const inViewNodes: GraphNode[] = []
+      for (const node of simNodes) {
+        if (node.x != null && node.y != null && inView(node.x, node.y)) inViewNodes.push(node)
+      }
+      const cells = (width * height) / 10000
+      const density = inViewNodes.length / Math.max(1, cells)
+      const detail = density <= 1.1 ? 2 : density <= 2.6 ? 1 : 0
+      const dots = new Set<string>()
+      if (detail < 2) {
+        const ranked = inViewNodes.slice().sort((a, b) => b.degree - a.degree)
+        const nA = Math.max(12, Math.ceil(ranked.length * 0.25))
+        const nB = Math.ceil(ranked.length * 0.35)
+        ranked.forEach((nd, i) => {
+          const tier = i < nA ? 0 : i < nA + nB ? 1 : 2
+          const keep =
+            nd.isSelf ||
+            nd.id === focusId ||
+            nd.id === selectedId ||
+            nd.id === pressedId ||
+            (active?.nodes.has(nd.id) ?? false) ||
+            (pathNodeIds?.includes(nd.id) ?? false)
+          if (!keep && (detail === 0 ? tier >= 1 : tier >= 2)) dots.add(nd.id)
+        })
+      }
+
       // Circle bubbles first, beneath everything (§4.6): one exact offset
       // outline of the members' convex hull — an arc of radius HULL_PAD at
       // each vertex, joined by tangents — filled once and outlined once,
@@ -1826,11 +1858,17 @@ function useCanvasGraph(
         if (s.x == null || t.x == null) continue
         if (!inView(s.x, s.y!) && !inView(t.x, t.y!)) continue
         const on = litEdge(link)
-        const key = `${link.color}|${link.dashed ? 1 : 0}|${link.highlighted ? 1 : 0}|${link.label}|${on ? 1 : 0}`
+        // A link to a dot is minor: faint at mid detail, and at low detail
+        // gone when both ends are dots (a minor road between hamlets).
+        const ds = dots.has(s.id)
+        const dt = dots.has(t.id)
+        if (ds && dt && detail === 0) continue
+        const minor = ds || dt
+        const key = `${link.color}|${link.dashed ? 1 : 0}|${link.highlighted ? 1 : 0}|${link.label}|${on ? 1 : 0}|${minor ? 1 : 0}`
         const list = groups.get(key)
         if (list) list.push(link)
         else groups.set(key, [link])
-        if (link.directed) arrows.push(link)
+        if (link.directed && !minor) arrows.push(link)
       }
       // Lit and highlighted (path) edges stroke last so nothing overdraws them.
       const ordered = [...groups.values()].sort(
@@ -1851,10 +1889,12 @@ function useCanvasGraph(
         // Resting edges wear the muted type colour; a lit neighbourhood
         // or path gets the full colour and an extra stroke of weight.
         // Every resting line still clears 3:1 on the canvas.
+        const minor =
+          dots.has((first.source as GraphNode).id) || dots.has((first.target as GraphNode).id)
         ctx.strokeStyle = on && active ? first.color : mutedColor(first.color)
-        ctx.globalAlpha = on ? 1 : unlitEdgeAlpha
+        ctx.globalAlpha = (on ? 1 : unlitEdgeAlpha) * (minor ? (detail === 0 ? 0.3 : 0.45) : 1)
         const base = first.highlighted ? 3.5 : first.label === 'partner' || first.label === 'married' ? 2.25 : 1.25
-        ctx.lineWidth = (base + (on && active ? 0.75 : 0)) / k
+        ctx.lineWidth = (minor ? 1 : base + (on && active ? 0.75 : 0)) / k
         // Shape, not just hue: mentions dotted, exes long-dashed, partners thick.
         ctx.setLineDash(first.dashed ? dash : first.label === 'ex' ? [10 / k, 5 / k] : solid)
         ctx.stroke()
@@ -1891,10 +1931,14 @@ function useCanvasGraph(
       const plain: GraphNode[] = []
       const faded: GraphNode[] = []
       const special: GraphNode[] = []
+      const dotNodes: GraphNode[] = []
       const avatarImages = avatarImagesRef.current
-      for (const node of simNodes) {
-        if (node.x == null || node.y == null || !inView(node.x, node.y)) continue
+      for (const node of inViewNodes) {
         visibleNodes.push(node)
+        if (dots.has(node.id)) {
+          dotNodes.push(node)
+          continue
+        }
         const image = node.avatar ? avatarImages.get(node.avatar.blobRecordId) : undefined
         const hasPhoto = image instanceof HTMLImageElement
         const isSpecial =
@@ -1922,7 +1966,19 @@ function useCanvasGraph(
         }
         ctx.globalAlpha = 1
       }
-      // Faded first, plain over them, then the special few on top.
+      // Dots underneath, faded next, plain over them, then the special few.
+      if (dotNodes.length > 0) {
+        const dr = 3.5 / k
+        ctx.globalAlpha = active ? unlitNodeAlpha : 1
+        ctx.beginPath()
+        for (const node of dotNodes) {
+          ctx.moveTo(node.x! + dr, node.y!)
+          ctx.arc(node.x!, node.y!, dr, 0, Math.PI * 2)
+        }
+        ctx.fillStyle = '#7d786f'
+        ctx.fill()
+        ctx.globalAlpha = 1
+      }
       drawBatch(faded, unlitNodeAlpha)
       drawBatch(plain, 1)
       for (const node of special) {
@@ -1986,29 +2042,26 @@ function useCanvasGraph(
         }
       }
       ctx.lineWidth = 1 / k
-      // Pass 2: name labels — thinned out on big graphs (§4.3 degradation).
-      // Density, not just count, decides when names help: a 2-hop ego
-      // view of 85 people is a wall of text at 0.7; ten people in a
-      // circle deserve names even at the bubble's wider fit. A lit
+      // Pass 2: name labels get a budget from screen area, like map
+      // labels: the most important people are named first (the card's
+      // subject, you, the focus, lit neighbours, then hubs) and zooming
+      // in frees budget for the rest. Dots are never named; a lit
       // neighbourhood is always named, whatever the zoom.
-      const n = simNodes.length
-      const labelZoom = n > LABEL_MAX_NODES ? 1.2 : n > 60 ? 1.0 : n <= 30 ? 0.55 : LABEL_ZOOM
-      const namesOn = k >= labelZoom
-      const nodeBoxes = visibleNodes.map((nd) => ({
-        id: nd.id,
-        x: nd.x! - nd.r,
-        y: nd.y! - nd.r,
-        w: nd.r * 2,
-        h: nd.r * 2,
-      }))
+      const nameBudget = Math.max(8, Math.floor(cells * 1.1))
+      // At reduced detail names dodge only the people drawn in full: the
+      // dots are minor, and a hub's name matters more than a dot under it.
+      const nodeBoxes = visibleNodes
+        .filter((nd) => !dots.has(nd.id))
+        .map((nd) => ({ id: nd.id, x: nd.x! - nd.r, y: nd.y! - nd.r, w: nd.r * 2, h: nd.r * 2 }))
       const overlaps = (b: { x: number; y: number; w: number; h: number }) => (o: typeof b) =>
         b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y
       const nameBoxes: { x: number; y: number; w: number; h: number }[] = []
-      if (namesOn || active) {
+      {
         // Names read as captions: `--text-2` on a halo of the canvas
         // colour, and the people who matter most are named first — the
         // card's subject, you, the focus, lit neighbours, then hubs.
-        ctx.font = '500 12px system-ui'
+        // Screen-sized: 12px at every zoom, like a map label.
+        ctx.font = `500 ${12 / k}px system-ui`
         ctx.lineJoin = 'round'
         ctx.lineWidth = 3 / k
         ctx.strokeStyle = 'rgba(18, 17, 16, 0.9)'
@@ -2021,10 +2074,14 @@ function useCanvasGraph(
           (active && active.nodes.has(nd.id) ? 1000 : 0) +
           nd.r
         const order = visibleNodes.slice().sort((a, b) => rank(b) - rank(a))
+        let named = 0
         for (const node of order) {
           const litNode = isLitNode(node.id)
           if (active && !litNode) continue
-          if (!namesOn && !(active && active.nodes.has(node.id))) continue
+          if (dots.has(node.id)) continue
+          const exempt =
+            node.id === selectedId || node.id === active?.anchor || (active?.nodes.has(node.id) ?? false)
+          if (!exempt && named >= nameBudget) continue
           const text = node.isSelf ? `${node.name} (you)` : node.name
           const w = ctx.measureText(text).width
           // Below the disc, else above it; skip when both would overprint.
@@ -2042,7 +2099,7 @@ function useCanvasGraph(
             placed = true
             break
           }
-          if (!placed) continue
+          if (placed && !exempt) named++
         }
       }
       // Circle names last: small caps in the bubble's hue toned toward
