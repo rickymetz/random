@@ -1871,6 +1871,28 @@ body:has(.promote-panel) .capture-bar {
 .label-text.stacked .lt-desc::after {
   content: none;
 }
+/* Form rule: when a checkbox's label runs to more than one line (a
+   stacked description, or a name with detail lines under it), the box
+   lines up with the first line, not the middle of the block. The box
+   inherits the label's font so 1lh is the label's line, and the first
+   line lands where a one-line label's text would. */
+.inline-check:has(.label-text.stacked) {
+  align-items: flex-start;
+  min-height: 0;
+  padding-block: calc((var(--ctl-h) - 1lh) / 2);
+}
+.inline-check:has(.label-text.stacked) input[type='checkbox'],
+.import-list .import-row:has(.hint, .import-tags) input[type='checkbox'] {
+  font: inherit;
+  margin-top: calc((1lh - 1.2rem) / 2);
+}
+.import-list .import-row:has(.hint, .import-tags) {
+  align-items: flex-start;
+}
+.import-list .import-row:has(.hint, .import-tags) input[type='checkbox'] {
+  /* .import-text pads itself by --s1; match it. */
+  margin-top: calc(var(--s1) + (1lh - 1.2rem) / 2);
+}
 
 .disguise-option {
   display: flex;
