@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import LabelText from '../components/LabelText'
 import { Link, useSearchParams } from 'react-router-dom'
 import { destroyAllData } from '../lib/db'
 import {
@@ -360,7 +361,7 @@ function SecuritySection() {
               void changeSecurity({ remindersEnabled: enable })
             }}
           />
-          Daily reminder (the notification never names anyone)
+          <LabelText text="Daily reminder" desc="the notification never names anyone" />
         </label>
         <label className="inline-check">
           <input

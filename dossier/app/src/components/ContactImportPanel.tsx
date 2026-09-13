@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import LabelText from './LabelText'
 import { matchContacts, parseContacts, type ContactDraft, type ImportedContact } from '../lib/contacts'
 import { isIos } from '../lib/platform'
 import { selectPeople, useVaultStore } from '../store/vaultStore'
@@ -357,8 +358,10 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
           {contacts.some((c) => c.note) && (
             <label className="inline-check">
               <input type="checkbox" checked={withNotes} onChange={(e) => setWithNotes(e.target.checked)} disabled={busy} />
-              Also keep each contact’s Notes as their first note
-              {notesCount > 0 ? ` (${notesCount} selected ${notesCount === 1 ? 'has' : 'have'} one)` : ''}
+              <LabelText
+                text="Also keep each contact’s Notes as their first note"
+                desc={notesCount > 0 ? `${notesCount} selected ${notesCount === 1 ? 'has' : 'have'} one` : undefined}
+              />
             </label>
           )}
           <div className="row">

@@ -1838,6 +1838,38 @@ body:has(.promote-panel) .capture-bar {
 .inline-check select {
   width: auto;
   min-width: 7rem;
+  /* Form rule: an inline dropdown sits at the right edge of its row. */
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.inline-check:has(select) {
+  display: flex;
+  flex: 1 1 100%;
+  justify-content: space-between;
+}
+/* Label text with a description: "(desc)" inline while the label fits on
+   one line, its own subtle line once it would wrap (LabelText.tsx). */
+.label-text {
+  min-width: 0;
+}
+.label-text .lt-desc::before {
+  content: ' (';
+}
+.label-text .lt-desc::after {
+  content: ')';
+}
+.label-text.stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.label-text.stacked .lt-desc {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+.label-text.stacked .lt-desc::before,
+.label-text.stacked .lt-desc::after {
+  content: none;
 }
 
 .disguise-option {
