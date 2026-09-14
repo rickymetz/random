@@ -3351,12 +3351,8 @@ body:has(.facts-form) .app-bar nav {
 .graph-controls .chip-group .chip-edit {
   min-height: 2rem;
 }
-.graph-controls .chip.find,
 .graph-controls .chip.hidden-status {
   color: var(--text-2);
-}
-.graph-controls .chip.find.on {
-  background: var(--surface-3);
 }
 .graph-controls .chip.hidden-status {
   border-style: dashed;
@@ -3427,11 +3423,9 @@ body:has(.facts-form) .app-bar nav {
 }
 /* Find: a picker over the top of the canvas. */
 .graph-find {
-  position: absolute;
-  top: var(--s2);
-  left: var(--s2);
-  right: var(--s2);
-  z-index: 3;
+  /* Beneath the app bar, above the filters: the picker pushes the strip
+     down while it's open rather than floating over the picture. */
+  margin: 0 0 var(--s2);
   display: flex;
   align-items: flex-start;
   gap: var(--s2);
@@ -3479,12 +3473,28 @@ body:has(.facts-form) .app-bar nav {
   padding: 0 0 0 var(--s4);
 }
 @media (min-width: 48rem) {
-  .graph-list,
-  .graph-find {
+  .graph-list {
     left: var(--s3);
     right: auto;
     width: min(26rem, calc(100% - 2 * var(--s3)));
   }
+  .graph-find {
+    width: min(26rem, 100%);
+  }
+}
+/* The app bar's one route control: the graph's Find. */
+.appbar-slot {
+  display: flex;
+  align-items: center;
+}
+.app-bar .find-button {
+  min-width: var(--ctl-h);
+  min-height: var(--ctl-h);
+  color: var(--text-3);
+}
+.app-bar .find-button.on {
+  color: var(--text);
+  background: var(--surface-3);
 }
 /* Cards: a person's card names how you know them; a bubble's light card
    shows its dot; destructive asks happen in the row. */

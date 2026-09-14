@@ -390,6 +390,8 @@ export default function App() {
         )}
         {/* The brand echoes the disguise, not the product (§6.5). */}
         <span className="brand">{currentDisguise().name}</span>
+        {/* A route may put one control here (the graph's Find). */}
+        <span id="appbar-slot" className="appbar-slot" />
         <nav aria-label="Main">
           <NavLink to="/" end>
             People

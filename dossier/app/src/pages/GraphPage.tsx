@@ -18,6 +18,7 @@ import {
   useState,
   type MutableRefObject,
 } from 'react'
+import { createPortal } from 'react-dom'
 import PersonPicker from '../components/PersonPicker'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
@@ -250,6 +251,27 @@ export default function GraphPage() {
   const [showAllCircles, setShowAllCircles] = useState(false)
   const [listOpen, setListOpen] = useState(false)
   const [finding, setFinding] = useState(false)
+  const [findToken, setFindToken] = useState(0)
+  const openFind = useCallback(() => {
+    setFinding(true)
+    setFindToken((t) => t + 1)
+  }, [])
+  // Find lives in the app bar (a portal into its slot), not the filter
+  // strip: it's navigation, the strip is the legend. Ctrl/Cmd+K opens it,
+  // as it focuses search on People.
+  const [barSlot, setBarSlot] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    setBarSlot(document.getElementById('appbar-slot'))
+  }, [])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey) || e.altKey) return
+      e.preventDefault()
+      openFind()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [openFind])
   // Pins change inside the canvas hook; a counter re-renders the open card.
   const [pinVersion, setPinVersion] = useState(0)
   const onPinChange = useCallback(() => setPinVersion((v) => v + 1), [])
@@ -536,6 +558,56 @@ export default function GraphPage() {
   return (
     <div className={`graph ${bare ? 'bare' : ''}`}>
       <h1 className="sr-only">Graph</h1>
+      {barSlot &&
+        !bare &&
+        createPortal(
+          <button
+            className={`subtle icon find-button ${finding ? 'on' : ''}`}
+            aria-label="Find a person on the graph"
+            aria-expanded={finding}
+            aria-controls="graph-find"
+            aria-keyshortcuts="Control+K Meta+K"
+            title="Find (Ctrl/Cmd+K)"
+            onClick={() => (finding ? setFinding(false) : openFind())}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-3.5-3.5" />
+            </svg>
+          </button>,
+          barSlot,
+        )}
+      {finding && (
+        <div
+          id="graph-find"
+          className="graph-find"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setFinding(false)
+          }}
+        >
+          <PersonPicker
+            people={allPeople}
+            value=""
+            onChange={findPerson}
+            label="Find a person on the graph"
+            placeholder="Type a name…"
+            focusToken={findToken}
+          />
+          <button className="subtle icon" onClick={() => setFinding(false)} aria-label="Close">
+            ×
+          </button>
+        </div>
+      )}
       <div className="graph-controls">
         {focusName && (
           <span className="chip focus-chip no-dot depth">
@@ -596,16 +668,6 @@ export default function GraphPage() {
               ×
             </button>
           </span>
-        )}
-        {!bare && (
-          <button
-            className={`chip no-dot find ${finding ? 'on' : ''}`}
-            aria-expanded={finding}
-            aria-controls="graph-find"
-            onClick={() => setFinding((v) => !v)}
-          >
-            Find…
-          </button>
         )}
         {hiddenCount > 0 && (
           <button className="chip no-dot hidden-status" onClick={showAllFilters}>
@@ -723,21 +785,6 @@ export default function GraphPage() {
               </p>
             )
           )
-        )}
-        {finding && (
-          <div id="graph-find" className="graph-find">
-            <PersonPicker
-              people={allPeople}
-              value=""
-              onChange={findPerson}
-              label="Find a person on the graph"
-              placeholder="Type a name…"
-              focusToken={1}
-            />
-            <button className="subtle icon" onClick={() => setFinding(false)} aria-label="Close">
-              ×
-            </button>
-          </div>
         )}
         {listOpen && (
           <GraphList nodes={nodes} links={links} onClose={() => setListOpen(false)} />

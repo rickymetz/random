@@ -1,0 +1,26 @@
+BEGIN:VCARD
+VERSION:3.0
+N:Okafor;Sam;;;
+FN:Sam Okafor
+ORG:Acme Ltd;
+TITLE:Head of Design
+EMAIL;type=INTERNET;type=pref:sam@example.com
+TEL;type=CELL:+44 7700 900123
+BDAY;X-APPLE-OMIT-YEAR=1604:1604-06-12
+NOTE:Met at the conference.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Theo Martins
+EMAIL:theo@example.com
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:June Webb
+TEL;type=CELL:07700 900456
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Priya Raman
+ORG:Beta Co;
+END:VCARD
