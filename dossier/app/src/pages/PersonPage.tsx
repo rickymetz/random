@@ -14,7 +14,7 @@ import { getPhotoUrl, peekPhotoUrl } from '../lib/photoCache'
 import type { Photo } from '../lib/models'
 import { formatPartialDate, parsePartialDate, timeAgo } from '../lib/dates'
 import { plainText, retokenize, segmentBody } from '../lib/mentions'
-import { CUSTOM_TYPE_COLORS, type Person, type Relationship } from '../lib/models'
+import { TYPE_FAMILIES, type Person, type Relationship, type TypeFamily } from '../lib/models'
 import {
   selectCircles,
   selectCirclesOf,
@@ -1159,7 +1159,7 @@ function RelationshipSection({ person }: { person: Person }) {
     requestAnimationFrame(() => batchToggleRef.current?.focus())
   }
   const [newType, setNewType] = useState('')
-  const [newTypeColor, setNewTypeColor] = useState(CUSTOM_TYPE_COLORS[0])
+  const [newTypeFamily, setNewTypeFamily] = useState<TypeFamily>('other')
   const [newTypeDirected, setNewTypeDirected] = useState(false)
   // For directed types: does the arrow point away from this person
   // ("I am the parent") or toward them ("they are my parent")?
@@ -1317,7 +1317,12 @@ function RelationshipSection({ person }: { person: Person }) {
       let resolvedTypeId = typeId
       if (typeId === 'new') {
         if (!newType.trim()) return
-        const created = await addRelationshipType(newType, newTypeColor, newTypeDirected)
+        const created = await addRelationshipType(
+          newType,
+          TYPE_FAMILIES.find((f) => f.id === newTypeFamily)?.color ?? '',
+          newTypeDirected,
+          newTypeFamily,
+        )
         resolvedTypeId = created.id
       }
       if (!resolvedTypeId) return
@@ -1331,7 +1336,7 @@ function RelationshipSection({ person }: { person: Person }) {
       setOtherId('')
       setTypeId(resolvedTypeId)
       setNewType('')
-      setNewTypeColor(CUSTOM_TYPE_COLORS[0])
+      setNewTypeFamily('other')
       setNewTypeDirected(false)
       setOutward(true)
       setFocusToken((n) => n + 1)
@@ -1414,19 +1419,22 @@ function RelationshipSection({ person }: { person: Person }) {
                 aria-label="New type name"
               />
             </label>
+            {/* Four hues, not a palette: the line's colour says which of
+                life's corners this is; its dash tells types apart within one. */}
             <div className="row wrap">
-              <span className="hint">Color on the graph</span>
-              <span className="swatches" role="group" aria-label="Type color">
-                {CUSTOM_TYPE_COLORS.map((color) => (
+              <span className="hint">Kind</span>
+              <span className="family-picker" role="group" aria-label="Kind of relationship">
+                {TYPE_FAMILIES.map((f) => (
                   <button
-                    key={color}
+                    key={f.id}
                     type="button"
-                    className={`swatch ${color === newTypeColor ? 'selected' : ''}`}
-                    style={{ background: color }}
-                    aria-label={`Color ${color}`}
-                    aria-pressed={color === newTypeColor}
-                    onClick={() => setNewTypeColor(color)}
-                  />
+                    className={`chip ${f.id === newTypeFamily ? 'on' : ''}`}
+                    style={{ '--chip-color': f.color } as React.CSSProperties}
+                    aria-pressed={f.id === newTypeFamily}
+                    onClick={() => setNewTypeFamily(f.id)}
+                  >
+                    {f.label}
+                  </button>
                 ))}
               </span>
             </div>

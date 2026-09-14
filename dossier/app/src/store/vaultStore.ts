@@ -14,7 +14,7 @@ import { extractMentions, renameMentionsOf, stripMentionsOf } from '../lib/menti
 import { linkPhrase } from '../lib/nameDetect'
 import type { ContactDraft } from '../lib/contacts'
 import { CIRCLE_COLORS, RECENT_LIMIT, type Circle } from '../lib/models'
-import { migrateExToFormer, pairKey } from '../lib/relationships'
+import { assignTypeFamilies, migrateExToFormer, pairKey } from '../lib/relationships'
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
   SETTINGS_ID,
@@ -27,6 +27,7 @@ import {
   type Relationship,
   type RelationshipType,
   type Settings,
+  type TypeFamily,
 } from '../lib/models'
 import { wipe } from '../lib/crypto'
 import {
@@ -198,6 +199,7 @@ interface VaultState {
     label: string,
     color: string,
     directed: boolean,
+    family?: TypeFamily,
   ) => Promise<RelationshipType>
   markExported: () => Promise<void>
   /** Remember a dossier was opened (the home screen's Recent row). */
@@ -357,6 +359,12 @@ export const useVaultStore = create<VaultState>((set, get) => {
       for (const r of retired.puts) records.set(r.id, r)
       if (retired.deletes.length > 0) await deleteRecords(vault, retired.deletes)
       for (const id of retired.deletes) records.delete(id)
+    }
+    // Types learn their hue family (§4.2) the same way.
+    const familied = assignTypeFamilies(records)
+    if (familied.length > 0) {
+      await saveRecords(vault, familied)
+      for (const r of familied) records.set(r.id, r)
     }
     if (get().epoch !== startEpoch || get().status === 'unlocked') return false
     // Sweep blob rows stranded by lock-raced photo writes/deletes.
@@ -1053,7 +1061,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       )
     }),
 
-    addRelationshipType: (label, color, directed) =>
+    addRelationshipType: (label, color, directed, family) =>
       enqueue(async () => {
       const trimmed = label.trim()
       // Reuse an existing type with the same label instead of silently
@@ -1073,6 +1081,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
         color,
         directed,
         builtIn: false,
+        family: family ?? 'other',
       }
       await apply([type])
       return type
@@ -1263,7 +1272,8 @@ export const useVaultStore = create<VaultState>((set, get) => {
           merged.set(rid, { ...record, isAvatar: false })
         }
       }
-      // An older backup may still carry the "ex" type: retire it here too.
+      // An older backup may still carry the "ex" type: retire it here too,
+      // and file its types under their hue families.
       const retired = migrateExToFormer(merged)
       for (const r of retired.puts) {
         puts.push(r)
@@ -1272,6 +1282,10 @@ export const useVaultStore = create<VaultState>((set, get) => {
       for (const id of retired.deletes) {
         merged.delete(id)
         importDeletes.push(id)
+      }
+      for (const r of assignTypeFamilies(merged)) {
+        puts.push(r)
+        merged.set(r.id, r)
       }
       // Same for the single-self invariant (§4.4): restoring your backup
       // into a fresh vault must not leave both the seeded "Me" and your

@@ -3786,3 +3786,16 @@ body.sheet-open {
   font-size: var(--fs-micro);
   color: var(--text-3);
 }
+
+/* ---------------------------------------------------- hue families */
+/* A new type picks a kind, not a colour: the family's hue is the line's. */
+.family-picker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+}
+.family-picker .chip.on {
+  background: var(--surface-3);
+  color: var(--text);
+  border-color: var(--line-3);
+}

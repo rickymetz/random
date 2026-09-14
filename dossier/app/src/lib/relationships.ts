@@ -7,7 +7,14 @@
  * the old built-in "ex" type into "partner, former".
  */
 import { formatPartialDate } from './dates'
-import type { DomainRecord, Relationship, RelationshipType } from './models'
+import {
+  BUILT_IN_RELATIONSHIP_TYPES,
+  familyColor,
+  type DomainRecord,
+  type Relationship,
+  type RelationshipType,
+  type TypeFamily,
+} from './models'
 
 /** Order-independent key for the pair a relationship joins. */
 export function pairKey(a: string, b: string): string {
@@ -76,4 +83,88 @@ export function migrateExToFormer(records: Map<string, DomainRecord>): {
     puts.push({ ...r, typeId: partner.id, directed: partner.directed, former: true })
   }
   return { puts, deletes: referenced ? [] : [ex.id] }
+}
+
+/** The family a type draws in; older custom types without one read as 'other'. */
+export function familyOf(type: Pick<RelationshipType, 'family' | 'label'>): TypeFamily {
+  return type.family ?? 'other'
+}
+
+export interface LineStyle {
+  /** Screen px at zoom 1. */
+  width: number
+  /** Dash pattern in screen px, or none. */
+  dash: number[] | null
+  arrow: 'none' | 'filled' | 'open'
+}
+
+/** Custom types in one family take turns: solid, short dash, dot-dash. */
+const VARIANTS: (number[] | null)[] = [null, [6, 3], [2, 3, 7, 3]]
+
+/**
+ * Shape inside the family carries the type: married thick, partner
+ * medium, parent-of a filled arrow, boss-of an open chevron, roommate a
+ * short dash; custom types cycle through dash variants in label order
+ * within their family so two "work" types stay tellable apart.
+ */
+export function lineStyle(
+  type: Pick<RelationshipType, 'id' | 'label' | 'directed' | 'builtIn' | 'family'>,
+  siblings: readonly Pick<RelationshipType, 'id' | 'label' | 'builtIn' | 'family'>[] = [],
+): LineStyle {
+  if (type.builtIn) {
+    switch (type.label) {
+      case 'married':
+        return { width: 3, dash: null, arrow: 'none' }
+      case 'partner':
+        return { width: 2.25, dash: null, arrow: 'none' }
+      case 'parent of':
+        return { width: 1.5, dash: null, arrow: 'filled' }
+      case 'boss of':
+        return { width: 1.5, dash: null, arrow: 'open' }
+      case 'roommate':
+        return { width: 1.25, dash: [6, 3], arrow: 'none' }
+      case 'mentioned':
+        return { width: 1.25, dash: [4, 4], arrow: 'none' }
+      default:
+        return { width: 1.25, dash: null, arrow: 'none' }
+    }
+  }
+  const fam = familyOf(type)
+  const peers = siblings
+    .filter((t) => !t.builtIn && familyOf(t) === fam)
+    .sort((a, b) => a.label.localeCompare(b.label))
+  const index = Math.max(0, peers.findIndex((t) => t.id === type.id))
+  return {
+    width: 1.25,
+    dash: VARIANTS[index % VARIANTS.length],
+    arrow: type.directed ? 'open' : 'none',
+  }
+}
+
+/**
+ * Built-in types learn their family and family hue (once, on the way
+ * in); a custom type without a family is filed under 'other' but keeps
+ * the colour its owner chose. Returns the records to rewrite.
+ */
+export function assignTypeFamilies(records: Map<string, DomainRecord>): RelationshipType[] {
+  const puts: RelationshipType[] = []
+  const builtIn = new Map(BUILT_IN_RELATIONSHIP_TYPES.map((t) => [t.label, t]))
+  for (const r of records.values()) {
+    if (r.kind !== 'relationshipType') continue
+    if (r.builtIn) {
+      const spec = builtIn.get(r.label)
+      if (!spec) continue
+      if (r.family !== spec.family || r.color !== spec.color) {
+        puts.push({ ...r, family: spec.family, color: spec.color })
+      }
+    } else if (!r.family) {
+      puts.push({ ...r, family: 'other' })
+    }
+  }
+  return puts
+}
+
+/** A new custom type's colour is its family's hue. */
+export function colorForFamily(family: TypeFamily): string {
+  return familyColor(family)
 }

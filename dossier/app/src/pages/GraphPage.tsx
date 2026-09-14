@@ -22,7 +22,7 @@ import { createPortal } from 'react-dom'
 import PersonPicker from '../components/PersonPicker'
 import Sheet from '../components/Sheet'
 import DangerConfirm from '../components/DangerConfirm'
-import { pairKey, roleDates, roleLabel } from '../lib/relationships'
+import { familyOf, lineStyle, pairKey, roleDates, roleLabel, type LineStyle } from '../lib/relationships'
 import { quietLabel, quietMonths } from '../lib/quiet'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
@@ -226,6 +226,8 @@ interface GraphLink extends SimulationLinkDatum<GraphNode> {
   dashed: boolean
   /** A past role: long-dashed, and skipped by the path unless asked. */
   former: boolean
+  /** Width, dash and arrow from the type's family and shape. */
+  style: LineStyle
   directed: boolean
   /** Part of the highlighted "how you connect" path (§4.4). */
   highlighted: boolean
@@ -353,8 +355,15 @@ export default function GraphPage() {
     setParams(next, { replace: true })
   }, [autoFocusId, params, setParams])
 
+  // The rail reads as a legend: family, work, social, other, each A–Z.
+  const FAMILY_ORDER = ['family', 'work', 'social', 'other'] as const
   const types = useMemo(
-    () => selectRelationshipTypes(records).sort((a, b) => a.label.localeCompare(b.label)),
+    () =>
+      selectRelationshipTypes(records).sort(
+        (a, b) =>
+          FAMILY_ORDER.indexOf(familyOf(a)) - FAMILY_ORDER.indexOf(familyOf(b)) ||
+          a.label.localeCompare(b.label),
+      ),
     [records],
   )
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(
@@ -471,6 +480,10 @@ export default function GraphPage() {
         label: typeById.get(e.typeId)?.label ?? 'linked',
         dashed: e.origin === 'mention',
         former: Boolean(e.former),
+        style: (() => {
+          const t = typeById.get(e.typeId)
+          return t ? lineStyle(t, types) : { width: 1.25, dash: null, arrow: 'none' as const }
+        })(),
         directed: (typeById.get(e.typeId)?.directed ?? false) && e.origin === 'explicit',
         highlighted: pathInfo?.edgeIds.has(e.id) ?? false,
       }))
@@ -2000,7 +2013,7 @@ function useCanvasGraph(
         const dt = dots.has(t.id)
         if (ds && dt && detail === 0) continue
         const minor = ds || dt
-        const key = `${link.color}|${link.dashed ? 1 : 0}|${link.former ? 1 : 0}|${link.highlighted ? 1 : 0}|${link.label}|${on ? 1 : 0}|${minor ? 1 : 0}`
+        const key = `${link.color}|${link.dashed ? 1 : 0}|${link.former ? 1 : 0}|${link.highlighted ? 1 : 0}|${link.style.width}|${link.style.dash?.join(',') ?? ''}|${on ? 1 : 0}|${minor ? 1 : 0}`
         const list = groups.get(key)
         if (list) list.push(link)
         else groups.set(key, [link])
@@ -2031,10 +2044,19 @@ function useCanvasGraph(
           dots.has((first.source as GraphNode).id) || dots.has((first.target as GraphNode).id)
         ctx.strokeStyle = on && active ? first.color : mutedColor(first.color)
         ctx.globalAlpha = (on ? 1 : unlitEdgeAlpha) * (minor ? (detail === 0 ? 0.3 : 0.45) : 1)
-        const base = first.highlighted ? 3.5 : first.label === 'partner' || first.label === 'married' ? 2.25 : 1.25
+        const base = first.highlighted ? Math.max(3.5, first.style.width + 1) : first.style.width
         ctx.lineWidth = (minor ? 1 : base + (on && active ? 0.75 : 0)) / k
-        // Shape, not just hue: mentions dotted, former ties long-dashed, partners thick.
-        ctx.setLineDash(first.dashed ? dash : first.former ? [10 / k, 5 / k] : solid)
+        // Shape, not just hue: mentions dotted, former ties long-dashed,
+        // and inside a family the type's own width and dash.
+        ctx.setLineDash(
+          first.dashed
+            ? dash
+            : first.former
+              ? [10 / k, 5 / k]
+              : first.style.dash
+                ? first.style.dash.map((d) => d / k)
+                : solid,
+        )
         ctx.stroke()
       }
       ctx.setLineDash(solid)
@@ -2048,13 +2070,21 @@ function useCanvasGraph(
         const size = 6 / Math.sqrt(k)
         const on = litEdge(link)
         ctx.globalAlpha = on ? 0.9 : unlitEdgeAlpha * 0.8
+        const colour = on && active ? link.color : mutedColor(link.color)
         ctx.beginPath()
-        ctx.moveTo(ax, ay)
-        ctx.lineTo(ax - size * Math.cos(angle - 0.5), ay - size * Math.sin(angle - 0.5))
+        ctx.moveTo(ax - size * Math.cos(angle - 0.5), ay - size * Math.sin(angle - 0.5))
+        ctx.lineTo(ax, ay)
         ctx.lineTo(ax - size * Math.cos(angle + 0.5), ay - size * Math.sin(angle + 0.5))
-        ctx.closePath()
-        ctx.fillStyle = on && active ? link.color : mutedColor(link.color)
-        ctx.fill()
+        if (link.style.arrow === 'open') {
+          // An open chevron (boss of) against the filled head (parent of).
+          ctx.lineWidth = 1.5 / k
+          ctx.strokeStyle = colour
+          ctx.stroke()
+        } else {
+          ctx.closePath()
+          ctx.fillStyle = colour
+          ctx.fill()
+        }
       }
 
       ctx.globalAlpha = 1
