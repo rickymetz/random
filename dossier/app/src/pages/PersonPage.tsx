@@ -93,13 +93,20 @@ export default function PersonPage() {
       )}
       {/* Lookup order (§4.1): what to remember and what you last wrote
           come before the link-building sections. */}
-      <Facts person={person} editing={editing} setEditing={setEditing} />
-      <FollowUpSection personId={person.id} />
-      <NotesSection personId={person.id} />
-      <MentionedInSection personId={person.id} />
-      <RelationshipSection person={person} />
-      <ConnectionSection person={person} />
-      <PhotoSection personId={person.id} />
+      {/* Two columns on a wide screen (≥64rem): what you remember and
+          write on the left, who they know on the right. On a phone the
+          columns are `display: contents`, so this is one flow. */}
+      <div className="person-col main">
+        <Facts person={person} editing={editing} setEditing={setEditing} />
+        <FollowUpSection personId={person.id} />
+        <NotesSection personId={person.id} />
+        <MentionedInSection personId={person.id} />
+      </div>
+      <div className="person-col side">
+        <RelationshipSection person={person} />
+        <ConnectionSection person={person} />
+        <PhotoSection personId={person.id} />
+      </div>
       <footer className="person-footer" />
       {/* Hidden, not unmounted, while the facts form is open: unmounting
           would flush a half-typed draft into a permanent note with no

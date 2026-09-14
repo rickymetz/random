@@ -971,14 +971,17 @@ section h2 {
   gap: var(--s6);
   min-height: calc(100dvh - var(--appbar-h) - var(--s6));
 }
-.person > section,
+.person-col {
+  display: contents;
+}
+.person-col > section,
 .person > .person-header {
   margin-top: 0;
   margin-bottom: 0;
 }
 /* While the facts form is open, Save/Cancel are the only exits: the
    rest of the dossier steps aside instead of stretching the page. */
-body:has(.facts-form) .person > section:not(:has(.facts-form)),
+body:has(.facts-form) .person-col > section:not(:has(.facts-form)),
 body:has(.facts-form) .person > .person-footer,
 body:has(.facts-form) .app-bar .back {
   display: none;
@@ -3819,7 +3822,6 @@ body.sheet-open {
    above a value that no longer fits beside it. */
 button {
   max-width: 100%;
-  min-width: 0;
   white-space: normal;
   line-height: 1.2;
   padding-block: 0.45rem;
@@ -3870,4 +3872,61 @@ a.facet {
 .edge-row {
   min-width: 0;
   max-width: 100%;
+}
+
+/* ------------------------------------------- two-column desktop dossier */
+/* From 64rem the dossier widens to two columns: facts, follow-ups, notes
+   and mentions on the left with the capture bar under them; who they
+   know (relationships, how you connect, photos) on the right. The app
+   bar's Back and the page share the wider column so they still line up. */
+@media (min-width: 64rem) {
+  main:has(.person) {
+    max-width: 64rem;
+  }
+  body:has(main .person) .app-bar {
+    padding-inline: max(var(--gutter), calc((100vw - 64rem) / 2));
+  }
+  .person {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 24rem);
+    grid-template-rows: auto 1fr auto auto;
+    column-gap: var(--s7);
+    row-gap: var(--s6);
+    align-items: start;
+  }
+  .person > .person-header,
+  .person > .banner {
+    grid-column: 1 / -1;
+  }
+  .person-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s6);
+    min-width: 0;
+  }
+  .person-col.main {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .person-col.side {
+    grid-column: 2;
+    grid-row: 2 / span 3;
+  }
+  .person > .person-footer {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .person > .capture-bar {
+    grid-column: 1;
+    grid-row: 4;
+    margin-top: 0;
+    margin-inline: calc(var(--gutter) * -1) 0;
+  }
+  /* Editing the facts: the other column steps aside too. */
+  body:has(.facts-form) .person-col.side {
+    display: none;
+  }
+  body:has(.facts-form) .person-col.main {
+    grid-column: 1 / -1;
+  }
 }
