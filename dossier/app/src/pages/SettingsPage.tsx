@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import InlineField from '../components/InlineField'
+import LabelText from '../components/LabelText'
 import { Link, useSearchParams } from 'react-router-dom'
 import { destroyAllData } from '../lib/db'
 import {
@@ -266,8 +268,7 @@ function SecuritySection() {
 
       <h3>Auto-lock</h3>
       <div className="row wrap">
-        <label className="inline-check">
-          When I stop using it
+        <InlineField label="When I stop using it">
           <select
             value={settings?.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES}
             onChange={(e) => {
@@ -290,9 +291,8 @@ function SecuritySection() {
             <option value={5}>5 min</option>
             <option value={15}>15 min</option>
           </select>
-        </label>
-        <label className="inline-check">
-          When I switch to another app
+        </InlineField>
+        <InlineField label="When I switch to another app">
           <select
             value={settings?.backgroundGraceSeconds ?? DEFAULT_BACKGROUND_GRACE_SECONDS}
             onChange={(e) =>
@@ -304,7 +304,7 @@ function SecuritySection() {
             <option value={30}>30 s</option>
             <option value={120}>2 min</option>
           </select>
-        </label>
+        </InlineField>
         <span
           className={`status-slot hint ${lockMsg === 'Saved.' ? '' : 'error'}`}
           role="status"
@@ -360,7 +360,7 @@ function SecuritySection() {
               void changeSecurity({ remindersEnabled: enable })
             }}
           />
-          Daily reminder (the notification never names anyone)
+          <LabelText text="Daily reminder" desc="the notification never names anyone" />
         </label>
         <label className="inline-check">
           <input
