@@ -3754,3 +3754,35 @@ body.sheet-open {
 .graph-controls .chip.former {
   border-style: dashed;
 }
+
+/* ------------------------------------------------------- quiet lens */
+/* Who have you lost touch with: one line on the home screen, a view
+   that lists them longest first, and a lens on the graph. */
+.quiet-line {
+  margin: 0 0 var(--s3);
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+}
+.quiet-line a {
+  color: var(--text-2);
+}
+.quiet-since {
+  color: var(--text-3);
+  font-style: italic;
+}
+.tag.quiet {
+  font-style: italic;
+}
+.graph-controls .chip.quiet {
+  border-style: dotted;
+}
+.graph-controls .chip.quiet.on {
+  background: var(--surface-3);
+  color: var(--text);
+  border-style: solid;
+}
+.graph-list .tag.quiet {
+  margin-left: var(--s1);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}

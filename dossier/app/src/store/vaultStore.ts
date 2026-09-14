@@ -1408,6 +1408,7 @@ export function selectRelationshipTypes(
  */
 interface PersonIndex {
   notes: Map<string, NoteEntry[]>
+  followUps: Map<string, FollowUp[]>
   photos: Map<string, Photo[]>
   avatar: Map<string, Photo>
   circles: Map<string, Circle[]>
@@ -1420,6 +1421,7 @@ function personIndex(records: Map<string, DomainRecord>): PersonIndex {
   if (cached) return cached
   const idx: PersonIndex = {
     notes: new Map(),
+    followUps: new Map(),
     photos: new Map(),
     avatar: new Map(),
     circles: new Map(),
@@ -1432,12 +1434,16 @@ function personIndex(records: Map<string, DomainRecord>): PersonIndex {
   }
   for (const r of records.values()) {
     if (r.kind === 'note') push(idx.notes, r.personId, r)
+    else if (r.kind === 'followUp') push(idx.followUps, r.personId, r)
     else if (r.kind === 'photo') {
       push(idx.photos, r.personId, r)
       if (r.isAvatar && !idx.avatar.has(r.personId)) idx.avatar.set(r.personId, r)
     } else if (r.kind === 'circle') idx.circleList.push(r)
   }
   for (const list of idx.notes.values()) list.sort((a, b) => b.createdAt - a.createdAt)
+  for (const list of idx.followUps.values()) {
+    list.sort((a, b) => Number(a.done) - Number(b.done) || a.createdAt - b.createdAt)
+  }
   for (const list of idx.photos.values()) {
     list.sort((a, b) => Number(b.isAvatar) - Number(a.isAvatar) || a.createdAt - b.createdAt)
   }
@@ -1466,9 +1472,7 @@ export function selectFollowUps(
   records: Map<string, DomainRecord>,
   personId: string,
 ): FollowUp[] {
-  return [...records.values()]
-    .filter((r): r is FollowUp => r.kind === 'followUp' && r.personId === personId)
-    .sort((a, b) => Number(a.done) - Number(b.done) || a.createdAt - b.createdAt)
+  return personIndex(records).followUps.get(personId) ?? EMPTY
 }
 
 export function selectSettings(records: Map<string, DomainRecord>): Settings | undefined {

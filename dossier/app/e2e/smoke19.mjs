@@ -28,7 +28,7 @@ if ((await page.locator('form.add-form select[aria-label="Relationship type"] op
 
 // A second role on the same pair via "+ role".
 await page.click('.roles-list button[aria-label="Add another role for Rosa Delgado"]')
-if (!(await page.evaluate(() => document.activeElement?.matches('form.add-form select[aria-label="Relationship type"]')))) fail('+ role should focus the type select')
+await page.waitForFunction(() => document.activeElement?.matches('form.add-form select[aria-label="Relationship type"]'), null, { timeout: 2000 }).catch(() => fail('+ role should focus the type select'))
 await page.selectOption('form.add-form select[aria-label="Relationship type"]', { label: 'coworker' })
 await page.click('form.add-form .add-submit')
 await page.waitForSelector('.roles-list li:has-text("Rosa Delgado") .role-chip:has-text("coworker")')

@@ -23,6 +23,7 @@ import PersonPicker from '../components/PersonPicker'
 import Sheet from '../components/Sheet'
 import DangerConfirm from '../components/DangerConfirm'
 import { pairKey, roleDates, roleLabel } from '../lib/relationships'
+import { quietLabel, quietMonths } from '../lib/quiet'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
 import { CIRCLE_COLORS, colorName, type Person, type Relationship } from '../lib/models'
@@ -47,6 +48,8 @@ interface GraphNode extends SimulationNodeDatum {
   r: number
   /** Links on the graph as drawn — ranks who stays in full at an overview. */
   degree: number
+  /** Months since you last wrote about them, when 6 or more (the quiet lens). */
+  quiet: number | null
   isSelf: boolean
   avatar?: { blobRecordId: string; mimeType: string }
 }
@@ -141,6 +144,8 @@ interface Filters {
   hidden: string[]
   mentions: boolean
   former: boolean
+  /** The quiet lens: off by default, a look rather than a filter. */
+  quiet: boolean
   hiddenCircles: string[]
 }
 function loadFilters(): Filters {
@@ -152,24 +157,32 @@ function loadFilters(): Filters {
         hidden: parsed.hidden ?? [],
         mentions: parsed.mentions ?? true,
         former: parsed.former ?? true,
+        quiet: parsed.quiet ?? false,
         hiddenCircles: parsed.hiddenCircles ?? [],
       }
     }
   } catch {
     // Private windows may refuse; defaults are fine.
   }
-  return { hidden: [], mentions: true, former: true, hiddenCircles: [] }
+  return { hidden: [], mentions: true, former: true, quiet: false, hiddenCircles: [] }
 }
 function saveFilters(
   hidden: Set<string>,
   mentions: boolean,
   former: boolean,
+  quiet: boolean,
   hiddenCircles: Set<string>,
 ): void {
   try {
     sessionStorage.setItem(
       FILTER_KEY,
-      JSON.stringify({ hidden: [...hidden], mentions, former, hiddenCircles: [...hiddenCircles] }),
+      JSON.stringify({
+        hidden: [...hidden],
+        mentions,
+        former,
+        quiet,
+        hiddenCircles: [...hiddenCircles],
+      }),
     )
   } catch {
     // ignore
@@ -349,12 +362,13 @@ export default function GraphPage() {
   )
   const [showMentions, setShowMentions] = useState(() => loadFilters().mentions)
   const [showFormer, setShowFormer] = useState(() => loadFilters().former)
+  const [quietLens, setQuietLens] = useState(() => loadFilters().quiet)
   const [hiddenCircles, setHiddenCircles] = useState<Set<string>>(
     () => new Set(loadFilters().hiddenCircles),
   )
   useEffect(() => {
-    saveFilters(hiddenTypes, showMentions, showFormer, hiddenCircles)
-  }, [hiddenTypes, showMentions, showFormer, hiddenCircles])
+    saveFilters(hiddenTypes, showMentions, showFormer, quietLens, hiddenCircles)
+  }, [hiddenTypes, showMentions, showFormer, quietLens, hiddenCircles])
   const allCircles = useMemo(() => selectCircles(records), [records])
   const focusedCircle = useMemo(
     () => (circleFocusId ? allCircles.find((c) => c.id === circleFocusId) : undefined),
@@ -441,6 +455,7 @@ export default function GraphPage() {
         initials: initialsOf(p.displayName),
         r: nodeRadius(degree.get(p.id) ?? 0),
         degree: degree.get(p.id) ?? 0,
+        quiet: quietMonths(records, p),
         isSelf: Boolean(p.isSelf),
         avatar: avatar
           ? { blobRecordId: avatar.blobRecordId, mimeType: avatar.mimeType }
@@ -527,6 +542,7 @@ export default function GraphPage() {
     viewKey,
     onPinChange,
     onGesture,
+    quietLens,
   )
   // A card at the bottom must not cover the person it describes, and the
   // circle editor's sheet must not cover the bubble it edits.
@@ -792,6 +808,14 @@ export default function GraphPage() {
         >
           former
         </button>
+        <button
+          className={`chip no-dot quiet ${quietLens ? 'on' : ''}`}
+          aria-pressed={quietLens}
+          onClick={() => setQuietLens((v) => !v)}
+          title="Mark people with no note or follow-up in 6 months"
+        >
+          quiet
+        </button>
       </div>
       {/* Read to assistive tech via aria-describedby; sighted users get
           a one-time hint on the canvas instead of a permanent sentence. */}
@@ -1012,6 +1036,7 @@ function GraphList({
           return (
             <li key={n.id}>
               <Link to={`/person/${n.id}`}>{n.isSelf ? `${n.name} (you)` : n.name}</Link>
+              {n.quiet !== null && <span className="tag quiet"> quiet {quietLabel(n.quiet)}</span>}
               {mine.length > 0 && (
                 <span className="hint">
                   {' — '}
@@ -1095,10 +1120,11 @@ function NodePeek({
   }, [records, person, personId])
   if (!person || person.kind !== 'person' || !facts) return null
   const detail = [person.jobTitle, person.employer].filter(Boolean).join(' @ ')
+  const idle = quietMonths(records, person)
   const meta = [
     facts.links > 0 ? `${facts.links} ${facts.links === 1 ? 'link' : 'links'}` : 'no links yet',
     facts.circles.length > 0 ? facts.circles.join(', ') : null,
-    facts.lastNote ? `last note ${facts.lastNote}` : null,
+    idle !== null ? `quiet ${quietLabel(idle)}` : facts.lastNote ? `last note ${facts.lastNote}` : null,
   ].filter(Boolean)
   return (
     <div
@@ -1478,6 +1504,7 @@ function useCanvasGraph(
   viewKey: string,
   onPinChange: () => void,
   onGesture: () => void,
+  quietLens: boolean,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // What's lit (the open card's subject) is read by the painter through a
@@ -1511,6 +1538,11 @@ function useCanvasGraph(
     selectedRef.current = selected
     simRef.current?.render()
   }, [selected])
+  const quietLensRef = useRef(quietLens)
+  useEffect(() => {
+    quietLensRef.current = quietLens
+    simRef.current?.render()
+  }, [quietLens])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -2054,7 +2086,8 @@ function useCanvasGraph(
         else if (!isLitNode(node.id)) faded.push(node)
         else plain.push(node)
       }
-      const drawBatch = (batch: GraphNode[], alpha: number) => {
+      const lens = quietLensRef.current
+      const drawBatch = (batch: GraphNode[], alpha: number, quietOnes = false) => {
         if (batch.length === 0) return
         ctx.globalAlpha = alpha
         ctx.beginPath()
@@ -2062,17 +2095,24 @@ function useCanvasGraph(
           ctx.moveTo(node.x! + node.r, node.y!)
           ctx.arc(node.x!, node.y!, node.r, 0, Math.PI * 2)
         }
-        ctx.fillStyle = '#232120'
+        ctx.fillStyle = quietOnes ? '#1c1b1a' : '#232120'
         ctx.fill()
+        // Under the quiet lens a person you've stopped writing about wears
+        // a dashed ring and muted initials — the same "past" language as
+        // a former tie.
+        if (quietOnes) ctx.setLineDash([3 / k, 3 / k])
         ctx.lineWidth = 1 / k
         ctx.strokeStyle = '#7d786f'
         ctx.stroke()
+        if (quietOnes) ctx.setLineDash(solid)
         if (k * 11 >= 7) {
-          ctx.fillStyle = '#ece8e1'
+          ctx.fillStyle = quietOnes ? '#8b857a' : '#ece8e1'
           for (const node of batch) ctx.fillText(node.initials, node.x!, node.y!)
         }
         ctx.globalAlpha = 1
       }
+      const split = (batch: GraphNode[]) =>
+        lens ? [batch.filter((n) => n.quiet === null), batch.filter((n) => n.quiet !== null)] : [batch, []]
       // Dots underneath, faded next, plain over them, then the special few.
       if (dotNodes.length > 0) {
         const dr = 3.5 / k
@@ -2086,8 +2126,14 @@ function useCanvasGraph(
         ctx.fill()
         ctx.globalAlpha = 1
       }
-      drawBatch(faded, unlitNodeAlpha)
-      drawBatch(plain, 1)
+      {
+        const [fadedLoud, fadedQuiet] = split(faded)
+        const [plainLoud, plainQuiet] = split(plain)
+        drawBatch(fadedLoud, unlitNodeAlpha)
+        drawBatch(fadedQuiet, unlitNodeAlpha, true)
+        drawBatch(plainLoud, 1)
+        drawBatch(plainQuiet, 1, true)
+      }
       for (const node of special) {
         const isFocus = node.id === focusId
         const isSelected = node.id === selectedId

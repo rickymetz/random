@@ -28,7 +28,10 @@ if (scripts.length === 0) {
   process.exit(2)
 }
 
-const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+// The vite binary itself, not npx: killing an npx wrapper can leave the
+// real server running on the port for the next run to trip over.
+const vite = join(app, 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite')
+const server = spawn(vite, ['preview', '--port', String(PORT), '--strictPort'], {
   cwd: app,
   stdio: ['ignore', 'pipe', 'pipe'],
 })

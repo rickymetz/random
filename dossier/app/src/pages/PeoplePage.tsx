@@ -16,6 +16,7 @@ import { daysUntilDue, daysUntilNext, formatPartialDate } from '../lib/dates'
 import type { Person } from '../lib/models'
 import { RAIL_LETTERS, letterOf, rowsToReveal, shortName } from '../lib/names'
 import { matchSnippet } from '../lib/search'
+import { QUIET_MONTHS, quietLabel, quietMonths, selectQuiet } from '../lib/quiet'
 import {
   searchPeopleIds,
   selectCircles,
@@ -88,6 +89,9 @@ export default function PeoplePage() {
     const c = circleId ? records.get(circleId) : undefined
     return c?.kind === 'circle' ? c : undefined
   }, [records, circleId])
+  // ?quiet=1 lists the people you've lost touch with, longest first.
+  const quietView = params.get('quiet') === '1'
+  const quiet = useMemo(() => (quietView ? selectQuiet(records) : []), [records, quietView])
   // A circle link means "show me this circle" — not this circle narrowed
   // by whatever was last typed in the search box.
   useEffect(() => {
@@ -105,7 +109,11 @@ export default function PeoplePage() {
     [records],
   )
   const people = useMemo(() => {
-    const all = circle ? sorted.filter((p) => circle.memberIds.includes(p.id)) : sorted
+    const all = quietView
+      ? quiet.map((q) => q.person)
+      : circle
+        ? sorted.filter((p) => circle.memberIds.includes(p.id))
+        : sorted
     const trimmed = query.trim()
     if (!trimmed) return all
     const byId = new Map(all.map((p) => [p.id, p]))
@@ -119,14 +127,14 @@ export default function PeoplePage() {
       if (!seen.has(p.id) && p.displayName.toLowerCase().includes(q)) ranked.push(p)
     }
     return ranked
-  }, [sorted, query, circle])
+  }, [sorted, query, circle, quietView, quiet])
 
   // Long lists render in pages: the first screenful is instant on a
   // phone with hundreds of people, and scrolling (or the button, for
   // keyboard and screen-reader users) reveals the rest. The window lives
   // in the store, keyed on query/circle, so Back from a dossier lands on
   // the same rows the browser is restoring the scroll position to.
-  const pageKey = `${circle?.id ?? ''}|${query.trim()}`
+  const pageKey = `${circle?.id ?? ''}|${quietView ? 'quiet' : ''}|${query.trim()}`
   const homePage = useVaultStore((s) => s.homePage)
   const setHomePage = useVaultStore((s) => s.setHomePage)
   const limit = homePage.key === pageKey && homePage.limit > 0 ? homePage.limit : PAGE
@@ -314,7 +322,16 @@ export default function PeoplePage() {
           </button>
         </p>
       )}
-      {!trimmed && !circle && !people.some((p) => !p.isSelf) && (
+      {quietView && (
+        <p className="banner quiet-banner" role="status">
+          <strong>Quiet</strong> — {quiet.length} {quiet.length === 1 ? 'person' : 'people'} with no
+          note or follow-up in {QUIET_MONTHS} months.
+          <button className="subtle" onClick={() => setParams({}, { replace: true })}>
+            Show everyone
+          </button>
+        </p>
+      )}
+      {!trimmed && !circle && !quietView && !people.some((p) => !p.isSelf) && (
         <p className="empty">
           Just you so far. Type a name above to add someone.
         </p>
@@ -328,8 +345,9 @@ export default function PeoplePage() {
       <KdfUpgradeNag />
       <PinFailureNotice />
       {showRecent && <Recent people={sorted} withRail={showRail} />}
-      {!trimmed && !circle && <Upcoming />}
-      {!trimmed && !circle && <BackupNag />}
+      {!trimmed && !circle && !quietView && <Upcoming />}
+      {!trimmed && !circle && !quietView && <QuietLine />}
+      {!trimmed && !circle && !quietView && <BackupNag />}
       {circleHits.length > 0 && (
         <ul className="circle-results" aria-label="Circles">
           {circleHits.map((c) => (
@@ -372,7 +390,7 @@ export default function PeoplePage() {
                   <h3>{letter}</h3>
                 </li>
               )}
-              <PersonRow person={p} query={trimmed} />
+              <PersonRow person={p} query={trimmed} quiet={quietView} />
             </Fragment>
           )
         })}
@@ -649,10 +667,20 @@ function Recent({ people, withRail }: { people: Person[]; withRail: boolean }) {
   )
 }
 
-const PersonRow = memo(function PersonRow({ person, query }: { person: Person; query: string }) {
+const PersonRow = memo(function PersonRow({
+  person,
+  query,
+  quiet = false,
+}: {
+  person: Person
+  query: string
+  /** In the quiet view every row says how long it has been. */
+  quiet?: boolean
+}) {
   const records = useVaultStore((s) => s.records)
   const circles = selectCirclesOf(records, person.id)
   const notes = selectNotes(records, person.id)
+  const idle = quiet ? quietMonths(records, person) : null
   const detail = [person.jobTitle, person.employer].filter(Boolean).join(' @ ')
   // Show WHY a result matched when the hit came from note text (§4.4).
   const snippet = useMemo(() => {
@@ -706,6 +734,12 @@ const PersonRow = memo(function PersonRow({ person, query }: { person: Person; q
           </strong>
           {detail && <span className="hint"> {detail}</span>}
           {snippet && <span className="snippet">{highlight(snippet, query)}</span>}
+          {idle !== null && (
+            <span className="snippet quiet-since">
+              quiet {quietLabel(idle)} — nothing since{' '}
+              {new Date(Math.max(person.createdAt, ...notes.map((n) => n.createdAt))).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+            </span>
+          )}
         </span>
         <span className="chev" aria-hidden="true">
           {'›'}
@@ -714,6 +748,19 @@ const PersonRow = memo(function PersonRow({ person, query }: { person: Person; q
     </li>
   )
 })
+
+/** Who have you lost touch with? One line, only when there's someone. */
+function QuietLine() {
+  const records = useVaultStore((s) => s.records)
+  const count = useMemo(() => selectQuiet(records).length, [records])
+  if (count === 0) return null
+  return (
+    <p className="quiet-line">
+      {count} {count === 1 ? 'person has' : 'people have'} gone quiet — no note in {QUIET_MONTHS}{' '}
+      months. <Link to="/?quiet=1">See who</Link>
+    </p>
+  )
+}
 
 /** Biometric/PIN unlocks can't migrate a legacy KDF wrap (§6.2). */
 function KdfUpgradeNag() {
