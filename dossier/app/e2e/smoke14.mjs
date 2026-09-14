@@ -25,7 +25,10 @@ await page.waitForSelector('.person h1:has-text("Grace Liu")')
 if (await page.locator('select[aria-label="Person"]').count()) fail('native person select still present')
 // Typeahead: type, arrow, enter
 const picker = page.locator('input[aria-label="Person"]')
-await picker.click()
+// Park the mouse in the app bar: a suggestion under the pointer would be
+// hover-highlighted, and Enter would then pick it.
+await page.mouse.move(5, 5)
+await picker.focus()
 if (!(await page.locator('.chip-suggestions').count())) fail('list should open on focus')
 const onFocus = await page.locator('.chip-suggestions li[role="option"]').count()
 if (await page.locator('.chip-suggestions li[aria-selected="true"]').count()) fail('nothing should be auto-selected on focus')

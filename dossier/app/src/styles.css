@@ -109,6 +109,17 @@
 html {
   scroll-padding-top: calc(var(--appbar-h) + env(safe-area-inset-top) + 3rem);
   scroll-padding-bottom: 9rem;
+  /* No text inflation in landscape: sizes are ours (and the system's). */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+/* Dynamic Type: on iOS the root size follows the system text size (Larger
+   Text in Settings). Every size in the app is in rem, so the whole app
+   scales with it — layouts wrap and stack rather than clip. */
+@supports (font: -apple-system-body) {
+  html {
+    font: -apple-system-body;
+  }
 }
 @media (max-width: 48rem) {
   html {
@@ -3798,4 +3809,65 @@ body.sheet-open {
   background: var(--surface-3);
   color: var(--text);
   border-color: var(--line-3);
+}
+
+/* ---------------------------------------------------- dynamic type */
+/* The root follows the system text size (html: -apple-system-body), so
+   every control may be asked to hold text at 150–200%. Nothing may push
+   the page wider than the phone: labels wrap inside their control, a
+   row of actions wraps onto a second line, and a fact's label sits
+   above a value that no longer fits beside it. */
+button {
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.2;
+  padding-block: 0.45rem;
+  overflow-wrap: anywhere;
+}
+.section-head {
+  flex-wrap: wrap;
+}
+.section-head .row {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.app-bar {
+  flex-wrap: wrap;
+}
+.app-bar nav {
+  flex-wrap: wrap;
+}
+.circle-chip,
+.role-chip,
+.chip {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+/* The graph's chip strip scrolls sideways instead: its chips stay on one line. */
+.graph-controls .chip {
+  white-space: nowrap;
+  max-width: none;
+}
+.role-chip {
+  padding-block: 0.3rem;
+  line-height: 1.2;
+}
+a.facet {
+  overflow-wrap: anywhere;
+}
+.fact {
+  flex-wrap: wrap;
+}
+.fact dd {
+  flex: 1 1 12rem;
+  overflow-wrap: anywhere;
+}
+.path,
+.roles,
+.edge-row {
+  min-width: 0;
+  max-width: 100%;
 }

@@ -1665,6 +1665,12 @@ function useCanvasGraph(
     let width = 0
     let height = 0
     let dpr = 1
+    // Canvas text follows the root size too (Dynamic Type): 1 at 16px.
+    let dt = 1
+    const readTextScale = () => {
+      dt = (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) / 16
+    }
+    readTextScale()
 
     // Link length follows the tie: household ties short, the same circle
     // a little longer, other explicit links longer, mentions longest —
@@ -2095,7 +2101,7 @@ function useCanvasGraph(
       // Pass 1: discs with avatar or initials, one font for all nodes.
       // Plain nodes (no photo, not focused, not you, not lit) share one
       // fill path and one ring path; initials skip when under ~7px.
-      ctx.font = '600 11px system-ui'
+      ctx.font = `600 ${11 * dt}px system-ui`
       const visibleNodes: GraphNode[] = []
       const plain: GraphNode[] = []
       const faded: GraphNode[] = []
@@ -2244,12 +2250,12 @@ function useCanvasGraph(
         // colour, and the people who matter most are named first — the
         // card's subject, you, the focus, lit neighbours, then hubs.
         // Screen-sized: 12px at every zoom, like a map label.
-        ctx.font = `500 ${12 / k}px system-ui`
+        ctx.font = `500 ${(12 * dt) / k}px system-ui`
         ctx.lineJoin = 'round'
         ctx.lineWidth = 3 / k
         ctx.strokeStyle = 'rgba(18, 17, 16, 0.9)'
         ctx.textBaseline = 'alphabetic'
-        const lineH = 14 / k
+        const lineH = (14 * dt) / k
         const rank = (nd: GraphNode) =>
           (nd.id === selectedId || nd.id === active?.anchor ? 4000 : 0) +
           (nd.isSelf ? 3000 : 0) +
@@ -2290,7 +2296,7 @@ function useCanvasGraph(
       // don't cover anyone. They shrink with zoom (floor 9px) and vanish
       // far out or when there are too many bubbles to name.
       if (k >= 0.45 && (circlesNow.length <= 8 || k >= 0.8)) {
-        const fontPx = Math.min(11, Math.max(9, 11 * k)) / k
+        const fontPx = (Math.min(11, Math.max(9, 11 * k)) * dt) / k
         const lineH = fontPx * 1.3
         ctx.font = `600 ${fontPx}px system-ui`
         const spaced = ctx as CanvasRenderingContext2D & { letterSpacing?: string }
@@ -2379,6 +2385,7 @@ function useCanvasGraph(
       const wrap = canvas.parentElement
       if (!wrap) return
       dpr = window.devicePixelRatio || 1
+      readTextScale()
       const sizeChanged = wrap.clientWidth !== width || wrap.clientHeight !== height
       width = wrap.clientWidth
       height = wrap.clientHeight
