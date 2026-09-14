@@ -20,6 +20,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import PersonPicker from '../components/PersonPicker'
+import Sheet from '../components/Sheet'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
 import { CIRCLE_COLORS, colorName, type Person, type Relationship } from '../lib/models'
@@ -69,6 +70,8 @@ interface ViewApi {
   isPinned: (id: string) => boolean
   unpin: (id: string) => void
   hasNode: (id: string) => boolean
+  /** Frame a circle's members above a sheet of `bottomInset` px. */
+  fitCircle: (circleId: string, bottomInset: number) => void
 }
 
 /** Hex → [r,g,b]. */
@@ -510,11 +513,18 @@ export default function GraphPage() {
     onPinChange,
     onGesture,
   )
-  // A card at the bottom must not cover the person it describes.
+  // A card at the bottom must not cover the person it describes, and the
+  // circle editor's sheet must not cover the bubble it edits.
   useLayoutEffect(() => {
-    if (peek?.kind !== 'node') return
-    const card = wrapRef.current?.querySelector<HTMLElement>('.peek-card')
-    viewApiRef.current?.reveal(peek.id, (card?.offsetHeight ?? 150) + 16)
+    if (peek?.kind === 'node') {
+      const card = wrapRef.current?.querySelector<HTMLElement>('.peek-card')
+      viewApiRef.current?.reveal(peek.id, (card?.offsetHeight ?? 150) + 16)
+    } else if (peek?.kind === 'circle-edit') {
+      const canvas = wrapRef.current?.querySelector('canvas')?.getBoundingClientRect()
+      const sheet = document.querySelector('.sheet.circle-sheet')?.getBoundingClientRect()
+      if (!canvas || !sheet) return
+      viewApiRef.current?.fitCircle(peek.id, Math.max(0, canvas.bottom - sheet.top) + 12)
+    }
   }, [peek])
   const hiddenCount =
     types.filter((t) => t.label !== 'mentioned' && hiddenTypes.has(t.id)).length +
@@ -1325,12 +1335,18 @@ function CirclePeek({
     }
   }
   return (
+    <Sheet
+      className="circle-sheet"
+      label={`Circle: ${circle.name}`}
+      onDismiss={() => {
+        if (dirty) void commitName()
+        onClose()
+      }}
+    >
     <div
       ref={cardRef}
       tabIndex={-1}
-      className="peek-card circle-peek"
-      role="dialog"
-      aria-label={`Circle: ${circle.name}`}
+      className="circle-peek"
       style={{ '--chip-color': circle.color } as React.CSSProperties}
     >
       <button className="subtle icon peek-close" onClick={onClose} aria-label="Close">
@@ -1410,7 +1426,6 @@ function CirclePeek({
               label={`Add a person to ${circle.name}`}
               placeholder="Type a name to add…"
               pickedMessage={(p) => `${p.displayName} added to ${circle.name}`}
-              listAbove
             />
           </div>
         )}
@@ -1436,6 +1451,7 @@ function CirclePeek({
         />
       </div>
     </div>
+    </Sheet>
   )
 }
 
@@ -2376,6 +2392,12 @@ function useCanvasGraph(
         scheduleRender()
       },
       hasNode: (id) => nodeById.has(id),
+      fitCircle: (circleId, bottomInset) => {
+        const c = circlesRef.current.find((x) => x.id === circleId)
+        if (!c || c.memberIds.length === 0) return
+        userMoved = true
+        fitTo(c.memberIds, Math.max(1.2, cameraGoal().k), bottomInset)
+      },
     }
 
     // "Show on graph" should actually show it: once the layout has had a

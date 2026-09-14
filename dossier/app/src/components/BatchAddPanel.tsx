@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { parseBatch } from '../lib/batch'
+import Sheet from './Sheet'
 import type { Person, RelationshipType } from '../lib/models'
 import {
   selectPeople,
@@ -129,19 +130,30 @@ export default function BatchAddPanel({
     ? 'Add'
     : `Add ${fresh.length}${anchor && toLink.length ? `, link ${toLink.length}` : ''}`
 
+  // Closing never throws away a typed list without asking — in the
+  // footer, not a browser dialog. Escape, the backdrop and a swipe down
+  // all come through here.
+  const [askDiscard, setAskDiscard] = useState(false)
+  const requestClose = () => {
+    if (busy) return
+    if (text.trim() && !status) {
+      setAskDiscard(true)
+      return
+    }
+    onClose()
+  }
   return (
+    <Sheet id={id} labelledBy={titleId} onDismiss={requestClose}>
     <form
       className="batch-panel"
-      id={id}
       onSubmit={submit}
       aria-labelledby={titleId}
       onKeyDown={(e) => {
-        if (e.key === 'Escape' && !busy) {
+        if (e.key === 'Escape') {
           e.preventDefault()
           e.stopPropagation()
-          // Escape never throws away a typed list without asking.
-          if (text.trim() && !status && !confirm('Discard the list you typed?')) return
-          onClose()
+          if (askDiscard) setAskDiscard(false)
+          else requestClose()
         }
       }}
     >
@@ -239,6 +251,8 @@ export default function BatchAddPanel({
         >
           {busy ? 'Adding…' : label}
         </button>
+        {/* Cancel is explicit: it closes without asking. Escape, the
+            backdrop and a swipe down ask first when a list is typed. */}
         <button type="button" className="quiet" onClick={onClose} disabled={busy}>
           {status ? 'Done' : 'Cancel'}
         </button>
@@ -246,6 +260,18 @@ export default function BatchAddPanel({
           {status}
         </span>
       </div>
+      {askDiscard && (
+        <div className="row confirm-row" role="group" aria-label="Discard the list you typed?">
+          <span className="hint">Discard the list you typed?</span>
+          <button type="button" className="danger" onClick={onClose} autoFocus>
+            Discard
+          </button>
+          <button type="button" className="subtle" onClick={() => setAskDiscard(false)}>
+            Keep
+          </button>
+        </div>
+      )}
     </form>
+    </Sheet>
   )
 }

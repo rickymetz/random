@@ -32,7 +32,9 @@ const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--stric
   cwd: app,
   stdio: ['ignore', 'pipe', 'pipe'],
 })
-server.stderr.on('data', (d) => process.stderr.write(`[preview] ${d}`))
+server.stderr.on('data', (d) =>
+  process.stderr.write(String(d).split('\n').filter(Boolean).map((l) => `[preview] ${l}\n`).join('')),
+)
 const stop = () => {
   if (!server.killed) server.kill('SIGTERM')
 }

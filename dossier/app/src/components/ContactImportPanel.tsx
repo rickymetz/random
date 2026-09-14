@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import LabelText from './LabelText'
+import Sheet from './Sheet'
 import { matchContacts, parseContacts, type ContactDraft, type ImportedContact } from '../lib/contacts'
 import { isIos } from '../lib/platform'
 import { selectPeople, useVaultStore } from '../store/vaultStore'
@@ -228,10 +229,13 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
     return <span className="tag known">{c.conflict ? `same name as ${c.existing.displayName}` : `already here${who}`}</span>
   }
 
+  const requestClose = () => {
+    if (!busy) onClose()
+  }
   return (
+    <Sheet id={id} labelledBy={titleId} onDismiss={requestClose}>
     <section
       className="batch-panel import-panel"
-      id={id}
       aria-labelledby={titleId}
       onKeyDown={(e) => {
         if (e.key !== 'Escape') return
@@ -395,5 +399,6 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
         {status}
       </p>
     </section>
+    </Sheet>
   )
 }
