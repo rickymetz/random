@@ -95,7 +95,7 @@ export default function BatchAddPanel({
       const byName = new Map(created.map((p) => [p.displayName.toLowerCase(), p]))
       let linked = 0
       if (anchor) {
-        const edges: { fromId: string; toId: string; typeId: string }[] = []
+        const edges: { fromId: string; toId: string; typeId: string; former?: boolean }[] = []
         for (const entry of entries) {
           const person = entry.existing ?? byName.get(entry.name.toLowerCase())
           const type: RelationshipType | undefined = entry.type ?? defaultType
@@ -104,8 +104,8 @@ export default function BatchAddPanel({
           // for one-way types the listed person is the source.
           edges.push(
             type.directed
-              ? { fromId: person.id, toId: anchor.id, typeId: type.id }
-              : { fromId: anchor.id, toId: person.id, typeId: type.id },
+              ? { fromId: person.id, toId: anchor.id, typeId: type.id, former: entry.former }
+              : { fromId: anchor.id, toId: person.id, typeId: type.id, former: entry.former },
           )
         }
         await addRelationships(edges)

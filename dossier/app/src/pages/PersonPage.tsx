@@ -4,9 +4,11 @@ import Avatar from '../components/Avatar'
 import BatchAddPanel from '../components/BatchAddPanel'
 import PersonPicker from '../components/PersonPicker'
 import ChipInput from '../components/ChipInput'
+import DangerConfirm from '../components/DangerConfirm'
 import LooksLikePeople from '../components/LooksLikePeople'
 import MentionTextarea from '../components/MentionTextarea'
 import { mutualConnections, selectSelf, shortestPath } from '../lib/graphQueries'
+import { roleDates, roleLabel } from '../lib/relationships'
 import { GALLERY_MAX_DIM, downscaleImage } from '../lib/image'
 import { getPhotoUrl, peekPhotoUrl } from '../lib/photoCache'
 import type { Photo } from '../lib/models'
@@ -239,10 +241,18 @@ function CopyAsTextButton({ person }: { person: Person }) {
       for (const e of edges) {
         const type = types.get(e.typeId)
         const other = nameOf(e.fromId === person.id ? e.toId : e.fromId)
+        const when = roleDates(e)
+        const suffix = when ? ` (${when})` : ''
         if (e.origin === 'mention') lines.push(`- ${other} (mentioned in a note)`)
         else if (type?.directed)
-          lines.push(e.fromId === person.id ? `- ${person.displayName} is ${type.label} ${other}` : `- ${other} is ${type.label} ${person.displayName}`)
-        else lines.push(`- ${other}: ${type?.label ?? 'linked'}`)
+          lines.push(
+            (e.fromId === person.id
+              ? `- ${person.displayName} is ${type.label} ${other}`
+              : `- ${other} is ${type.label} ${person.displayName}`) +
+              (e.former ? ' (former)' : '') +
+              suffix,
+          )
+        else lines.push(`- ${other}: ${roleLabel(type?.label ?? 'linked', e)}${suffix}`)
       }
     }
     const followUps = selectFollowUps(records, person.id).filter((f) => !f.done)
@@ -588,7 +598,7 @@ function ConnectionSection({ person }: { person: Person }) {
 
   const selfId = self?.id ?? ''
   const otherId = compareId && records.has(compareId) ? compareId : selfId
-  const path = useMemoPath(records, selfId, person.id)
+  const { path, viaFormer } = useMemoPath(records, selfId, person.id)
   const mutuals = useMemoMutuals(records, otherId, person.id)
   const compareExclude = useMemo(
     () => [person.id, ...people.filter((p) => p.isSelf).map((p) => p.id)],
@@ -625,7 +635,7 @@ function ConnectionSection({ person }: { person: Person }) {
     const step = path![stepIndex]
     const prev = path![stepIndex - 1]
     const type = typeById.get(step.via!.typeId)
-    const label = type?.label ?? 'linked'
+    const label = roleLabel(type?.label ?? 'linked', step.via!)
     if (!type?.directed && step.via!.origin !== 'mention') return ` —${label}— `
     const forward = step.via!.fromId === prev.person.id
     return forward ? ` —${label}→ ` : ` ←${label}— `
@@ -656,6 +666,7 @@ function ConnectionSection({ person }: { person: Person }) {
           <Link className="path-graph-link" to={`/graph?path=${person.id}`}>
             See on graph →
           </Link>
+          {viaFormer && <span className="hint via-former">Through a former tie.</span>}
         </p>
       ) : (
         <p className="hint">No known path connects you yet.</p>
@@ -686,8 +697,8 @@ function ConnectionSection({ person }: { person: Person }) {
             <li key={m.person.id}>
               <Link to={`/person/${m.person.id}`}>{m.person.displayName}</Link>
               <span className="hint">
-                {relOf(typeById.get(m.edgeToB.typeId)?.label, person.displayName)} ·{' '}
-                {relOf(typeById.get(m.edgeToA.typeId)?.label, otherName)}
+                {relOf(roleLabel(typeById.get(m.edgeToB.typeId)?.label ?? 'linked', m.edgeToB), person.displayName)} ·{' '}
+                {relOf(roleLabel(typeById.get(m.edgeToA.typeId)?.label ?? 'linked', m.edgeToA), otherName)}
               </span>
             </li>
           ))}
@@ -697,15 +708,160 @@ function ConnectionSection({ person }: { person: Person }) {
   )
 }
 
+/** One role on a link: change its type, mark it former, date it, or
+ * remove it. Dates take what the birthday field takes ("2019",
+ * "Jun 2019", "2019-06-21"); an end date makes the role former. */
+function RoleEditor({
+  edge,
+  other,
+  text,
+  types,
+  onDone,
+}: {
+  edge: Relationship
+  other: Person
+  text: string
+  types: { id: string; label: string }[]
+  onDone: () => void
+}) {
+  const updateRelationship = useVaultStore((s) => s.updateRelationship)
+  const removeRelationship = useVaultStore((s) => s.removeRelationship)
+  const [typeId, setTypeId] = useState(edge.typeId)
+  const [since, setSince] = useState(edge.startDate ? formatPartialDate(edge.startDate) : '')
+  const [until, setUntil] = useState(edge.endDate ? formatPartialDate(edge.endDate) : '')
+  const [dateError, setDateError] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    rootRef.current?.querySelector<HTMLElement>('select')?.focus()
+  }, [])
+  const commitDates = () => {
+    const s = since.trim() ? parsePartialDate(since) : null
+    const u = until.trim() ? parsePartialDate(until) : null
+    if ((since.trim() && !s) || (until.trim() && !u)) {
+      setDateError('Try a year, "Jun 2019", or 2019-06-21.')
+      return
+    }
+    setDateError('')
+    void updateRelationship(edge.id, {
+      startDate: s,
+      endDate: u,
+      // An end date is the past tense; clearing it says nothing either way.
+      former: u ? true : undefined,
+    })
+  }
+  return (
+    <div
+      ref={rootRef}
+      className="role-editor"
+      role="group"
+      aria-label={`${text} with ${other.displayName}`}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation()
+          onDone()
+        }
+      }}
+    >
+      <label>
+        Role
+        <select value={typeId} onChange={(e) => setTypeId(e.target.value)} aria-label="Role">
+          {types.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="inline-check">
+        <input
+          type="checkbox"
+          checked={Boolean(edge.former)}
+          onChange={(e) => void updateRelationship(edge.id, { former: e.target.checked })}
+        />
+        Former
+      </label>
+      <label>
+        Since
+        <input
+          value={since}
+          onChange={(e) => setSince(e.target.value)}
+          onBlur={commitDates}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commitDates()
+            }
+          }}
+          placeholder="2019"
+          aria-label="Since"
+          aria-invalid={dateError ? true : undefined}
+        />
+      </label>
+      <label>
+        Until
+        <input
+          value={until}
+          onChange={(e) => setUntil(e.target.value)}
+          onBlur={commitDates}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commitDates()
+            }
+          }}
+          placeholder="2021"
+          aria-label="Until"
+          aria-invalid={dateError ? true : undefined}
+        />
+      </label>
+      <span className="hint status-slot span-2" role="status">
+        {dateError}
+      </span>
+      <div className="row wrap span-2">
+        {typeId !== edge.typeId && (
+          <button
+            type="button"
+            onClick={() => {
+              void updateRelationship(edge.id, { typeId })
+              onDone()
+              focusById('relationships-heading')
+            }}
+          >
+            Change role
+          </button>
+        )}
+        <button type="button" className="quiet" onClick={onDone}>
+          Done
+        </button>
+        <DangerConfirm
+          className="role-remove"
+          label="Remove"
+          question={`Remove ${text} with ${other.displayName}?`}
+          onConfirm={() => {
+            void removeRelationship(edge.id)
+            onDone()
+            focusById('relationships-heading')
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
+/** "How do I know X" walks current ties first; a former tie is the
+ * answer only when nothing current connects you. */
 function useMemoPath(
   records: ReturnType<typeof useVaultStore.getState>['records'],
   fromId: string,
   toId: string,
 ) {
-  return useMemo(
-    () => (fromId ? shortestPath(records, fromId, toId) : null),
-    [records, fromId, toId],
-  )
+  return useMemo(() => {
+    if (!fromId) return { path: null, viaFormer: false }
+    const current = shortestPath(records, fromId, toId)
+    if (current) return { path: current, viaFormer: false }
+    const any = shortestPath(records, fromId, toId, { includeFormer: true })
+    return { path: any, viaFormer: Boolean(any) }
+  }, [records, fromId, toId])
 }
 
 function useMemoMutuals(
@@ -966,7 +1122,7 @@ function FollowUpSection({ personId }: { personId: string }) {
 function RelationshipSection({ person }: { person: Person }) {
   const records = useVaultStore((s) => s.records)
   const addRelationship = useVaultStore((s) => s.addRelationship)
-  const removeRelationship = useVaultStore((s) => s.removeRelationship)
+  const updateRelationship = useVaultStore((s) => s.updateRelationship)
   const addRelationshipType = useVaultStore((s) => s.addRelationshipType)
 
   const people = useMemo(() => selectPeople(records), [records])
@@ -1014,86 +1170,140 @@ function RelationshipSection({ person }: { person: Person }) {
     typeId === 'new' ? newTypeDirected : (typeById.get(typeId)?.directed ?? false)
 
   const [retype, setRetype] = useState<Record<string, string>>({})
+  const [editing, setEditing] = useState<string | null>(null)
   const first = person.displayName.split(' ')[0]
-  const describe = (edge: Relationship) => {
+  // One row per person, their roles side by side (§4.2: roles on a link).
+  const groups = useMemo(() => {
+    const byOther = new Map<string, Relationship[]>()
+    for (const e of edges) {
+      const otherId = e.fromId === person.id ? e.toId : e.fromId
+      const list = byOther.get(otherId) ?? []
+      list.push(e)
+      byOther.set(otherId, list)
+    }
+    return [...byOther.entries()]
+      .map(([otherId, list]) => ({ other: personById.get(otherId), list }))
+      .filter((g): g is { other: Person; list: Relationship[] } => Boolean(g.other))
+      .sort((a, b) => a.other.displayName.localeCompare(b.other.displayName))
+  }, [edges, person.id, personById])
+  // Read as a sentence, never as an arrow: "Sam is boss of Marcus" /
+  // "June is parent of Marcus" / "former partner".
+  const chipText = (edge: Relationship, other: Person) => {
     const type = typeById.get(edge.typeId)
     const outgoing = edge.fromId === person.id
-    const other = personById.get(outgoing ? edge.toId : edge.fromId)
-    if (!other) return null
-    // Read as a sentence, never as an arrow: "Sam is boss of Marcus" /
-    // "June is parent of Marcus" / "mentioned Ivy in a note".
-    let label: string
-    if (edge.origin === 'mention') {
-      label = outgoing ? 'mentioned in a note' : `mentioned ${first} in a note`
-    } else if (type?.directed) {
-      label = outgoing
+    if (type?.directed) {
+      const sentence = outgoing
         ? `${first} is ${type.label} ${other.displayName.split(' ')[0]}`
         : `${other.displayName.split(' ')[0]} is ${type.label} ${first}`
-    } else {
-      label = type?.label ?? 'linked'
+      return edge.former ? `${sentence} (former)` : sentence
     }
+    return roleLabel(type?.label ?? 'linked', edge)
+  }
+  const addRoleFor = (id: string) => {
+    setOtherId(id)
+    setTypeId('')
+    requestAnimationFrame(() =>
+      document
+        .querySelector<HTMLElement>('form.add-form select[aria-label="Relationship type"]')
+        ?.focus(),
+    )
+  }
+  const renderGroup = ({ other, list }: { other: Person; list: Relationship[] }) => {
+    const explicit = list.filter((e) => e.origin !== 'mention')
+    const mention = list.find((e) => e.origin === 'mention')
+    const open = editing ? list.find((e) => e.id === editing) : undefined
     return (
-      <li key={edge.id} className={edge.origin === 'mention' ? 'mention-edge' : ''}>
-        <Link to={`/person/${other.id}`}>{other.displayName}</Link>
-        <span className="edge-type" style={{ '--edge-color': type?.color } as React.CSSProperties}>
-          {label}
-        </span>
-        {edge.origin === 'mention' ? (
-          // A derived edge can't be deleted (the note still mentions them);
-          // what it can do is become a real one (§4.2).
-          <span className="edge-retype-group">
-            <select
-              className="edge-retype"
-              aria-label={`Set relationship type with ${other.displayName}`}
-              value={retype[edge.id] ?? ''}
-              // Staged, then applied with the button: arrowing through a
-              // closed select fires change per step on Windows.
-              onChange={(e) => setRetype((m) => ({ ...m, [edge.id]: e.target.value }))}
-            >
-              <option value="">Set type…</option>
-              {types
-                .filter((t) => t.label !== 'mentioned')
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
-            </select>
-            {retype[edge.id] && (
+      <li key={other.id} className={explicit.length === 0 ? 'mention-edge' : ''}>
+        <div className="edge-row">
+          <Link to={`/person/${other.id}`}>{other.displayName}</Link>
+          <span className="roles">
+            {explicit.map((edge) => {
+              const type = typeById.get(edge.typeId)
+              const text = chipText(edge, other)
+              const when = roleDates(edge)
+              return (
+                <button
+                  key={edge.id}
+                  type="button"
+                  className={`role-chip ${edge.former ? 'former' : ''} ${editing === edge.id ? 'on' : ''}`}
+                  style={{ '--edge-color': type?.color } as React.CSSProperties}
+                  aria-expanded={editing === edge.id}
+                  aria-label={`${text}${when ? `, ${when}` : ''} — edit`}
+                  title={when || undefined}
+                  onClick={() => setEditing((cur) => (cur === edge.id ? null : edge.id))}
+                >
+                  {text}
+                </button>
+              )
+            })}
+            {mention && (
+              <span
+                className="edge-type"
+                style={{ '--edge-color': typeById.get(mention.typeId)?.color } as React.CSSProperties}
+              >
+                {mention.fromId === person.id ? 'mentioned in a note' : `mentioned ${first} in a note`}
+              </span>
+            )}
+            {explicit.length > 0 && (
               <button
                 type="button"
-                className="subtle apply"
-                onClick={() => {
-                  const id = retype[edge.id]
-                  void (async () => {
-                    await removeRelationship(edge.id)
-                    await addRelationship(edge.fromId, edge.toId, id)
-                    requestAnimationFrame(() =>
-                      document
-                        .querySelector<HTMLElement>(`button[aria-label="Remove relationship with ${other.displayName}"]`)
-                        ?.focus(),
-                    )
-                  })()
-                }}
-                aria-label={`Apply type for ${other.displayName}`}
+                className="role-add"
+                onClick={() => addRoleFor(other.id)}
+                aria-label={`Add another role for ${other.displayName}`}
               >
-                Apply
+                + role
               </button>
             )}
           </span>
-        ) : (
-          <button
-            className="subtle icon"
-            onClick={() => {
-              if (confirm(`Remove the ${type?.label ?? ''} link to ${other.displayName}?`)) {
-                void removeRelationship(edge.id)
-                focusById('relationships-heading')
-              }
-            }}
-            aria-label={`Remove relationship with ${other.displayName}`}
-          >
-            ×
-          </button>
+          {mention && explicit.length === 0 && (
+            // A derived edge can't be deleted (the note still mentions them);
+            // what it can do is become a real one (§4.2).
+            <span className="edge-retype-group">
+              <select
+                className="edge-retype"
+                aria-label={`Set relationship type with ${other.displayName}`}
+                value={retype[mention.id] ?? ''}
+                // Staged, then applied with the button: arrowing through a
+                // closed select fires change per step on Windows.
+                onChange={(e) => setRetype((m) => ({ ...m, [mention.id]: e.target.value }))}
+              >
+                <option value="">Set type…</option>
+                {types
+                  .filter((t) => t.label !== 'mentioned')
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))}
+              </select>
+              {retype[mention.id] && (
+                <button
+                  type="button"
+                  className="subtle apply"
+                  onClick={() => {
+                    const id = retype[mention.id]
+                    void (async () => {
+                      await updateRelationship(mention.id, { typeId: id })
+                      focusById('relationships-heading')
+                    })()
+                  }}
+                  aria-label={`Apply type for ${other.displayName}`}
+                >
+                  Apply
+                </button>
+              )}
+            </span>
+          )}
+        </div>
+        {open && open.origin !== 'mention' && (
+          <RoleEditor
+            key={open.id}
+            edge={open}
+            other={other}
+            text={chipText(open, other)}
+            types={types}
+            onDone={() => setEditing(null)}
+          />
         )}
       </li>
     )
@@ -1146,7 +1356,7 @@ function RelationshipSection({ person }: { person: Person }) {
       {edges.length === 0 && (
         <p className="empty-inline">No one linked yet.</p>
       )}
-      <ul className="edges">{edges.map(describe)}</ul>
+      <ul className="edges roles-list">{groups.map(renderGroup)}</ul>
       <form className="add-form" onSubmit={add}>
         {/* A div, not a label: once the chip shows, a label's control would
             become the × button and clicking "Person" would un-pick. */}

@@ -61,6 +61,11 @@ export interface Relationship {
   directed: boolean
   note?: string
   startDate?: PartialDate
+  /** When the role ended; set alongside `former`. */
+  endDate?: PartialDate
+  /** A past role — a former partner, an old boss. Drawn long-dashed,
+   * skipped by "How you connect" unless asked. */
+  former?: boolean
   origin: RelationshipOrigin
   createdAt: number
 }
@@ -150,7 +155,6 @@ export const BUILT_IN_RELATIONSHIP_TYPES: Omit<RelationshipType, 'id'>[] = [
   { kind: 'relationshipType', label: 'friend', color: '#4f9cf9', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'partner', color: '#e2567a', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'married', color: '#e25757', directed: false, builtIn: true },
-  { kind: 'relationshipType', label: 'ex', color: '#8a8a94', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'sibling', color: '#4fbf8b', directed: false, builtIn: true },
   { kind: 'relationshipType', label: 'parent of', color: '#2aa8b8', directed: true, builtIn: true },
   { kind: 'relationshipType', label: 'coworker', color: '#a3a24a', directed: false, builtIn: true },

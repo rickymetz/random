@@ -646,13 +646,49 @@ describe('bulk add (addPeople / addRelationships)', () => {
     await store().addRelationships([
       { fromId: anchor.id, toId: sam.id, typeId: friend.id },
       { fromId: anchor.id, toId: priya.id, typeId: coworker.id },
-      { fromId: anchor.id, toId: priya.id, typeId: friend.id }, // duplicate pair: skipped
+      { fromId: anchor.id, toId: priya.id, typeId: friend.id }, // second role on the pair: kept
+      { fromId: priya.id, toId: anchor.id, typeId: coworker.id }, // same role again: skipped
       { fromId: anchor.id, toId: 'nope', typeId: friend.id }, // unknown person: skipped
     ])
     const rels = selectRelationships(store().records)
     expect(rels.filter((r) => r.origin === 'mention')).toHaveLength(0)
-    expect(rels.filter((r) => r.origin === 'explicit')).toHaveLength(2)
+    expect(rels.filter((r) => r.origin === 'explicit')).toHaveLength(3)
     expect(searchPeopleIds('Priya').length).toBe(1)
+  })
+
+  it('a pair can carry several roles, never the same one twice, and a role can change in place', async () => {
+    const a = await store().addPerson('Ada')
+    const b = await store().addPerson('Bea')
+    const types = selectRelationshipTypes(store().records)
+    const coworker = types.find((t) => t.label === 'coworker')!
+    const partner = types.find((t) => t.label === 'partner')!
+    const friend = types.find((t) => t.label === 'friend')!
+    await store().addRelationship(a.id, b.id, coworker.id)
+    await store().addRelationship(b.id, a.id, coworker.id) // same role, other way round: no-op
+    await store().addRelationship(a.id, b.id, partner.id, undefined, {
+      former: true,
+      startDate: { year: 2019 },
+      endDate: { year: 2021 },
+    })
+    let rels = selectRelationships(store().records)
+    expect(rels).toHaveLength(2)
+    const past = rels.find((r) => r.typeId === partner.id)!
+    expect(past.former).toBe(true)
+    expect(past.startDate).toEqual({ year: 2019 })
+    expect(past.endDate).toEqual({ year: 2021 })
+    // Retype in place keeps the pair and the dates; clearing a date works.
+    await store().updateRelationship(past.id, { typeId: friend.id, former: false, endDate: null })
+    rels = selectRelationships(store().records)
+    const changed = rels.find((r) => r.id === past.id)!
+    expect(changed.typeId).toBe(friend.id)
+    expect(changed.former).toBeUndefined()
+    expect(changed.startDate).toEqual({ year: 2019 })
+    expect(changed.endDate).toBeUndefined()
+    // Retyping onto a role the pair already has folds into it.
+    await store().updateRelationship(changed.id, { typeId: coworker.id })
+    rels = selectRelationships(store().records)
+    expect(rels).toHaveLength(1)
+    expect(rels[0].typeId).toBe(coworker.id)
   })
 })
 

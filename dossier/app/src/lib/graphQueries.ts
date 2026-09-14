@@ -18,7 +18,15 @@ interface Adjacency {
   people: Map<string, Person>
 }
 
-export function buildAdjacency(records: Map<string, DomainRecord>): Adjacency {
+export interface PathOptions {
+  /** Walk former roles too (off by default: "how do I know X" means now). */
+  includeFormer?: boolean
+}
+
+export function buildAdjacency(
+  records: Map<string, DomainRecord>,
+  opts: PathOptions = {},
+): Adjacency {
   const neighbors = new Map<string, { otherId: string; edge: Relationship }[]>()
   const people = new Map<string, Person>()
   for (const r of records.values()) {
@@ -32,6 +40,7 @@ export function buildAdjacency(records: Map<string, DomainRecord>): Adjacency {
   }
   for (const r of records.values()) {
     if (r.kind !== 'relationship') continue
+    if (r.former && !opts.includeFormer) continue
     push(r.fromId, r.toId, r)
     push(r.toId, r.fromId, r)
   }
@@ -43,9 +52,10 @@ export function shortestPath(
   records: Map<string, DomainRecord>,
   fromId: string,
   toId: string,
+  opts: PathOptions = {},
 ): PathStep[] | null {
   if (fromId === toId) return null
-  const { neighbors, people } = buildAdjacency(records)
+  const { neighbors, people } = buildAdjacency(records, opts)
   if (!people.has(fromId) || !people.has(toId)) return null
 
   const cameFrom = new Map<string, { prevId: string; edge: Relationship }>()
@@ -89,7 +99,8 @@ export function mutualConnections(
   bId: string,
 ): MutualConnection[] {
   if (aId === bId) return []
-  const { neighbors, people } = buildAdjacency(records)
+  // A mutual connection counts whether or not the tie is current.
+  const { neighbors, people } = buildAdjacency(records, { includeFormer: true })
   const aEdges = new Map<string, Relationship>()
   for (const { otherId, edge } of neighbors.get(aId) ?? []) {
     if (otherId !== bId && !aEdges.has(otherId)) aEdges.set(otherId, edge)

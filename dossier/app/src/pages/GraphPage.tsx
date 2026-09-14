@@ -21,6 +21,8 @@ import {
 import { createPortal } from 'react-dom'
 import PersonPicker from '../components/PersonPicker'
 import Sheet from '../components/Sheet'
+import DangerConfirm from '../components/DangerConfirm'
+import { pairKey, roleDates, roleLabel } from '../lib/relationships'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
 import { CIRCLE_COLORS, colorName, type Person, type Relationship } from '../lib/models'
@@ -138,6 +140,7 @@ const FILTER_KEY = 'graph-filters'
 interface Filters {
   hidden: string[]
   mentions: boolean
+  former: boolean
   hiddenCircles: string[]
 }
 function loadFilters(): Filters {
@@ -148,19 +151,25 @@ function loadFilters(): Filters {
       return {
         hidden: parsed.hidden ?? [],
         mentions: parsed.mentions ?? true,
+        former: parsed.former ?? true,
         hiddenCircles: parsed.hiddenCircles ?? [],
       }
     }
   } catch {
     // Private windows may refuse; defaults are fine.
   }
-  return { hidden: [], mentions: true, hiddenCircles: [] }
+  return { hidden: [], mentions: true, former: true, hiddenCircles: [] }
 }
-function saveFilters(hidden: Set<string>, mentions: boolean, hiddenCircles: Set<string>): void {
+function saveFilters(
+  hidden: Set<string>,
+  mentions: boolean,
+  former: boolean,
+  hiddenCircles: Set<string>,
+): void {
   try {
     sessionStorage.setItem(
       FILTER_KEY,
-      JSON.stringify({ hidden: [...hidden], mentions, hiddenCircles: [...hiddenCircles] }),
+      JSON.stringify({ hidden: [...hidden], mentions, former, hiddenCircles: [...hiddenCircles] }),
     )
   } catch {
     // ignore
@@ -202,6 +211,8 @@ interface GraphLink extends SimulationLinkDatum<GraphNode> {
   /** Relationship type label — for the text list and for line style. */
   label: string
   dashed: boolean
+  /** A past role: long-dashed, and skipped by the path unless asked. */
+  former: boolean
   directed: boolean
   /** Part of the highlighted "how you connect" path (§4.4). */
   highlighted: boolean
@@ -337,12 +348,13 @@ export default function GraphPage() {
     () => new Set(loadFilters().hidden),
   )
   const [showMentions, setShowMentions] = useState(() => loadFilters().mentions)
+  const [showFormer, setShowFormer] = useState(() => loadFilters().former)
   const [hiddenCircles, setHiddenCircles] = useState<Set<string>>(
     () => new Set(loadFilters().hiddenCircles),
   )
   useEffect(() => {
-    saveFilters(hiddenTypes, showMentions, hiddenCircles)
-  }, [hiddenTypes, showMentions, hiddenCircles])
+    saveFilters(hiddenTypes, showMentions, showFormer, hiddenCircles)
+  }, [hiddenTypes, showMentions, showFormer, hiddenCircles])
   const allCircles = useMemo(() => selectCircles(records), [records])
   const focusedCircle = useMemo(
     () => (circleFocusId ? allCircles.find((c) => c.id === circleFocusId) : undefined),
@@ -382,6 +394,7 @@ export default function GraphPage() {
       if (pathInfo?.edgeIds.has(e.id)) return true
       if (hiddenTypes.has(e.typeId)) return false
       if (!showMentions && e.origin === 'mention') return false
+      if (!showFormer && e.former) return false
       return true
     })
 
@@ -442,6 +455,7 @@ export default function GraphPage() {
         color: typeById.get(e.typeId)?.color ?? '#8a8a94',
         label: typeById.get(e.typeId)?.label ?? 'linked',
         dashed: e.origin === 'mention',
+        former: Boolean(e.former),
         directed: (typeById.get(e.typeId)?.directed ?? false) && e.origin === 'explicit',
         highlighted: pathInfo?.edgeIds.has(e.id) ?? false,
       }))
@@ -462,6 +476,7 @@ export default function GraphPage() {
     types,
     hiddenTypes,
     showMentions,
+    showFormer,
     focusId,
     focusedCircle,
     depth,
@@ -529,10 +544,12 @@ export default function GraphPage() {
   const hiddenCount =
     types.filter((t) => t.label !== 'mentioned' && hiddenTypes.has(t.id)).length +
     (showMentions ? 0 : 1) +
+    (showFormer ? 0 : 1) +
     railCircles.filter((c) => hiddenCircles.has(c.id)).length
   const showAllFilters = () => {
     setHiddenTypes(new Set())
     setShowMentions(true)
+    setShowFormer(true)
     setHiddenCircles(new Set())
   }
   const allPeople = useMemo(() => selectPeople(records), [records])
@@ -767,13 +784,21 @@ export default function GraphPage() {
         >
           mentions
         </button>
+        <button
+          className={`chip no-dot former ${showFormer ? '' : 'off'}`}
+          aria-pressed={showFormer}
+          onClick={() => setShowFormer((v) => !v)}
+          title="Past roles: former partners, old bosses"
+        >
+          former
+        </button>
       </div>
       {/* Read to assistive tech via aria-describedby; sighted users get
           a one-time hint on the canvas instead of a permanent sentence. */}
       <p id="graph-help" className="graph-legend sr-only">
         {nodes.length > LABEL_MAX_NODES
           ? 'Zoomed out, only the best-connected people draw in full: zoom in to see names and everyone else, or pick a person or circle above.'
-          : 'Tap a person to see who they know, and again to open them. Tap a label to filter. Dotted lines are mentions.'}
+          : 'Tap a person to see who they know, and again to open them. Tap a label to filter. Dotted lines are mentions; dashed lines are former ties.'}
       </p>
       <div className="graph-canvas-wrap" ref={wrapRef}>
         {arranging && nodes.length > 150 && (
@@ -994,7 +1019,7 @@ function GraphList({
                     .map((l) => {
                       const otherId = l.source === n.id ? l.target : l.source
                       const other = nodes.find((o) => o.id === otherId)
-                      return `${other?.name ?? '?'} (${l.dashed ? 'mentioned' : l.label})`
+                      return `${other?.name ?? '?'} (${l.dashed ? 'mentioned' : roleLabel(l.label, l)})`
                     })
                     .join(', ')}
                 </span>
@@ -1004,37 +1029,6 @@ function GraphList({
         })}
       </ul>
     </div>
-  )
-}
-
-/** A destructive action asks in place — never a browser dialog. */
-function DangerConfirm({
-  label,
-  question,
-  onConfirm,
-}: {
-  label: string
-  question: string
-  onConfirm: () => void
-}) {
-  const [asking, setAsking] = useState(false)
-  if (!asking) {
-    return (
-      <button className="danger" onClick={() => setAsking(true)}>
-        {label}
-      </button>
-    )
-  }
-  return (
-    <span className="confirm-row" role="group" aria-label={question}>
-      <span className="hint">{question}</span>
-      <button className="danger" onClick={onConfirm} autoFocus>
-        {label}
-      </button>
-      <button className="subtle" onClick={() => setAsking(false)}>
-        Keep
-      </button>
-    </span>
   )
 }
 
@@ -1069,11 +1063,15 @@ function NodePeek({
     let howKnown: string | null = null
     let pathExists = false
     if (self && !person.isSelf) {
-      const direct = mine.find((e) => e.fromId === self.id || e.toId === self.id)
-      if (direct) {
-        const t = records.get(direct.typeId)
-        const label = t?.kind === 'relationshipType' ? t.label : 'linked'
-        howKnown = direct.origin === 'mention' ? 'mentioned in your notes' : label
+      const direct = mine.filter((e) => e.fromId === self.id || e.toId === self.id)
+      if (direct.length > 0) {
+        howKnown = direct
+          .map((e) => {
+            const t = records.get(e.typeId)
+            const label = t?.kind === 'relationshipType' ? t.label : 'linked'
+            return e.origin === 'mention' ? 'mentioned in your notes' : roleLabel(label, e)
+          })
+          .join(', ')
         pathExists = true
       } else {
         const steps = shortestPath(records, self.id, personId)
@@ -1202,7 +1200,7 @@ function CircleLite({
 /** Tap an edge → edit its type or remove it (§4.3, §4.2 upgrade-in-one-tap). */
 function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) {
   const records = useVaultStore((s) => s.records)
-  const addRelationship = useVaultStore((s) => s.addRelationship)
+  const updateRelationship = useVaultStore((s) => s.updateRelationship)
   const removeRelationship = useVaultStore((s) => s.removeRelationship)
   const cardRef = usePeekFocus(onClose)
   const [pendingType, setPendingType] = useState('')
@@ -1223,12 +1221,11 @@ function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) 
 
   const retype = async (typeId: string) => {
     if (!typeId) return
-    // addRelationship replaces any mention edge between the pair, so this
-    // is the one-tap upgrade path for dashed edges.
-    await removeRelationship(rel.id)
-    await addRelationship(rel.fromId, rel.toId, typeId)
+    // In place: a mention edge becomes explicit, a role keeps its dates.
+    await updateRelationship(rel.id, { typeId })
     onClose()
   }
+  const dates = roleDates(rel)
 
   return (
     <div
@@ -1243,8 +1240,9 @@ function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) 
           {from.displayName} — {to.displayName}
         </strong>
         <span className="hint">
-          {currentType?.kind === 'relationshipType' ? currentType.label : 'link'}
+          {currentType?.kind === 'relationshipType' ? roleLabel(currentType.label, rel) : 'link'}
           {rel.origin === 'mention' ? ' (from a mention)' : ''}
+          {dates ? ` · ${dates}` : ''}
         </span>
       </div>
       <div className="row">
@@ -1265,6 +1263,15 @@ function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) 
         </select>
         {pendingType && (
           <button onClick={() => void retype(pendingType)}>Apply</button>
+        )}
+        {rel.origin !== 'mention' && (
+          <button
+            className="subtle"
+            onClick={() => void updateRelationship(rel.id, { former: !rel.former })}
+            aria-pressed={Boolean(rel.former)}
+          >
+            {rel.former ? 'Current again' : 'Now former'}
+          </button>
         )}
         <DangerConfirm
           label="Remove"
@@ -1520,6 +1527,39 @@ function useCanvasGraph(
     const simLinks: GraphLink[] = links.map((l) => ({ ...l }))
     // Last-drawn bubble outlines, for tap hit-testing.
     const hulls = new Map<string, { x: number; y: number }[]>()
+    // Several roles on one pair fan out as parallel strands: each link
+    // knows its offset among its siblings (0 for a lone link).
+    const strand = new Map<string, number>()
+    {
+      const byPair = new Map<string, GraphLink[]>()
+      for (const l of simLinks) {
+        const key = pairKey(l.source as string, l.target as string)
+        const list = byPair.get(key) ?? []
+        list.push(l)
+        byPair.set(key, list)
+      }
+      for (const list of byPair.values()) {
+        if (list.length < 2) continue
+        list.forEach((l, i) => strand.set(l.edgeId, i - (list.length - 1) / 2))
+      }
+    }
+    // A strand's control point: the midpoint pushed sideways. The sign is
+    // fixed per pair so both directions of the same pair agree.
+    const strandControl = (l: GraphLink) => {
+      const s = l.source as GraphNode
+      const t = l.target as GraphNode
+      const off = strand.get(l.edgeId) ?? 0
+      if (!off) return null
+      const dx = t.x! - s.x!
+      const dy = t.y! - s.y!
+      const len = Math.hypot(dx, dy) || 1
+      const sign = s.id < t.id ? 1 : -1
+      const spread = Math.min(22, 8 + len * 0.06)
+      return {
+        x: (s.x! + t.x!) / 2 + (-dy / len) * off * spread * 2 * sign,
+        y: (s.y! + t.y!) / 2 + (dx / len) * off * spread * 2 * sign,
+      }
+    }
     const cachedCount = simNodes.filter((n) => n.x !== undefined).length
     const hasCachedPositions = cachedCount > 0
     // Share of the cast the layout has never placed: ~0 for a filter
@@ -1601,6 +1641,7 @@ function useCanvasGraph(
     }
     const linkDistance = (l: GraphLink) => {
       if (l.dashed) return 130
+      if (l.former) return 120
       if (l.label === 'married' || l.label === 'partner' || l.label === 'parent of') return 60
       const a = typeof l.source === 'object' ? (l.source as GraphNode).id : (l.source as string)
       const b = typeof l.target === 'object' ? (l.target as GraphNode).id : (l.target as string)
@@ -1927,7 +1968,7 @@ function useCanvasGraph(
         const dt = dots.has(t.id)
         if (ds && dt && detail === 0) continue
         const minor = ds || dt
-        const key = `${link.color}|${link.dashed ? 1 : 0}|${link.highlighted ? 1 : 0}|${link.label}|${on ? 1 : 0}|${minor ? 1 : 0}`
+        const key = `${link.color}|${link.dashed ? 1 : 0}|${link.former ? 1 : 0}|${link.highlighted ? 1 : 0}|${link.label}|${on ? 1 : 0}|${minor ? 1 : 0}`
         const list = groups.get(key)
         if (list) list.push(link)
         else groups.set(key, [link])
@@ -1946,8 +1987,10 @@ function useCanvasGraph(
         for (const link of list) {
           const s = link.source as GraphNode
           const t = link.target as GraphNode
+          const c = strandControl(link)
           ctx.moveTo(s.x!, s.y!)
-          ctx.lineTo(t.x!, t.y!)
+          if (c) ctx.quadraticCurveTo(c.x, c.y, t.x!, t.y!)
+          else ctx.lineTo(t.x!, t.y!)
         }
         // Resting edges wear the muted type colour; a lit neighbourhood
         // or path gets the full colour and an extra stroke of weight.
@@ -1958,15 +2001,16 @@ function useCanvasGraph(
         ctx.globalAlpha = (on ? 1 : unlitEdgeAlpha) * (minor ? (detail === 0 ? 0.3 : 0.45) : 1)
         const base = first.highlighted ? 3.5 : first.label === 'partner' || first.label === 'married' ? 2.25 : 1.25
         ctx.lineWidth = (minor ? 1 : base + (on && active ? 0.75 : 0)) / k
-        // Shape, not just hue: mentions dotted, exes long-dashed, partners thick.
-        ctx.setLineDash(first.dashed ? dash : first.label === 'ex' ? [10 / k, 5 / k] : solid)
+        // Shape, not just hue: mentions dotted, former ties long-dashed, partners thick.
+        ctx.setLineDash(first.dashed ? dash : first.former ? [10 / k, 5 / k] : solid)
         ctx.stroke()
       }
       ctx.setLineDash(solid)
       for (const link of arrows) {
         const s = link.source as GraphNode
         const t = link.target as GraphNode
-        const angle = Math.atan2(t.y! - s.y!, t.x! - s.x!)
+        const c = strandControl(link)
+        const angle = c ? Math.atan2(t.y! - c.y, t.x! - c.x) : Math.atan2(t.y! - s.y!, t.x! - s.x!)
         const ax = t.x! - Math.cos(angle) * (t.r + 4)
         const ay = t.y! - Math.sin(angle) * (t.r + 4)
         const size = 6 / Math.sqrt(k)
@@ -2462,7 +2506,17 @@ function useCanvasGraph(
         const s = link.source as GraphNode
         const t = link.target as GraphNode
         if (s.x == null || t.x == null) continue
-        const d = pointSegmentDistSq(p.x, p.y, s.x, s.y!, t.x!, t.y!)
+        const c = strandControl(link)
+        let d: number
+        if (c) {
+          // A strand is close to its two half-chords through the curve's midpoint.
+          const mx = 0.25 * s.x + 0.5 * c.x + 0.25 * t.x!
+          const my = 0.25 * s.y! + 0.5 * c.y + 0.25 * t.y!
+          d = Math.min(
+            pointSegmentDistSq(p.x, p.y, s.x, s.y!, mx, my),
+            pointSegmentDistSq(p.x, p.y, mx, my, t.x!, t.y!),
+          )
+        } else d = pointSegmentDistSq(p.x, p.y, s.x, s.y!, t.x!, t.y!)
         if (d <= bestEdgeDist) {
           bestEdge = link
           bestEdgeDist = d

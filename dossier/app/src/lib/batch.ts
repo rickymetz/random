@@ -5,6 +5,7 @@
  * what to do with the result.
  */
 import type { Person, RelationshipType } from './models'
+import { parseRoleLabel } from './relationships'
 
 export interface BatchEntry {
   /** As typed, trimmed. */
@@ -13,6 +14,8 @@ export interface BatchEntry {
   typeLabel?: string
   /** Resolved type when the label matched one (case-insensitive). */
   type?: RelationshipType
+  /** "ex", "ex-partner", "former coworker": the role is a past one. */
+  former?: boolean
   /** Someone with this name already exists — link, don't duplicate. */
   existing?: Person
 }
@@ -33,7 +36,6 @@ export function parseBatch(
   /** Without a dossier to link to, a dash is just part of the name. */
   withTypes = true,
 ): BatchEntry[] {
-  const typeByLabel = new Map(types.map((t) => [t.label.toLowerCase(), t]))
   const personByName = new Map(people.map((p) => [p.displayName.toLowerCase(), p]))
   const seen = new Set<string>()
   const out: BatchEntry[] = []
@@ -52,10 +54,12 @@ export function parseBatch(
       const key = name.toLowerCase()
       if (seen.has(key)) continue
       seen.add(key)
+      const role = typeLabel ? parseRoleLabel(typeLabel, types) : { former: false }
       out.push({
         name,
         typeLabel: typeLabel || undefined,
-        type: typeLabel ? typeByLabel.get(typeLabel.toLowerCase()) : undefined,
+        type: role.type,
+        former: role.former || undefined,
         existing: personByName.get(key),
       })
     }
