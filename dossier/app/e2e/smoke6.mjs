@@ -1,4 +1,5 @@
 import { launch } from './lib.mjs'
+const BASE = process.env.BASE_URL ?? 'http://localhost:4290'
 import fs from 'node:fs'
 fs.mkdirSync('/tmp/shots-smoke6', { recursive: true })
 const fail = (m) => { console.error('FAIL:', m); process.exit(1) }
@@ -7,7 +8,7 @@ const page = await browser.newPage({ viewport: { width: 390, height: 720 } })
 page.on('pageerror', (err) => fail(`page error: ${err.message}`))
 page.on('dialog', (d) => d.accept())
 
-await page.goto('http://localhost:4290')
+await page.goto(BASE)
 await page.evaluate(() => new Promise((res) => { const r = indexedDB.deleteDatabase('ledger'); r.onsuccess = r.onerror = r.onblocked = res }))
 await page.evaluate(() => localStorage.clear())
 await page.reload()

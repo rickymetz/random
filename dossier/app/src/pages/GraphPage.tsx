@@ -23,6 +23,7 @@ import PersonPicker from '../components/PersonPicker'
 import Sheet from '../components/Sheet'
 import DangerConfirm from '../components/DangerConfirm'
 import { familyOf, lineStyle, pairKey, roleDates, roleLabel, type LineStyle } from '../lib/relationships'
+import { chipAction, toggleIsolate } from '../lib/chipIsolate'
 import { quietLabel, quietMonths } from '../lib/quiet'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
@@ -409,7 +410,7 @@ export default function GraphPage() {
     [params, setParams],
   )
 
-  const { nodes, links, circles } = useMemo(() => {
+  const { nodes, links, circles, scopeIds } = useMemo(() => {
     const typeById = new Map(types.map((t) => [t.id, t]))
     const people = selectPeople(records)
     let edges = selectRelationships(records).filter((e) => {
@@ -448,6 +449,20 @@ export default function GraphPage() {
         frontier = next
       }
       visiblePeople = people.filter((p) => keep.has(p.id))
+    }
+    // The rail's own scope, before the circle chips narrow it: the chips
+    // must keep listing every circle you could tap back on, or isolating
+    // one in an ego view would take the others off the rail with it.
+    const scopeIds = new Set(visiblePeople.map((p) => p.id))
+
+    // Circle chips narrow the people, not just the bubbles — "only my
+    // climbing friends" means the rest of the vault leaves the screen.
+    // All chips on means no narrowing at all; all off means the same,
+    // so a stale filter can never empty the graph on its own.
+    const shownCircles = allCircles.filter((c) => !hiddenCircles.has(c.id))
+    if (!focusedCircle && shownCircles.length > 0 && shownCircles.length < allCircles.length) {
+      const members = new Set(shownCircles.flatMap((c) => c.memberIds))
+      visiblePeople = visiblePeople.filter((p) => members.has(p.id))
     }
 
     const ids = new Set(visiblePeople.map((p) => p.id))
@@ -499,7 +514,7 @@ export default function GraphPage() {
         return { id: c.id, name: c.name, color: c.color, memberIds: visible, total }
       })
       .filter((c) => c.memberIds.length >= Math.min(2, c.total) && c.memberIds.length > 0)
-    return { nodes, links, circles }
+    return { nodes, links, circles, scopeIds }
   }, [
     records,
     types,
@@ -519,9 +534,12 @@ export default function GraphPage() {
   // screens wide on a phone.
   const railCircles = useMemo(() => {
     if (!focusId) return allCircles
-    const visible = new Set(nodes.map((n) => n.id))
-    return allCircles.filter((c) => c.memberIds.some((id) => visible.has(id)))
-  }, [allCircles, focusId, nodes])
+    return allCircles.filter((c) => c.memberIds.some((id) => scopeIds.has(id)))
+  }, [allCircles, focusId, scopeIds])
+
+  // "mentioned" has its own chip further along the rail, so it is not
+  // one of the types the type chips isolate within.
+  const railTypes = useMemo(() => types.filter((t) => t.label !== 'mentioned'), [types])
 
   // A graph with no links and no circles is two dots and a legend about
   // dotted lines: show the "how to start" copy instead of the rail.
@@ -548,7 +566,10 @@ export default function GraphPage() {
   const onOpen = useCallback((id: string) => navigate(`/person/${id}`), [navigate])
   const pathNodeIds = pathInfo?.reason === 'ok' ? pathInfo.nodeIds : null
   // A different view (ego ↔ all, 1 ↔ 2 hops, a circle) re-fits the camera.
-  const viewKey = `${focusId ?? ''}|${depth}|${circleFocusId ?? ''}|${showAll ? 1 : 0}`
+  // Isolating circles is a view change too — it takes people off the
+  // screen, and the handful left would otherwise sit wherever the old
+  // camera happened to be pointing.
+  const viewKey = `${focusId ?? ''}|${depth}|${circleFocusId ?? ''}|${showAll ? 1 : 0}|${[...hiddenCircles].sort().join(',')}`
   const canvasRef = useCanvasGraph(
     nodes,
     links,
@@ -581,7 +602,7 @@ export default function GraphPage() {
     }
   }, [peek])
   const hiddenCount =
-    types.filter((t) => t.label !== 'mentioned' && hiddenTypes.has(t.id)).length +
+    railTypes.filter((t) => hiddenTypes.has(t.id)).length +
     (showMentions ? 0 : 1) +
     (showFormer ? 0 : 1) +
     railCircles.filter((c) => hiddenCircles.has(c.id)).length
@@ -590,6 +611,24 @@ export default function GraphPage() {
     setShowMentions(true)
     setShowFormer(true)
     setHiddenCircles(new Set())
+  }
+  const circlePool = railCircles.map((c) => c.id)
+  const typePool = railTypes.map((t) => t.id)
+  // The "N hidden · Show all" chip is sticky, so it covers the strip's
+  // start once the strip has scrolled. Its width becomes the strip's
+  // scroll padding, and a tapped chip scrolls clear of it — otherwise the
+  // very chip you isolated with ends up half underneath the chip that
+  // appeared because you tapped it. Measured, not guessed: the label
+  // grows with the count and with Dynamic Type.
+  const railRef = useRef<HTMLDivElement | null>(null)
+  useLayoutEffect(() => {
+    const rail = railRef.current
+    if (!rail) return
+    const chip = rail.querySelector<HTMLElement>('.chip.hidden-status')
+    rail.style.setProperty('--hidden-chip-w', `${chip ? chip.offsetWidth : 0}px`)
+  }, [hiddenCount])
+  const keepChipInView = (el: HTMLElement) => {
+    requestAnimationFrame(() => el.scrollIntoView({ inline: 'nearest', block: 'nearest' }))
   }
   const allPeople = useMemo(() => selectPeople(records), [records])
   const hasSelfNode = nodes.some((n) => n.isSelf)
@@ -674,7 +713,7 @@ export default function GraphPage() {
           </button>
         </div>
       )}
-      <div className="graph-controls">
+      <div className="graph-controls" ref={railRef}>
         {focusName && (
           <span className="chip focus-chip no-dot depth">
             {focusName} connections
@@ -756,20 +795,20 @@ export default function GraphPage() {
                 >
                   {/* Two real buttons side by side (never one inside the
                       other): toggle, and the keyboard/AT path to the card —
-                      the only path for an empty circle, which draws no bubble. */}
+                      the only path for an empty circle, which draws no bubble.
+                      `data-filter-id` names the chip's subject, so a test can
+                      rebuild a saved filter set without guessing at ids. */}
                   <button
                     type="button"
                     className={`chip circle-filter ${on ? '' : 'off'}`}
+                    data-filter-id={c.id}
                     aria-pressed={on}
-                    aria-label={`${c.name} circle, ${n} ${n === 1 ? 'person' : 'people'} — ${on ? 'shown' : 'hidden'}`}
-                    onClick={() =>
-                      setHiddenCircles((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(c.id)) next.delete(c.id)
-                        else next.add(c.id)
-                        return next
-                      })
-                    }
+                    aria-label={`${c.name} circle, ${n} ${n === 1 ? 'person' : 'people'} — ${on ? 'shown' : 'hidden'}. ${chipAction(hiddenCircles, circlePool, c.id, c.name)}`}
+                    title={chipAction(hiddenCircles, circlePool, c.id, c.name)}
+                    onClick={(ev) => {
+                      keepChipInView(ev.currentTarget)
+                      setHiddenCircles((prev) => toggleIsolate(prev, circlePool, c.id))
+                    }}
                   >
                     <span className="name">{c.name}</span>
                   </button>
@@ -796,26 +835,23 @@ export default function GraphPage() {
             )}
           </span>
         )}
-        {types
-          .filter((t) => t.label !== 'mentioned')
-          .map((t) => (
-            <button
-              key={t.id}
-              className={`chip ${hiddenTypes.has(t.id) ? 'off' : ''}`}
-              style={{ '--chip-color': t.color } as React.CSSProperties}
-              aria-pressed={!hiddenTypes.has(t.id)}
-              onClick={() =>
-                setHiddenTypes((prev) => {
-                  const next = new Set(prev)
-                  if (next.has(t.id)) next.delete(t.id)
-                  else next.add(t.id)
-                  return next
-                })
-              }
-            >
-              {t.label}
-            </button>
-          ))}
+        {railTypes.map((t) => (
+          <button
+            key={t.id}
+            className={`chip ${hiddenTypes.has(t.id) ? 'off' : ''}`}
+            style={{ '--chip-color': t.color } as React.CSSProperties}
+            data-filter-id={t.id}
+            aria-pressed={!hiddenTypes.has(t.id)}
+            aria-label={`${t.label} — ${hiddenTypes.has(t.id) ? 'hidden' : 'shown'}. ${chipAction(hiddenTypes, typePool, t.id, t.label)}`}
+            title={chipAction(hiddenTypes, typePool, t.id, t.label)}
+            onClick={(ev) => {
+              keepChipInView(ev.currentTarget)
+              setHiddenTypes((prev) => toggleIsolate(prev, typePool, t.id))
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
         <button
           className={`chip ${showMentions ? '' : 'off'}`}
           aria-pressed={showMentions}
@@ -900,6 +936,16 @@ export default function GraphPage() {
           <p className="empty">
             No relationships yet. Add one from a person’s page, or load the sample people
             in <Link to="/settings">Settings</Link>.
+          </p>
+        ) : nodes.length === 0 && hiddenCount > 0 ? (
+          // Isolating an empty circle leaves a blank canvas; say so, and
+          // put the way back in the middle of the screen rather than only
+          // in a chip at the far end of a rail that scrolls sideways.
+          <p className="empty" role="status">
+            Nobody matches these filters.{' '}
+            <button className="subtle" onClick={showAllFilters}>
+              Show all
+            </button>
           </p>
         ) : (
           <>
