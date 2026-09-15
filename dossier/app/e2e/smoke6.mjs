@@ -18,7 +18,12 @@ await page.click('button.add-person')
 await page.waitForSelector('h1:has-text("Ada Lovelace")')
 
 // Chip input: add tags via Enter and comma, autocomplete casing reuse
+// The form moves focus to its title on the next frame: type only once it
+// has (a slow runner otherwise blurs the chip field mid-word, which
+// commits the fragment as a chip).
+const formReady = () => page.waitForFunction(() => document.activeElement?.id === 'facts-form-title')
 await page.click('.section-head button:has-text("Edit")')
+await formReady()
 const tagInput = page.locator('.facts-form .field-label:has-text("Tags") .chip-row input')
 await tagInput.fill('Climbing')
 await tagInput.press('Enter')
@@ -35,6 +40,7 @@ await page.fill('input[type=search]', 'Bob Chen')
 await page.click('button.add-person')
 await page.waitForSelector('h1:has-text("Bob Chen")')
 await page.click('.section-head button:has-text("Edit")')
+await formReady()
 const tagInput2 = page.locator('.facts-form .field-label:has-text("Tags") .chip-row input')
 await tagInput2.fill('cli')
 try {
