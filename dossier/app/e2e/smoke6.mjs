@@ -1,4 +1,6 @@
 import { launch } from './lib.mjs'
+import fs from 'node:fs'
+fs.mkdirSync('/tmp/shots-smoke6', { recursive: true })
 const fail = (m) => { console.error('FAIL:', m); process.exit(1) }
 const browser = await launch()
 const page = await browser.newPage({ viewport: { width: 390, height: 720 } })
@@ -58,7 +60,7 @@ try {
       url: location.hash,
     }
   })))
-  await page.screenshot({ path: `${shots}/smoke6-fail.png` })
+  await page.screenshot({ path: '/tmp/shots-smoke6/fail.png' }).catch(() => {})
   throw err
 }
 await page.click('.chip-suggestions li[role="option"]:has-text("Climbing")')
