@@ -148,5 +148,34 @@ await page.fill('input[type=search]', 'Rosa')
 await page.waitForSelector('a.person-row:has-text("Rosa Delgado")')
 console.log('deleting a circle keeps its people')
 
+// Switching every circle and every type off must not strand you: the
+// rail (and its "N hidden · Show all") has to survive an empty-looking
+// graph, which "No relationships yet" used to replace.
+await page.goto(`${BASE}/#/graph`)
+await page.waitForSelector('canvas.graph-canvas', { timeout: 30000 })
+const moreCircles = page.locator('.graph-controls button[aria-expanded="false"]:has-text("more")')
+if (await moreCircles.count()) await moreCircles.first().click()
+// Clicked through the DOM: the rail scrolls sideways, so later chips are
+// off-screen and a real tap can't reach them without dragging it first.
+for (const sel of ['.chip.circle-filter[aria-pressed="true"]', '.graph-controls .chip[aria-pressed="true"]:not(.circle-filter)']) {
+  for (let i = 0; i < 40; i++) {
+    const hit = await page.evaluate((s) => { const el = document.querySelector(s); if (!el) return false; el.click(); return true }, sel)
+    if (!hit) break
+    await page.waitForTimeout(60)
+  }
+}
+await page.waitForTimeout(400)
+if (await page.locator('.graph.bare').count()) fail('filtering everything out claimed there are no relationships')
+if (!(await page.locator('canvas.graph-canvas').count())) fail('the canvas went away when every filter was switched off')
+if (!(await page.locator('.graph-controls').count())) fail('the chip rail went away, leaving no way to unhide')
+const back = page.locator('.chip.hidden-status')
+if (!(await back.count())) fail('no "Show all" chip after hiding everything')
+console.log('everything hidden:', (await back.textContent()).trim())
+await page.evaluate(() => document.querySelector('.chip.hidden-status').click())
+await page.waitForTimeout(400)
+if (await page.locator('.chip.hidden-status').count()) fail('"Show all" did not restore the filters')
+if (!(await page.locator('.chip.circle-filter[aria-pressed="true"]').count())) fail('circles stayed hidden after Show all')
+console.log('Show all brings every circle and type back')
+
 await browser.close()
 console.log('SMOKE10 OK')

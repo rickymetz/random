@@ -525,7 +525,16 @@ export default function GraphPage() {
 
   // A graph with no links and no circles is two dots and a legend about
   // dotted lines: show the "how to start" copy instead of the rail.
-  const bare = !focusedCircle && !focusId && links.length === 0 && circles.length === 0
+  // "Nothing to draw" is a fact about the vault, never about the filters:
+  // reading it off the filtered graph meant switching every type and
+  // circle off replaced the rail with "No relationships yet" — a claim
+  // that wasn't true, on a screen whose only way back (the rail's
+  // "N hidden · Show all") had just been taken away with it.
+  const hasTiesOrCircles = useMemo(
+    () => allCircles.length > 0 || selectRelationships(records).length > 0,
+    [allCircles, records],
+  )
+  const bare = !focusedCircle && !focusId && !hasTiesOrCircles
 
   const focusName = useMemo(() => {
     if (!focusId) return undefined
