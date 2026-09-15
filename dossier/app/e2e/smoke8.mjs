@@ -25,6 +25,8 @@ console.log('A: save-note first tap works')
 // (B) Delete person reachable (real click, no JS dispatch)
 await page.click('.section-head button:has-text("Edit")')
 await page.click('.facts-form button:has-text("Delete this person")', { timeout: 6000 })
+// Asks in place, not in a browser dialog.
+await page.click('.facts-form .confirm-row button:has-text("Delete")', { timeout: 6000 })
 await page.waitForSelector('input[type=search]', { timeout: 5000 })
 console.log('B: delete person reachable via real click')
 

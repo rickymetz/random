@@ -86,7 +86,7 @@ await page.screenshot({ path: `${shots}/picker-list.png` })
 // Compare-with picker
 if (!(await page.locator('.compare-with .picked-chip:has-text("You")').count())) fail('compare default should show a "You" chip')
 await page.click('.compare-with .picked-chip button')
-const cmp = page.locator('input[aria-label="Compare mutual connections with"]')
+const cmp = page.locator('input[aria-label="Compare with"]')
 await cmp.fill('priya'); await page.click('.chip-suggestions li:has-text("Priya Raman")')
 await page.waitForSelector('.compare-with .picked-chip:has-text("Priya Raman")')
 console.log('compare-with: "You" chip → change → picker')

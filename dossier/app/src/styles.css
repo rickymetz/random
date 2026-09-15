@@ -298,7 +298,6 @@ main {
   }
   .tabbar a.active {
     color: var(--text);
-    box-shadow: inset 0 2px 0 var(--accent);
   }
   /* Typing takes the bottom edge: tabs slide away for the capture bar.
      Keyed on focus-within (not just the textarea) so tapping Save note
@@ -882,29 +881,6 @@ section h2 {
   margin: var(--s3) 0;
   width: 100%;
 }
-@media (max-width: 48rem) {
-  .add-person.fab {
-    position: fixed;
-    right: max(var(--s4), env(safe-area-inset-right));
-    bottom: calc(var(--tabbar-h) + var(--s4) + env(safe-area-inset-bottom));
-    z-index: 25;
-    width: 3.25rem;
-    height: 3.25rem;
-    min-height: 0;
-    padding: 0;
-    border-radius: var(--r-full);
-    font-size: 1.4rem;
-    box-shadow: var(--e-3);
-  }
-  .add-person.fab .fab-label {
-    display: none;
-  }
-  /* Let the list scroll clear of the floating button so the last row's
-     text and chevron are never permanently covered. */
-  .people {
-    padding-bottom: 4.5rem;
-  }
-}
 
 .you-badge {
   display: inline-block;
@@ -982,7 +958,6 @@ section h2 {
 /* While the facts form is open, Save/Cancel are the only exits: the
    rest of the dossier steps aside instead of stretching the page. */
 body:has(.facts-form) .person-col > section:not(:has(.facts-form)),
-body:has(.facts-form) .person > .person-footer,
 body:has(.facts-form) .app-bar .back {
   display: none;
 }
@@ -1356,11 +1331,6 @@ a.mention {
   min-height: var(--ctl-h);
 }
 
-.person-footer {
-  margin-top: var(--s7);
-  border-top: 1px solid var(--line);
-  padding-top: var(--s4);
-}
 @media (max-width: 48rem) {
   /* The sticky capture bar rests one tab-bar height above its natural
      position at max scroll; without this, it permanently covers the
@@ -3888,7 +3858,7 @@ a.facet {
   }
   .person {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 24rem);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
     grid-template-rows: auto 1fr auto auto;
     column-gap: var(--s7);
     row-gap: var(--s6);
@@ -3912,15 +3882,11 @@ a.facet {
     grid-column: 2;
     grid-row: 2 / span 3;
   }
-  .person > .person-footer {
-    grid-column: 1;
-    grid-row: 3;
-  }
   .person > .capture-bar {
     grid-column: 1;
     grid-row: 4;
     margin-top: 0;
-    margin-inline: calc(var(--gutter) * -1) 0;
+    margin-inline: calc(var(--gutter) * -1);
   }
   /* Editing the facts: the other column steps aside too. */
   body:has(.facts-form) .person-col.side {
@@ -3928,5 +3894,168 @@ a.facet {
   }
   body:has(.facts-form) .person-col.main {
     grid-column: 1 / -1;
+    max-width: 40rem;
   }
+}
+
+/* --------------------------------------- People + dossier review round */
+/* Five personas (iOS purist, PKM power user, first-time layperson,
+   VoiceOver user, visual designer) read the People page and the dossier. */
+
+/* The note box is first in the document (one Tab from the app bar) and
+   painted last: a sticky bar at the bottom. */
+.person > .capture-bar {
+  order: 99;
+}
+/* Section-head actions share one rendering: a link and a button sit on
+   the same baseline as the heading. */
+.section-head a,
+.section-head button.quiet {
+  display: inline-flex;
+  align-items: center;
+}
+.copy-status:empty {
+  display: none;
+}
+/* Field labels of the inline add-forms speak in the field voice, not the
+   section-title voice. */
+.add-form label,
+.add-form .field-label,
+.add-form .field-label > span:not(.sr-only) {
+  font: 500 var(--fs-meta) / 1.3 var(--font-ui);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-3);
+}
+/* Relationship rows: names in a column, chips wrap under themselves;
+   "+ role" is tertiary. */
+.edge-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr);
+  align-items: start;
+  column-gap: var(--s2);
+}
+.edge-row > a {
+  padding-block: 0.35rem;
+}
+.edge-row > .edge-retype-group {
+  grid-column: 2;
+}
+.role-add {
+  font-weight: 450;
+  color: var(--text-4);
+}
+/* Link before "Add several…" in the document (Tab reaches submit first);
+   still last on screen. */
+.add-actions .add-submit {
+  order: 2;
+}
+/* Cancel leads, Save trails — the confirming action at the trailing edge. */
+.form-actions > [type='button'] {
+  order: -1;
+}
+.form-actions .confirm-row {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+/* Small controls keep their look and gain a 44px hit area. */
+.role-chip,
+.role-add,
+.section-head a,
+.section-head button.quiet,
+.photo-actions .subtle {
+  position: relative;
+}
+.role-chip::after,
+.role-add::after,
+.section-head a::after,
+.section-head button.quiet::after,
+.photo-actions .subtle::after {
+  content: '';
+  position: absolute;
+  inset: -6px 0;
+}
+a.facet {
+  padding-block: 0.65rem;
+  margin-block: -0.65rem;
+}
+/* Search: a clear button while there is text, drawn for the dark field. */
+.people form[role='search'] {
+  position: relative;
+}
+.people form[role='search'] input[type='search'] {
+  padding-right: 2.75rem;
+}
+.search-clear {
+  position: absolute;
+  right: 0.45rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.25rem;
+  height: 2.25rem;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--text-3);
+  box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.search-clear svg {
+  padding: 3px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  box-sizing: content-box;
+}
+/* New person lives in the app bar, like Contacts' +. */
+.app-bar .appbar-add {
+  min-width: var(--ctl-h);
+  min-height: var(--ctl-h);
+  margin: 0;
+  width: auto;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--text-3);
+}
+/* Back is a bare chevron with the previous screen's name. */
+.app-bar .back {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  width: auto;
+  gap: 0.1rem;
+  padding-right: var(--s2);
+  color: var(--text-2);
+}
+.app-bar .back .back-label {
+  font: 550 var(--fs-ui) / 1 var(--font-ui);
+}
+/* The tab bar's Lock is an action, not a destination: set apart. */
+.tabbar .tab-action {
+  color: var(--text-3);
+  border-left: 1px solid var(--line-2);
+  border-radius: 0;
+  margin-left: var(--s2);
+}
+/* People page rhythm: 32px between groups, 12px inside one. */
+.recent h2 {
+  margin: var(--s4) 0 var(--s3);
+}
+.people .banner + ul {
+  margin-top: var(--s5);
+}
+/* Row chevron as a stroke icon, one family with the app bar's. */
+.person-row .chev svg {
+  display: block;
+}
+.you-badge.sample {
+  opacity: 0.8;
+}
+.toggle-row .desc {
+  display: block;
+  font-weight: 400;
+  margin-top: 0.15rem;
 }

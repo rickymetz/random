@@ -117,17 +117,22 @@ function useScrollReset() {
   // A layout effect: the page is placed before it is painted, so a
   // remembered position never flashes the top first.
   useLayoutEffect(() => {
-    if (navType !== 'PUSH') return
-    // A search in progress (a facet tap from a dossier) shows other rows
-    // than the remembered plain list: start at the top.
-    const searching = route === '/' && useVaultStore.getState().homeQuery.trim() !== ''
-    const top = TAB_ROUTES.has(route) && !searching ? (scrollMemory.get(route) ?? 0) : 0
-    window.scrollTo({ top, behavior: 'instant' as ScrollBehavior })
+    if (navType === 'PUSH') {
+      // A search in progress (a facet tap from a dossier) shows other rows
+      // than the remembered plain list: start at the top.
+      const searching = route === '/' && useVaultStore.getState().homeQuery.trim() !== ''
+      const top = TAB_ROUTES.has(route) && !searching ? (scrollMemory.get(route) ?? 0) : 0
+      window.scrollTo({ top, behavior: 'instant' as ScrollBehavior })
+    }
     // A route change announces nothing on its own (the title stays the
     // disguise): land focus on the new view's heading unless the view
-    // already placed it (search box, fresh capture bar).
+    // already placed it (search box, fresh capture bar). Focus still
+    // sitting in the chrome (the tab just tapped, Back) counts as not
+    // placed — a screen reader needs to hear where it landed, and that
+    // goes for Back (a POP) as much as a forward hop.
     const t = window.setTimeout(() => {
-      if (document.activeElement && document.activeElement !== document.body) return
+      const a = document.activeElement as HTMLElement | null
+      if (a && a !== document.body && !a.closest('nav, .app-bar')) return
       const h1 = document.querySelector<HTMLElement>('main h1')
       if (!h1) return
       h1.tabIndex = -1
@@ -214,6 +219,23 @@ export default function App() {
   }, [init])
   useKeyboardInset()
   useScrollReset()
+  // Ctrl/Cmd+K reaches the People search from any page but the graph,
+  // which uses the same key for its Find. (A bare "/" would be a
+  // single-character shortcut, which speech and switch users trip over.)
+  useEffect(() => {
+    if (!unlocked) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey) || e.altKey) return
+      if (pathname.startsWith('/graph')) return
+      e.preventDefault()
+      if (pathname !== '/') navigate('/')
+      window.setTimeout(() => {
+        document.querySelector<HTMLInputElement>('.people input[type=search]')?.focus()
+      }, pathname === '/' ? 0 : 80)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [unlocked, pathname, navigate])
 
   // Timer-driven locks save any in-progress capture draft as an encrypted
   // note first — a memory aid must not eat the fact you just typed. The
@@ -457,11 +479,14 @@ export default function App() {
               if (idx > 0) navigate(-1)
               else navigate('/', { replace: true })
             }}
-            aria-label="Back"
+            aria-label="Back to People"
           >
             <svg {...iconProps} aria-hidden="true">
               <path d="M15 5l-7 7 7 7" />
             </svg>
+            <span className="back-label" aria-hidden="true">
+              People
+            </span>
           </button>
         )}
         {/* The brand echoes the disguise, not the product (§6.5). */}
@@ -560,6 +585,7 @@ export default function App() {
             any capture draft to a note and keeps the session PIN — a tab
             tap must never eat the fact you just typed. */}
         <button
+          className="tab-action"
           onClick={() => void timerLock()}
           aria-label="Lock — your draft is saved and the PIN still works"
         >

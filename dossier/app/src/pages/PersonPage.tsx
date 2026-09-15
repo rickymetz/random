@@ -14,6 +14,7 @@ import { getPhotoUrl, peekPhotoUrl } from '../lib/photoCache'
 import type { Photo } from '../lib/models'
 import { formatPartialDate, parsePartialDate, timeAgo } from '../lib/dates'
 import { plainText, retokenize, segmentBody } from '../lib/mentions'
+import { detectNames } from '../lib/nameDetect'
 import { TYPE_FAMILIES, type Person, type Relationship, type TypeFamily } from '../lib/models'
 import {
   selectCircles,
@@ -78,9 +79,12 @@ export default function PersonPage() {
           <h1>
             {person.displayName}
             {person.isSelf && (
-              <span className="you-badge" title="This is you">
-                you
-              </span>
+              <>
+                <span className="you-badge" title="This is you" aria-hidden="true">
+                  you
+                </span>
+                <span className="sr-only"> (this is you)</span>
+              </>
             )}
           </h1>
           {meta && <p className="person-meta">{meta}</p>}
@@ -93,6 +97,13 @@ export default function PersonPage() {
       )}
       {/* Lookup order (§4.1): what to remember and what you last wrote
           come before the link-building sections. */}
+      {/* The note box comes first in the document — one Tab from the app
+          bar on desktop, the first thing a screen reader meets after the
+          name — and is painted last (CSS order): a sticky bar at the
+          bottom. Hidden, not unmounted, while the facts form is open:
+          unmounting would stash a half-typed draft; hiding just cedes the
+          bottom edge to Save/Cancel and the draft is still there after. */}
+      <CaptureBar person={person} hidden={editing} />
       {/* Two columns on a wide screen (≥64rem): what you remember and
           write on the left, who they know on the right. On a phone the
           columns are `display: contents`, so this is one flow. */}
@@ -107,12 +118,6 @@ export default function PersonPage() {
         <ConnectionSection person={person} />
         <PhotoSection personId={person.id} />
       </div>
-      <footer className="person-footer" />
-      {/* Hidden, not unmounted, while the facts form is open: unmounting
-          would flush a half-typed draft into a permanent note with no
-          feedback; hiding just cedes the bottom edge to Save/Cancel and
-          the draft is still there afterwards. */}
-      <CaptureBar person={person} hidden={editing} />
     </article>
   )
 }
@@ -183,12 +188,14 @@ function Facts({
     ['Tags', facet(person.tags)],
   ]
   const filled = rows.filter(([, v]) => v)
+  // Nothing to copy from an empty dossier: the button waits for content.
+  const hasNotes = selectNotes(records, person.id).length > 0
   return (
     <section>
       <div className="section-head">
         <h2>Details</h2>
         <span className="row">
-          <CopyAsTextButton person={person} />
+          {(filled.length > 0 || hasNotes) && <CopyAsTextButton person={person} />}
           <button id="edit-details" className="quiet" onClick={() => setEditing(true)}>
             Edit
           </button>
@@ -296,21 +303,30 @@ function CopyAsTextButton({ person }: { person: Person }) {
         // No storage: warn this time, then again next time.
       }
       setState(warned ? 'copied' : 'copied-warn')
+      setTimeout(() => setState('idle'), warned ? 2000 : 5000)
+      return
     } catch {
       setState('failed')
     }
     setTimeout(() => setState('idle'), 2000)
   }
+  // The button keeps its name; the outcome is a status beside it (a
+  // control whose name changes under the cursor is not announced).
   return (
-    <button className="quiet" onClick={() => void copy()} aria-live="polite">
-      {state === 'copied'
-        ? 'Copied'
-        : state === 'copied-warn'
-          ? 'Copied — clipboards can sync and keep history'
-          : state === 'failed'
-            ? 'Copy failed'
-            : 'Copy as text'}
-    </button>
+    <>
+      <button className="quiet" onClick={() => void copy()}>
+        Copy as text
+      </button>
+      <span className="hint saved copy-status" role="status">
+        {state === 'copied'
+          ? 'Copied'
+          : state === 'copied-warn'
+            ? 'Copied — clipboards can sync and keep history'
+            : state === 'failed'
+              ? 'Copy failed'
+              : ''}
+      </span>
+    </>
   )
 }
 
@@ -476,8 +492,12 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     }
   }
 
+  const [askDiscard, setAskDiscard] = useState(false)
   const cancel = () => {
-    if (dirty && !confirm('Discard your edits?')) return
+    if (dirty) {
+      setAskDiscard(true)
+      return
+    }
     done()
   }
   // The Edit button vanished under us: say where we are.
@@ -524,13 +544,14 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         <input type="checkbox" checked={isSelf} onChange={(e) => setIsSelf(e.target.checked)} />
         <span>
           This is me
+          <span className="hint desc">Tick it on your own card so “How you connect” knows where you are.</span>
         </span>
       </label>
       </fieldset>
       <fieldset className="field-group">
         <legend>Circles</legend>
         <p className="hint">
-          Groups they belong to, shown as tinted areas on the graph.
+          Groups they belong to — a book club, a team, a family. They show on the graph.
         </p>
         <div className="field-grid">
           {chips('circles', 'Circles', vocab.circles, {
@@ -574,27 +595,40 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         </div>
       </fieldset>
       {/* Deleting lives in edit mode, not next to the everyday note box. */}
-      <button
-        type="button"
-        className="danger"
-        onClick={async () => {
-          const warning = person.isSelf
+      <DangerConfirm
+        className="delete-person"
+        trigger="Delete this person"
+        label="Delete"
+        question={
+          person.isSelf
             ? `Delete ${person.displayName}? This is your “me” card — “how you connect” stops working until you mark someone else as you.`
             : `Delete ${person.displayName} and everything about them? This cannot be undone.`
-          if (!confirm(warning)) return
-          await useVaultStore.getState().removePerson(person.id)
-          navigate('/')
+        }
+        onConfirm={() => {
+          void useVaultStore.getState().removePerson(person.id).then(() => navigate('/'))
         }}
-      >
-        Delete this person
-      </button>
+      />
       <div className="form-actions">
-        <button type="submit" className="primary" disabled={busy}>
-          {busy ? '…' : 'Save'}
-        </button>
-        <button type="button" className="subtle" onClick={cancel}>
-          Cancel
-        </button>
+        {askDiscard ? (
+          <span className="confirm-row" role="group" aria-label="Discard your changes?">
+            <span className="hint">Discard your changes?</span>
+            <button type="button" className="danger" onClick={done} autoFocus>
+              Discard
+            </button>
+            <button type="button" className="subtle" onClick={() => setAskDiscard(false)}>
+              Keep editing
+            </button>
+          </span>
+        ) : (
+          <>
+            <button type="submit" className="primary" disabled={busy}>
+              {busy ? '…' : 'Save'}
+            </button>
+            <button type="button" className="subtle" onClick={cancel}>
+              Cancel
+            </button>
+          </>
+        )}
       </div>
     </form>
   )
@@ -689,7 +723,7 @@ function ConnectionSection({ person }: { person: Person }) {
             </span>
           ))}
           <Link className="path-graph-link" to={`/graph?path=${person.id}`}>
-            See on graph →
+            See on graph ›
           </Link>
           {viaFormer && <span className="hint via-former">Through a former tie.</span>}
         </p>
@@ -699,14 +733,14 @@ function ConnectionSection({ person }: { person: Person }) {
       <div className="row wrap">
         <div className="inline-check compare-with">
           <span className="field-label" aria-hidden="true">
-            Mutual connections with
+            People you both know — compare with
           </span>
           <PersonPicker
             people={people}
             excludeIds={compareExclude}
             value={compareId}
             onChange={setCompareId}
-            label="Compare mutual connections with"
+            label="Compare with"
             placeholder="Type a name…"
             emptyLabel="You"
           />
@@ -911,7 +945,9 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
   const addPerson = useVaultStore((s) => s.addPerson)
   const registerDraft = useVaultStore((s) => s.registerDraft)
   const unregisterDraft = useVaultStore((s) => s.unregisterDraft)
-  const [draft, setDraft] = useState('')
+  const stashDraft = useVaultStore((s) => s.stashDraft)
+  // A draft left by following a link comes back with the page.
+  const [draft, setDraft] = useState(() => useVaultStore.getState().drafts.get(person.id) ?? '')
   const [busy, setBusy] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
   // The note just saved, while its "Looks like people" offer is showing.
@@ -927,18 +963,19 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
   draftRef.current = draft
 
   // Timer-driven locks flush this draft into an encrypted note instead of
-  // eating it, and so does navigating away (tapping an @mention link
-  // remounts the page — the fact you just typed must not vanish).
+  // eating it. Navigating away (tapping an @mention link remounts the
+  // page) stashes it instead: a half sentence must not fossilise as a
+  // dated note on every hop — it is waiting when you come back.
   useEffect(() => {
+    stashDraft(person.id, '')
     registerDraft(person.id, () => draftRef.current)
     return () => {
       const leftover = draftRef.current.trim()
       // Guard against resurrection: if this unmount is the person being
-      // DELETED, flushing would persist an orphaned note (invisible in
-      // every UI, but present in exports) for a dossier that no longer
+      // DELETED, a stash would resurface for a dossier that no longer
       // exists.
       if (leftover && useVaultStore.getState().records.has(person.id)) {
-        void saveNote(person.id, leftover)
+        stashDraft(person.id, draftRef.current)
       }
       unregisterDraft(person.id)
     }
@@ -953,7 +990,8 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
     [records, person.id, person.jobTitle],
   )
   const save = async () => {
-    const body = draft.trim()
+    // The box shows plain @Names; the note keeps links.
+    const body = retokenize(draft.trim(), selectPeople(records))
     if (!body || busy) return
     setBusy(true)
     // Zero the ref synchronously so an unmount during the await can't
@@ -962,23 +1000,28 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
     setDraft('')
     try {
       const note = await saveNote(person.id, body)
-      // Only offer names when the setting is on; an offer still showing
-      // for the previous note stays until it is dealt with.
-      const offer = suggestNames && note ? note.id : null
+      // Only offer names when the setting is on and the note has some;
+      // an offer still showing for the previous note stays until it is
+      // dealt with.
+      const found = suggestNames && note ? detectNames(body, selectPeople(records), person).length > 0 : false
+      const offer = found && note ? note.id : null
       // A card with names still waiting stays; one showing only its Undo
       // status gives way to the new note's names.
       const chipsPending = Boolean(document.querySelector('.capture-bar .looks-like-chips'))
       setOfferNoteId((prev) => (prev && offering.current && chipsPending ? prev : offer))
-      setSrSaved(offer ? 'Saved. Names found — use the buttons above the note box to add or link them.' : 'Saved')
+      setSrSaved(
+        offer
+          ? 'Saved. Names found — the “Looks like people” group before the note box has buttons to add or link them.'
+          : 'Saved',
+      )
       window.setTimeout(() => setSrSaved(''), 4000)
       // Keyboard Save unmounts its own row: keep the caret in the box.
       requestAnimationFrame(() => {
         if (document.activeElement === document.body) document.querySelector<HTMLElement>('.capture-bar textarea')?.focus()
       })
-      if (!offer || !offering.current) {
-        setSavedFlash(true)
-        setTimeout(() => setSavedFlash(false), 2000)
-      }
+      // "Saved" shows every time: in the Save row, or on the names card.
+      setSavedFlash(true)
+      setTimeout(() => setSavedFlash(false), 2000)
     } catch {
       setDraft(body) // restore on failure
     } finally {
@@ -991,7 +1034,14 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
         {srSaved}
       </span>
       {offerNoteId && (
-        <LooksLikePeople key={offerNoteId} noteId={offerNoteId} person={person} onDone={clearOffer} refocus={focusBox} />
+        <LooksLikePeople
+          key={offerNoteId}
+          noteId={offerNoteId}
+          person={person}
+          onDone={clearOffer}
+          refocus={focusBox}
+          justSaved={savedFlash}
+        />
       )}
       <MentionTextarea
         people={others}
@@ -999,7 +1049,10 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
         onChange={setDraft}
         onSubmit={() => void save()}
         onCreatePerson={addPerson}
-        placeholder="Jot something… @ links a person"
+        // The @ hint waits until there's a first note: to a newcomer it
+        // means nothing yet.
+        placeholder={isFresh ? `Jot a note about ${person.displayName.split(' ')[0]}…` : 'Jot something… @ links a person'}
+        plain
         autoFocus={isFresh}
         // One row when idle: the bar sits on the tab bar and shouldn't
         // spend a fifth of the screen before you've typed. Grows on focus
@@ -1044,6 +1097,7 @@ function FollowUpSection({ personId }: { personId: string }) {
   const [due, setDue] = useState('')
   const [dueError, setDueError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [srNote, setSrNote] = useState('')
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1057,6 +1111,8 @@ function FollowUpSection({ personId }: { personId: string }) {
     setBusy(true)
     try {
       await addFollowUp(personId, text.trim(), dueDate)
+      setSrNote(`Added follow-up: ${text.trim()}`)
+      window.setTimeout(() => setSrNote(''), 4000)
       setText('')
       setDue('')
     } finally {
@@ -1070,9 +1126,9 @@ function FollowUpSection({ personId }: { personId: string }) {
       <h2 id="followups-heading" tabIndex={-1}>
         Follow-ups
       </h2>
-      {items.length === 0 && (
-        <p className="empty-inline">Nothing yet.</p>
-      )}
+      <span className="sr-only" role="status">
+        {srNote}
+      </span>
       <ul className="follow-ups">
         {items.map((f) => (
           <li key={f.id} className={f.done ? 'done' : ''}>
@@ -1132,7 +1188,7 @@ function FollowUpSection({ personId }: { personId: string }) {
           />
         </label>
         <button type="submit" disabled={!text.trim() || busy}>
-          Add
+          Add follow-up
         </button>
         {dueError && (
           <p className="field-error span-2" role="alert" id="due-error">
@@ -1174,6 +1230,7 @@ function RelationshipSection({ person }: { person: Person }) {
     [records],
   )
 
+  const [srLinked, setSrLinked] = useState('')
   const [otherId, setOtherId] = useState('')
   const [typeId, setTypeId] = useState('')
   const [focusToken, setFocusToken] = useState(0)
@@ -1249,6 +1306,7 @@ function RelationshipSection({ person }: { person: Person }) {
               return (
                 <button
                   key={edge.id}
+                  id={`role-chip-${edge.id}`}
                   type="button"
                   className={`role-chip ${edge.former ? 'former' : ''} ${editing === edge.id ? 'on' : ''}`}
                   style={{ '--edge-color': type?.color } as React.CSSProperties}
@@ -1292,7 +1350,7 @@ function RelationshipSection({ person }: { person: Person }) {
                 // closed select fires change per step on Windows.
                 onChange={(e) => setRetype((m) => ({ ...m, [mention.id]: e.target.value }))}
               >
-                <option value="">Set type…</option>
+                <option value="">Relationship…</option>
                 {types
                   .filter((t) => t.label !== 'mentioned')
                   .map((t) => (
@@ -1327,7 +1385,11 @@ function RelationshipSection({ person }: { person: Person }) {
             other={other}
             text={chipText(open, other)}
             types={types}
-            onDone={() => setEditing(null)}
+            onDone={() => {
+              setEditing(null)
+              // Back to the chip that opened it, if it is still there.
+              requestAnimationFrame(() => document.getElementById(`role-chip-${open.id}`)?.focus())
+            }}
           />
         )}
       </li>
@@ -1355,6 +1417,10 @@ function RelationshipSection({ person }: { person: Person }) {
       const [fromId, toId] =
         directed && !outward ? [otherId, person.id] : [person.id, otherId]
       await addRelationship(fromId, toId, resolvedTypeId)
+      setSrLinked(
+        `Linked ${personById.get(otherId)?.displayName ?? 'them'} as ${typeById.get(resolvedTypeId)?.label ?? newType.trim()}`,
+      )
+      window.setTimeout(() => setSrLinked(''), 4000)
       // Keep adding: the type stays selected and the caret returns to the
       // person field (quietly — no list until you type), so "Sam, Priya,
       // Theo — all coworkers" is name, Enter, Add, name, Enter, Add.
@@ -1376,15 +1442,15 @@ function RelationshipSection({ person }: { person: Person }) {
         <h2 id="relationships-heading" tabIndex={-1}>
           Relationships
         </h2>
-        <Link to={`/graph?focus=${person.id}`}>See on graph →</Link>
+        <Link to={`/graph?focus=${person.id}`}>See on graph ›</Link>
       </div>
+      <span className="sr-only" role="status">
+        {srLinked}
+      </span>
       {/* The batch panel sits above the list so freshly linked rows
           appear right under its status line. */}
       {batchOpen && (
         <BatchAddPanel id="batch-add-links" anchor={person} headingLevel={3} onClose={closeBatch} />
-      )}
-      {edges.length === 0 && (
-        <p className="empty-inline">No one linked yet.</p>
       )}
       <ul className="edges roles-list">{groups.map(renderGroup)}</ul>
       <form className="add-form" onSubmit={add}>
@@ -1423,6 +1489,14 @@ function RelationshipSection({ person }: { person: Person }) {
             value={typeId}
             onChange={(e) => setTypeId(e.target.value)}
             aria-label="Relationship type"
+            // Enter on a chosen type links: "name, Enter, type, Enter".
+            onKeyDown={(e) => {
+              const v = e.currentTarget.value
+              if (e.key === 'Enter' && otherId && v && v !== 'new') {
+                e.preventDefault()
+                e.currentTarget.form?.requestSubmit()
+              }
+            }}
           >
             <option value="">How you know them…</option>
             {types.map((t) => (
@@ -1489,7 +1563,16 @@ function RelationshipSection({ person }: { person: Person }) {
             })()}
           </button>
         )}
+        {/* Link comes first in the document so Tab reaches it before the
+            batch toggle (it stays visually last, CSS order). */}
         <div className="row add-actions">
+          <button
+            className="add-submit"
+            type="submit"
+            disabled={busy || !otherId || !typeId || (typeId === 'new' && !newType.trim())}
+          >
+            Link
+          </button>
           <button
             ref={batchToggleRef}
             type="button"
@@ -1499,13 +1582,6 @@ function RelationshipSection({ person }: { person: Person }) {
             aria-controls={batchOpen ? 'batch-add-links' : undefined}
           >
             Add several…
-          </button>
-          <button
-            className="add-submit"
-            type="submit"
-            disabled={busy || !otherId || !typeId || (typeId === 'new' && !newType.trim())}
-          >
-            Add
           </button>
         </div>
       </form>
@@ -1556,12 +1632,7 @@ function PhotoSection({ personId }: { personId: string }) {
             photo={photo}
             onOpen={(url) => setLightbox(url)}
             onMakeAvatar={() => void setAvatarPhoto(photo.id)}
-            onRemove={() => {
-              const warning = photo.isAvatar
-                ? 'Delete this photo? It is the avatar — the next photo takes over.'
-                : 'Delete this photo?'
-              if (confirm(warning)) void removePhoto(photo.id)
-            }}
+            onRemove={() => void removePhoto(photo.id)}
           />
         ))}
         <li>
@@ -1689,9 +1760,14 @@ function PhotoThumb({
             avatar
           </button>
         )}
-        <button className="subtle icon" onClick={onRemove} aria-label="Delete photo">
-          ×
-        </button>
+        <DangerConfirm
+          trigger="×"
+          triggerClassName="subtle icon"
+          triggerAriaLabel="Delete photo"
+          label="Delete"
+          question={photo.isAvatar ? 'Delete this photo? The next one becomes the avatar.' : 'Delete this photo?'}
+          onConfirm={onRemove}
+        />
       </div>
     </li>
   )
@@ -1699,8 +1775,8 @@ function PhotoThumb({
 
 /** Promotable targets for note triage (§4.1 inbox model). */
 const PROMOTE_TARGETS = [
-  { id: 'like', label: 'Like' },
-  { id: 'dislike', label: 'Dislike' },
+  { id: 'like', label: 'Likes' },
+  { id: 'dislike', label: 'Dislikes' },
   { id: 'tag', label: 'Tag (a label, e.g. yoga, work)' },
   { id: 'jobTitle', label: 'Job title' },
   { id: 'employer', label: 'Employer' },
@@ -1788,7 +1864,7 @@ function NotesSection({ personId }: { personId: string }) {
                   }}
                   aria-expanded={promotingId === note.id}
                 >
-                  Save as detail…
+                  Add to Details…
                 </button>
                 <button
                   className="subtle icon"
@@ -1801,18 +1877,17 @@ function NotesSection({ personId }: { personId: string }) {
                 >
                   ✎
                 </button>
-                <button
-                  className="subtle icon"
-                  onClick={() => {
-                    if (confirm('Delete this note?')) {
-                      void removeNote(note.id)
-                      focusById('notes-heading')
-                    }
+                <DangerConfirm
+                  trigger="×"
+                  triggerClassName="subtle icon"
+                  triggerAriaLabel="Delete note"
+                  label="Delete"
+                  question="Delete this note?"
+                  onConfirm={() => {
+                    void removeNote(note.id)
+                    focusById('notes-heading')
                   }}
-                  aria-label="Delete note"
-                >
-                  ×
-                </button>
+                />
               </div>
             )}
             {promotingId === note.id && editingId !== note.id && (
@@ -1955,7 +2030,9 @@ function PromotePanel({
   const records = useVaultStore((s) => s.records)
   const updatePerson = useVaultStore((s) => s.updatePerson)
   const removeNote = useVaultStore((s) => s.removeNote)
-  const [target, setTarget] = useState<PromoteTarget>('like')
+  // No default: the first tap on Save must not file the sentence as a
+  // like without a choice having been made.
+  const [target, setTarget] = useState<PromoteTarget | ''>('')
   // Prefill with the first line: a multi-line note is several facts, and
   // the panel promotes one at a time.
   const [text, setText] = useState(
@@ -1980,7 +2057,7 @@ function PromotePanel({
     const person = records.get(personId)
     if (!person || person.kind !== 'person' || busy) return
     const value = text.trim()
-    if (!value) return
+    if (!value || !target) return
     setError(null)
     const next: Person = { ...person }
     switch (target) {
@@ -2030,13 +2107,14 @@ function PromotePanel({
 
   return (
     <form ref={panelRef} className="promote-panel" onSubmit={promote}>
-      <p className="panel-title">Save this note as a detail</p>
+      <p className="panel-title">Add to Details</p>
       <label>
         Which detail?
         <select
           value={target}
-          onChange={(e) => setTarget(e.target.value as PromoteTarget)}
+          onChange={(e) => setTarget(e.target.value as PromoteTarget | '')}
         >
+          <option value="">Choose…</option>
           {PROMOTE_TARGETS.map((t) => (
             <option key={t.id} value={t.id}>
               {t.label}

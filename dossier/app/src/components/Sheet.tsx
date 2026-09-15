@@ -50,7 +50,19 @@ export default function Sheet({
       first.focus()
     }
   }
-  const drag = useRef<number | null>(null)
+  // A pull-down follows the finger, as a native sheet does: from the
+  // grabber always, and from anywhere in the sheet while its content is
+  // scrolled to the top (a scroll and a pull must not fight). A short
+  // pull springs back; past 60px it dismisses. Text fields are left to
+  // the keyboard: a drag that starts on one selects text instead.
+  const drag = useRef<{ y: number; active: boolean } | null>(null)
+  const settle = (el: HTMLElement) => {
+    el.style.transition = 'transform 160ms ease-out'
+    el.style.transform = ''
+    window.setTimeout(() => {
+      el.style.transition = ''
+    }, 180)
+  }
   return (
     <>
       <div className="sheet-backdrop" onClick={onDismiss} aria-hidden="true" />
@@ -63,22 +75,41 @@ export default function Sheet({
         aria-label={label}
         aria-labelledby={labelledBy}
         onKeyDown={onKeyDown}
-      >
-        <div
-          className="sheet-grabber"
-          aria-hidden="true"
-          onPointerDown={(e) => {
-            drag.current = e.clientY
+        onPointerDown={(e) => {
+          if (e.pointerType === 'mouse' && e.button !== 0) return
+          const target = e.target as HTMLElement
+          const onGrabber = Boolean(target.closest('.sheet-grabber'))
+          if (!onGrabber && target.closest('input, textarea, select, [contenteditable]')) return
+          const el = e.currentTarget
+          if (!onGrabber && el.scrollTop > 0) return
+          drag.current = { y: e.clientY, active: false }
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current
+          if (!d) return
+          const dy = e.clientY - d.y
+          if (!d.active) {
+            // Commit to the pull only once it is clearly downward.
+            if (dy < 8) return
+            d.active = true
             e.currentTarget.setPointerCapture(e.pointerId)
-          }}
-          onPointerUp={(e) => {
-            if (drag.current !== null && e.clientY - drag.current > 60) onDismiss()
-            drag.current = null
-          }}
-          onPointerCancel={() => {
-            drag.current = null
-          }}
-        />
+          }
+          e.currentTarget.style.transform = `translateY(${Math.max(0, dy)}px)`
+        }}
+        onPointerUp={(e) => {
+          const d = drag.current
+          drag.current = null
+          if (!d?.active) return
+          const dy = e.clientY - d.y
+          if (dy > 60) onDismiss()
+          else settle(e.currentTarget)
+        }}
+        onPointerCancel={(e) => {
+          if (drag.current?.active) settle(e.currentTarget)
+          drag.current = null
+        }}
+      >
+        <div className="sheet-grabber" aria-hidden="true" />
         {children}
       </div>
     </>

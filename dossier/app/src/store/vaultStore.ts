@@ -138,6 +138,10 @@ interface VaultState {
   registerDraft: (personId: string, read: () => string) => void
   unregisterDraft: (personId: string) => void
   flushDrafts: () => Promise<void>
+  /** A capture draft left behind by navigating away: waits, in memory,
+   * for the dossier to come back (a timer lock saves it as a note). */
+  drafts: Map<string, string>
+  stashDraft: (personId: string, text: string) => void
   setHomeQuery: (query: string) => void
   setHomePage: (page: { key: string; limit: number }) => void
 
@@ -409,6 +413,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       epoch: state.epoch + 1,
       homeQuery: '',
       homePage: { key: '', limit: 0 },
+      drafts: new Map(),
       pinArmed: pinArmed(),
       pinAttemptsLeft: pinAttemptsLeft(),
       pinDigits: pinLength(),
@@ -648,6 +653,14 @@ export const useVaultStore = create<VaultState>((set, get) => {
       draftRegistry.delete(personId)
     },
 
+    drafts: new Map(),
+    stashDraft: (personId, text) =>
+      set((state) => {
+        const drafts = new Map(state.drafts)
+        if (text.trim()) drafts.set(personId, text)
+        else drafts.delete(personId)
+        return { drafts }
+      }),
     flushDrafts: async () => {
       const drafts = [...draftRegistry.entries()]
       for (const [personId, read] of drafts) {
@@ -656,6 +669,13 @@ export const useVaultStore = create<VaultState>((set, get) => {
           await get().saveNote(personId, body)
         }
         draftRegistry.delete(personId)
+      }
+      // Drafts stashed by pages that were left: a lock is the moment
+      // they become notes, not lost keystrokes.
+      const stashed = [...get().drafts.entries()]
+      if (stashed.length) set({ drafts: new Map() })
+      for (const [personId, body] of stashed) {
+        if (body.trim() && get().records.has(personId)) await get().saveNote(personId, body.trim())
       }
     },
 

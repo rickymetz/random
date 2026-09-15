@@ -35,14 +35,15 @@ if (bare < 2) fail(`bare @ should list people, got ${bare}`)
 await ta.press('ArrowDown')
 await ta.press('Enter')
 const v1 = await ta.inputValue()
-if (!/@\[.+\]\([0-9a-f-]{36}\) $/.test(v1)) fail(`keyboard pick did not insert token: ${JSON.stringify(v1)}`)
+// The box shows a plain @Name (the note gets the link on save).
+if (!/@Me $/.test(v1)) fail(`keyboard pick did not insert the name: ${JSON.stringify(v1)}`)
 console.log('mention picker: bare @ lists, arrows+Enter inserts')
 
 // 2. Create-on-the-fly: unknown name offers "+ Add", picking it creates the person + inserts token
 await ta.fill('Met @Zed Quill')
 await page.waitForSelector('.mention-suggestions [role=option] >> text=Add “Zed Quill”')
 await ta.press('Enter')
-await page.waitForFunction(() => /@\[Zed Quill\]\(/.test(document.querySelector('.capture-bar textarea').value))
+await page.waitForFunction(() => /@Zed Quill /.test(document.querySelector('.capture-bar textarea').value))
 await page.click('.capture-bar button:has-text("Save note")')
 await page.waitForSelector('.notes .mention:has-text("@Zed Quill")')
 await page.waitForSelector('.edges li.mention-edge:has-text("Zed Quill")')

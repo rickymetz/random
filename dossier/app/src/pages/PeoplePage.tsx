@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import BatchAddPanel from '../components/BatchAddPanel'
@@ -65,17 +66,13 @@ export default function PeoplePage() {
     requestAnimationFrame(() => batchToggleRef.current?.focus())
   }
   const searchRef = useRef<HTMLInputElement>(null)
-  // Ctrl/Cmd+K focuses search from anywhere on the page. (A bare "/"
-  // would be a single-character shortcut, which speech and switch users
-  // trip over — WCAG 2.1.4.)
+  // Ctrl/Cmd+K reaches the search from any page (App.tsx): here it only
+  // needs a target.
+  // The "New person" control lives in the app bar (a native Contacts
+  // idiom), rendered there through a portal once the bar exists.
+  const [appbarSlot, setAppbarSlot] = useState<HTMLElement | null>(null)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey) || e.altKey) return
-      e.preventDefault()
-      searchRef.current?.focus()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    setAppbarSlot(document.getElementById('appbar-slot'))
   }, [])
 
   // Facet links (a tag or like on a dossier) arrive as ?q=…: adopt the
@@ -287,7 +284,7 @@ export default function PeoplePage() {
       <span className="sr-only" role="status">
         {resultNote}
       </span>
-      <form onSubmit={submit}>
+      <form onSubmit={submit} role="search" aria-label="Search people">
         <input
           ref={searchRef}
           type="search"
@@ -306,6 +303,21 @@ export default function PeoplePage() {
           }
           aria-label="Search names, details, and notes"
         />
+        {query && (
+          <button
+            type="button"
+            className="search-clear"
+            aria-label="Clear search"
+            onClick={() => {
+              setQuery('')
+              searchRef.current?.focus()
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        )}
       </form>
       {circle && (
         <p
@@ -315,7 +327,7 @@ export default function PeoplePage() {
         >
           <span className="circle-chip">{circle.name}</span> — {circle.memberIds.length}{' '}
           {circle.memberIds.length === 1 ? 'person' : 'people'} ·{' '}
-          <Link to={`/graph?circle=${circle.id}`}>See on graph →</Link> ·{' '}
+          <Link to={`/graph?circle=${circle.id}`}>See on graph ›</Link> ·{' '}
           <Link to={`/graph?circle=${circle.id}&edit=1`}>Edit circle</Link>
           <button className="subtle" onClick={() => setParams({}, { replace: true })}>
             Show everyone
@@ -404,7 +416,17 @@ export default function PeoplePage() {
       </ul>
       {/* With hits, offer creation only for something name-shaped — a
           lowercase fragment like "ma" is a lookup, not a new person. */}
-      {trimmed && !exactCircle && people.length > 0 && (/^\p{Lu}/u.test(trimmed) || /\s/.test(trimmed)) && (
+      {trimmed &&
+        !exactCircle &&
+        people.length > 0 &&
+        (/^\p{Lu}/u.test(trimmed) || /\s/.test(trimmed)) &&
+        // …and not a job, place, tag or like of someone shown: that is a
+        // lookup by facet, not a new person called "Engineer".
+        !people.some((p) =>
+          [p.jobTitle, p.employer, p.location, ...p.tags, ...p.likes, ...p.dislikes].some(
+            (v) => v?.toLowerCase() === trimmed.toLowerCase(),
+          ),
+        ) && (
         <button className="add-person after-list" onClick={create} disabled={busy}>
           + Add “{trimmed}”{circle ? ` to ${circle.name}` : ''}
         </button>
@@ -442,24 +464,31 @@ export default function PeoplePage() {
       )}
       {batchOpen && !circle && <BatchAddPanel id="batch-add-people" onClose={closeBatch} />}
       {importOpen && !circle && <ContactImportPanel id="import-contacts" onClose={closeImport} />}
-      {!trimmed && !batchOpen && !importOpen && (
-        <button
-          className="add-person fab"
-          // Name first: a nameless "New person" dumped at the bottom of a
-          // long page is the confusing path. Focus the box and let the
-          // typed name become the "+ Add" button.
-          onClick={() => {
-            const el = searchRef.current
-            if (!el) return
-            el.placeholder = 'Who did you meet?'
-            el.focus()
-          }}
-          disabled={busy}
-          aria-label="New person"
-        >
-          + <span className="fab-label">New person</span>
-        </button>
-      )}
+      {!trimmed &&
+        !batchOpen &&
+        !importOpen &&
+        appbarSlot &&
+        createPortal(
+          <button
+            className="subtle icon add-person appbar-add"
+            // Name first: a nameless "New person" dumped at the bottom of a
+            // long page is the confusing path. Focus the box and let the
+            // typed name become the "+ Add" button.
+            onClick={() => {
+              const el = searchRef.current
+              if (!el) return
+              el.placeholder = 'Who did you meet?'
+              el.focus()
+              el.scrollIntoView({ block: 'nearest' })
+            }}
+            disabled={busy}
+            aria-label="New person"
+            title="New person"
+          >
+            +
+          </button>,
+          appbarSlot,
+        )}
     </div>
   )
 }
@@ -719,8 +748,16 @@ const PersonRow = memo(function PersonRow({
           <strong>
             {person.displayName}
             {person.isSelf && (
-              <span className="you-badge" title="This is you">
-                you
+              <>
+                <span className="you-badge" title="This is you" aria-hidden="true">
+                  you
+                </span>
+                <span className="sr-only"> (this is you)</span>
+              </>
+            )}
+            {person.tags.includes('sample') && (
+              <span className="you-badge sample" title="A sample person">
+                sample
               </span>
             )}
             {circles.length > 0 && (
@@ -742,7 +779,9 @@ const PersonRow = memo(function PersonRow({
           )}
         </span>
         <span className="chev" aria-hidden="true">
-          {'›'}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
         </span>
       </Link>
     </li>
@@ -905,11 +944,16 @@ function Upcoming() {
         {shown.map((item) => (
           <li key={item.key}>
             <span className={`days ${item.overdue ? 'overdue' : ''}`}>
-              {item.overdue
-                ? `${-item.days}d late`
-                : item.days === 0
-                  ? 'today'
-                  : `${item.days}d`}
+              <span aria-hidden="true">
+                {item.overdue ? `${-item.days}d late` : item.days === 0 ? 'today' : `${item.days}d`}
+              </span>
+              <span className="sr-only">
+                {item.overdue
+                  ? `${-item.days} ${-item.days === 1 ? 'day' : 'days'} late`
+                  : item.days === 0
+                    ? 'today'
+                    : `in ${item.days} ${item.days === 1 ? 'day' : 'days'}`}
+              </span>
             </span>
             <Link to={`/person/${item.personId}`}>{item.personName}</Link>
             <span className="hint">{item.label}</span>

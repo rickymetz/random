@@ -44,10 +44,19 @@ export function parseBatch(
     if (!line) continue
     const parts = withTypes ? line.split(SEPARATOR) : [line]
     // "Sam, Priya — coworker": the type applies to every name before it.
-    const names = parts[0].split(',')
+    let names = parts[0].split(',')
     // Two separators ("Sam — friend, Priya — coworker") make no sense;
     // keep the tail as one unknown label so the UI can flag it.
-    const typeLabel = parts.length > 1 ? parts.slice(1).join(' ').trim() : undefined
+    let typeLabel = parts.length > 1 ? parts.slice(1).join(' ').trim() : undefined
+    // "Otto Berg, coworker": no dash, but the last comma part names a
+    // type — that is the role, not a person called "coworker".
+    if (withTypes && parts.length === 1 && names.length > 1) {
+      const last = names[names.length - 1].trim()
+      if (last && parseRoleLabel(last, types).type) {
+        typeLabel = last
+        names = names.slice(0, -1)
+      }
+    }
     for (const raw of names) {
       const name = raw.trim().replace(/^[@+]\s*/, '')
       if (!name) continue
