@@ -43,13 +43,12 @@ try {
   // What did the field look like when the suggestion never came?
   console.error('DIAG', JSON.stringify(await page.evaluate(() => {
     const a = document.activeElement
-    const row = document.querySelector('.facts-form .field-label:has-text("Tags")') ?? null
     return {
       active: a ? `${a.tagName}#${a.id}.${a.className} name=${a.getAttribute('name')} aria=${a.getAttribute('aria-label')}` : null,
       inputs: [...document.querySelectorAll('.facts-form .chip-row input')].map((i) => ({ v: i.value, focused: i === a })),
       chips: [...document.querySelectorAll('.facts-form .value-chip')].map((c) => c.textContent),
       suggestions: [...document.querySelectorAll('.chip-suggestions li')].map((c) => c.textContent),
-      tagsOfOthers: [...document.querySelectorAll('.facts-form')].length,
+      forms: document.querySelectorAll('.facts-form').length,
       url: location.hash,
     }
   })))
