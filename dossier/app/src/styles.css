@@ -85,9 +85,18 @@
 
   --ctl-h: 2.75rem;      /* 44px */
   --appbar-h: 3.25rem;
-  --tabbar-h: 3.5rem;
+  --tabbar-h: 3.0625rem;  /* 49px, the native tab bar's own height */
   --gutter: 1rem;
   --dur: 0.12s;
+
+  /* The device's safe areas, named once. Through a variable rather than
+     env() at each site so a test can stand in a home indicator (env()
+     is always 0 in a headless browser, where the standalone app's
+     bottom inset is the thing most worth checking). */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
 }
 @media (prefers-reduced-motion: reduce) {
   :root { --dur: 0s; }
@@ -107,7 +116,7 @@
    field up) from parking a control under the sticky capture bar / tab
    bar at the bottom edge. */
 html {
-  scroll-padding-top: calc(var(--appbar-h) + env(safe-area-inset-top) + 3rem);
+  scroll-padding-top: calc(var(--appbar-h) + var(--sat) + 3rem);
   scroll-padding-bottom: 9rem;
   /* No text inflation in landscape: sizes are ours (and the system's). */
   -webkit-text-size-adjust: 100%;
@@ -188,9 +197,9 @@ h3 {
   justify-content: space-between;
   align-items: center;
   gap: var(--s3);
-  min-height: calc(var(--appbar-h) + env(safe-area-inset-top));
-  padding: calc(var(--s2) + env(safe-area-inset-top)) max(var(--gutter), env(safe-area-inset-right)) var(--s2)
-    max(var(--gutter), env(safe-area-inset-left));
+  min-height: calc(var(--appbar-h) + var(--sat));
+  padding: calc(var(--s2) + var(--sat)) max(var(--gutter), var(--sar)) var(--s2)
+    max(var(--gutter), var(--sal));
   background: color-mix(in srgb, var(--surface-1) 96%, transparent);
   -webkit-backdrop-filter: saturate(160%) blur(20px);
   backdrop-filter: saturate(160%) blur(20px);
@@ -238,8 +247,8 @@ button.lock-button {
 }
 
 main {
-  padding: var(--s4) var(--gutter) calc(var(--s4) + env(safe-area-inset-bottom));
-  padding-inline: max(var(--gutter), env(safe-area-inset-left), env(safe-area-inset-right));
+  padding: var(--s4) var(--gutter) calc(var(--s4) + var(--sab));
+  padding-inline: max(var(--gutter), var(--sal), var(--sar));
   max-width: 40rem;
   margin: 0 auto;
   width: 100%;
@@ -256,7 +265,7 @@ main {
     display: none;
   }
   main {
-    padding-bottom: calc(var(--tabbar-h) + var(--s5) + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--tabbar-h) + var(--s5) + var(--sab));
   }
   .tabbar {
     position: fixed;
@@ -271,9 +280,12 @@ main {
     -webkit-backdrop-filter: saturate(160%) blur(20px);
     backdrop-filter: saturate(160%) blur(20px);
     border-top: 1px solid var(--line);
-    padding-bottom: env(safe-area-inset-bottom);
     transition: transform var(--dur) ease;
   }
+  /* The home indicator's band belongs to the tabs, not to the bar: each
+     tab reaches the screen's bottom edge and keeps its label above the
+     inset, so a thumb landing low still hits the tab (as it does in a
+     native tab bar) instead of a dead strip. */
   .tabbar a,
   .tabbar button {
     display: flex;
@@ -281,7 +293,7 @@ main {
     align-items: center;
     justify-content: center;
     gap: 0.15rem;
-    min-height: var(--tabbar-h);
+    min-height: calc(var(--tabbar-h) + var(--sab));
     color: var(--text-4);
     font-size: var(--fs-micro);
     font-weight: 550;
@@ -290,7 +302,9 @@ main {
     border: none;
     border-radius: 0;
     box-shadow: none;
-    padding: 0;
+    /* The label sits above the home indicator; the padding is still part
+       of the tab, so the whole height takes a tap. */
+    padding: 0 0 var(--sab);
   }
   .tabbar .glyph {
     font-size: 1.05rem;
@@ -309,7 +323,7 @@ main {
   body:has(.capture-bar:focus-within) .capture-bar {
     bottom: 0;
     /* Keep clearing the home indicator when the keyboard is away. */
-    padding-bottom: calc(var(--s2) + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--s2) + var(--sab));
   }
   /* While the facts form is open the tabs hide too: its sticky Save sits
      right above them, and a stray tab tap would silently discard edits —
@@ -320,7 +334,7 @@ main {
   }
   body:has(.facts-form) .form-actions {
     bottom: 0;
-    padding-bottom: calc(var(--s3) + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--s3) + var(--sab));
   }
 }
 
@@ -594,7 +608,7 @@ button.icon {
 }
 .lock-warning {
   position: sticky;
-  top: calc(var(--appbar-h) + env(safe-area-inset-top) + var(--s2));
+  top: calc(var(--appbar-h) + var(--sat) + var(--s2));
   z-index: 15;
   width: calc(100% - 2 * var(--gutter));
   max-width: 40rem;
@@ -1098,8 +1112,8 @@ body:has(.facts-form) .app-bar .back {
   z-index: 6;
   display: flex;
   gap: var(--s2);
-  margin: var(--s2) calc(var(--gutter) * -1) calc(-1 * var(--s4) - env(safe-area-inset-bottom));
-  padding: var(--s3) var(--gutter) calc(var(--s3) + env(safe-area-inset-bottom));
+  margin: var(--s2) calc(var(--gutter) * -1) calc(-1 * var(--s4) - var(--sab));
+  padding: var(--s3) var(--gutter) calc(var(--s3) + var(--sab));
   background: var(--bg);
   border-top: 1px solid var(--line);
 }
@@ -1112,7 +1126,7 @@ body:has(.facts-form) .app-bar .back {
 @media (max-width: 48rem) {
   /* Clear the fixed tab bar, which would otherwise cover these. */
   .form-actions {
-    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    bottom: calc(var(--tabbar-h) + var(--sab));
     padding-bottom: var(--s3);
   }
 }
@@ -1336,7 +1350,7 @@ a.mention {
      position at max scroll; without this, it permanently covers the
      footer's Delete button. */
   .person-footer {
-    padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--tabbar-h) + var(--sab));
   }
 }
 
@@ -1351,8 +1365,8 @@ body:has(.promote-panel) .capture-bar {
   position: sticky;
   bottom: 0;
   z-index: 25;
-  margin: var(--s5) calc(var(--gutter) * -1) calc(-1 * var(--s4) - env(safe-area-inset-bottom));
-  padding: var(--s2) var(--gutter) calc(var(--s2) + env(safe-area-inset-bottom));
+  margin: var(--s5) calc(var(--gutter) * -1) calc(-1 * var(--s4) - var(--sab));
+  padding: var(--s2) var(--gutter) calc(var(--s2) + var(--sab));
   background: color-mix(in srgb, var(--surface-1) 96%, transparent);
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
@@ -1360,8 +1374,8 @@ body:has(.promote-panel) .capture-bar {
 }
 @media (max-width: 48rem) {
   .capture-bar {
-    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
-    margin-bottom: calc(-1 * (var(--tabbar-h) + var(--s5) + env(safe-area-inset-bottom)));
+    bottom: calc(var(--tabbar-h) + var(--sab));
+    margin-bottom: calc(-1 * (var(--tabbar-h) + var(--s5) + var(--sab)));
     padding-bottom: var(--s2);
   }
 }
@@ -1447,7 +1461,7 @@ body:has(.promote-panel) .capture-bar {
 }
 .lightbox .close {
   position: absolute;
-  top: calc(var(--s4) + env(safe-area-inset-top));
+  top: calc(var(--s4) + var(--sat));
   right: var(--s4);
 }
 
@@ -1556,16 +1570,16 @@ body:has(.promote-panel) .capture-bar {
   /* svh, not dvh: in a Safari tab dvh tracks the collapsing toolbar and
      would resize (re-fit) the canvas on every scroll of the page. */
   height: calc(
-    100svh - var(--appbar-h) - env(safe-area-inset-top) - var(--s4) * 2 -
-      env(safe-area-inset-bottom)
+    100svh - var(--appbar-h) - var(--sat) - var(--s4) * 2 -
+      var(--sab)
   );
   min-height: 20rem;
 }
 @media (max-width: 48rem) {
   .graph {
     height: calc(
-      100svh - var(--appbar-h) - env(safe-area-inset-top) - var(--s4) -
-        var(--tabbar-h) - var(--s5) - env(safe-area-inset-bottom)
+      100svh - var(--appbar-h) - var(--sat) - var(--s4) -
+        var(--tabbar-h) - var(--s5) - var(--sab)
     );
   }
 }
@@ -2279,13 +2293,13 @@ button.danger-text {
   /* Notched phones in landscape: keep the first/last tabs out of the
      sensor housing. */
   .tabbar {
-    padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+    padding-inline: var(--sal) var(--sar);
   }
 }
 /* Black-translucent status bar overlays the page: clear it on the one
    screen without an app bar. */
 .unlock {
-  padding-top: calc(var(--s6) + env(safe-area-inset-top));
+  padding-top: calc(var(--s6) + var(--sat));
 }
 /* WebKit's native search-cancel bubble clashes with the dark field. */
 input[type='search']::-webkit-search-cancel-button {
@@ -2304,15 +2318,15 @@ input[type='search']::-webkit-search-cancel-button {
   }
   .graph {
     height: calc(
-      100vh - var(--appbar-h) - env(safe-area-inset-top) - var(--s4) * 2 -
-        env(safe-area-inset-bottom)
+      100vh - var(--appbar-h) - var(--sat) - var(--s4) * 2 -
+        var(--sab)
     );
   }
   @media (max-width: 48rem) {
     .graph {
       height: calc(
-        100vh - var(--appbar-h) - env(safe-area-inset-top) - var(--s4) -
-          var(--tabbar-h) - var(--s5) - env(safe-area-inset-bottom)
+        100vh - var(--appbar-h) - var(--sat) - var(--s4) -
+          var(--tabbar-h) - var(--s5) - var(--sab)
       );
     }
   }
@@ -2328,7 +2342,7 @@ input[type='search']::-webkit-search-cancel-button {
 }
 .people ul > li.letter {
   position: sticky;
-  top: calc(var(--appbar-h) + env(safe-area-inset-top));
+  top: calc(var(--appbar-h) + var(--sat));
   z-index: 2;
   padding: var(--s1) var(--s2);
   font-size: var(--fs-micro);
@@ -2433,9 +2447,9 @@ input[type='search']::-webkit-search-cancel-button {
    the top, so it never sits over Upcoming, Recent or the search box. */
 .letter-rail {
   position: fixed;
-  right: max(0.125rem, env(safe-area-inset-right));
-  top: calc(var(--appbar-h) + env(safe-area-inset-top) + 1rem);
-  bottom: calc(6rem + env(safe-area-inset-bottom));
+  right: max(0.125rem, var(--sar));
+  top: calc(var(--appbar-h) + var(--sat) + 1rem);
+  bottom: calc(6rem + var(--sab));
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -2457,14 +2471,14 @@ input[type='search']::-webkit-search-cancel-button {
 }
 @media (max-width: 48rem) {
   .letter-rail {
-    bottom: calc(var(--tabbar-h) + 5.5rem + env(safe-area-inset-bottom));
+    bottom: calc(var(--tabbar-h) + 5.5rem + var(--sab));
   }
 }
 /* Landscape phones: use the full height; too short for 27 letters at a
    readable size → sticky headers only. */
 @media (max-height: 34rem) {
   .letter-rail {
-    top: calc(var(--appbar-h) + env(safe-area-inset-top) + 0.5rem);
+    top: calc(var(--appbar-h) + var(--sat) + 0.5rem);
     bottom: 0.5rem;
   }
 }
@@ -2542,7 +2556,7 @@ input[type='search']::-webkit-search-cancel-button {
 }
 .person-picker input {
   width: 100%;
-  scroll-margin-top: calc(var(--appbar-h) + env(safe-area-inset-top) + var(--s3));
+  scroll-margin-top: calc(var(--appbar-h) + var(--sat) + var(--s3));
 }
 /* Above the sticky capture bar (25) and the tab bar (30). */
 .person-picker .chip-suggestions {
@@ -3302,8 +3316,8 @@ body:has(.facts-form) .app-bar nav {
    chip strip bleeding to the screen edges too. Desktop keeps the card. */
 @media (max-width: 48rem) {
   .graph-canvas-wrap {
-    margin-inline: calc(-1 * max(var(--gutter), env(safe-area-inset-left)))
-      calc(-1 * max(var(--gutter), env(safe-area-inset-right)));
+    margin-inline: calc(-1 * max(var(--gutter), var(--sal)))
+      calc(-1 * max(var(--gutter), var(--sar)));
     margin-bottom: calc(-1 * var(--s5));
   }
   .graph-canvas {
@@ -3530,14 +3544,14 @@ body:has(.facts-form) .app-bar nav {
   right: 0;
   bottom: var(--kb, 0px);
   z-index: 31;
-  max-height: calc(100svh - var(--appbar-h) - env(safe-area-inset-top) - var(--s5) - var(--kb, 0px));
+  max-height: calc(100svh - var(--appbar-h) - var(--sat) - var(--s5) - var(--kb, 0px));
   overflow-y: auto;
   overscroll-behavior: contain;
   background: var(--surface-2);
   border: 1px solid var(--line-2);
   border-bottom: 0;
   border-radius: var(--r-lg) var(--r-lg) 0 0;
-  padding: 0 var(--s4) calc(var(--s3) + env(safe-area-inset-bottom));
+  padding: 0 var(--s4) calc(var(--s3) + var(--sab));
   box-shadow: var(--e-3);
   animation: sheet-up var(--dur) ease-out;
 }
@@ -4033,12 +4047,21 @@ a.facet {
 .app-bar .back .back-label {
   font: 550 var(--fs-ui) / 1 var(--font-ui);
 }
-/* The tab bar's Lock is an action, not a destination: set apart. */
+/* The tab bar's Lock is an action, not a destination: set apart by a
+   hairline beside the labels — inset, so it reads as a divider rather
+   than a border cut short above the home indicator. */
 .tabbar .tab-action {
   color: var(--text-3);
-  border-left: 1px solid var(--line-2);
   border-radius: 0;
-  margin-left: var(--s2);
+  position: relative;
+}
+.tabbar .tab-action::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: var(--s3);
+  bottom: calc(var(--sab) + var(--s3));
+  border-left: 1px solid var(--line-2);
 }
 /* People page rhythm: 32px between groups, 12px inside one. */
 .recent h2 {
