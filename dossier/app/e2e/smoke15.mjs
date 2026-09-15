@@ -55,7 +55,7 @@ console.log('dossier batch:', (await page.locator('.batch-panel .status-slot').t
 await page.click('.batch-panel button:has-text("Done")')
 const edges = await page.locator('.edges li').allTextContents()
 if (!edges.some((e) => /Priya Raman/.test(e) && /coworker/.test(e))) fail('Priya coworker edge: ' + edges)
-if (!edges.some((e) => /June is parent of Sam/.test(e))) fail('directed reading: ' + edges)
+if (!edges.some((e) => /June Webb.*parent of Sam/.test(e))) fail('directed reading: ' + edges)
 if (!edges.some((e) => /Rosa Delgado/.test(e) && /friend/.test(e))) fail('unknown type → default friend: ' + edges)
 if (!edges.some((e) => /Bruno Costa/.test(e) && /friend/.test(e))) fail('no type → default: ' + edges)
 console.log('edges:', edges.map((e) => e.replace(/×$/, '').trim()).join(' | '))

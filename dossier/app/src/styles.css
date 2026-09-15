@@ -4059,3 +4059,65 @@ a.facet {
   font-weight: 400;
   margin-top: 0.15rem;
 }
+
+/* Relationships as a table: one name column, one roles column, one
+   "+ role" column, aligned across every row (each li and row is
+   display: contents so the list itself is the grid). */
+.edges.roles-list {
+  display: grid;
+  grid-template-columns: fit-content(11rem) minmax(0, 1fr) max-content;
+  column-gap: 0;
+  row-gap: 0;
+}
+/* Cells pad instead of gapping so the row's hairline runs unbroken. */
+.edges.roles-list .edge-row > :not(:last-child) {
+  padding-right: var(--s3);
+}
+/* Chips start at the column's edge (the old flex rows pushed them right). */
+.edges.roles-list .role-chip,
+.edges.roles-list .roles .subtle {
+  margin-left: 0;
+}
+.edges.roles-list > li,
+.edges.roles-list .edge-row {
+  display: contents;
+}
+.edges.roles-list .edge-row > * {
+  /* Every cell spans the row so the hairlines meet; content centres inside. */
+  align-self: stretch;
+  min-height: var(--ctl-h);
+  padding-block: var(--s1);
+  border-bottom: 1px solid var(--line);
+  box-sizing: border-box;
+}
+.edges.roles-list > li:last-child .edge-row > * {
+  border-bottom: 0;
+}
+.edges.roles-list .edge-row > a {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.edges.roles-list .roles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1);
+}
+.edges.roles-list .role-add,
+.edges.roles-list .role-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: 0;
+  justify-self: stretch;
+  text-align: right;
+}
+.edges.roles-list .edge-retype-group {
+  margin-left: 0;
+}
+.edges.roles-list .role-editor {
+  grid-column: 1 / -1;
+}

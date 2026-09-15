@@ -1274,9 +1274,11 @@ function RelationshipSection({ person }: { person: Person }) {
     const type = typeById.get(edge.typeId)
     const outgoing = edge.fromId === person.id
     if (type?.directed) {
+      // The row already names them: "parent of Marcus" reads as the row's
+      // person being Marcus's parent; "boss of Priya" as Marcus being hers.
       const sentence = outgoing
-        ? `${first} is ${type.label} ${other.displayName.split(' ')[0]}`
-        : `${other.displayName.split(' ')[0]} is ${type.label} ${first}`
+        ? `${type.label} ${other.displayName.split(' ')[0]}`
+        : `${type.label} ${first}`
       return edge.former ? `${sentence} (former)` : sentence
     }
     return roleLabel(type?.label ?? 'linked', edge)
@@ -1327,18 +1329,7 @@ function RelationshipSection({ person }: { person: Person }) {
                 {mention.fromId === person.id ? 'mentioned in a note' : `mentioned ${first} in a note`}
               </span>
             )}
-            {explicit.length > 0 && (
-              <button
-                type="button"
-                className="role-add"
-                onClick={() => addRoleFor(other.id)}
-                aria-label={`Add another role for ${other.displayName}`}
-              >
-                + role
-              </button>
-            )}
-          </span>
-          {mention && explicit.length === 0 && (
+            {mention && explicit.length === 0 && (
             // A derived edge can't be deleted (the note still mentions them);
             // what it can do is become a real one (§4.2).
             <span className="edge-retype-group">
@@ -1376,6 +1367,20 @@ function RelationshipSection({ person }: { person: Person }) {
                 </button>
               )}
             </span>
+            )}
+          </span>
+          {/* Third column, always present so the table's rows line up. */}
+          {explicit.length > 0 ? (
+            <button
+              type="button"
+              className="role-add"
+              onClick={() => addRoleFor(other.id)}
+              aria-label={`Add another role for ${other.displayName}`}
+            >
+              + role
+            </button>
+          ) : (
+            <span className="role-slot" aria-hidden="true" />
           )}
         </div>
         {open && open.origin !== 'mention' && (
