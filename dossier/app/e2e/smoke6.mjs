@@ -37,7 +37,25 @@ await page.waitForSelector('h1:has-text("Bob Chen")')
 await page.click('.section-head button:has-text("Edit")')
 const tagInput2 = page.locator('.facts-form .field-label:has-text("Tags") .chip-row input')
 await tagInput2.fill('cli')
-await page.waitForSelector('.chip-suggestions li[role="option"]:has-text("Climbing")')
+try {
+  await page.waitForSelector('.chip-suggestions li[role="option"]:has-text("Climbing")')
+} catch (err) {
+  // What did the field look like when the suggestion never came?
+  console.error('DIAG', JSON.stringify(await page.evaluate(() => {
+    const a = document.activeElement
+    const row = document.querySelector('.facts-form .field-label:has-text("Tags")') ?? null
+    return {
+      active: a ? `${a.tagName}#${a.id}.${a.className} name=${a.getAttribute('name')} aria=${a.getAttribute('aria-label')}` : null,
+      inputs: [...document.querySelectorAll('.facts-form .chip-row input')].map((i) => ({ v: i.value, focused: i === a })),
+      chips: [...document.querySelectorAll('.facts-form .value-chip')].map((c) => c.textContent),
+      suggestions: [...document.querySelectorAll('.chip-suggestions li')].map((c) => c.textContent),
+      tagsOfOthers: [...document.querySelectorAll('.facts-form')].length,
+      url: location.hash,
+    }
+  })))
+  await page.screenshot({ path: `${shots}/smoke6-fail.png` })
+  throw err
+}
 await page.click('.chip-suggestions li[role="option"]:has-text("Climbing")')
 await page.waitForSelector('.value-chip:has-text("Climbing")')
 await page.click('button[type=submit]:has-text("Save")')

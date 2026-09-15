@@ -4,3 +4,4 @@ dev-dist/
 *.local
 *.tsbuildinfo
 dist-prof
+e2e/axe-results.json

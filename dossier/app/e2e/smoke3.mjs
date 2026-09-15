@@ -1,7 +1,7 @@
 import { launch } from './lib.mjs'
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:4174'
-const IMG = '/home/user/random/dossier/app/public/icon-192.png'
+const IMG = new URL('../public/icon-192.png', import.meta.url).pathname
 const fail = (msg) => { console.error('FAIL:', msg); process.exit(1) }
 
 const browser = await launch()

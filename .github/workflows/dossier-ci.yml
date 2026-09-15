@@ -43,3 +43,10 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run e2e
+      # The smokes screenshot as they go: keep the pictures of a failed run.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: smoke-shots
+          path: /tmp/shots*
+          if-no-files-found: ignore
