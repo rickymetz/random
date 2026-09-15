@@ -79,6 +79,9 @@ export function retokenize(text: string, people: Pick<Person, 'id' | 'displayNam
       return out
     })
     .join('')
+    // A picked mention carries a space; before punctuation it reads as a
+    // typo ("@Priya 's"), so it goes.
+    .replace(/(\]\([0-9a-fA-F-]{36}\)) (?=['’.,;:!?)])/g, '$1')
 }
 
 /** Rewrite the display text of every token pointing at `personId`

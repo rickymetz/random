@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import LabelText from './LabelText'
+import Sheet from './Sheet'
 import { matchContacts, parseContacts, type ContactDraft, type ImportedContact } from '../lib/contacts'
 import { isIos } from '../lib/platform'
 import { selectPeople, useVaultStore } from '../store/vaultStore'
@@ -25,6 +26,7 @@ interface ContactsManager {
 }
 
 const PAGE = 100
+const MAX_CONTACTS_FILE_BYTES = 32 * 1024 * 1024
 /** Above this many contacts a file starts unselected: pick, don't dump. */
 const PRESELECT_MAX = 25
 
@@ -110,6 +112,11 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
 
   const readFile = async (file: File) => {
     setError(null)
+    // A contacts export is kilobytes; a huge file would only sink the tab.
+    if (file.size > MAX_CONTACTS_FILE_BYTES) {
+      setError('That file is too big to be a contacts export (over 32 MB).')
+      return
+    }
     let parsed: ReturnType<typeof parseContacts>
     try {
       parsed = parseContacts(await readText(file), file.name)
@@ -179,10 +186,12 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
       else next.delete(key)
       return next
     })
+  // "Select all new" means all of them, not the hundred on screen: a
+  // thousand-row export would otherwise take ten rounds of Show more.
   const setPageAll = (on: boolean) =>
     setChecked((prev) => {
       const next = new Set(prev)
-      for (const c of page) {
+      for (const c of visible) {
         if (!selectable(c)) continue
         if (on) next.add(c.key)
         else next.delete(c.key)
@@ -228,10 +237,13 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
     return <span className="tag known">{c.conflict ? `same name as ${c.existing.displayName}` : `already here${who}`}</span>
   }
 
+  const requestClose = () => {
+    if (!busy) onClose()
+  }
   return (
+    <Sheet id={id} labelledBy={titleId} onDismiss={requestClose}>
     <section
       className="batch-panel import-panel"
-      id={id}
       aria-labelledby={titleId}
       onKeyDown={(e) => {
         if (e.key !== 'Escape') return
@@ -395,5 +407,6 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
         {status}
       </p>
     </section>
+    </Sheet>
   )
 }

@@ -6,7 +6,8 @@ import type { Person } from '../lib/models'
 
 /** Word characters for a mention query — Unicode-aware so "@José" works. */
 const WORD = '[\\p{L}\\p{N}_]'
-const QUERY_RE = new RegExp(`(^|[\\s.,;!?(])@(${WORD}*(?: ${WORD}*)?)$`, 'u')
+// A mention may follow a quote, dash or slash too: “@Priya”, re: Sam—@Theo.
+const QUERY_RE = new RegExp(`(^|[\\s.,;!?(\\["'“‘\\-–—/])@(${WORD}*(?: ${WORD}*)?)$`, 'u')
 const TAIL_RE = new RegExp(`^${WORD}*`, 'u')
 
 const MAX_SUGGESTIONS = 6
@@ -32,6 +33,7 @@ export default function MentionTextarea({
   placeholder,
   autoFocus,
   rows = 3,
+  plain = false,
 }: {
   people: Person[]
   value: string
@@ -42,6 +44,10 @@ export default function MentionTextarea({
   placeholder?: string
   autoFocus?: boolean
   rows?: number
+  /** Insert a picked person as plain `@Name` (the caller retokenizes on
+   * save) instead of the `@[Name](id)` token — a capture box must not
+   * fill with ids. */
+  plain?: boolean
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const listId = useId()
@@ -57,8 +63,15 @@ export default function MentionTextarea({
   const query = useMemo(() => {
     const upToCaret = value.slice(0, caret)
     const match = QUERY_RE.exec(upToCaret)
-    return match ? match[2] : null
-  }, [value, caret])
+    if (!match) return null
+    // In plain mode a finished "@Full Name " followed by more words is a
+    // mention already made, not a query for the next word.
+    if (plain) {
+      const lower = match[2].toLowerCase()
+      if (people.some((p) => lower.startsWith(p.displayName.toLowerCase() + ' '))) return null
+    }
+    return match[2]
+  }, [value, caret, plain, people])
 
   const suggestions = useMemo((): Suggestion[] => {
     if (query === null || dismissed) return []
@@ -106,7 +119,7 @@ export default function MentionTextarea({
     // Consume any word characters continuing past the caret so a
     // mid-word pick doesn't strand the tail ("@an|n" → no orphan "n").
     const rest = value.slice(caret).replace(TAIL_RE, '')
-    const token = mentionToken(person)
+    const token = plain ? `@${person.displayName}` : mentionToken(person)
     // One space after the token, but not two when the text already has one.
     const gap = rest.startsWith(' ') ? '' : ' '
     const next = value.slice(0, start) + token + gap + rest
@@ -128,9 +141,11 @@ export default function MentionTextarea({
     insertToken(created)
   }
 
-  const track = () => {
+  // Escape (and Tab) dismissed the list on keydown; their keyup must not
+  // reopen it — only new typing or a click does.
+  const track = (e?: { key?: string }) => {
     setCaret(ref.current?.selectionStart ?? 0)
-    setDismissed(false)
+    if (e?.key !== 'Escape' && e?.key !== 'Tab') setDismissed(false)
   }
 
   const open = suggestions.length > 0
@@ -177,7 +192,7 @@ export default function MentionTextarea({
           }
         }}
         onKeyUp={track}
-        onClick={track}
+        onClick={() => track()}
       />
       <span className="sr-only" role="status">
         {announce}

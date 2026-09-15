@@ -70,6 +70,19 @@ describe('graph queries', () => {
     expect(shortestPath(records, me.id, me.id)).toBeNull()
   })
 
+  it('skips former roles unless asked', () => {
+    const me = person('Me', true)
+    const ex = person('Ex')
+    const friend = person('Friend')
+    const former: Relationship = { ...edge(me, ex), former: true }
+    const records = recordsOf(me, ex, friend, former, edge(ex, friend))
+    expect(shortestPath(records, me.id, friend.id)).toBeNull()
+    const withFormer = shortestPath(records, me.id, friend.id, { includeFormer: true })
+    expect(withFormer?.map((s) => s.person.id)).toEqual([me.id, ex.id, friend.id])
+    // Mutual connections count the tie whether or not it's current.
+    expect(mutualConnections(records, me.id, friend.id).map((m) => m.person.id)).toEqual([ex.id])
+  })
+
   it('mention edges count as connections', () => {
     const me = person('Me', true)
     const a = person('A')

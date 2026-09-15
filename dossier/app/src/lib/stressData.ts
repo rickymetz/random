@@ -11,6 +11,7 @@
  */
 
 import { selectSelf } from './graphQueries'
+import { parseRoleLabel } from './relationships'
 import { mentionToken } from './mentions'
 import {
   CIRCLE_COLORS,
@@ -108,7 +109,7 @@ const FOLLOW_UPS = [
 ]
 const EDGE_TYPES: [string, number][] = [
   ['friend', 40], ['coworker', 25], ['sibling', 6], ['partner', 6], ['married', 5],
-  ['ex', 4], ['parent of', 6], ['boss of', 4], ['roommate', 4],
+  ['former partner', 4], ['parent of', 6], ['boss of', 4], ['roommate', 4],
 ]
 
 /** Small deterministic PRNG (mulberry32) so runs are reproducible. */
@@ -199,17 +200,24 @@ export function buildStressRecords(
   const edges: Relationship[] = []
   const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`)
   const linked = new Set<string>()
-  const weightedType = (): RelationshipType | undefined => {
+  type Role = { type: RelationshipType; former?: boolean }
+  const weightedType = (): Role | undefined => {
     const total = EDGE_TYPES.reduce((s, [, w]) => s + w, 0)
     let r = rand() * total
     for (const [label, w] of EDGE_TYPES) {
       r -= w
-      if (r <= 0) return typeByLabel.get(label)
+      if (r <= 0) {
+        const role = parseRoleLabel(label, opts.types)
+        return role.type ? { type: role.type, former: role.former || undefined } : undefined
+      }
     }
-    return typeByLabel.get('friend')
+    const friend = typeByLabel.get('friend')
+    return friend ? { type: friend } : undefined
   }
-  const addEdge = (from: Person, to: Person, type: RelationshipType | undefined) => {
-    if (!type || from.id === to.id) return
+  const addEdge = (from: Person, to: Person, role: Role | RelationshipType | undefined) => {
+    if (!role || from.id === to.id) return
+    const type = 'kind' in role ? role : role.type
+    const former = 'kind' in role ? undefined : role.former
     const key = pairKey(from.id, to.id)
     if (linked.has(key)) return
     linked.add(key)
@@ -220,6 +228,7 @@ export function buildStressRecords(
       toId: to.id,
       typeId: type.id,
       directed: type.directed,
+      former,
       note: chance(0.15) ? `since ${pick(MET)}` : undefined,
       origin: 'explicit',
       createdAt: ago(700),

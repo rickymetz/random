@@ -10,6 +10,7 @@
  */
 
 import { selectSelf } from './graphQueries'
+import { parseRoleLabel } from './relationships'
 import { mentionToken } from './mentions'
 import type { Person } from './models'
 import {
@@ -73,7 +74,7 @@ const EDGES: [string, string, string][] = [
   // link comes from the @mention note below, so a dashed derived edge
   // actually shows on the graph (an explicit edge would suppress it).
   ['Elena Sofia', 'friend', 'Theo Martins'],
-  ['Rosa Delgado', 'ex', 'Marcus Webb'],
+  ['Rosa Delgado', 'former partner', 'Marcus Webb'],
   ['Ivy Chen', 'friend', 'Elena Sofia'],
   ['Bruno Costa', 'friend', 'Sam Kim'],
   ['Grace Liu', 'sibling', 'Priya Raman'],
@@ -174,9 +175,7 @@ export async function loadSampleData(): Promise<SampleDataResult> {
   // Re-read after the inserts so lookups below see the new people.
   const state = useVaultStore.getState()
   const self = selectSelf(state.records)
-  const typeByLabel = new Map(
-    selectRelationshipTypes(state.records).map((t) => [t.label, t]),
-  )
+  const allTypes = selectRelationshipTypes(state.records)
   const resolve = (name: string): string | undefined =>
     name === 'me' ? self?.id : idOf.get(name)
 
@@ -191,7 +190,8 @@ export async function loadSampleData(): Promise<SampleDataResult> {
   for (const [fromName, typeLabel, toName] of EDGES) {
     const fromId = resolve(fromName)
     const toId = resolve(toName)
-    const type = typeByLabel.get(typeLabel)
+    const role = parseRoleLabel(typeLabel, allTypes)
+    const type = role.type
     if (!type) continue
     if (!fromId || !toId) {
       // Only 'me' can be unresolvable; surface the skip instead of
@@ -201,7 +201,9 @@ export async function loadSampleData(): Promise<SampleDataResult> {
     }
     const key = [type.id, ...[fromId, toId].sort()].join('|')
     if (existingEdges.has(key)) continue
-    await useVaultStore.getState().addRelationship(fromId, toId, type.id)
+    await useVaultStore
+      .getState()
+      .addRelationship(fromId, toId, type.id, undefined, { former: role.former || undefined })
     existingEdges.add(key)
     edgesAdded += 1
   }

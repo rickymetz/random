@@ -16,6 +16,7 @@ import {
   type KdfParams,
 } from './crypto'
 import type { DomainRecord } from './models'
+import { currentDisguise } from './disguise'
 
 export const EXPORT_FORMAT = 'dossier-export'
 // v1: records only. v2: adds photo blobs.
@@ -98,7 +99,11 @@ export async function importBundle(
   } catch {
     throw new Error('Not a backup file.')
   }
-  if (header.format !== EXPORT_FORMAT || typeof header.data !== 'string') {
+  if (
+    header.format !== EXPORT_FORMAT ||
+    typeof header.data !== 'string' ||
+    typeof header.version !== 'number'
+  ) {
     throw new Error('Not a backup file.')
   }
   if (header.version > EXPORT_VERSION) {
@@ -147,9 +152,10 @@ export async function importBundle(
   }
 }
 
-/** Nondescript filename (§6.5): no product name, no hint at contents. */
+/** Nondescript filename (§6.5): no product name, no hint at contents;
+ * the extension is the disguise's own name, whichever was chosen. */
 export function exportFileName(): string {
   const d = new Date()
   const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
-  return `backup-${stamp}.ledger`
+  return `backup-${stamp}.${currentDisguise().id}`
 }

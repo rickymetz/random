@@ -4,15 +4,18 @@ import Avatar from '../components/Avatar'
 import BatchAddPanel from '../components/BatchAddPanel'
 import PersonPicker from '../components/PersonPicker'
 import ChipInput from '../components/ChipInput'
+import DangerConfirm from '../components/DangerConfirm'
 import LooksLikePeople from '../components/LooksLikePeople'
 import MentionTextarea from '../components/MentionTextarea'
 import { mutualConnections, selectSelf, shortestPath } from '../lib/graphQueries'
+import { roleDates, roleLabel } from '../lib/relationships'
 import { GALLERY_MAX_DIM, downscaleImage } from '../lib/image'
 import { getPhotoUrl, peekPhotoUrl } from '../lib/photoCache'
 import type { Photo } from '../lib/models'
 import { formatPartialDate, parsePartialDate, timeAgo } from '../lib/dates'
 import { plainText, retokenize, segmentBody } from '../lib/mentions'
-import { CUSTOM_TYPE_COLORS, type Person, type Relationship } from '../lib/models'
+import { detectNames } from '../lib/nameDetect'
+import { TYPE_FAMILIES, type Person, type Relationship, type TypeFamily } from '../lib/models'
 import {
   selectCircles,
   selectCirclesOf,
@@ -76,9 +79,12 @@ export default function PersonPage() {
           <h1>
             {person.displayName}
             {person.isSelf && (
-              <span className="you-badge" title="This is you">
-                you
-              </span>
+              <>
+                <span className="you-badge" title="This is you" aria-hidden="true">
+                  you
+                </span>
+                <span className="sr-only"> (this is you)</span>
+              </>
             )}
           </h1>
           {meta && <p className="person-meta">{meta}</p>}
@@ -91,19 +97,27 @@ export default function PersonPage() {
       )}
       {/* Lookup order (§4.1): what to remember and what you last wrote
           come before the link-building sections. */}
-      <Facts person={person} editing={editing} setEditing={setEditing} />
-      <FollowUpSection personId={person.id} />
-      <NotesSection personId={person.id} />
-      <MentionedInSection personId={person.id} />
-      <RelationshipSection person={person} />
-      <ConnectionSection person={person} />
-      <PhotoSection personId={person.id} />
-      <footer className="person-footer" />
-      {/* Hidden, not unmounted, while the facts form is open: unmounting
-          would flush a half-typed draft into a permanent note with no
-          feedback; hiding just cedes the bottom edge to Save/Cancel and
-          the draft is still there afterwards. */}
+      {/* The note box comes first in the document — one Tab from the app
+          bar on desktop, the first thing a screen reader meets after the
+          name — and is painted last (CSS order): a sticky bar at the
+          bottom. Hidden, not unmounted, while the facts form is open:
+          unmounting would stash a half-typed draft; hiding just cedes the
+          bottom edge to Save/Cancel and the draft is still there after. */}
       <CaptureBar person={person} hidden={editing} />
+      {/* Two columns on a wide screen (≥64rem): what you remember and
+          write on the left, who they know on the right. On a phone the
+          columns are `display: contents`, so this is one flow. */}
+      <div className="person-col main">
+        <Facts person={person} editing={editing} setEditing={setEditing} />
+        <FollowUpSection personId={person.id} />
+        <NotesSection personId={person.id} />
+        <MentionedInSection personId={person.id} />
+      </div>
+      <div className="person-col side">
+        <RelationshipSection person={person} />
+        <ConnectionSection person={person} />
+        <PhotoSection personId={person.id} />
+      </div>
     </article>
   )
 }
@@ -118,6 +132,7 @@ function Facts({
   setEditing: (v: boolean) => void
 }) {
   const records = useVaultStore((s) => s.records)
+  const setHomeQuery = useVaultStore((s) => s.setHomeQuery)
   const circles = useMemo(() => selectCirclesOf(records, person.id), [records, person.id])
   if (editing)
     return (
@@ -132,14 +147,16 @@ function Facts({
     )
 
   // Tags, likes, and dislikes are facets: each is a link into the home
-  // search so "everyone who likes karaoke" is one tap away.
+  // search so "everyone who likes karaoke" is one tap away. The query
+  // rides in the store, not the URL: a tag is data, and a URL lands in
+  // the browser's history and address-bar suggestions (§6.1).
   const facet = (values: string[]) =>
     values.length === 0
       ? undefined
       : values.map((v, i) => (
           <span key={v}>
             {i > 0 && ', '}
-            <Link to={`/?q=${encodeURIComponent(v)}`} className="facet">
+            <Link to="/" className="facet" onClick={() => setHomeQuery(v)}>
               {v}
             </Link>
           </span>
@@ -171,12 +188,14 @@ function Facts({
     ['Tags', facet(person.tags)],
   ]
   const filled = rows.filter(([, v]) => v)
+  // Nothing to copy from an empty dossier: the button waits for content.
+  const hasNotes = selectNotes(records, person.id).length > 0
   return (
     <section>
       <div className="section-head">
         <h2>Details</h2>
         <span className="row">
-          <CopyAsTextButton person={person} />
+          {(filled.length > 0 || hasNotes) && <CopyAsTextButton person={person} />}
           <button id="edit-details" className="quiet" onClick={() => setEditing(true)}>
             Edit
           </button>
@@ -210,7 +229,7 @@ function Facts({
  */
 function CopyAsTextButton({ person }: { person: Person }) {
   const records = useVaultStore((s) => s.records)
-  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const [state, setState] = useState<'idle' | 'copied' | 'copied-warn' | 'failed'>('idle')
   const copy = async () => {
     const lines: string[] = [person.displayName]
     if (person.nicknames.length) lines.push(`Nicknames: ${csv(person.nicknames)}`)
@@ -239,10 +258,18 @@ function CopyAsTextButton({ person }: { person: Person }) {
       for (const e of edges) {
         const type = types.get(e.typeId)
         const other = nameOf(e.fromId === person.id ? e.toId : e.fromId)
+        const when = roleDates(e)
+        const suffix = when ? ` (${when})` : ''
         if (e.origin === 'mention') lines.push(`- ${other} (mentioned in a note)`)
         else if (type?.directed)
-          lines.push(e.fromId === person.id ? `- ${person.displayName} is ${type.label} ${other}` : `- ${other} is ${type.label} ${person.displayName}`)
-        else lines.push(`- ${other}: ${type?.label ?? 'linked'}`)
+          lines.push(
+            (e.fromId === person.id
+              ? `- ${person.displayName} is ${type.label} ${other}`
+              : `- ${other} is ${type.label} ${person.displayName}`) +
+              (e.former ? ' (former)' : '') +
+              suffix,
+          )
+        else lines.push(`- ${other}: ${roleLabel(type?.label ?? 'linked', e)}${suffix}`)
       }
     }
     const followUps = selectFollowUps(records, person.id).filter((f) => !f.done)
@@ -266,16 +293,40 @@ function CopyAsTextButton({ person }: { person: Person }) {
     }
     try {
       await navigator.clipboard.writeText(lines.join('\n'))
-      setState('copied')
+      // §6.7: say once that a clipboard can outlive the tap — history
+      // managers and cross-device clipboard sync keep what was copied.
+      let warned = true
+      try {
+        warned = localStorage.getItem('clipboard-warned') === '1'
+        localStorage.setItem('clipboard-warned', '1')
+      } catch {
+        // No storage: warn this time, then again next time.
+      }
+      setState(warned ? 'copied' : 'copied-warn')
+      setTimeout(() => setState('idle'), warned ? 2000 : 5000)
+      return
     } catch {
       setState('failed')
     }
     setTimeout(() => setState('idle'), 2000)
   }
+  // The button keeps its name; the outcome is a status beside it (a
+  // control whose name changes under the cursor is not announced).
   return (
-    <button className="quiet" onClick={() => void copy()} aria-live="polite">
-      {state === 'copied' ? 'Copied' : state === 'failed' ? 'Copy failed' : 'Copy as text'}
-    </button>
+    <>
+      <button className="quiet" onClick={() => void copy()}>
+        Copy as text
+      </button>
+      <span className="hint saved copy-status" role="status">
+        {state === 'copied'
+          ? 'Copied'
+          : state === 'copied-warn'
+            ? 'Copied — clipboards can sync and keep history'
+            : state === 'failed'
+              ? 'Copy failed'
+              : ''}
+      </span>
+    </>
   )
 }
 
@@ -441,8 +492,12 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     }
   }
 
+  const [askDiscard, setAskDiscard] = useState(false)
   const cancel = () => {
-    if (dirty && !confirm('Discard your edits?')) return
+    if (dirty) {
+      setAskDiscard(true)
+      return
+    }
     done()
   }
   // The Edit button vanished under us: say where we are.
@@ -489,13 +544,14 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         <input type="checkbox" checked={isSelf} onChange={(e) => setIsSelf(e.target.checked)} />
         <span>
           This is me
+          <span className="hint desc">Tick it on your own card so “How you connect” knows where you are.</span>
         </span>
       </label>
       </fieldset>
       <fieldset className="field-group">
         <legend>Circles</legend>
         <p className="hint">
-          Groups they belong to, shown as tinted areas on the graph.
+          Groups they belong to — a book club, a team, a family. They show on the graph.
         </p>
         <div className="field-grid">
           {chips('circles', 'Circles', vocab.circles, {
@@ -539,27 +595,40 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         </div>
       </fieldset>
       {/* Deleting lives in edit mode, not next to the everyday note box. */}
-      <button
-        type="button"
-        className="danger"
-        onClick={async () => {
-          const warning = person.isSelf
+      <DangerConfirm
+        className="delete-person"
+        trigger="Delete this person"
+        label="Delete"
+        question={
+          person.isSelf
             ? `Delete ${person.displayName}? This is your “me” card — “how you connect” stops working until you mark someone else as you.`
             : `Delete ${person.displayName} and everything about them? This cannot be undone.`
-          if (!confirm(warning)) return
-          await useVaultStore.getState().removePerson(person.id)
-          navigate('/')
+        }
+        onConfirm={() => {
+          void useVaultStore.getState().removePerson(person.id).then(() => navigate('/'))
         }}
-      >
-        Delete this person
-      </button>
+      />
       <div className="form-actions">
-        <button type="submit" className="primary" disabled={busy}>
-          {busy ? '…' : 'Save'}
-        </button>
-        <button type="button" className="subtle" onClick={cancel}>
-          Cancel
-        </button>
+        {askDiscard ? (
+          <span className="confirm-row" role="group" aria-label="Discard your changes?">
+            <span className="hint">Discard your changes?</span>
+            <button type="button" className="danger" onClick={done} autoFocus>
+              Discard
+            </button>
+            <button type="button" className="subtle" onClick={() => setAskDiscard(false)}>
+              Keep editing
+            </button>
+          </span>
+        ) : (
+          <>
+            <button type="submit" className="primary" disabled={busy}>
+              {busy ? '…' : 'Save'}
+            </button>
+            <button type="button" className="subtle" onClick={cancel}>
+              Cancel
+            </button>
+          </>
+        )}
       </div>
     </form>
   )
@@ -588,7 +657,7 @@ function ConnectionSection({ person }: { person: Person }) {
 
   const selfId = self?.id ?? ''
   const otherId = compareId && records.has(compareId) ? compareId : selfId
-  const path = useMemoPath(records, selfId, person.id)
+  const { path, viaFormer } = useMemoPath(records, selfId, person.id)
   const mutuals = useMemoMutuals(records, otherId, person.id)
   const compareExclude = useMemo(
     () => [person.id, ...people.filter((p) => p.isSelf).map((p) => p.id)],
@@ -625,7 +694,7 @@ function ConnectionSection({ person }: { person: Person }) {
     const step = path![stepIndex]
     const prev = path![stepIndex - 1]
     const type = typeById.get(step.via!.typeId)
-    const label = type?.label ?? 'linked'
+    const label = roleLabel(type?.label ?? 'linked', step.via!)
     if (!type?.directed && step.via!.origin !== 'mention') return ` —${label}— `
     const forward = step.via!.fromId === prev.person.id
     return forward ? ` —${label}→ ` : ` ←${label}— `
@@ -654,8 +723,9 @@ function ConnectionSection({ person }: { person: Person }) {
             </span>
           ))}
           <Link className="path-graph-link" to={`/graph?path=${person.id}`}>
-            See on graph →
+            See on graph ›
           </Link>
+          {viaFormer && <span className="hint via-former">Through a former tie.</span>}
         </p>
       ) : (
         <p className="hint">No known path connects you yet.</p>
@@ -663,14 +733,14 @@ function ConnectionSection({ person }: { person: Person }) {
       <div className="row wrap">
         <div className="inline-check compare-with">
           <span className="field-label" aria-hidden="true">
-            Mutual connections with
+            People you both know — compare with
           </span>
           <PersonPicker
             people={people}
             excludeIds={compareExclude}
             value={compareId}
             onChange={setCompareId}
-            label="Compare mutual connections with"
+            label="Compare with"
             placeholder="Type a name…"
             emptyLabel="You"
           />
@@ -686,8 +756,8 @@ function ConnectionSection({ person }: { person: Person }) {
             <li key={m.person.id}>
               <Link to={`/person/${m.person.id}`}>{m.person.displayName}</Link>
               <span className="hint">
-                {relOf(typeById.get(m.edgeToB.typeId)?.label, person.displayName)} ·{' '}
-                {relOf(typeById.get(m.edgeToA.typeId)?.label, otherName)}
+                {relOf(roleLabel(typeById.get(m.edgeToB.typeId)?.label ?? 'linked', m.edgeToB), person.displayName)} ·{' '}
+                {relOf(roleLabel(typeById.get(m.edgeToA.typeId)?.label ?? 'linked', m.edgeToA), otherName)}
               </span>
             </li>
           ))}
@@ -697,15 +767,160 @@ function ConnectionSection({ person }: { person: Person }) {
   )
 }
 
+/** One role on a link: change its type, mark it former, date it, or
+ * remove it. Dates take what the birthday field takes ("2019",
+ * "Jun 2019", "2019-06-21"); an end date makes the role former. */
+function RoleEditor({
+  edge,
+  other,
+  text,
+  types,
+  onDone,
+}: {
+  edge: Relationship
+  other: Person
+  text: string
+  types: { id: string; label: string }[]
+  onDone: () => void
+}) {
+  const updateRelationship = useVaultStore((s) => s.updateRelationship)
+  const removeRelationship = useVaultStore((s) => s.removeRelationship)
+  const [typeId, setTypeId] = useState(edge.typeId)
+  const [since, setSince] = useState(edge.startDate ? formatPartialDate(edge.startDate) : '')
+  const [until, setUntil] = useState(edge.endDate ? formatPartialDate(edge.endDate) : '')
+  const [dateError, setDateError] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    rootRef.current?.querySelector<HTMLElement>('select')?.focus()
+  }, [])
+  const commitDates = () => {
+    const s = since.trim() ? parsePartialDate(since) : null
+    const u = until.trim() ? parsePartialDate(until) : null
+    if ((since.trim() && !s) || (until.trim() && !u)) {
+      setDateError('Try a year, "Jun 2019", or 2019-06-21.')
+      return
+    }
+    setDateError('')
+    void updateRelationship(edge.id, {
+      startDate: s,
+      endDate: u,
+      // An end date is the past tense; clearing it says nothing either way.
+      former: u ? true : undefined,
+    })
+  }
+  return (
+    <div
+      ref={rootRef}
+      className="role-editor"
+      role="group"
+      aria-label={`${text} with ${other.displayName}`}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation()
+          onDone()
+        }
+      }}
+    >
+      <label>
+        Role
+        <select value={typeId} onChange={(e) => setTypeId(e.target.value)} aria-label="Role">
+          {types.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="inline-check">
+        <input
+          type="checkbox"
+          checked={Boolean(edge.former)}
+          onChange={(e) => void updateRelationship(edge.id, { former: e.target.checked })}
+        />
+        Former
+      </label>
+      <label>
+        Since
+        <input
+          value={since}
+          onChange={(e) => setSince(e.target.value)}
+          onBlur={commitDates}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commitDates()
+            }
+          }}
+          placeholder="2019"
+          aria-label="Since"
+          aria-invalid={dateError ? true : undefined}
+        />
+      </label>
+      <label>
+        Until
+        <input
+          value={until}
+          onChange={(e) => setUntil(e.target.value)}
+          onBlur={commitDates}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commitDates()
+            }
+          }}
+          placeholder="2021"
+          aria-label="Until"
+          aria-invalid={dateError ? true : undefined}
+        />
+      </label>
+      <span className="hint status-slot span-2" role="status">
+        {dateError}
+      </span>
+      <div className="row wrap span-2">
+        {typeId !== edge.typeId && (
+          <button
+            type="button"
+            onClick={() => {
+              void updateRelationship(edge.id, { typeId })
+              onDone()
+              focusById('relationships-heading')
+            }}
+          >
+            Change role
+          </button>
+        )}
+        <button type="button" className="quiet" onClick={onDone}>
+          Done
+        </button>
+        <DangerConfirm
+          className="role-remove"
+          label="Remove"
+          question={`Remove ${text} with ${other.displayName}?`}
+          onConfirm={() => {
+            void removeRelationship(edge.id)
+            onDone()
+            focusById('relationships-heading')
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
+/** "How do I know X" walks current ties first; a former tie is the
+ * answer only when nothing current connects you. */
 function useMemoPath(
   records: ReturnType<typeof useVaultStore.getState>['records'],
   fromId: string,
   toId: string,
 ) {
-  return useMemo(
-    () => (fromId ? shortestPath(records, fromId, toId) : null),
-    [records, fromId, toId],
-  )
+  return useMemo(() => {
+    if (!fromId) return { path: null, viaFormer: false }
+    const current = shortestPath(records, fromId, toId)
+    if (current) return { path: current, viaFormer: false }
+    const any = shortestPath(records, fromId, toId, { includeFormer: true })
+    return { path: any, viaFormer: Boolean(any) }
+  }, [records, fromId, toId])
 }
 
 function useMemoMutuals(
@@ -730,7 +945,9 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
   const addPerson = useVaultStore((s) => s.addPerson)
   const registerDraft = useVaultStore((s) => s.registerDraft)
   const unregisterDraft = useVaultStore((s) => s.unregisterDraft)
-  const [draft, setDraft] = useState('')
+  const stashDraft = useVaultStore((s) => s.stashDraft)
+  // A draft left by following a link comes back with the page.
+  const [draft, setDraft] = useState(() => useVaultStore.getState().drafts.get(person.id) ?? '')
   const [busy, setBusy] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
   // The note just saved, while its "Looks like people" offer is showing.
@@ -746,18 +963,19 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
   draftRef.current = draft
 
   // Timer-driven locks flush this draft into an encrypted note instead of
-  // eating it, and so does navigating away (tapping an @mention link
-  // remounts the page — the fact you just typed must not vanish).
+  // eating it. Navigating away (tapping an @mention link remounts the
+  // page) stashes it instead: a half sentence must not fossilise as a
+  // dated note on every hop — it is waiting when you come back.
   useEffect(() => {
+    stashDraft(person.id, '')
     registerDraft(person.id, () => draftRef.current)
     return () => {
       const leftover = draftRef.current.trim()
       // Guard against resurrection: if this unmount is the person being
-      // DELETED, flushing would persist an orphaned note (invisible in
-      // every UI, but present in exports) for a dossier that no longer
+      // DELETED, a stash would resurface for a dossier that no longer
       // exists.
       if (leftover && useVaultStore.getState().records.has(person.id)) {
-        void saveNote(person.id, leftover)
+        stashDraft(person.id, draftRef.current)
       }
       unregisterDraft(person.id)
     }
@@ -772,7 +990,8 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
     [records, person.id, person.jobTitle],
   )
   const save = async () => {
-    const body = draft.trim()
+    // The box shows plain @Names; the note keeps links.
+    const body = retokenize(draft.trim(), selectPeople(records))
     if (!body || busy) return
     setBusy(true)
     // Zero the ref synchronously so an unmount during the await can't
@@ -781,23 +1000,28 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
     setDraft('')
     try {
       const note = await saveNote(person.id, body)
-      // Only offer names when the setting is on; an offer still showing
-      // for the previous note stays until it is dealt with.
-      const offer = suggestNames && note ? note.id : null
+      // Only offer names when the setting is on and the note has some;
+      // an offer still showing for the previous note stays until it is
+      // dealt with.
+      const found = suggestNames && note ? detectNames(body, selectPeople(records), person).length > 0 : false
+      const offer = found && note ? note.id : null
       // A card with names still waiting stays; one showing only its Undo
       // status gives way to the new note's names.
       const chipsPending = Boolean(document.querySelector('.capture-bar .looks-like-chips'))
       setOfferNoteId((prev) => (prev && offering.current && chipsPending ? prev : offer))
-      setSrSaved(offer ? 'Saved. Names found — use the buttons above the note box to add or link them.' : 'Saved')
+      setSrSaved(
+        offer
+          ? 'Saved. Names found — the “Looks like people” group before the note box has buttons to add or link them.'
+          : 'Saved',
+      )
       window.setTimeout(() => setSrSaved(''), 4000)
       // Keyboard Save unmounts its own row: keep the caret in the box.
       requestAnimationFrame(() => {
         if (document.activeElement === document.body) document.querySelector<HTMLElement>('.capture-bar textarea')?.focus()
       })
-      if (!offer || !offering.current) {
-        setSavedFlash(true)
-        setTimeout(() => setSavedFlash(false), 2000)
-      }
+      // "Saved" shows every time: in the Save row, or on the names card.
+      setSavedFlash(true)
+      setTimeout(() => setSavedFlash(false), 2000)
     } catch {
       setDraft(body) // restore on failure
     } finally {
@@ -810,7 +1034,14 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
         {srSaved}
       </span>
       {offerNoteId && (
-        <LooksLikePeople key={offerNoteId} noteId={offerNoteId} person={person} onDone={clearOffer} refocus={focusBox} />
+        <LooksLikePeople
+          key={offerNoteId}
+          noteId={offerNoteId}
+          person={person}
+          onDone={clearOffer}
+          refocus={focusBox}
+          justSaved={savedFlash}
+        />
       )}
       <MentionTextarea
         people={others}
@@ -818,7 +1049,10 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
         onChange={setDraft}
         onSubmit={() => void save()}
         onCreatePerson={addPerson}
-        placeholder="Jot something… @ links a person"
+        // The @ hint waits until there's a first note: to a newcomer it
+        // means nothing yet.
+        placeholder={isFresh ? `Jot a note about ${person.displayName.split(' ')[0]}…` : 'Jot something… @ links a person'}
+        plain
         autoFocus={isFresh}
         // One row when idle: the bar sits on the tab bar and shouldn't
         // spend a fifth of the screen before you've typed. Grows on focus
@@ -863,6 +1097,7 @@ function FollowUpSection({ personId }: { personId: string }) {
   const [due, setDue] = useState('')
   const [dueError, setDueError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [srNote, setSrNote] = useState('')
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -876,6 +1111,8 @@ function FollowUpSection({ personId }: { personId: string }) {
     setBusy(true)
     try {
       await addFollowUp(personId, text.trim(), dueDate)
+      setSrNote(`Added follow-up: ${text.trim()}`)
+      window.setTimeout(() => setSrNote(''), 4000)
       setText('')
       setDue('')
     } finally {
@@ -889,9 +1126,9 @@ function FollowUpSection({ personId }: { personId: string }) {
       <h2 id="followups-heading" tabIndex={-1}>
         Follow-ups
       </h2>
-      {items.length === 0 && (
-        <p className="empty-inline">Nothing yet.</p>
-      )}
+      <span className="sr-only" role="status">
+        {srNote}
+      </span>
       <ul className="follow-ups">
         {items.map((f) => (
           <li key={f.id} className={f.done ? 'done' : ''}>
@@ -951,7 +1188,7 @@ function FollowUpSection({ personId }: { personId: string }) {
           />
         </label>
         <button type="submit" disabled={!text.trim() || busy}>
-          Add
+          Add follow-up
         </button>
         {dueError && (
           <p className="field-error span-2" role="alert" id="due-error">
@@ -966,7 +1203,7 @@ function FollowUpSection({ personId }: { personId: string }) {
 function RelationshipSection({ person }: { person: Person }) {
   const records = useVaultStore((s) => s.records)
   const addRelationship = useVaultStore((s) => s.addRelationship)
-  const removeRelationship = useVaultStore((s) => s.removeRelationship)
+  const updateRelationship = useVaultStore((s) => s.updateRelationship)
   const addRelationshipType = useVaultStore((s) => s.addRelationshipType)
 
   const people = useMemo(() => selectPeople(records), [records])
@@ -993,6 +1230,7 @@ function RelationshipSection({ person }: { person: Person }) {
     [records],
   )
 
+  const [srLinked, setSrLinked] = useState('')
   const [otherId, setOtherId] = useState('')
   const [typeId, setTypeId] = useState('')
   const [focusToken, setFocusToken] = useState(0)
@@ -1003,7 +1241,7 @@ function RelationshipSection({ person }: { person: Person }) {
     requestAnimationFrame(() => batchToggleRef.current?.focus())
   }
   const [newType, setNewType] = useState('')
-  const [newTypeColor, setNewTypeColor] = useState(CUSTOM_TYPE_COLORS[0])
+  const [newTypeFamily, setNewTypeFamily] = useState<TypeFamily>('other')
   const [newTypeDirected, setNewTypeDirected] = useState(false)
   // For directed types: does the arrow point away from this person
   // ("I am the parent") or toward them ("they are my parent")?
@@ -1014,86 +1252,150 @@ function RelationshipSection({ person }: { person: Person }) {
     typeId === 'new' ? newTypeDirected : (typeById.get(typeId)?.directed ?? false)
 
   const [retype, setRetype] = useState<Record<string, string>>({})
+  const [editing, setEditing] = useState<string | null>(null)
   const first = person.displayName.split(' ')[0]
-  const describe = (edge: Relationship) => {
+  // One row per person, their roles side by side (§4.2: roles on a link).
+  const groups = useMemo(() => {
+    const byOther = new Map<string, Relationship[]>()
+    for (const e of edges) {
+      const otherId = e.fromId === person.id ? e.toId : e.fromId
+      const list = byOther.get(otherId) ?? []
+      list.push(e)
+      byOther.set(otherId, list)
+    }
+    return [...byOther.entries()]
+      .map(([otherId, list]) => ({ other: personById.get(otherId), list }))
+      .filter((g): g is { other: Person; list: Relationship[] } => Boolean(g.other))
+      .sort((a, b) => a.other.displayName.localeCompare(b.other.displayName))
+  }, [edges, person.id, personById])
+  // Read as a sentence, never as an arrow: "Sam is boss of Marcus" /
+  // "June is parent of Marcus" / "former partner".
+  const chipText = (edge: Relationship, other: Person) => {
     const type = typeById.get(edge.typeId)
     const outgoing = edge.fromId === person.id
-    const other = personById.get(outgoing ? edge.toId : edge.fromId)
-    if (!other) return null
-    // Read as a sentence, never as an arrow: "Sam is boss of Marcus" /
-    // "June is parent of Marcus" / "mentioned Ivy in a note".
-    let label: string
-    if (edge.origin === 'mention') {
-      label = outgoing ? 'mentioned in a note' : `mentioned ${first} in a note`
-    } else if (type?.directed) {
-      label = outgoing
-        ? `${first} is ${type.label} ${other.displayName.split(' ')[0]}`
-        : `${other.displayName.split(' ')[0]} is ${type.label} ${first}`
-    } else {
-      label = type?.label ?? 'linked'
+    if (type?.directed) {
+      // The row already names them: "parent of Marcus" reads as the row's
+      // person being Marcus's parent; "boss of Priya" as Marcus being hers.
+      const sentence = outgoing
+        ? `${type.label} ${other.displayName.split(' ')[0]}`
+        : `${type.label} ${first}`
+      return edge.former ? `${sentence} (former)` : sentence
     }
+    return roleLabel(type?.label ?? 'linked', edge)
+  }
+  const addRoleFor = (id: string) => {
+    setOtherId(id)
+    setTypeId('')
+    requestAnimationFrame(() =>
+      document
+        .querySelector<HTMLElement>('form.add-form select[aria-label="Relationship type"]')
+        ?.focus(),
+    )
+  }
+  const renderGroup = ({ other, list }: { other: Person; list: Relationship[] }) => {
+    const explicit = list.filter((e) => e.origin !== 'mention')
+    const mention = list.find((e) => e.origin === 'mention')
+    const open = editing ? list.find((e) => e.id === editing) : undefined
     return (
-      <li key={edge.id} className={edge.origin === 'mention' ? 'mention-edge' : ''}>
-        <Link to={`/person/${other.id}`}>{other.displayName}</Link>
-        <span className="edge-type" style={{ '--edge-color': type?.color } as React.CSSProperties}>
-          {label}
-        </span>
-        {edge.origin === 'mention' ? (
-          // A derived edge can't be deleted (the note still mentions them);
-          // what it can do is become a real one (§4.2).
-          <span className="edge-retype-group">
-            <select
-              className="edge-retype"
-              aria-label={`Set relationship type with ${other.displayName}`}
-              value={retype[edge.id] ?? ''}
-              // Staged, then applied with the button: arrowing through a
-              // closed select fires change per step on Windows.
-              onChange={(e) => setRetype((m) => ({ ...m, [edge.id]: e.target.value }))}
-            >
-              <option value="">Set type…</option>
-              {types
-                .filter((t) => t.label !== 'mentioned')
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
-            </select>
-            {retype[edge.id] && (
-              <button
-                type="button"
-                className="subtle apply"
-                onClick={() => {
-                  const id = retype[edge.id]
-                  void (async () => {
-                    await removeRelationship(edge.id)
-                    await addRelationship(edge.fromId, edge.toId, id)
-                    requestAnimationFrame(() =>
-                      document
-                        .querySelector<HTMLElement>(`button[aria-label="Remove relationship with ${other.displayName}"]`)
-                        ?.focus(),
-                    )
-                  })()
-                }}
-                aria-label={`Apply type for ${other.displayName}`}
+      <li key={other.id} className={explicit.length === 0 ? 'mention-edge' : ''}>
+        <div className="edge-row">
+          <Link to={`/person/${other.id}`}>{other.displayName}</Link>
+          <span className="roles">
+            {explicit.map((edge) => {
+              const type = typeById.get(edge.typeId)
+              const text = chipText(edge, other)
+              const when = roleDates(edge)
+              return (
+                <button
+                  key={edge.id}
+                  id={`role-chip-${edge.id}`}
+                  type="button"
+                  className={`role-chip ${edge.former ? 'former' : ''} ${editing === edge.id ? 'on' : ''}`}
+                  style={{ '--edge-color': type?.color } as React.CSSProperties}
+                  aria-expanded={editing === edge.id}
+                  aria-label={`${text}${when ? `, ${when}` : ''} — edit`}
+                  title={when || undefined}
+                  onClick={() => setEditing((cur) => (cur === edge.id ? null : edge.id))}
+                >
+                  {text}
+                </button>
+              )
+            })}
+            {mention && (
+              <span
+                className="edge-type"
+                style={{ '--edge-color': typeById.get(mention.typeId)?.color } as React.CSSProperties}
               >
-                Apply
-              </button>
+                {mention.fromId === person.id ? 'mentioned in a note' : `mentioned ${first} in a note`}
+              </span>
+            )}
+            {mention && explicit.length === 0 && (
+            // A derived edge can't be deleted (the note still mentions them);
+            // what it can do is become a real one (§4.2).
+            <span className="edge-retype-group">
+              <select
+                className="edge-retype"
+                aria-label={`Set relationship type with ${other.displayName}`}
+                value={retype[mention.id] ?? ''}
+                // Staged, then applied with the button: arrowing through a
+                // closed select fires change per step on Windows.
+                onChange={(e) => setRetype((m) => ({ ...m, [mention.id]: e.target.value }))}
+              >
+                <option value="">Relationship…</option>
+                {types
+                  .filter((t) => t.label !== 'mentioned')
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))}
+              </select>
+              {retype[mention.id] && (
+                <button
+                  type="button"
+                  className="subtle apply"
+                  onClick={() => {
+                    const id = retype[mention.id]
+                    void (async () => {
+                      await updateRelationship(mention.id, { typeId: id })
+                      focusById('relationships-heading')
+                    })()
+                  }}
+                  aria-label={`Apply type for ${other.displayName}`}
+                >
+                  Apply
+                </button>
+              )}
+            </span>
             )}
           </span>
-        ) : (
-          <button
-            className="subtle icon"
-            onClick={() => {
-              if (confirm(`Remove the ${type?.label ?? ''} link to ${other.displayName}?`)) {
-                void removeRelationship(edge.id)
-                focusById('relationships-heading')
-              }
+          {/* Third column, always present so the table's rows line up. */}
+          {explicit.length > 0 ? (
+            <button
+              type="button"
+              className="role-add"
+              onClick={() => addRoleFor(other.id)}
+              aria-label={`Add another role for ${other.displayName}`}
+            >
+              + role
+            </button>
+          ) : (
+            <span className="role-slot" aria-hidden="true" />
+          )}
+        </div>
+        {open && open.origin !== 'mention' && (
+          <RoleEditor
+            key={open.id}
+            edge={open}
+            other={other}
+            text={chipText(open, other)}
+            types={types}
+            onDone={() => {
+              setEditing(null)
+              // Back to the chip that opened it, if it is still there.
+              requestAnimationFrame(() => document.getElementById(`role-chip-${open.id}`)?.focus())
             }}
-            aria-label={`Remove relationship with ${other.displayName}`}
-          >
-            ×
-          </button>
+          />
         )}
       </li>
     )
@@ -1107,7 +1409,12 @@ function RelationshipSection({ person }: { person: Person }) {
       let resolvedTypeId = typeId
       if (typeId === 'new') {
         if (!newType.trim()) return
-        const created = await addRelationshipType(newType, newTypeColor, newTypeDirected)
+        const created = await addRelationshipType(
+          newType,
+          TYPE_FAMILIES.find((f) => f.id === newTypeFamily)?.color ?? '',
+          newTypeDirected,
+          newTypeFamily,
+        )
         resolvedTypeId = created.id
       }
       if (!resolvedTypeId) return
@@ -1115,13 +1422,17 @@ function RelationshipSection({ person }: { person: Person }) {
       const [fromId, toId] =
         directed && !outward ? [otherId, person.id] : [person.id, otherId]
       await addRelationship(fromId, toId, resolvedTypeId)
+      setSrLinked(
+        `Linked ${personById.get(otherId)?.displayName ?? 'them'} as ${typeById.get(resolvedTypeId)?.label ?? newType.trim()}`,
+      )
+      window.setTimeout(() => setSrLinked(''), 4000)
       // Keep adding: the type stays selected and the caret returns to the
       // person field (quietly — no list until you type), so "Sam, Priya,
       // Theo — all coworkers" is name, Enter, Add, name, Enter, Add.
       setOtherId('')
       setTypeId(resolvedTypeId)
       setNewType('')
-      setNewTypeColor(CUSTOM_TYPE_COLORS[0])
+      setNewTypeFamily('other')
       setNewTypeDirected(false)
       setOutward(true)
       setFocusToken((n) => n + 1)
@@ -1136,17 +1447,17 @@ function RelationshipSection({ person }: { person: Person }) {
         <h2 id="relationships-heading" tabIndex={-1}>
           Relationships
         </h2>
-        <Link to={`/graph?focus=${person.id}`}>See on graph →</Link>
+        <Link to={`/graph?focus=${person.id}`}>See on graph ›</Link>
       </div>
+      <span className="sr-only" role="status">
+        {srLinked}
+      </span>
       {/* The batch panel sits above the list so freshly linked rows
           appear right under its status line. */}
       {batchOpen && (
         <BatchAddPanel id="batch-add-links" anchor={person} headingLevel={3} onClose={closeBatch} />
       )}
-      {edges.length === 0 && (
-        <p className="empty-inline">No one linked yet.</p>
-      )}
-      <ul className="edges">{edges.map(describe)}</ul>
+      <ul className="edges roles-list">{groups.map(renderGroup)}</ul>
       <form className="add-form" onSubmit={add}>
         {/* A div, not a label: once the chip shows, a label's control would
             become the × button and clicking "Person" would un-pick. */}
@@ -1183,6 +1494,14 @@ function RelationshipSection({ person }: { person: Person }) {
             value={typeId}
             onChange={(e) => setTypeId(e.target.value)}
             aria-label="Relationship type"
+            // Enter on a chosen type links: "name, Enter, type, Enter".
+            onKeyDown={(e) => {
+              const v = e.currentTarget.value
+              if (e.key === 'Enter' && otherId && v && v !== 'new') {
+                e.preventDefault()
+                e.currentTarget.form?.requestSubmit()
+              }
+            }}
           >
             <option value="">How you know them…</option>
             {types.map((t) => (
@@ -1204,19 +1523,22 @@ function RelationshipSection({ person }: { person: Person }) {
                 aria-label="New type name"
               />
             </label>
+            {/* Four hues, not a palette: the line's colour says which of
+                life's corners this is; its dash tells types apart within one. */}
             <div className="row wrap">
-              <span className="hint">Color on the graph</span>
-              <span className="swatches" role="group" aria-label="Type color">
-                {CUSTOM_TYPE_COLORS.map((color) => (
+              <span className="hint">Kind</span>
+              <span className="family-picker" role="group" aria-label="Kind of relationship">
+                {TYPE_FAMILIES.map((f) => (
                   <button
-                    key={color}
+                    key={f.id}
                     type="button"
-                    className={`swatch ${color === newTypeColor ? 'selected' : ''}`}
-                    style={{ background: color }}
-                    aria-label={`Color ${color}`}
-                    aria-pressed={color === newTypeColor}
-                    onClick={() => setNewTypeColor(color)}
-                  />
+                    className={`chip ${f.id === newTypeFamily ? 'on' : ''}`}
+                    style={{ '--chip-color': f.color } as React.CSSProperties}
+                    aria-pressed={f.id === newTypeFamily}
+                    onClick={() => setNewTypeFamily(f.id)}
+                  >
+                    {f.label}
+                  </button>
                 ))}
               </span>
             </div>
@@ -1246,7 +1568,16 @@ function RelationshipSection({ person }: { person: Person }) {
             })()}
           </button>
         )}
+        {/* Link comes first in the document so Tab reaches it before the
+            batch toggle (it stays visually last, CSS order). */}
         <div className="row add-actions">
+          <button
+            className="add-submit"
+            type="submit"
+            disabled={busy || !otherId || !typeId || (typeId === 'new' && !newType.trim())}
+          >
+            Link
+          </button>
           <button
             ref={batchToggleRef}
             type="button"
@@ -1256,13 +1587,6 @@ function RelationshipSection({ person }: { person: Person }) {
             aria-controls={batchOpen ? 'batch-add-links' : undefined}
           >
             Add several…
-          </button>
-          <button
-            className="add-submit"
-            type="submit"
-            disabled={busy || !otherId || !typeId || (typeId === 'new' && !newType.trim())}
-          >
-            Add
           </button>
         </div>
       </form>
@@ -1313,12 +1637,7 @@ function PhotoSection({ personId }: { personId: string }) {
             photo={photo}
             onOpen={(url) => setLightbox(url)}
             onMakeAvatar={() => void setAvatarPhoto(photo.id)}
-            onRemove={() => {
-              const warning = photo.isAvatar
-                ? 'Delete this photo? It is the avatar — the next photo takes over.'
-                : 'Delete this photo?'
-              if (confirm(warning)) void removePhoto(photo.id)
-            }}
+            onRemove={() => void removePhoto(photo.id)}
           />
         ))}
         <li>
@@ -1446,9 +1765,14 @@ function PhotoThumb({
             avatar
           </button>
         )}
-        <button className="subtle icon" onClick={onRemove} aria-label="Delete photo">
-          ×
-        </button>
+        <DangerConfirm
+          trigger="×"
+          triggerClassName="subtle icon"
+          triggerAriaLabel="Delete photo"
+          label="Delete"
+          question={photo.isAvatar ? 'Delete this photo? The next one becomes the avatar.' : 'Delete this photo?'}
+          onConfirm={onRemove}
+        />
       </div>
     </li>
   )
@@ -1456,8 +1780,8 @@ function PhotoThumb({
 
 /** Promotable targets for note triage (§4.1 inbox model). */
 const PROMOTE_TARGETS = [
-  { id: 'like', label: 'Like' },
-  { id: 'dislike', label: 'Dislike' },
+  { id: 'like', label: 'Likes' },
+  { id: 'dislike', label: 'Dislikes' },
   { id: 'tag', label: 'Tag (a label, e.g. yoga, work)' },
   { id: 'jobTitle', label: 'Job title' },
   { id: 'employer', label: 'Employer' },
@@ -1471,11 +1795,16 @@ type PromoteTarget = (typeof PROMOTE_TARGETS)[number]['id']
 
 /** A note body rendered with @mentions as links. */
 function NoteBody({ body }: { body: string }) {
+  // A mention links only when its id is a person here: imported text can
+  // carry the token shape, and a link to nowhere would look like a tie.
+  const records = useVaultStore((s) => s.records)
   return (
     <p>
       {segmentBody(body).map((seg, i) =>
         seg.type === 'text' ? (
           <span key={i}>{seg.text}</span>
+        ) : records.get(seg.personId)?.kind !== 'person' ? (
+          <span key={i}>@{seg.name}</span>
         ) : (
           <Link key={i} to={`/person/${seg.personId}`} className="mention">
             @{seg.name}
@@ -1540,7 +1869,7 @@ function NotesSection({ personId }: { personId: string }) {
                   }}
                   aria-expanded={promotingId === note.id}
                 >
-                  Save as detail…
+                  Add to Details…
                 </button>
                 <button
                   className="subtle icon"
@@ -1553,18 +1882,17 @@ function NotesSection({ personId }: { personId: string }) {
                 >
                   ✎
                 </button>
-                <button
-                  className="subtle icon"
-                  onClick={() => {
-                    if (confirm('Delete this note?')) {
-                      void removeNote(note.id)
-                      focusById('notes-heading')
-                    }
+                <DangerConfirm
+                  trigger="×"
+                  triggerClassName="subtle icon"
+                  triggerAriaLabel="Delete note"
+                  label="Delete"
+                  question="Delete this note?"
+                  onConfirm={() => {
+                    void removeNote(note.id)
+                    focusById('notes-heading')
                   }}
-                  aria-label="Delete note"
-                >
-                  ×
-                </button>
+                />
               </div>
             )}
             {promotingId === note.id && editingId !== note.id && (
@@ -1707,7 +2035,9 @@ function PromotePanel({
   const records = useVaultStore((s) => s.records)
   const updatePerson = useVaultStore((s) => s.updatePerson)
   const removeNote = useVaultStore((s) => s.removeNote)
-  const [target, setTarget] = useState<PromoteTarget>('like')
+  // No default: the first tap on Save must not file the sentence as a
+  // like without a choice having been made.
+  const [target, setTarget] = useState<PromoteTarget | ''>('')
   // Prefill with the first line: a multi-line note is several facts, and
   // the panel promotes one at a time.
   const [text, setText] = useState(
@@ -1732,7 +2062,7 @@ function PromotePanel({
     const person = records.get(personId)
     if (!person || person.kind !== 'person' || busy) return
     const value = text.trim()
-    if (!value) return
+    if (!value || !target) return
     setError(null)
     const next: Person = { ...person }
     switch (target) {
@@ -1782,13 +2112,14 @@ function PromotePanel({
 
   return (
     <form ref={panelRef} className="promote-panel" onSubmit={promote}>
-      <p className="panel-title">Save this note as a detail</p>
+      <p className="panel-title">Add to Details</p>
       <label>
         Which detail?
         <select
           value={target}
-          onChange={(e) => setTarget(e.target.value as PromoteTarget)}
+          onChange={(e) => setTarget(e.target.value as PromoteTarget | '')}
         >
+          <option value="">Choose…</option>
           {PROMOTE_TARGETS.map((t) => (
             <option key={t.id} value={t.id}>
               {t.label}

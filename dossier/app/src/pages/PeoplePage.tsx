@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import BatchAddPanel from '../components/BatchAddPanel'
@@ -16,6 +17,7 @@ import { daysUntilDue, daysUntilNext, formatPartialDate } from '../lib/dates'
 import type { Person } from '../lib/models'
 import { RAIL_LETTERS, letterOf, rowsToReveal, shortName } from '../lib/names'
 import { matchSnippet } from '../lib/search'
+import { QUIET_MONTHS, quietLabel, quietMonths, selectQuiet } from '../lib/quiet'
 import {
   searchPeopleIds,
   selectCircles,
@@ -64,17 +66,13 @@ export default function PeoplePage() {
     requestAnimationFrame(() => batchToggleRef.current?.focus())
   }
   const searchRef = useRef<HTMLInputElement>(null)
-  // Ctrl/Cmd+K focuses search from anywhere on the page. (A bare "/"
-  // would be a single-character shortcut, which speech and switch users
-  // trip over — WCAG 2.1.4.)
+  // Ctrl/Cmd+K reaches the search from any page (App.tsx): here it only
+  // needs a target.
+  // The "New person" control lives in the app bar (a native Contacts
+  // idiom), rendered there through a portal once the bar exists.
+  const [appbarSlot, setAppbarSlot] = useState<HTMLElement | null>(null)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey) || e.altKey) return
-      e.preventDefault()
-      searchRef.current?.focus()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    setAppbarSlot(document.getElementById('appbar-slot'))
   }, [])
 
   // Facet links (a tag or like on a dossier) arrive as ?q=…: adopt the
@@ -88,6 +86,9 @@ export default function PeoplePage() {
     const c = circleId ? records.get(circleId) : undefined
     return c?.kind === 'circle' ? c : undefined
   }, [records, circleId])
+  // ?quiet=1 lists the people you've lost touch with, longest first.
+  const quietView = params.get('quiet') === '1'
+  const quiet = useMemo(() => (quietView ? selectQuiet(records) : []), [records, quietView])
   // A circle link means "show me this circle" — not this circle narrowed
   // by whatever was last typed in the search box.
   useEffect(() => {
@@ -105,7 +106,11 @@ export default function PeoplePage() {
     [records],
   )
   const people = useMemo(() => {
-    const all = circle ? sorted.filter((p) => circle.memberIds.includes(p.id)) : sorted
+    const all = quietView
+      ? quiet.map((q) => q.person)
+      : circle
+        ? sorted.filter((p) => circle.memberIds.includes(p.id))
+        : sorted
     const trimmed = query.trim()
     if (!trimmed) return all
     const byId = new Map(all.map((p) => [p.id, p]))
@@ -119,14 +124,14 @@ export default function PeoplePage() {
       if (!seen.has(p.id) && p.displayName.toLowerCase().includes(q)) ranked.push(p)
     }
     return ranked
-  }, [sorted, query, circle])
+  }, [sorted, query, circle, quietView, quiet])
 
   // Long lists render in pages: the first screenful is instant on a
   // phone with hundreds of people, and scrolling (or the button, for
   // keyboard and screen-reader users) reveals the rest. The window lives
   // in the store, keyed on query/circle, so Back from a dossier lands on
   // the same rows the browser is restoring the scroll position to.
-  const pageKey = `${circle?.id ?? ''}|${query.trim()}`
+  const pageKey = `${circle?.id ?? ''}|${quietView ? 'quiet' : ''}|${query.trim()}`
   const homePage = useVaultStore((s) => s.homePage)
   const setHomePage = useVaultStore((s) => s.setHomePage)
   const limit = homePage.key === pageKey && homePage.limit > 0 ? homePage.limit : PAGE
@@ -279,7 +284,7 @@ export default function PeoplePage() {
       <span className="sr-only" role="status">
         {resultNote}
       </span>
-      <form onSubmit={submit}>
+      <form onSubmit={submit} role="search" aria-label="Search people">
         <input
           ref={searchRef}
           type="search"
@@ -298,6 +303,21 @@ export default function PeoplePage() {
           }
           aria-label="Search names, details, and notes"
         />
+        {query && (
+          <button
+            type="button"
+            className="search-clear"
+            aria-label="Clear search"
+            onClick={() => {
+              setQuery('')
+              searchRef.current?.focus()
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        )}
       </form>
       {circle && (
         <p
@@ -307,14 +327,23 @@ export default function PeoplePage() {
         >
           <span className="circle-chip">{circle.name}</span> — {circle.memberIds.length}{' '}
           {circle.memberIds.length === 1 ? 'person' : 'people'} ·{' '}
-          <Link to={`/graph?circle=${circle.id}`}>See on graph →</Link> ·{' '}
+          <Link to={`/graph?circle=${circle.id}`}>See on graph ›</Link> ·{' '}
           <Link to={`/graph?circle=${circle.id}&edit=1`}>Edit circle</Link>
           <button className="subtle" onClick={() => setParams({}, { replace: true })}>
             Show everyone
           </button>
         </p>
       )}
-      {!trimmed && !circle && !people.some((p) => !p.isSelf) && (
+      {quietView && (
+        <p className="banner quiet-banner" role="status">
+          <strong>Quiet</strong> — {quiet.length} {quiet.length === 1 ? 'person' : 'people'} with no
+          note or follow-up in {QUIET_MONTHS} months.
+          <button className="subtle" onClick={() => setParams({}, { replace: true })}>
+            Show everyone
+          </button>
+        </p>
+      )}
+      {!trimmed && !circle && !quietView && !people.some((p) => !p.isSelf) && (
         <p className="empty">
           Just you so far. Type a name above to add someone.
         </p>
@@ -328,8 +357,9 @@ export default function PeoplePage() {
       <KdfUpgradeNag />
       <PinFailureNotice />
       {showRecent && <Recent people={sorted} withRail={showRail} />}
-      {!trimmed && !circle && <Upcoming />}
-      {!trimmed && !circle && <BackupNag />}
+      {!trimmed && !circle && !quietView && <Upcoming />}
+      {!trimmed && !circle && !quietView && <QuietLine />}
+      {!trimmed && !circle && !quietView && <BackupNag />}
       {circleHits.length > 0 && (
         <ul className="circle-results" aria-label="Circles">
           {circleHits.map((c) => (
@@ -372,7 +402,7 @@ export default function PeoplePage() {
                   <h3>{letter}</h3>
                 </li>
               )}
-              <PersonRow person={p} query={trimmed} />
+              <PersonRow person={p} query={trimmed} quiet={quietView} />
             </Fragment>
           )
         })}
@@ -386,7 +416,17 @@ export default function PeoplePage() {
       </ul>
       {/* With hits, offer creation only for something name-shaped — a
           lowercase fragment like "ma" is a lookup, not a new person. */}
-      {trimmed && !exactCircle && people.length > 0 && (/^\p{Lu}/u.test(trimmed) || /\s/.test(trimmed)) && (
+      {trimmed &&
+        !exactCircle &&
+        people.length > 0 &&
+        (/^\p{Lu}/u.test(trimmed) || /\s/.test(trimmed)) &&
+        // …and not a job, place, tag or like of someone shown: that is a
+        // lookup by facet, not a new person called "Engineer".
+        !people.some((p) =>
+          [p.jobTitle, p.employer, p.location, ...p.tags, ...p.likes, ...p.dislikes].some(
+            (v) => v?.toLowerCase() === trimmed.toLowerCase(),
+          ),
+        ) && (
         <button className="add-person after-list" onClick={create} disabled={busy}>
           + Add “{trimmed}”{circle ? ` to ${circle.name}` : ''}
         </button>
@@ -424,24 +464,31 @@ export default function PeoplePage() {
       )}
       {batchOpen && !circle && <BatchAddPanel id="batch-add-people" onClose={closeBatch} />}
       {importOpen && !circle && <ContactImportPanel id="import-contacts" onClose={closeImport} />}
-      {!trimmed && !batchOpen && !importOpen && (
-        <button
-          className="add-person fab"
-          // Name first: a nameless "New person" dumped at the bottom of a
-          // long page is the confusing path. Focus the box and let the
-          // typed name become the "+ Add" button.
-          onClick={() => {
-            const el = searchRef.current
-            if (!el) return
-            el.placeholder = 'Who did you meet?'
-            el.focus()
-          }}
-          disabled={busy}
-          aria-label="New person"
-        >
-          + <span className="fab-label">New person</span>
-        </button>
-      )}
+      {!trimmed &&
+        !batchOpen &&
+        !importOpen &&
+        appbarSlot &&
+        createPortal(
+          <button
+            className="subtle icon add-person appbar-add"
+            // Name first: a nameless "New person" dumped at the bottom of a
+            // long page is the confusing path. Focus the box and let the
+            // typed name become the "+ Add" button.
+            onClick={() => {
+              const el = searchRef.current
+              if (!el) return
+              el.placeholder = 'Who did you meet?'
+              el.focus()
+              el.scrollIntoView({ block: 'nearest' })
+            }}
+            disabled={busy}
+            aria-label="New person"
+            title="New person"
+          >
+            +
+          </button>,
+          appbarSlot,
+        )}
     </div>
   )
 }
@@ -649,10 +696,20 @@ function Recent({ people, withRail }: { people: Person[]; withRail: boolean }) {
   )
 }
 
-const PersonRow = memo(function PersonRow({ person, query }: { person: Person; query: string }) {
+const PersonRow = memo(function PersonRow({
+  person,
+  query,
+  quiet = false,
+}: {
+  person: Person
+  query: string
+  /** In the quiet view every row says how long it has been. */
+  quiet?: boolean
+}) {
   const records = useVaultStore((s) => s.records)
   const circles = selectCirclesOf(records, person.id)
   const notes = selectNotes(records, person.id)
+  const idle = quiet ? quietMonths(records, person) : null
   const detail = [person.jobTitle, person.employer].filter(Boolean).join(' @ ')
   // Show WHY a result matched when the hit came from note text (§4.4).
   const snippet = useMemo(() => {
@@ -691,8 +748,16 @@ const PersonRow = memo(function PersonRow({ person, query }: { person: Person; q
           <strong>
             {person.displayName}
             {person.isSelf && (
-              <span className="you-badge" title="This is you">
-                you
+              <>
+                <span className="you-badge" title="This is you" aria-hidden="true">
+                  you
+                </span>
+                <span className="sr-only"> (this is you)</span>
+              </>
+            )}
+            {person.tags.includes('sample') && (
+              <span className="you-badge sample" title="A sample person">
+                sample
               </span>
             )}
             {circles.length > 0 && (
@@ -706,14 +771,35 @@ const PersonRow = memo(function PersonRow({ person, query }: { person: Person; q
           </strong>
           {detail && <span className="hint"> {detail}</span>}
           {snippet && <span className="snippet">{highlight(snippet, query)}</span>}
+          {idle !== null && (
+            <span className="snippet quiet-since">
+              quiet {quietLabel(idle)} — nothing since{' '}
+              {new Date(Math.max(person.createdAt, ...notes.map((n) => n.createdAt))).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+            </span>
+          )}
         </span>
         <span className="chev" aria-hidden="true">
-          {'›'}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
         </span>
       </Link>
     </li>
   )
 })
+
+/** Who have you lost touch with? One line, only when there's someone. */
+function QuietLine() {
+  const records = useVaultStore((s) => s.records)
+  const count = useMemo(() => selectQuiet(records).length, [records])
+  if (count === 0) return null
+  return (
+    <p className="quiet-line">
+      {count} {count === 1 ? 'person has' : 'people have'} gone quiet — no note in {QUIET_MONTHS}{' '}
+      months. <Link to="/?quiet=1">See who</Link>
+    </p>
+  )
+}
 
 /** Biometric/PIN unlocks can't migrate a legacy KDF wrap (§6.2). */
 function KdfUpgradeNag() {
@@ -858,11 +944,16 @@ function Upcoming() {
         {shown.map((item) => (
           <li key={item.key}>
             <span className={`days ${item.overdue ? 'overdue' : ''}`}>
-              {item.overdue
-                ? `${-item.days}d late`
-                : item.days === 0
-                  ? 'today'
-                  : `${item.days}d`}
+              <span aria-hidden="true">
+                {item.overdue ? `${-item.days}d late` : item.days === 0 ? 'today' : `${item.days}d`}
+              </span>
+              <span className="sr-only">
+                {item.overdue
+                  ? `${-item.days} ${-item.days === 1 ? 'day' : 'days'} late`
+                  : item.days === 0
+                    ? 'today'
+                    : `in ${item.days} ${item.days === 1 ? 'day' : 'days'}`}
+              </span>
             </span>
             <Link to={`/person/${item.personId}`}>{item.personName}</Link>
             <span className="hint">{item.label}</span>

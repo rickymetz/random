@@ -21,7 +21,7 @@ const p = (displayName: string): Person => ({
   createdAt: 0,
   updatedAt: 0,
 })
-const types = [t('friend'), t('coworker'), t('boss of', true)]
+const types = [t('friend'), t('coworker'), t('boss of', true), t('partner')]
 
 describe('parseBatch', () => {
   it('reads one name per line with an optional relationship after a dash', () => {
@@ -72,5 +72,15 @@ describe('parseBatch edge cases', () => {
     const [e] = parseBatch('Jean - Luc', types, [], false)
     expect(e.name).toBe('Jean - Luc')
     expect(e.typeLabel).toBeUndefined()
+  })
+
+  it('reads "ex" and "former …" as past roles', () => {
+    const out = parseBatch('Rosa — ex\nKofi — former coworker\nAda - ex-partner\nBea — friend', types, [])
+    expect(out.map((e) => [e.name, e.type?.label, e.former ?? false])).toEqual([
+      ['Rosa', 'partner', true],
+      ['Kofi', 'coworker', true],
+      ['Ada', 'partner', true],
+      ['Bea', 'friend', false],
+    ])
   })
 })

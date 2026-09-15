@@ -142,6 +142,11 @@ const isPerson = (m: Match): m is { person: Person } => Boolean(m && 'person' in
 export function detectNames(body: string, people: Person[], self?: Person): NameCandidate[] {
   const lookup = buildLookup(people)
   const selfKeys = new Set(self ? [self.displayName, ...self.nicknames].map((n) => norm(n.trim())) : [])
+  // Places and employers already on file ("Porto", "Meridian Labs") are
+  // capitalised too, and they are not people.
+  const placeKeys = new Set(
+    people.flatMap((p) => [p.location, p.employer]).filter((v): v is string => Boolean(v)).map((v) => norm(v.trim())),
+  )
   const seen = new Set<string>()
   const out: NameCandidate[] = []
 
@@ -227,6 +232,7 @@ export function detectNames(body: string, people: Person[], self?: Person): Name
       if (keep && single && sentenceStart && !isPerson(match)) keep = false
       if (keep && isPerson(match) && self && match.person.id === self.id) keep = false
       if (keep && selfKeys.has(key)) keep = false
+      if (keep && placeKeys.has(key) && !isPerson(match)) keep = false
 
       if (keep && !seen.has(key)) {
         seen.add(key)

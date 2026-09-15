@@ -61,8 +61,27 @@ export interface Relationship {
   directed: boolean
   note?: string
   startDate?: PartialDate
+  /** When the role ended; set alongside `former`. */
+  endDate?: PartialDate
+  /** A past role — a former partner, an old boss. Drawn long-dashed,
+   * skipped by "How you connect" unless asked. */
+  former?: boolean
   origin: RelationshipOrigin
   createdAt: number
+}
+
+/** Four hues, not eleven: a thin line can only tell so many colours
+ * apart, and people read family / work / social anyway. Shape carries
+ * the type inside a family (width, dash, arrow style). */
+export type TypeFamily = 'family' | 'work' | 'social' | 'other'
+export const TYPE_FAMILIES: { id: TypeFamily; label: string; color: string }[] = [
+  { id: 'family', label: 'Family', color: '#e0607a' },
+  { id: 'work', label: 'Work', color: '#b8a44a' },
+  { id: 'social', label: 'Social', color: '#4f9cf9' },
+  { id: 'other', label: 'Other', color: '#9a6fd0' },
+]
+export function familyColor(family: TypeFamily): string {
+  return TYPE_FAMILIES.find((f) => f.id === family)?.color ?? TYPE_FAMILIES[3].color
 }
 
 export interface RelationshipType {
@@ -71,6 +90,8 @@ export interface RelationshipType {
   label: string
   color: string
   directed: boolean
+  /** Hue family; built-ins have one, older custom types read as 'other'. */
+  family?: TypeFamily
   builtIn: boolean
 }
 
@@ -147,15 +168,14 @@ export type DomainRecord =
 // color-vision deficiencies; chips pair each color with its label as the
 // legend, so color is never the only signal.
 export const BUILT_IN_RELATIONSHIP_TYPES: Omit<RelationshipType, 'id'>[] = [
-  { kind: 'relationshipType', label: 'friend', color: '#4f9cf9', directed: false, builtIn: true },
-  { kind: 'relationshipType', label: 'partner', color: '#e2567a', directed: false, builtIn: true },
-  { kind: 'relationshipType', label: 'married', color: '#e25757', directed: false, builtIn: true },
-  { kind: 'relationshipType', label: 'ex', color: '#8a8a94', directed: false, builtIn: true },
-  { kind: 'relationshipType', label: 'sibling', color: '#4fbf8b', directed: false, builtIn: true },
-  { kind: 'relationshipType', label: 'parent of', color: '#2aa8b8', directed: true, builtIn: true },
-  { kind: 'relationshipType', label: 'coworker', color: '#a3a24a', directed: false, builtIn: true },
-  { kind: 'relationshipType', label: 'boss of', color: '#e0763c', directed: true, builtIn: true },
-  { kind: 'relationshipType', label: 'roommate', color: '#9a6fd0', directed: false, builtIn: true },
+  { kind: 'relationshipType', label: 'friend', color: '#4f9cf9', directed: false, builtIn: true, family: 'social' },
+  { kind: 'relationshipType', label: 'partner', color: '#e0607a', directed: false, builtIn: true, family: 'family' },
+  { kind: 'relationshipType', label: 'married', color: '#e0607a', directed: false, builtIn: true, family: 'family' },
+  { kind: 'relationshipType', label: 'sibling', color: '#e0607a', directed: false, builtIn: true, family: 'family' },
+  { kind: 'relationshipType', label: 'parent of', color: '#e0607a', directed: true, builtIn: true, family: 'family' },
+  { kind: 'relationshipType', label: 'coworker', color: '#b8a44a', directed: false, builtIn: true, family: 'work' },
+  { kind: 'relationshipType', label: 'boss of', color: '#b8a44a', directed: true, builtIn: true, family: 'work' },
+  { kind: 'relationshipType', label: 'roommate', color: '#4f9cf9', directed: false, builtIn: true, family: 'social' },
   { kind: 'relationshipType', label: 'mentioned', color: '#9a948a', directed: true, builtIn: true },
 ]
 
@@ -193,12 +213,4 @@ export function colorName(hex: string): string {
   return COLOR_NAMES[hex.toLowerCase()] ?? hex
 }
 
-/** Swatches offered when creating a custom relationship type (§4.2). */
-export const CUSTOM_TYPE_COLORS = [
-  '#d84f9f',
-  '#5fd04f',
-  '#4fd0c3',
-  '#d0c34f',
-  '#7a8ff0',
-  '#f08f7a',
-]
+

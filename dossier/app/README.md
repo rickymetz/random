@@ -88,3 +88,12 @@ UI never touches Dexie or WebCrypto directly:
 `lib/crypto` + `lib/db` → `lib/vault` → `store/` → `pages/`. The lib layer
 has no React imports so it can later back a zero-knowledge sync client
 unchanged.
+
+## Browser smokes
+
+`e2e/` holds the Playwright smokes (`smoke*.mjs`) and the axe accessibility
+scan (`axe.mjs`) that run against the built app. `npm run e2e` serves `dist/`
+with `vite preview` and runs them one by one; `node e2e/run.mjs smoke9 axe`
+runs a subset. CI runs the whole set in the `e2e` job. Locally, point
+`CHROMIUM_PATH` at a Chromium build, or run `npx playwright install chromium`
+once so Playwright's own copy is used.

@@ -14,6 +14,7 @@ import { extractMentions, renameMentionsOf, stripMentionsOf } from '../lib/menti
 import { linkPhrase } from '../lib/nameDetect'
 import type { ContactDraft } from '../lib/contacts'
 import { CIRCLE_COLORS, RECENT_LIMIT, type Circle } from '../lib/models'
+import { assignTypeFamilies, migrateExToFormer, pairKey } from '../lib/relationships'
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
   SETTINGS_ID,
@@ -26,6 +27,7 @@ import {
   type Relationship,
   type RelationshipType,
   type Settings,
+  type TypeFamily,
 } from '../lib/models'
 import { wipe } from '../lib/crypto'
 import {
@@ -38,6 +40,7 @@ import {
   tryPinUnlock,
 } from '../lib/pin'
 import { clearPhotoCache, evictPhoto } from '../lib/photoCache'
+import { clearSessionCaches } from '../lib/sessionCaches'
 import { createIndex, rebuildIndex, reindexPerson, searchPeople } from '../lib/search'
 import { sanitizeRecords } from '../lib/validate'
 import {
@@ -135,6 +138,10 @@ interface VaultState {
   registerDraft: (personId: string, read: () => string) => void
   unregisterDraft: (personId: string) => void
   flushDrafts: () => Promise<void>
+  /** A capture draft left behind by navigating away: waits, in memory,
+   * for the dossier to come back (a timer lock saves it as a note). */
+  drafts: Map<string, string>
+  stashDraft: (personId: string, text: string) => void
   setHomeQuery: (query: string) => void
   setHomePage: (page: { key: string; limit: number }) => void
 
@@ -142,7 +149,9 @@ interface VaultState {
   /** Several people in one encrypted write ("Add several"). */
   addPeople: (displayNames: string[]) => Promise<Person[]>
   /** Several explicit edges in one write; each replaces a mention edge on its pair. */
-  addRelationships: (edges: { fromId: string; toId: string; typeId: string }[]) => Promise<void>
+  addRelationships: (
+    edges: { fromId: string; toId: string; typeId: string; former?: boolean }[],
+  ) => Promise<void>
   /** Contacts import: people with details (and a first note where the
    * contact carried one) in one encrypted write. Returns the people. */
   importPeople: (drafts: ContactDraft[]) => Promise<Person[]>
@@ -178,12 +187,24 @@ interface VaultState {
     toId: string,
     typeId: string,
     note?: string,
+    role?: { former?: boolean; startDate?: PartialDate; endDate?: PartialDate },
+  ) => Promise<void>
+  /** Change a role's type, dates or former flag in place (same pair). */
+  updateRelationship: (
+    relationshipId: string,
+    patch: {
+      typeId?: string
+      former?: boolean
+      startDate?: PartialDate | null
+      endDate?: PartialDate | null
+    },
   ) => Promise<void>
   removeRelationship: (relationshipId: string) => Promise<void>
   addRelationshipType: (
     label: string,
     color: string,
     directed: boolean,
+    family?: TypeFamily,
   ) => Promise<RelationshipType>
   markExported: () => Promise<void>
   /** Remember a dossier was opened (the home screen's Recent row). */
@@ -336,6 +357,20 @@ export const useVaultStore = create<VaultState>((set, get) => {
       await saveRecords(vault, seed)
       for (const t of seed) records.set(t.id, t)
     }
+    // "ex" became "partner, former" (§4.2): rewrite old edges on the way in.
+    const retired = migrateExToFormer(records)
+    if (retired.puts.length > 0 || retired.deletes.length > 0) {
+      await saveRecords(vault, retired.puts)
+      for (const r of retired.puts) records.set(r.id, r)
+      if (retired.deletes.length > 0) await deleteRecords(vault, retired.deletes)
+      for (const id of retired.deletes) records.delete(id)
+    }
+    // Types learn their hue family (§4.2) the same way.
+    const familied = assignTypeFamilies(records)
+    if (familied.length > 0) {
+      await saveRecords(vault, familied)
+      for (const r of familied) records.set(r.id, r)
+    }
     if (get().epoch !== startEpoch || get().status === 'unlocked') return false
     // Sweep blob rows stranded by lock-raced photo writes/deletes.
     const referencedBlobs = new Set<string>()
@@ -367,8 +402,10 @@ export const useVaultStore = create<VaultState>((set, get) => {
 
   function baseLock(): void {
     searchIndex = createIndex()
-    // Decrypted image object-URLs are plaintext too (§6.1).
+    // Decrypted image object-URLs are plaintext too (§6.1), and so is
+    // anything a page derived from the records and kept at module level.
     clearPhotoCache()
+    clearSessionCaches()
     set((state) => ({
       status: state.status === 'no-vault' ? 'no-vault' : 'locked',
       vault: null,
@@ -376,6 +413,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       epoch: state.epoch + 1,
       homeQuery: '',
       homePage: { key: '', limit: 0 },
+      drafts: new Map(),
       pinArmed: pinArmed(),
       pinAttemptsLeft: pinAttemptsLeft(),
       pinDigits: pinLength(),
@@ -615,6 +653,14 @@ export const useVaultStore = create<VaultState>((set, get) => {
       draftRegistry.delete(personId)
     },
 
+    drafts: new Map(),
+    stashDraft: (personId, text) =>
+      set((state) => {
+        const drafts = new Map(state.drafts)
+        if (text.trim()) drafts.set(personId, text)
+        else drafts.delete(personId)
+        return { drafts }
+      }),
     flushDrafts: async () => {
       const drafts = [...draftRegistry.entries()]
       for (const [personId, read] of drafts) {
@@ -623,6 +669,13 @@ export const useVaultStore = create<VaultState>((set, get) => {
           await get().saveNote(personId, body)
         }
         draftRegistry.delete(personId)
+      }
+      // Drafts stashed by pages that were left: a lock is the moment
+      // they become notes, not lost keystrokes.
+      const stashed = [...get().drafts.entries()]
+      if (stashed.length) set({ drafts: new Map() })
+      for (const [personId, body] of stashed) {
+        if (body.trim() && get().records.has(personId)) await get().saveNote(personId, body.trim())
       }
     },
 
@@ -723,21 +776,22 @@ export const useVaultStore = create<VaultState>((set, get) => {
       const puts: Relationship[] = []
       const deletes: string[] = []
       const touched = new Set<string>()
-      // Pairs already joined by an explicit edge are left alone: a batch
-      // must never stack a second link on someone you already linked.
-      const pairs = new Set<string>()
+      // A pair may carry several roles (§4.2), but never the same role
+      // twice: a batch must not stack a second "coworker" on someone you
+      // already linked as one.
+      const roles = new Set<string>()
       for (const r of records.values()) {
         if (r.kind === 'relationship' && r.origin !== 'mention') {
-          pairs.add([r.fromId, r.toId].sort().join('|'))
+          roles.add(`${pairKey(r.fromId, r.toId)}|${r.typeId}`)
         }
       }
       for (const e of edges) {
         const type = records.get(e.typeId)
         if (!type || type.kind !== 'relationshipType') continue
         if (!records.has(e.fromId) || !records.has(e.toId) || e.fromId === e.toId) continue
-        const key = [e.fromId, e.toId].sort().join('|')
-        if (pairs.has(key)) continue
-        pairs.add(key)
+        const key = `${pairKey(e.fromId, e.toId)}|${e.typeId}`
+        if (roles.has(key)) continue
+        roles.add(key)
         for (const r of records.values()) {
           if (
             r.kind === 'relationship' &&
@@ -755,6 +809,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
           toId: e.toId,
           typeId: e.typeId,
           directed: type.directed,
+          former: e.former || undefined,
           origin: 'explicit',
           createdAt: Date.now(),
         })
@@ -930,11 +985,23 @@ export const useVaultStore = create<VaultState>((set, get) => {
       await apply([], [followUpId])
     }),
 
-    addRelationship: (fromId, toId, typeId, note) =>
+    addRelationship: (fromId, toId, typeId, note, role) =>
       enqueue(async () => {
       const { records } = get()
       const type = records.get(typeId)
       if (!type || type.kind !== 'relationshipType') throw new Error('unknown type')
+      // The same role twice on a pair is a no-op; a different role joins
+      // the ones already there (§4.2: roles on a link).
+      for (const r of records.values()) {
+        if (
+          r.kind === 'relationship' &&
+          r.origin !== 'mention' &&
+          r.typeId === typeId &&
+          pairKey(r.fromId, r.toId) === pairKey(fromId, toId)
+        ) {
+          return
+        }
+      }
       // Upgrading: an explicit edge replaces any mention-derived edge
       // between the pair (§4.2).
       const deletes = [...records.values()]
@@ -954,10 +1021,49 @@ export const useVaultStore = create<VaultState>((set, get) => {
         typeId,
         directed: type.directed,
         note,
+        former: role?.former || undefined,
+        startDate: role?.startDate,
+        endDate: role?.endDate,
         origin: 'explicit',
         createdAt: Date.now(),
       }
       await apply([edge], deletes, [fromId, toId])
+    }),
+
+    updateRelationship: (relationshipId, patch) =>
+      enqueue(async () => {
+      const { records } = get()
+      const edge = records.get(relationshipId)
+      if (!edge || edge.kind !== 'relationship') return
+      const typeId = patch.typeId ?? edge.typeId
+      const type = records.get(typeId)
+      if (!type || type.kind !== 'relationshipType') throw new Error('unknown type')
+      // Retyping onto a role the pair already has would double it: drop
+      // this record instead and keep the one that's there.
+      if (typeId !== edge.typeId) {
+        for (const r of records.values()) {
+          if (
+            r.kind === 'relationship' &&
+            r.id !== edge.id &&
+            r.origin !== 'mention' &&
+            r.typeId === typeId &&
+            pairKey(r.fromId, r.toId) === pairKey(edge.fromId, edge.toId)
+          ) {
+            await apply([], [edge.id], [edge.fromId, edge.toId])
+            return
+          }
+        }
+      }
+      const next: Relationship = {
+        ...edge,
+        typeId,
+        directed: type.directed,
+        origin: 'explicit',
+        former: (patch.former ?? edge.former) || undefined,
+        startDate: patch.startDate === null ? undefined : (patch.startDate ?? edge.startDate),
+        endDate: patch.endDate === null ? undefined : (patch.endDate ?? edge.endDate),
+      }
+      await apply([next], [], [edge.fromId, edge.toId])
     }),
 
     removeRelationship: (relationshipId) =>
@@ -978,7 +1084,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       )
     }),
 
-    addRelationshipType: (label, color, directed) =>
+    addRelationshipType: (label, color, directed, family) =>
       enqueue(async () => {
       const trimmed = label.trim()
       // Reuse an existing type with the same label instead of silently
@@ -998,6 +1104,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
         color,
         directed,
         builtIn: false,
+        family: family ?? 'other',
       }
       await apply([type])
       return type
@@ -1174,6 +1281,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       // existing records: keep the incoming avatar, demote the rest.
       const merged = new Map(get().records)
       for (const record of puts) merged.set(record.id, record)
+      const importDeletes: string[] = []
       const avatarSeen = new Set<string>()
       const putIds = new Set(puts.map((p) => p.id))
       for (const record of puts) {
@@ -1186,6 +1294,21 @@ export const useVaultStore = create<VaultState>((set, get) => {
           puts.push({ ...record, isAvatar: false })
           merged.set(rid, { ...record, isAvatar: false })
         }
+      }
+      // An older backup may still carry the "ex" type: retire it here too,
+      // and file its types under their hue families.
+      const retired = migrateExToFormer(merged)
+      for (const r of retired.puts) {
+        puts.push(r)
+        merged.set(r.id, r)
+      }
+      for (const id of retired.deletes) {
+        merged.delete(id)
+        importDeletes.push(id)
+      }
+      for (const r of assignTypeFamilies(merged)) {
+        puts.push(r)
+        merged.set(r.id, r)
       }
       // Same for the single-self invariant (§4.4): restoring your backup
       // into a fresh vault must not leave both the seeded "Me" and your
@@ -1214,12 +1337,14 @@ export const useVaultStore = create<VaultState>((set, get) => {
         }
       }
       await saveRecords(vault, puts)
+      if (importDeletes.length > 0) await deleteRecords(vault, importDeletes)
       for (const blob of blobWrites) await saveBlob(vault, blob.id, blob.bytes)
       if (get().epoch !== startEpoch || get().vault !== vault) return puts.length
       // Merge onto the CURRENT records — writes that landed during the
       // import must not be lost from memory.
       const records = new Map(get().records)
       for (const record of puts) records.set(record.id, record)
+      for (const id of importDeletes) records.delete(id)
       set({ records })
       rebuildIndex(searchIndex, records)
       return puts.length
@@ -1320,6 +1445,7 @@ export function selectRelationshipTypes(
  */
 interface PersonIndex {
   notes: Map<string, NoteEntry[]>
+  followUps: Map<string, FollowUp[]>
   photos: Map<string, Photo[]>
   avatar: Map<string, Photo>
   circles: Map<string, Circle[]>
@@ -1332,6 +1458,7 @@ function personIndex(records: Map<string, DomainRecord>): PersonIndex {
   if (cached) return cached
   const idx: PersonIndex = {
     notes: new Map(),
+    followUps: new Map(),
     photos: new Map(),
     avatar: new Map(),
     circles: new Map(),
@@ -1344,12 +1471,16 @@ function personIndex(records: Map<string, DomainRecord>): PersonIndex {
   }
   for (const r of records.values()) {
     if (r.kind === 'note') push(idx.notes, r.personId, r)
+    else if (r.kind === 'followUp') push(idx.followUps, r.personId, r)
     else if (r.kind === 'photo') {
       push(idx.photos, r.personId, r)
       if (r.isAvatar && !idx.avatar.has(r.personId)) idx.avatar.set(r.personId, r)
     } else if (r.kind === 'circle') idx.circleList.push(r)
   }
   for (const list of idx.notes.values()) list.sort((a, b) => b.createdAt - a.createdAt)
+  for (const list of idx.followUps.values()) {
+    list.sort((a, b) => Number(a.done) - Number(b.done) || a.createdAt - b.createdAt)
+  }
   for (const list of idx.photos.values()) {
     list.sort((a, b) => Number(b.isAvatar) - Number(a.isAvatar) || a.createdAt - b.createdAt)
   }
@@ -1378,9 +1509,7 @@ export function selectFollowUps(
   records: Map<string, DomainRecord>,
   personId: string,
 ): FollowUp[] {
-  return [...records.values()]
-    .filter((r): r is FollowUp => r.kind === 'followUp' && r.personId === personId)
-    .sort((a, b) => Number(a.done) - Number(b.done) || a.createdAt - b.createdAt)
+  return personIndex(records).followUps.get(personId) ?? EMPTY
 }
 
 export function selectSettings(records: Map<string, DomainRecord>): Settings | undefined {

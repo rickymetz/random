@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import type { Person } from '../lib/models'
+import { onLock } from '../lib/sessionCaches'
 import { detectNames, type NameCandidate } from '../lib/nameDetect'
 import { selectPeople, useVaultStore } from '../store/vaultStore'
 
@@ -14,6 +15,8 @@ import { selectPeople, useVaultStore } from '../store/vaultStore'
  * note until the app is reloaded.
  */
 const declinedThisSession = new Set<string>()
+// Phrases come from note text: they go when the vault locks.
+onLock(() => declinedThisSession.clear())
 
 const UNDO_MS = 30000
 
@@ -27,6 +30,7 @@ export default function LooksLikePeople({
   person,
   onDone,
   refocus,
+  justSaved = false,
 }: {
   noteId: string
   /** The dossier the note belongs to — never offered. */
@@ -34,6 +38,9 @@ export default function LooksLikePeople({
   onDone: () => void
   /** Where keyboard focus goes once the card is gone (the note box). */
   refocus?: () => HTMLElement | null
+  /** The note was saved a moment ago: say so on the card, since the
+   * Save row with its own "Saved" gives way to this. */
+  justSaved?: boolean
 }) {
   const records = useVaultStore((s) => s.records)
   const linkNamesInNote = useVaultStore((s) => s.linkNamesInNote)
@@ -234,6 +241,11 @@ export default function LooksLikePeople({
   return (
     <div ref={box} className="looks-like" role="group" aria-label="Looks like people">
       <div className="looks-like-head">
+        {justSaved && (
+          <span className="hint saved" role="status">
+            Saved
+          </span>
+        )}
         <span className="looks-like-title">{visible.length ? 'Looks like people' : ''}</span>
         <span className="hint saved" role="status">
           {status}

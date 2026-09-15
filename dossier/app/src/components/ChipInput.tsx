@@ -35,6 +35,8 @@ export default function ChipInput({
   // Highlighted suggestion: Enter commits it (not the raw draft) so
   // "clim" becomes "Climbing crew" rather than a new "clim" value.
   const [active, setActive] = useState(-1)
+  // Spoken: a chip added or removed is invisible to a screen reader.
+  const [note, setNote] = useState('')
   const listId = useId()
   // A pointer pick fires on pointerdown (before the field can blur — Chrome
   // still moves focus even when pointerdown is cancelled); the click that
@@ -84,16 +86,21 @@ export default function ChipInput({
     if (next !== current) {
       valuesRef.current = next
       onChange(next)
+      setNote(`Added ${next.slice(current.length).join(', ')}`)
     }
     setDraft('')
   }
 
   const removeAt = (index: number) => {
+    setNote(`Removed ${values[index]}`)
     onChange(values.filter((_, i) => i !== index))
   }
 
   return (
     <div className="chip-input" role="group" aria-label={labelId ? undefined : label} aria-labelledby={labelId}>
+      <span className="sr-only" role="status">
+        {note}
+      </span>
       <div className="chip-row">
         {values.map((value, i) => (
           <span key={`${value}-${i}`} className="value-chip">

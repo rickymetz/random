@@ -24,3 +24,29 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+
+  # Browser smokes + axe scan against the built app (dossier/app/e2e).
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: dossier/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dossier/app/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run e2e
+      # The smokes screenshot as they go: keep the pictures of a failed run.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: smoke-shots
+          path: /tmp/shots*
+          if-no-files-found: ignore

@@ -18,11 +18,17 @@ import {
   useState,
   type MutableRefObject,
 } from 'react'
+import { createPortal } from 'react-dom'
 import PersonPicker from '../components/PersonPicker'
+import Sheet from '../components/Sheet'
+import DangerConfirm from '../components/DangerConfirm'
+import { familyOf, lineStyle, pairKey, roleDates, roleLabel, type LineStyle } from '../lib/relationships'
+import { quietLabel, quietMonths } from '../lib/quiet'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
 import { CIRCLE_COLORS, colorName, type Person, type Relationship } from '../lib/models'
 import { getPhotoUrl } from '../lib/photoCache'
+import { onLock } from '../lib/sessionCaches'
 import type { UnlockedVault } from '../lib/vault'
 import {
   selectAvatar,
@@ -43,6 +49,8 @@ interface GraphNode extends SimulationNodeDatum {
   r: number
   /** Links on the graph as drawn — ranks who stays in full at an overview. */
   degree: number
+  /** Months since you last wrote about them, when 6 or more (the quiet lens). */
+  quiet: number | null
   isSelf: boolean
   avatar?: { blobRecordId: string; mimeType: string }
 }
@@ -68,6 +76,8 @@ interface ViewApi {
   isPinned: (id: string) => boolean
   unpin: (id: string) => void
   hasNode: (id: string) => boolean
+  /** Frame a circle's members above a sheet of `bottomInset` px. */
+  fitCircle: (circleId: string, bottomInset: number) => void
 }
 
 /** Hex → [r,g,b]. */
@@ -134,6 +144,9 @@ const FILTER_KEY = 'graph-filters'
 interface Filters {
   hidden: string[]
   mentions: boolean
+  former: boolean
+  /** The quiet lens: off by default, a look rather than a filter. */
+  quiet: boolean
   hiddenCircles: string[]
 }
 function loadFilters(): Filters {
@@ -144,19 +157,33 @@ function loadFilters(): Filters {
       return {
         hidden: parsed.hidden ?? [],
         mentions: parsed.mentions ?? true,
+        former: parsed.former ?? true,
+        quiet: parsed.quiet ?? false,
         hiddenCircles: parsed.hiddenCircles ?? [],
       }
     }
   } catch {
     // Private windows may refuse; defaults are fine.
   }
-  return { hidden: [], mentions: true, hiddenCircles: [] }
+  return { hidden: [], mentions: true, former: true, quiet: false, hiddenCircles: [] }
 }
-function saveFilters(hidden: Set<string>, mentions: boolean, hiddenCircles: Set<string>): void {
+function saveFilters(
+  hidden: Set<string>,
+  mentions: boolean,
+  former: boolean,
+  quiet: boolean,
+  hiddenCircles: Set<string>,
+): void {
   try {
     sessionStorage.setItem(
       FILTER_KEY,
-      JSON.stringify({ hidden: [...hidden], mentions, hiddenCircles: [...hiddenCircles] }),
+      JSON.stringify({
+        hidden: [...hidden],
+        mentions,
+        former,
+        quiet,
+        hiddenCircles: [...hiddenCircles],
+      }),
     )
   } catch {
     // ignore
@@ -198,6 +225,10 @@ interface GraphLink extends SimulationLinkDatum<GraphNode> {
   /** Relationship type label — for the text list and for line style. */
   label: string
   dashed: boolean
+  /** A past role: long-dashed, and skipped by the path unless asked. */
+  former: boolean
+  /** Width, dash and arrow from the type's family and shape. */
+  style: LineStyle
   directed: boolean
   /** Part of the highlighted "how you connect" path (§4.4). */
   highlighted: boolean
@@ -250,6 +281,27 @@ export default function GraphPage() {
   const [showAllCircles, setShowAllCircles] = useState(false)
   const [listOpen, setListOpen] = useState(false)
   const [finding, setFinding] = useState(false)
+  const [findToken, setFindToken] = useState(0)
+  const openFind = useCallback(() => {
+    setFinding(true)
+    setFindToken((t) => t + 1)
+  }, [])
+  // Find lives in the app bar (a portal into its slot), not the filter
+  // strip: it's navigation, the strip is the legend. Ctrl/Cmd+K opens it,
+  // as it focuses search on People.
+  const [barSlot, setBarSlot] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    setBarSlot(document.getElementById('appbar-slot'))
+  }, [])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey) || e.altKey) return
+      e.preventDefault()
+      openFind()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [openFind])
   // Pins change inside the canvas hook; a counter re-renders the open card.
   const [pinVersion, setPinVersion] = useState(0)
   const onPinChange = useCallback(() => setPinVersion((v) => v + 1), [])
@@ -304,20 +356,29 @@ export default function GraphPage() {
     setParams(next, { replace: true })
   }, [autoFocusId, params, setParams])
 
+  // The rail reads as a legend: family, work, social, other, each A–Z.
+  const FAMILY_ORDER = ['family', 'work', 'social', 'other'] as const
   const types = useMemo(
-    () => selectRelationshipTypes(records).sort((a, b) => a.label.localeCompare(b.label)),
+    () =>
+      selectRelationshipTypes(records).sort(
+        (a, b) =>
+          FAMILY_ORDER.indexOf(familyOf(a)) - FAMILY_ORDER.indexOf(familyOf(b)) ||
+          a.label.localeCompare(b.label),
+      ),
     [records],
   )
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(
     () => new Set(loadFilters().hidden),
   )
   const [showMentions, setShowMentions] = useState(() => loadFilters().mentions)
+  const [showFormer, setShowFormer] = useState(() => loadFilters().former)
+  const [quietLens, setQuietLens] = useState(() => loadFilters().quiet)
   const [hiddenCircles, setHiddenCircles] = useState<Set<string>>(
     () => new Set(loadFilters().hiddenCircles),
   )
   useEffect(() => {
-    saveFilters(hiddenTypes, showMentions, hiddenCircles)
-  }, [hiddenTypes, showMentions, hiddenCircles])
+    saveFilters(hiddenTypes, showMentions, showFormer, quietLens, hiddenCircles)
+  }, [hiddenTypes, showMentions, showFormer, quietLens, hiddenCircles])
   const allCircles = useMemo(() => selectCircles(records), [records])
   const focusedCircle = useMemo(
     () => (circleFocusId ? allCircles.find((c) => c.id === circleFocusId) : undefined),
@@ -357,6 +418,7 @@ export default function GraphPage() {
       if (pathInfo?.edgeIds.has(e.id)) return true
       if (hiddenTypes.has(e.typeId)) return false
       if (!showMentions && e.origin === 'mention') return false
+      if (!showFormer && e.former) return false
       return true
     })
 
@@ -403,6 +465,7 @@ export default function GraphPage() {
         initials: initialsOf(p.displayName),
         r: nodeRadius(degree.get(p.id) ?? 0),
         degree: degree.get(p.id) ?? 0,
+        quiet: quietMonths(records, p),
         isSelf: Boolean(p.isSelf),
         avatar: avatar
           ? { blobRecordId: avatar.blobRecordId, mimeType: avatar.mimeType }
@@ -417,6 +480,11 @@ export default function GraphPage() {
         color: typeById.get(e.typeId)?.color ?? '#8a8a94',
         label: typeById.get(e.typeId)?.label ?? 'linked',
         dashed: e.origin === 'mention',
+        former: Boolean(e.former),
+        style: (() => {
+          const t = typeById.get(e.typeId)
+          return t ? lineStyle(t, types) : { width: 1.25, dash: null, arrow: 'none' as const }
+        })(),
         directed: (typeById.get(e.typeId)?.directed ?? false) && e.origin === 'explicit',
         highlighted: pathInfo?.edgeIds.has(e.id) ?? false,
       }))
@@ -437,6 +505,7 @@ export default function GraphPage() {
     types,
     hiddenTypes,
     showMentions,
+    showFormer,
     focusId,
     focusedCircle,
     depth,
@@ -487,20 +556,30 @@ export default function GraphPage() {
     viewKey,
     onPinChange,
     onGesture,
+    quietLens,
   )
-  // A card at the bottom must not cover the person it describes.
+  // A card at the bottom must not cover the person it describes, and the
+  // circle editor's sheet must not cover the bubble it edits.
   useLayoutEffect(() => {
-    if (peek?.kind !== 'node') return
-    const card = wrapRef.current?.querySelector<HTMLElement>('.peek-card')
-    viewApiRef.current?.reveal(peek.id, (card?.offsetHeight ?? 150) + 16)
+    if (peek?.kind === 'node') {
+      const card = wrapRef.current?.querySelector<HTMLElement>('.peek-card')
+      viewApiRef.current?.reveal(peek.id, (card?.offsetHeight ?? 150) + 16)
+    } else if (peek?.kind === 'circle-edit') {
+      const canvas = wrapRef.current?.querySelector('canvas')?.getBoundingClientRect()
+      const sheet = document.querySelector('.sheet.circle-sheet')?.getBoundingClientRect()
+      if (!canvas || !sheet) return
+      viewApiRef.current?.fitCircle(peek.id, Math.max(0, canvas.bottom - sheet.top) + 12)
+    }
   }, [peek])
   const hiddenCount =
     types.filter((t) => t.label !== 'mentioned' && hiddenTypes.has(t.id)).length +
     (showMentions ? 0 : 1) +
+    (showFormer ? 0 : 1) +
     railCircles.filter((c) => hiddenCircles.has(c.id)).length
   const showAllFilters = () => {
     setHiddenTypes(new Set())
     setShowMentions(true)
+    setShowFormer(true)
     setHiddenCircles(new Set())
   }
   const allPeople = useMemo(() => selectPeople(records), [records])
@@ -536,6 +615,56 @@ export default function GraphPage() {
   return (
     <div className={`graph ${bare ? 'bare' : ''}`}>
       <h1 className="sr-only">Graph</h1>
+      {barSlot &&
+        !bare &&
+        createPortal(
+          <button
+            className={`subtle icon find-button ${finding ? 'on' : ''}`}
+            aria-label="Find a person on the graph"
+            aria-expanded={finding}
+            aria-controls="graph-find"
+            aria-keyshortcuts="Control+K Meta+K"
+            title="Find (Ctrl/Cmd+K)"
+            onClick={() => (finding ? setFinding(false) : openFind())}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-3.5-3.5" />
+            </svg>
+          </button>,
+          barSlot,
+        )}
+      {finding && (
+        <div
+          id="graph-find"
+          className="graph-find"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setFinding(false)
+          }}
+        >
+          <PersonPicker
+            people={allPeople}
+            value=""
+            onChange={findPerson}
+            label="Find a person on the graph"
+            placeholder="Type a name…"
+            focusToken={findToken}
+          />
+          <button className="subtle icon" onClick={() => setFinding(false)} aria-label="Close">
+            ×
+          </button>
+        </div>
+      )}
       <div className="graph-controls">
         {focusName && (
           <span className="chip focus-chip no-dot depth">
@@ -596,16 +725,6 @@ export default function GraphPage() {
               ×
             </button>
           </span>
-        )}
-        {!bare && (
-          <button
-            className={`chip no-dot find ${finding ? 'on' : ''}`}
-            aria-expanded={finding}
-            aria-controls="graph-find"
-            onClick={() => setFinding((v) => !v)}
-          >
-            Find…
-          </button>
         )}
         {hiddenCount > 0 && (
           <button className="chip no-dot hidden-status" onClick={showAllFilters}>
@@ -695,13 +814,29 @@ export default function GraphPage() {
         >
           mentions
         </button>
+        <button
+          className={`chip no-dot former ${showFormer ? '' : 'off'}`}
+          aria-pressed={showFormer}
+          onClick={() => setShowFormer((v) => !v)}
+          title="Past roles: former partners, old bosses"
+        >
+          former
+        </button>
+        <button
+          className={`chip no-dot quiet ${quietLens ? 'on' : ''}`}
+          aria-pressed={quietLens}
+          onClick={() => setQuietLens((v) => !v)}
+          title="Mark people with no note or follow-up in 6 months"
+        >
+          quiet
+        </button>
       </div>
       {/* Read to assistive tech via aria-describedby; sighted users get
           a one-time hint on the canvas instead of a permanent sentence. */}
       <p id="graph-help" className="graph-legend sr-only">
         {nodes.length > LABEL_MAX_NODES
           ? 'Zoomed out, only the best-connected people draw in full: zoom in to see names and everyone else, or pick a person or circle above.'
-          : 'Tap a person to see who they know, and again to open them. Tap a label to filter. Dotted lines are mentions.'}
+          : 'Tap a person to see who they know, and again to open them. Tap a label to filter. Dotted lines are mentions; dashed lines are former ties.'}
       </p>
       <div className="graph-canvas-wrap" ref={wrapRef}>
         {arranging && nodes.length > 150 && (
@@ -723,21 +858,6 @@ export default function GraphPage() {
               </p>
             )
           )
-        )}
-        {finding && (
-          <div id="graph-find" className="graph-find">
-            <PersonPicker
-              people={allPeople}
-              value=""
-              onChange={findPerson}
-              label="Find a person on the graph"
-              placeholder="Type a name…"
-              focusToken={1}
-            />
-            <button className="subtle icon" onClick={() => setFinding(false)} aria-label="Close">
-              ×
-            </button>
-          </div>
         )}
         {listOpen && (
           <GraphList nodes={nodes} links={links} onClose={() => setListOpen(false)} />
@@ -930,6 +1050,7 @@ function GraphList({
           return (
             <li key={n.id}>
               <Link to={`/person/${n.id}`}>{n.isSelf ? `${n.name} (you)` : n.name}</Link>
+              {n.quiet !== null && <span className="tag quiet"> quiet {quietLabel(n.quiet)}</span>}
               {mine.length > 0 && (
                 <span className="hint">
                   {' — '}
@@ -937,7 +1058,7 @@ function GraphList({
                     .map((l) => {
                       const otherId = l.source === n.id ? l.target : l.source
                       const other = nodes.find((o) => o.id === otherId)
-                      return `${other?.name ?? '?'} (${l.dashed ? 'mentioned' : l.label})`
+                      return `${other?.name ?? '?'} (${l.dashed ? 'mentioned' : roleLabel(l.label, l)})`
                     })
                     .join(', ')}
                 </span>
@@ -947,37 +1068,6 @@ function GraphList({
         })}
       </ul>
     </div>
-  )
-}
-
-/** A destructive action asks in place — never a browser dialog. */
-function DangerConfirm({
-  label,
-  question,
-  onConfirm,
-}: {
-  label: string
-  question: string
-  onConfirm: () => void
-}) {
-  const [asking, setAsking] = useState(false)
-  if (!asking) {
-    return (
-      <button className="danger" onClick={() => setAsking(true)}>
-        {label}
-      </button>
-    )
-  }
-  return (
-    <span className="confirm-row" role="group" aria-label={question}>
-      <span className="hint">{question}</span>
-      <button className="danger" onClick={onConfirm} autoFocus>
-        {label}
-      </button>
-      <button className="subtle" onClick={() => setAsking(false)}>
-        Keep
-      </button>
-    </span>
   )
 }
 
@@ -1012,11 +1102,15 @@ function NodePeek({
     let howKnown: string | null = null
     let pathExists = false
     if (self && !person.isSelf) {
-      const direct = mine.find((e) => e.fromId === self.id || e.toId === self.id)
-      if (direct) {
-        const t = records.get(direct.typeId)
-        const label = t?.kind === 'relationshipType' ? t.label : 'linked'
-        howKnown = direct.origin === 'mention' ? 'mentioned in your notes' : label
+      const direct = mine.filter((e) => e.fromId === self.id || e.toId === self.id)
+      if (direct.length > 0) {
+        howKnown = direct
+          .map((e) => {
+            const t = records.get(e.typeId)
+            const label = t?.kind === 'relationshipType' ? t.label : 'linked'
+            return e.origin === 'mention' ? 'mentioned in your notes' : roleLabel(label, e)
+          })
+          .join(', ')
         pathExists = true
       } else {
         const steps = shortestPath(records, self.id, personId)
@@ -1040,10 +1134,11 @@ function NodePeek({
   }, [records, person, personId])
   if (!person || person.kind !== 'person' || !facts) return null
   const detail = [person.jobTitle, person.employer].filter(Boolean).join(' @ ')
+  const idle = quietMonths(records, person)
   const meta = [
     facts.links > 0 ? `${facts.links} ${facts.links === 1 ? 'link' : 'links'}` : 'no links yet',
     facts.circles.length > 0 ? facts.circles.join(', ') : null,
-    facts.lastNote ? `last note ${facts.lastNote}` : null,
+    idle !== null ? `quiet ${quietLabel(idle)}` : facts.lastNote ? `last note ${facts.lastNote}` : null,
   ].filter(Boolean)
   return (
     <div
@@ -1145,7 +1240,7 @@ function CircleLite({
 /** Tap an edge → edit its type or remove it (§4.3, §4.2 upgrade-in-one-tap). */
 function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) {
   const records = useVaultStore((s) => s.records)
-  const addRelationship = useVaultStore((s) => s.addRelationship)
+  const updateRelationship = useVaultStore((s) => s.updateRelationship)
   const removeRelationship = useVaultStore((s) => s.removeRelationship)
   const cardRef = usePeekFocus(onClose)
   const [pendingType, setPendingType] = useState('')
@@ -1166,12 +1261,11 @@ function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) 
 
   const retype = async (typeId: string) => {
     if (!typeId) return
-    // addRelationship replaces any mention edge between the pair, so this
-    // is the one-tap upgrade path for dashed edges.
-    await removeRelationship(rel.id)
-    await addRelationship(rel.fromId, rel.toId, typeId)
+    // In place: a mention edge becomes explicit, a role keeps its dates.
+    await updateRelationship(rel.id, { typeId })
     onClose()
   }
+  const dates = roleDates(rel)
 
   return (
     <div
@@ -1186,8 +1280,9 @@ function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) 
           {from.displayName} — {to.displayName}
         </strong>
         <span className="hint">
-          {currentType?.kind === 'relationshipType' ? currentType.label : 'link'}
+          {currentType?.kind === 'relationshipType' ? roleLabel(currentType.label, rel) : 'link'}
           {rel.origin === 'mention' ? ' (from a mention)' : ''}
+          {dates ? ` · ${dates}` : ''}
         </span>
       </div>
       <div className="row">
@@ -1208,6 +1303,15 @@ function EdgePeek({ edgeId, onClose }: { edgeId: string; onClose: () => void }) 
         </select>
         {pendingType && (
           <button onClick={() => void retype(pendingType)}>Apply</button>
+        )}
+        {rel.origin !== 'mention' && (
+          <button
+            className="subtle"
+            onClick={() => void updateRelationship(rel.id, { former: !rel.former })}
+            aria-pressed={Boolean(rel.former)}
+          >
+            {rel.former ? 'Current again' : 'Now former'}
+          </button>
         )}
         <DangerConfirm
           label="Remove"
@@ -1278,12 +1382,18 @@ function CirclePeek({
     }
   }
   return (
+    <Sheet
+      className="circle-sheet"
+      label={`Circle: ${circle.name}`}
+      onDismiss={() => {
+        if (dirty) void commitName()
+        onClose()
+      }}
+    >
     <div
       ref={cardRef}
       tabIndex={-1}
-      className="peek-card circle-peek"
-      role="dialog"
-      aria-label={`Circle: ${circle.name}`}
+      className="circle-peek"
       style={{ '--chip-color': circle.color } as React.CSSProperties}
     >
       <button className="subtle icon peek-close" onClick={onClose} aria-label="Close">
@@ -1363,7 +1473,6 @@ function CirclePeek({
               label={`Add a person to ${circle.name}`}
               placeholder="Type a name to add…"
               pickedMessage={(p) => `${p.displayName} added to ${circle.name}`}
-              listAbove
             />
           </div>
         )}
@@ -1389,8 +1498,26 @@ function CirclePeek({
         />
       </div>
     </div>
+    </Sheet>
   )
 }
+
+/**
+ * The graph tab remembers its place (per-tab memory, like the lists):
+ * where everyone sat, where the camera was and who was pinned survive
+ * leaving the tab, so coming back shows the same picture instead of a
+ * fresh layout and a refit. Session-only: a reload lays out anew.
+ */
+let graphMemory: {
+  positions: Map<string, { x: number; y: number }>
+  transform: { x: number; y: number; k: number }
+  pinned: Set<string>
+  viewKey: string
+  fitKey: string
+} | null = null
+onLock(() => {
+  graphMemory = null
+})
 
 function useCanvasGraph(
   nodes: GraphNode[],
@@ -1408,22 +1535,35 @@ function useCanvasGraph(
   viewKey: string,
   onPinChange: () => void,
   onGesture: () => void,
+  quietLens: boolean,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // What's lit (the open card's subject) is read by the painter through a
   // ref: a selection repaints, it never restarts the layout.
   const selectedRef = useRef<Tap>(selected)
   // People dropped by hand stay put (fx/fy) across effect runs.
-  const pinnedRef = useRef(new Set<string>())
-  const lastViewKeyRef = useRef<string>('')
+  const pinnedRef = useRef(graphMemory?.pinned ?? new Set<string>())
+  const lastViewKeyRef = useRef<string>(graphMemory?.viewKey ?? '')
   // All three survive effect re-runs so a filter toggle or record edit
   // neither explodes the layout, resets the viewport, nor re-decodes
-  // avatar images.
-  const positionsRef = useRef(new Map<string, { x: number; y: number }>())
-  const transformRef = useRef({ x: 0, y: 0, k: 1 })
+  // avatar images — and, through graphMemory, leaving the tab.
+  const positionsRef = useRef(graphMemory?.positions ?? new Map<string, { x: number; y: number }>())
+  const transformRef = useRef(graphMemory?.transform ?? { x: 0, y: 0, k: 1 })
   const avatarImagesRef = useRef(new Map<string, HTMLImageElement | 'loading' | 'failed'>())
   // Fit-to-path camera runs once per distinct path, not on every re-render.
-  const lastFitKeyRef = useRef<string>('')
+  const lastFitKeyRef = useRef<string>(graphMemory?.fitKey ?? '')
+  useEffect(
+    () => () => {
+      graphMemory = {
+        positions: positionsRef.current,
+        transform: transformRef.current,
+        pinned: pinnedRef.current,
+        viewKey: lastViewKeyRef.current,
+        fitKey: lastFitKeyRef.current,
+      }
+    },
+    [],
+  )
   // Circles are read through a ref so recolouring or hiding a bubble
   // repaints without restarting the simulation (no layout jiggle);
   // only membership changes reheat it, explicitly.
@@ -1441,6 +1581,11 @@ function useCanvasGraph(
     selectedRef.current = selected
     simRef.current?.render()
   }, [selected])
+  const quietLensRef = useRef(quietLens)
+  useEffect(() => {
+    quietLensRef.current = quietLens
+    simRef.current?.render()
+  }, [quietLens])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -1457,6 +1602,39 @@ function useCanvasGraph(
     const simLinks: GraphLink[] = links.map((l) => ({ ...l }))
     // Last-drawn bubble outlines, for tap hit-testing.
     const hulls = new Map<string, { x: number; y: number }[]>()
+    // Several roles on one pair fan out as parallel strands: each link
+    // knows its offset among its siblings (0 for a lone link).
+    const strand = new Map<string, number>()
+    {
+      const byPair = new Map<string, GraphLink[]>()
+      for (const l of simLinks) {
+        const key = pairKey(l.source as string, l.target as string)
+        const list = byPair.get(key) ?? []
+        list.push(l)
+        byPair.set(key, list)
+      }
+      for (const list of byPair.values()) {
+        if (list.length < 2) continue
+        list.forEach((l, i) => strand.set(l.edgeId, i - (list.length - 1) / 2))
+      }
+    }
+    // A strand's control point: the midpoint pushed sideways. The sign is
+    // fixed per pair so both directions of the same pair agree.
+    const strandControl = (l: GraphLink) => {
+      const s = l.source as GraphNode
+      const t = l.target as GraphNode
+      const off = strand.get(l.edgeId) ?? 0
+      if (!off) return null
+      const dx = t.x! - s.x!
+      const dy = t.y! - s.y!
+      const len = Math.hypot(dx, dy) || 1
+      const sign = s.id < t.id ? 1 : -1
+      const spread = Math.min(22, 8 + len * 0.06)
+      return {
+        x: (s.x! + t.x!) / 2 + (-dy / len) * off * spread * 2 * sign,
+        y: (s.y! + t.y!) / 2 + (dx / len) * off * spread * 2 * sign,
+      }
+    }
     const cachedCount = simNodes.filter((n) => n.x !== undefined).length
     const hasCachedPositions = cachedCount > 0
     // Share of the cast the layout has never placed: ~0 for a filter
@@ -1517,6 +1695,12 @@ function useCanvasGraph(
     let width = 0
     let height = 0
     let dpr = 1
+    // Canvas text follows the root size too (Dynamic Type): 1 at 16px.
+    let dt = 1
+    const readTextScale = () => {
+      dt = (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) / 16
+    }
+    readTextScale()
 
     // Link length follows the tie: household ties short, the same circle
     // a little longer, other explicit links longer, mentions longest —
@@ -1538,6 +1722,7 @@ function useCanvasGraph(
     }
     const linkDistance = (l: GraphLink) => {
       if (l.dashed) return 130
+      if (l.former) return 120
       if (l.label === 'married' || l.label === 'partner' || l.label === 'parent of') return 60
       const a = typeof l.source === 'object' ? (l.source as GraphNode).id : (l.source as string)
       const b = typeof l.target === 'object' ? (l.target as GraphNode).id : (l.target as string)
@@ -1554,7 +1739,16 @@ function useCanvasGraph(
           .id((n) => n.id)
           .distance(linkDistance),
       )
-      .force('charge', forceManyBody().strength(-180))
+      // A crowd of hundreds trades a little Barnes–Hut accuracy for
+      // ticks that cost half as much: a coarser theta, and no repulsion
+      // from people more than a screen away (the rim gravity and the
+      // links shape the far field anyway).
+      .force(
+        'charge',
+        simNodes.length > 300
+          ? forceManyBody().strength(-180).theta(1.2).distanceMax(800)
+          : forceManyBody().strength(-180),
+      )
       .force('center', forceCenter(0, 0))
       // Orphans hover at the rim instead of being flung off-screen.
       .force('x', gravityX)
@@ -1584,7 +1778,16 @@ function useCanvasGraph(
       // the extra settling buys no legibility.
       // Small ego views are readable after a second too — the long
       // tail of drift just feels slow.
-      .alphaDecay(simNodes.length > 150 || simNodes.length < 30 ? 0.04 : 0.0228)
+      // A crowd of hundreds cools faster still (~110 ticks): at that
+      // size the picture is dots and bubbles, and nobody can tell the
+      // last twenty ticks of settling apart.
+      .alphaDecay(
+        simNodes.length > 300
+          ? 0.06
+          : simNodes.length > 150 || simNodes.length < 30
+            ? 0.04
+            : 0.0228,
+      )
       // A warm layout barely stirs; a cold one settles from scratch; a
       // different view runs warm enough to untangle, and one that grew
       // by a third or more hot enough to place the newcomers.
@@ -1864,7 +2067,7 @@ function useCanvasGraph(
         const dt = dots.has(t.id)
         if (ds && dt && detail === 0) continue
         const minor = ds || dt
-        const key = `${link.color}|${link.dashed ? 1 : 0}|${link.highlighted ? 1 : 0}|${link.label}|${on ? 1 : 0}|${minor ? 1 : 0}`
+        const key = `${link.color}|${link.dashed ? 1 : 0}|${link.former ? 1 : 0}|${link.highlighted ? 1 : 0}|${link.style.width}|${link.style.dash?.join(',') ?? ''}|${on ? 1 : 0}|${minor ? 1 : 0}`
         const list = groups.get(key)
         if (list) list.push(link)
         else groups.set(key, [link])
@@ -1883,8 +2086,10 @@ function useCanvasGraph(
         for (const link of list) {
           const s = link.source as GraphNode
           const t = link.target as GraphNode
+          const c = strandControl(link)
           ctx.moveTo(s.x!, s.y!)
-          ctx.lineTo(t.x!, t.y!)
+          if (c) ctx.quadraticCurveTo(c.x, c.y, t.x!, t.y!)
+          else ctx.lineTo(t.x!, t.y!)
         }
         // Resting edges wear the muted type colour; a lit neighbourhood
         // or path gets the full colour and an extra stroke of weight.
@@ -1893,29 +2098,47 @@ function useCanvasGraph(
           dots.has((first.source as GraphNode).id) || dots.has((first.target as GraphNode).id)
         ctx.strokeStyle = on && active ? first.color : mutedColor(first.color)
         ctx.globalAlpha = (on ? 1 : unlitEdgeAlpha) * (minor ? (detail === 0 ? 0.3 : 0.45) : 1)
-        const base = first.highlighted ? 3.5 : first.label === 'partner' || first.label === 'married' ? 2.25 : 1.25
+        const base = first.highlighted ? Math.max(3.5, first.style.width + 1) : first.style.width
         ctx.lineWidth = (minor ? 1 : base + (on && active ? 0.75 : 0)) / k
-        // Shape, not just hue: mentions dotted, exes long-dashed, partners thick.
-        ctx.setLineDash(first.dashed ? dash : first.label === 'ex' ? [10 / k, 5 / k] : solid)
+        // Shape, not just hue: mentions dotted, former ties long-dashed,
+        // and inside a family the type's own width and dash.
+        ctx.setLineDash(
+          first.dashed
+            ? dash
+            : first.former
+              ? [10 / k, 5 / k]
+              : first.style.dash
+                ? first.style.dash.map((d) => d / k)
+                : solid,
+        )
         ctx.stroke()
       }
       ctx.setLineDash(solid)
       for (const link of arrows) {
         const s = link.source as GraphNode
         const t = link.target as GraphNode
-        const angle = Math.atan2(t.y! - s.y!, t.x! - s.x!)
+        const c = strandControl(link)
+        const angle = c ? Math.atan2(t.y! - c.y, t.x! - c.x) : Math.atan2(t.y! - s.y!, t.x! - s.x!)
         const ax = t.x! - Math.cos(angle) * (t.r + 4)
         const ay = t.y! - Math.sin(angle) * (t.r + 4)
         const size = 6 / Math.sqrt(k)
         const on = litEdge(link)
         ctx.globalAlpha = on ? 0.9 : unlitEdgeAlpha * 0.8
+        const colour = on && active ? link.color : mutedColor(link.color)
         ctx.beginPath()
-        ctx.moveTo(ax, ay)
-        ctx.lineTo(ax - size * Math.cos(angle - 0.5), ay - size * Math.sin(angle - 0.5))
+        ctx.moveTo(ax - size * Math.cos(angle - 0.5), ay - size * Math.sin(angle - 0.5))
+        ctx.lineTo(ax, ay)
         ctx.lineTo(ax - size * Math.cos(angle + 0.5), ay - size * Math.sin(angle + 0.5))
-        ctx.closePath()
-        ctx.fillStyle = on && active ? link.color : mutedColor(link.color)
-        ctx.fill()
+        if (link.style.arrow === 'open') {
+          // An open chevron (boss of) against the filled head (parent of).
+          ctx.lineWidth = 1.5 / k
+          ctx.strokeStyle = colour
+          ctx.stroke()
+        } else {
+          ctx.closePath()
+          ctx.fillStyle = colour
+          ctx.fill()
+        }
       }
 
       ctx.globalAlpha = 1
@@ -1926,7 +2149,7 @@ function useCanvasGraph(
       // Pass 1: discs with avatar or initials, one font for all nodes.
       // Plain nodes (no photo, not focused, not you, not lit) share one
       // fill path and one ring path; initials skip when under ~7px.
-      ctx.font = '600 11px system-ui'
+      ctx.font = `600 ${11 * dt}px system-ui`
       const visibleNodes: GraphNode[] = []
       const plain: GraphNode[] = []
       const faded: GraphNode[] = []
@@ -1947,7 +2170,8 @@ function useCanvasGraph(
         else if (!isLitNode(node.id)) faded.push(node)
         else plain.push(node)
       }
-      const drawBatch = (batch: GraphNode[], alpha: number) => {
+      const lens = quietLensRef.current
+      const drawBatch = (batch: GraphNode[], alpha: number, quietOnes = false) => {
         if (batch.length === 0) return
         ctx.globalAlpha = alpha
         ctx.beginPath()
@@ -1955,17 +2179,24 @@ function useCanvasGraph(
           ctx.moveTo(node.x! + node.r, node.y!)
           ctx.arc(node.x!, node.y!, node.r, 0, Math.PI * 2)
         }
-        ctx.fillStyle = '#232120'
+        ctx.fillStyle = quietOnes ? '#1c1b1a' : '#232120'
         ctx.fill()
+        // Under the quiet lens a person you've stopped writing about wears
+        // a dashed ring and muted initials — the same "past" language as
+        // a former tie.
+        if (quietOnes) ctx.setLineDash([3 / k, 3 / k])
         ctx.lineWidth = 1 / k
         ctx.strokeStyle = '#7d786f'
         ctx.stroke()
+        if (quietOnes) ctx.setLineDash(solid)
         if (k * 11 >= 7) {
-          ctx.fillStyle = '#ece8e1'
+          ctx.fillStyle = quietOnes ? '#8b857a' : '#ece8e1'
           for (const node of batch) ctx.fillText(node.initials, node.x!, node.y!)
         }
         ctx.globalAlpha = 1
       }
+      const split = (batch: GraphNode[]) =>
+        lens ? [batch.filter((n) => n.quiet === null), batch.filter((n) => n.quiet !== null)] : [batch, []]
       // Dots underneath, faded next, plain over them, then the special few.
       if (dotNodes.length > 0) {
         const dr = 3.5 / k
@@ -1979,8 +2210,14 @@ function useCanvasGraph(
         ctx.fill()
         ctx.globalAlpha = 1
       }
-      drawBatch(faded, unlitNodeAlpha)
-      drawBatch(plain, 1)
+      {
+        const [fadedLoud, fadedQuiet] = split(faded)
+        const [plainLoud, plainQuiet] = split(plain)
+        drawBatch(fadedLoud, unlitNodeAlpha)
+        drawBatch(fadedQuiet, unlitNodeAlpha, true)
+        drawBatch(plainLoud, 1)
+        drawBatch(plainQuiet, 1, true)
+      }
       for (const node of special) {
         const isFocus = node.id === focusId
         const isSelected = node.id === selectedId
@@ -2061,12 +2298,12 @@ function useCanvasGraph(
         // colour, and the people who matter most are named first — the
         // card's subject, you, the focus, lit neighbours, then hubs.
         // Screen-sized: 12px at every zoom, like a map label.
-        ctx.font = `500 ${12 / k}px system-ui`
+        ctx.font = `500 ${(12 * dt) / k}px system-ui`
         ctx.lineJoin = 'round'
         ctx.lineWidth = 3 / k
         ctx.strokeStyle = 'rgba(18, 17, 16, 0.9)'
         ctx.textBaseline = 'alphabetic'
-        const lineH = 14 / k
+        const lineH = (14 * dt) / k
         const rank = (nd: GraphNode) =>
           (nd.id === selectedId || nd.id === active?.anchor ? 4000 : 0) +
           (nd.isSelf ? 3000 : 0) +
@@ -2107,7 +2344,7 @@ function useCanvasGraph(
       // don't cover anyone. They shrink with zoom (floor 9px) and vanish
       // far out or when there are too many bubbles to name.
       if (k >= 0.45 && (circlesNow.length <= 8 || k >= 0.8)) {
-        const fontPx = Math.min(11, Math.max(9, 11 * k)) / k
+        const fontPx = (Math.min(11, Math.max(9, 11 * k)) * dt) / k
         const lineH = fontPx * 1.3
         ctx.font = `600 ${fontPx}px system-ui`
         const spaced = ctx as CanvasRenderingContext2D & { letterSpacing?: string }
@@ -2196,6 +2433,7 @@ function useCanvasGraph(
       const wrap = canvas.parentElement
       if (!wrap) return
       dpr = window.devicePixelRatio || 1
+      readTextScale()
       const sizeChanged = wrap.clientWidth !== width || wrap.clientHeight !== height
       width = wrap.clientWidth
       height = wrap.clientHeight
@@ -2329,6 +2567,12 @@ function useCanvasGraph(
         scheduleRender()
       },
       hasNode: (id) => nodeById.has(id),
+      fitCircle: (circleId, bottomInset) => {
+        const c = circlesRef.current.find((x) => x.id === circleId)
+        if (!c || c.memberIds.length === 0) return
+        userMoved = true
+        fitTo(c.memberIds, Math.max(1.2, cameraGoal().k), bottomInset)
+      },
     }
 
     // "Show on graph" should actually show it: once the layout has had a
@@ -2393,7 +2637,17 @@ function useCanvasGraph(
         const s = link.source as GraphNode
         const t = link.target as GraphNode
         if (s.x == null || t.x == null) continue
-        const d = pointSegmentDistSq(p.x, p.y, s.x, s.y!, t.x!, t.y!)
+        const c = strandControl(link)
+        let d: number
+        if (c) {
+          // A strand is close to its two half-chords through the curve's midpoint.
+          const mx = 0.25 * s.x + 0.5 * c.x + 0.25 * t.x!
+          const my = 0.25 * s.y! + 0.5 * c.y + 0.25 * t.y!
+          d = Math.min(
+            pointSegmentDistSq(p.x, p.y, s.x, s.y!, mx, my),
+            pointSegmentDistSq(p.x, p.y, mx, my, t.x!, t.y!),
+          )
+        } else d = pointSegmentDistSq(p.x, p.y, s.x, s.y!, t.x!, t.y!)
         if (d <= bestEdgeDist) {
           bestEdge = link
           bestEdgeDist = d

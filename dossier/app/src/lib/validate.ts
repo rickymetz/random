@@ -16,8 +16,10 @@ import type {
   Relationship,
   RelationshipType,
   Settings,
+  TypeFamily,
 } from './models'
 import { RECENT_LIMIT } from './models'
+import { extractMentions } from './mentions'
 
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/
 
@@ -25,12 +27,16 @@ const str = (v: unknown, max = 10_000): string | undefined =>
   typeof v === 'string' && v.length <= max ? v : undefined
 
 const strList = (v: unknown, max = 100): string[] =>
-  Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string').slice(0, max) : []
+  Array.isArray(v)
+    ? v.filter((s): s is string => typeof s === 'string' && s.length <= 200).slice(0, max)
+    : []
 
 const num = (v: unknown): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : Date.now()
 
 const bool = (v: unknown): boolean => v === true
+const isFamily = (v: unknown): v is TypeFamily =>
+  v === 'family' || v === 'work' || v === 'social' || v === 'other'
 
 function id(v: unknown): string | null {
   return typeof v === 'string' && ID_RE.test(v) ? v : null
@@ -91,7 +97,8 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
         id: rid,
         personId,
         body,
-        mentions: strList(r.mentions).filter((m) => ID_RE.test(m)),
+        // Re-derived from the text: a bundle can't claim a mention its body doesn't show.
+        mentions: extractMentions(body),
         createdAt: num(r.createdAt),
       }
       return note
@@ -125,6 +132,8 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
         directed: bool(r.directed),
         note: str(r.note, 2000),
         startDate: partialDate(r.startDate),
+        endDate: partialDate(r.endDate),
+        former: bool(r.former) || undefined,
         origin: r.origin === 'mention' ? 'mention' : 'explicit',
         createdAt: num(r.createdAt),
       }
@@ -140,6 +149,7 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
         color: /^#[0-9a-fA-F]{6}$/.test(String(r.color)) ? (r.color as string) : '#55555e',
         directed: bool(r.directed),
         builtIn: bool(r.builtIn),
+        family: isFamily(r.family) ? r.family : undefined,
       }
       return type
     }
@@ -187,6 +197,7 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
         autoLockMinutes: finite(r.autoLockMinutes, 0, 24 * 60),
         backgroundGraceSeconds: finite(r.backgroundGraceSeconds, 0, 3600),
         shakeToLock: r.shakeToLock === true || undefined,
+        nameSuggestions: r.nameSuggestions === false ? false : undefined,
         remindersEnabled: r.remindersEnabled === true || undefined,
         lastReminderDay:
           typeof r.lastReminderDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.lastReminderDay)
@@ -194,7 +205,7 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
             : undefined,
         recentIds: Array.isArray(r.recentIds)
           ? r.recentIds
-              .filter((id): id is string => typeof id === 'string' && id.length <= 64)
+              .filter((id): id is string => typeof id === 'string' && ID_RE.test(id))
               .slice(0, RECENT_LIMIT)
           : undefined,
       }
