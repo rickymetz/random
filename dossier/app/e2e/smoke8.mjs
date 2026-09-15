@@ -1,9 +1,10 @@
 import { launch } from './lib.mjs'
+const BASE = process.env.BASE_URL ?? 'http://localhost:4290'
 const browser = await launch()
 const page = await browser.newPage({ viewport: { width: 390, height: 720 } })
 page.on('dialog', (d) => d.accept())
 page.on('pageerror', (e) => console.log('PAGEERROR', e.message))
-await page.goto('http://localhost:4290')
+await page.goto(BASE)
 await page.evaluate(() => new Promise((res) => { const r = indexedDB.deleteDatabase('ledger'); r.onsuccess = r.onerror = r.onblocked = res }))
 await page.evaluate(() => localStorage.clear())
 await page.reload()

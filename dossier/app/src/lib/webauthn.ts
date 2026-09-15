@@ -43,6 +43,11 @@ interface PrfResults {
   prf?: { enabled?: boolean; results?: { first?: ArrayBuffer | Uint8Array } }
 }
 
+/** The half of the PRF extension inputs we send at assertion time. */
+type AuthenticationExtensionsPRFInputs =
+  | { eval: { first: BufferSource } }
+  | { evalByCredential: Record<string, { first: BufferSource }> }
+
 function prfOutputOf(credential: PublicKeyCredential): Uint8Array | null {
   const ext = credential.getClientExtensionResults() as PrfResults
   const first = ext.prf?.results?.first
@@ -163,13 +168,49 @@ export async function removeBiometricEnrollment(credentialId: string): Promise<v
 }
 
 /**
- * Authenticate and return the raw DEK bytes (caller passes them to
- * vault.unlockWithRawDek, which wipes them). Returns null when the
- * assertion yields no PRF output; throws on user cancel.
+ * Why an unlock failed. Every one of these used to be the same `null` (or
+ * a thrown OperationError the caller read as "sheet dismissed"), so a
+ * passkey that could never work again looked exactly like a passkey you
+ * had just chosen not to use: Face ID succeeded and nothing happened.
  */
-export async function biometricUnlock(): Promise<Uint8Array | null> {
+export type UnlockResult =
+  | { status: 'ok'; rawDek: Uint8Array }
+  /** No enrollment here — the button should not have been offered. */
+  | { status: 'none' }
+  /** The assertion came back without a PRF output: this browser can't. */
+  | { status: 'no-prf' }
+  /**
+   * The passkey is real and answered, but its key opens nothing here —
+   * the vault was restored or re-created after enrolling. Unrecoverable
+   * by retrying: the caller drops the enrollment and says so.
+   */
+  | { status: 'stale' }
+
+/**
+ * Authenticate and return the raw DEK bytes (the caller passes them to
+ * vault.unlockWithRawDek, which wipes them). Throws only on user cancel
+ * and on genuine platform errors; the ways this can legitimately fail
+ * come back as a status.
+ */
+export async function biometricUnlock(): Promise<UnlockResult> {
   const rows = await db.auth.toArray()
-  if (rows.length === 0) return null
+  if (rows.length === 0) return { status: 'none' }
+  // One enrollment is the normal case (Settings offers a single switch),
+  // and `eval` is the older, far more widely implemented half of the PRF
+  // extension — Safari in particular is happier with it. Only reach for
+  // evalByCredential when there really is more than one credential to
+  // tell apart.
+  const prf: AuthenticationExtensionsPRFInputs =
+    rows.length === 1
+      ? { eval: { first: rows[0].prfSalt as BufferSource } }
+      : {
+          evalByCredential: Object.fromEntries(
+            rows.map((r) => [
+              bufferToBase64Url(fromHex(r.id)),
+              { first: r.prfSalt as BufferSource },
+            ]),
+          ),
+        }
   // All enrollments share one prompt; the responder's id picks the row.
   const asserted = (await navigator.credentials.get({
     publicKey: {
@@ -180,27 +221,23 @@ export async function biometricUnlock(): Promise<Uint8Array | null> {
         transports: (r.transports ?? []) as AuthenticatorTransport[],
       })),
       userVerification: 'required',
-      extensions: {
-        prf: {
-          evalByCredential: Object.fromEntries(
-            rows.map((r) => [
-              bufferToBase64Url(fromHex(r.id)),
-              { first: r.prfSalt as BufferSource },
-            ]),
-          ),
-        },
-      } as AuthenticationExtensionsClientInputs,
+      extensions: { prf } as AuthenticationExtensionsClientInputs,
       timeout: 60_000,
     },
   })) as PublicKeyCredential | null
-  if (!asserted) return null
+  if (!asserted) return { status: 'no-prf' }
   const row = rows.find((r) => r.id === toHex(new Uint8Array(asserted.rawId)))
-  if (!row) return null
+  if (!row) return { status: 'stale' }
   const prfOutput = prfOutputOf(asserted)
-  if (!prfOutput) return null
+  if (!prfOutput) return { status: 'no-prf' }
   try {
     const kek = await deriveKeyFromPrf(prfOutput, row.hkdfSalt)
-    return await unwrapDek({ iv: row.wrappedDekIv, ciphertext: row.wrappedDek }, kek)
+    const rawDek = await unwrapDek({ iv: row.wrappedDekIv, ciphertext: row.wrappedDek }, kek)
+    return { status: 'ok', rawDek }
+  } catch {
+    // AES-GCM refused the wrap: the PRF output is not the one that made
+    // it. Nothing the user can do at this screen.
+    return { status: 'stale' }
   } finally {
     wipe(prfOutput)
   }

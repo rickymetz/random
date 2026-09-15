@@ -108,7 +108,12 @@ interface VaultState {
   create: (passphrase: string) => Promise<void>
   unlock: (passphrase: string) => Promise<boolean>
   unlockWithPin: (pin: string) => Promise<'ok' | 'wrong' | 'stale'>
-  unlockWithBiometric: () => Promise<boolean>
+  /**
+   * 'stale' means the passkey answered but opens nothing here (the vault
+   * was restored or re-created since); the enrollment is dropped so the
+   * button stops offering a dead end.
+   */
+  unlockWithBiometric: () => Promise<'ok' | 'cancelled' | 'unsupported' | 'stale' | 'failed'>
   /** Timer-driven lock: drops all decrypted state; the session PIN stays. */
   lock: () => void
   /** Panic lock (§6.4): everything lock() drops PLUS the PIN session. */
@@ -566,12 +571,29 @@ export const useVaultStore = create<VaultState>((set, get) => {
     },
 
     unlockWithBiometric: async () => {
-      if (get().status === 'unlocked') return true
-      const rawDek = await biometricUnlock()
-      if (!rawDek) return false
-      const vault = await unlockWithRawDek(rawDek)
-      if (!vault) return false
-      return finishUnlock(vault)
+      if (get().status === 'unlocked') return 'ok'
+      // A passkey that can never open this vault again is retired here,
+      // the way a stale PIN disarms itself: leaving it on the unlock
+      // screen means offering a button that fails every time, and Face ID
+      // saying yes to nothing is the most confusing failure the app has.
+      const retire = async () => {
+        await removeBiometricEnrollments()
+        set({ biometricEnrolled: false })
+        return 'stale' as const
+      }
+      let result: Awaited<ReturnType<typeof biometricUnlock>>
+      try {
+        result = await biometricUnlock()
+      } catch (error) {
+        return isUserCancel(error) ? 'cancelled' : 'failed'
+      }
+      if (result.status === 'no-prf') return 'unsupported'
+      if (result.status === 'none' || result.status === 'stale') return retire()
+      const vault = await unlockWithRawDek(result.rawDek)
+      // The wrap opened, so the passkey is the one we enrolled — but its
+      // DEK matches no slot, which is the restored-vault case again.
+      if (!vault) return retire()
+      return (await finishUnlock(vault)) ? 'ok' : 'failed'
     },
 
     lock: () => {
