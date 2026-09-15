@@ -1735,7 +1735,16 @@ function useCanvasGraph(
           .id((n) => n.id)
           .distance(linkDistance),
       )
-      .force('charge', forceManyBody().strength(-180))
+      // A crowd of hundreds trades a little Barnes–Hut accuracy for
+      // ticks that cost half as much: a coarser theta, and no repulsion
+      // from people more than a screen away (the rim gravity and the
+      // links shape the far field anyway).
+      .force(
+        'charge',
+        simNodes.length > 300
+          ? forceManyBody().strength(-180).theta(1.2).distanceMax(800)
+          : forceManyBody().strength(-180),
+      )
       .force('center', forceCenter(0, 0))
       // Orphans hover at the rim instead of being flung off-screen.
       .force('x', gravityX)
@@ -1765,7 +1774,16 @@ function useCanvasGraph(
       // the extra settling buys no legibility.
       // Small ego views are readable after a second too — the long
       // tail of drift just feels slow.
-      .alphaDecay(simNodes.length > 150 || simNodes.length < 30 ? 0.04 : 0.0228)
+      // A crowd of hundreds cools faster still (~110 ticks): at that
+      // size the picture is dots and bubbles, and nobody can tell the
+      // last twenty ticks of settling apart.
+      .alphaDecay(
+        simNodes.length > 300
+          ? 0.06
+          : simNodes.length > 150 || simNodes.length < 30
+            ? 0.04
+            : 0.0228,
+      )
       // A warm layout barely stirs; a cold one settles from scratch; a
       // different view runs warm enough to untangle, and one that grew
       // by a third or more hot enough to place the newcomers.

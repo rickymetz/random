@@ -180,10 +180,12 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
       else next.delete(key)
       return next
     })
+  // "Select all new" means all of them, not the hundred on screen: a
+  // thousand-row export would otherwise take ten rounds of Show more.
   const setPageAll = (on: boolean) =>
     setChecked((prev) => {
       const next = new Set(prev)
-      for (const c of page) {
+      for (const c of visible) {
         if (!selectable(c)) continue
         if (on) next.add(c.key)
         else next.delete(c.key)
