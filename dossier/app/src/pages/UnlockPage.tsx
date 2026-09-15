@@ -53,9 +53,20 @@ function BiometricButton({ onError }: { onError: (message: string | null) => voi
       onClick={async () => {
         setBusy(true)
         try {
-          if (!(await unlockWithBiometric())) onError('Biometric unlock failed — use another method.')
+          // Only dismissing the sheet is silent. Everything else used to
+          // be swallowed here too, so a passkey that could never work
+          // again looked exactly like one you'd changed your mind about:
+          // Face ID said yes and the screen sat there.
+          const result = await unlockWithBiometric()
+          if (result === 'ok' || result === 'cancelled') onError(null)
+          else if (result === 'stale')
+            onError(
+              'Couldn’t unlock — this passkey doesn’t open this vault. Open with your passphrase, then turn Face ID on again in Settings.',
+            )
+          else if (result === 'unsupported')
+            onError('Couldn’t unlock with Face ID on this browser. Use your passphrase.')
+          else onError('Couldn’t unlock with Face ID. Use your passphrase.')
         } catch {
-          // Dismissing the platform sheet is not a failure — stay quiet.
           onError(null)
         } finally {
           setBusy(false)
