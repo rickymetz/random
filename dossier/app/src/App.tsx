@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState, useSyncExternalStore } from 'react'
+import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   NavLink,
   Navigate,
@@ -81,14 +81,43 @@ function useKeyboardInset() {
 /**
  * A hash router keeps the window scroll across routes, so tapping a tab
  * from the bottom of a long list landed 2,000px down the next page.
- * Reset on forward navigations only; Back keeps the browser's restore.
+ * Each tab remembers its own place instead (iOS tab-bar model): the
+ * scroll is recorded per route while you scroll, and a forward hop to
+ * the People or Settings tab lands where you left it. Anything else
+ * (a dossier, a circle view) starts at the top; Back keeps the
+ * browser's own restore. People remembers the plain list only: a tab
+ * tap starts a fresh lookup, so a position taken mid-search would land
+ * on different rows.
  */
+const TAB_ROUTES = new Set(['/', '/settings'])
+const scrollMemory = new Map<string, number>()
+/** Tapping the tab you are on pops to its top and forgets the place. */
+function forgetScroll(route: string) {
+  scrollMemory.delete(route)
+  window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+}
 function useScrollReset() {
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const navType = useNavigationType()
+  const route = pathname + search
+  const routeRef = useRef(route)
+  routeRef.current = route
   useEffect(() => {
+    const onScroll = () => {
+      const key = routeRef.current
+      if (!TAB_ROUTES.has(key)) return
+      if (key === '/' && useVaultStore.getState().homeQuery.trim()) return
+      scrollMemory.set(key, window.scrollY)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+  // A layout effect: the page is placed before it is painted, so a
+  // remembered position never flashes the top first.
+  useLayoutEffect(() => {
     if (navType !== 'PUSH') return
-    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
+    const top = TAB_ROUTES.has(route) ? (scrollMemory.get(route) ?? 0) : 0
+    window.scrollTo({ top, behavior: 'instant' as ScrollBehavior })
     // A route change announces nothing on its own (the title stays the
     // disguise): land focus on the new view's heading unless the view
     // already placed it (search box, fresh capture bar).
@@ -100,7 +129,7 @@ function useScrollReset() {
       h1.focus({ preventScroll: true })
     }, 60)
     return () => window.clearTimeout(t)
-  }, [pathname, navType])
+  }, [route, navType])
 }
 
 /* Tab-bar icons: one stroke weight, one size, so the four read as a set
@@ -393,11 +422,16 @@ export default function App() {
         {/* A route may put one control here (the graph's Find). */}
         <span id="appbar-slot" className="appbar-slot" />
         <nav aria-label="Main">
-          <NavLink to="/" end>
+          <NavLink to="/" end onClick={() => pathname === '/' && forgetScroll('/')}>
             People
           </NavLink>
           <NavLink to="/graph">Graph</NavLink>
-          <NavLink to="/settings">Settings</NavLink>
+          <NavLink
+            to="/settings"
+            onClick={() => pathname === '/settings' && forgetScroll('/settings')}
+          >
+            Settings
+          </NavLink>
         </nav>
         {/* Panic lock (§6.4): drops the DEK AND the session PIN. It still
             saves a capture draft first — data loss is a shake's job, not a
@@ -450,9 +484,17 @@ export default function App() {
       {/* Mobile-only bottom tabs (hidden ≥48rem): nav where the thumb
           lives, with Lock as the most reachable control in the app. */}
       <nav className="tabbar" aria-label="Main">
-        {/* Tapping People from another tab starts a fresh lookup; the query
-            persists only for Back from a dossier. */}
-        <NavLink to="/" end onClick={() => setHomeQuery('')}>
+        {/* Tapping People from another tab starts a fresh lookup at the
+            place you were browsing; the query persists only for Back
+            from a dossier. On the tab you're already on, it pops to the top. */}
+        <NavLink
+          to="/"
+          end
+          onClick={() => {
+            setHomeQuery('')
+            if (pathname === '/') forgetScroll('/')
+          }}
+        >
           <PeopleIcon />
           People
         </NavLink>
@@ -460,7 +502,10 @@ export default function App() {
           <GraphIcon />
           Graph
         </NavLink>
-        <NavLink to="/settings">
+        <NavLink
+          to="/settings"
+          onClick={() => pathname === '/settings' && forgetScroll('/settings')}
+        >
           <GearIcon />
           Settings
         </NavLink>

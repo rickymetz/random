@@ -1501,6 +1501,20 @@ function CirclePeek({
   )
 }
 
+/**
+ * The graph tab remembers its place (per-tab memory, like the lists):
+ * where everyone sat, where the camera was and who was pinned survive
+ * leaving the tab, so coming back shows the same picture instead of a
+ * fresh layout and a refit. Session-only: a reload lays out anew.
+ */
+let graphMemory: {
+  positions: Map<string, { x: number; y: number }>
+  transform: { x: number; y: number; k: number }
+  pinned: Set<string>
+  viewKey: string
+  fitKey: string
+} | null = null
+
 function useCanvasGraph(
   nodes: GraphNode[],
   links: GraphLink[],
@@ -1524,16 +1538,28 @@ function useCanvasGraph(
   // ref: a selection repaints, it never restarts the layout.
   const selectedRef = useRef<Tap>(selected)
   // People dropped by hand stay put (fx/fy) across effect runs.
-  const pinnedRef = useRef(new Set<string>())
-  const lastViewKeyRef = useRef<string>('')
+  const pinnedRef = useRef(graphMemory?.pinned ?? new Set<string>())
+  const lastViewKeyRef = useRef<string>(graphMemory?.viewKey ?? '')
   // All three survive effect re-runs so a filter toggle or record edit
   // neither explodes the layout, resets the viewport, nor re-decodes
-  // avatar images.
-  const positionsRef = useRef(new Map<string, { x: number; y: number }>())
-  const transformRef = useRef({ x: 0, y: 0, k: 1 })
+  // avatar images — and, through graphMemory, leaving the tab.
+  const positionsRef = useRef(graphMemory?.positions ?? new Map<string, { x: number; y: number }>())
+  const transformRef = useRef(graphMemory?.transform ?? { x: 0, y: 0, k: 1 })
   const avatarImagesRef = useRef(new Map<string, HTMLImageElement | 'loading' | 'failed'>())
   // Fit-to-path camera runs once per distinct path, not on every re-render.
-  const lastFitKeyRef = useRef<string>('')
+  const lastFitKeyRef = useRef<string>(graphMemory?.fitKey ?? '')
+  useEffect(
+    () => () => {
+      graphMemory = {
+        positions: positionsRef.current,
+        transform: transformRef.current,
+        pinned: pinnedRef.current,
+        viewKey: lastViewKeyRef.current,
+        fitKey: lastFitKeyRef.current,
+      }
+    },
+    [],
+  )
   // Circles are read through a ref so recolouring or hiding a bubble
   // repaints without restarting the simulation (no layout jiggle);
   // only membership changes reheat it, explicitly.
