@@ -40,6 +40,7 @@ import {
   tryPinUnlock,
 } from '../lib/pin'
 import { clearPhotoCache, evictPhoto } from '../lib/photoCache'
+import { clearSessionCaches } from '../lib/sessionCaches'
 import { createIndex, rebuildIndex, reindexPerson, searchPeople } from '../lib/search'
 import { sanitizeRecords } from '../lib/validate'
 import {
@@ -397,8 +398,10 @@ export const useVaultStore = create<VaultState>((set, get) => {
 
   function baseLock(): void {
     searchIndex = createIndex()
-    // Decrypted image object-URLs are plaintext too (§6.1).
+    // Decrypted image object-URLs are plaintext too (§6.1), and so is
+    // anything a page derived from the records and kept at module level.
     clearPhotoCache()
+    clearSessionCaches()
     set((state) => ({
       status: state.status === 'no-vault' ? 'no-vault' : 'locked',
       vault: null,

@@ -617,7 +617,7 @@ function ImportSection() {
             type="file"
             // iOS maps accept to UTIs and can grey out a .ledger file in
             // the Files picker; the importer validates the contents anyway.
-            accept={isIos() ? undefined : '.ledger,application/json'}
+            accept={isIos() ? undefined : '.ledger,.planner,.grid,application/json'}
             aria-label="Backup file"
           />
         </label>

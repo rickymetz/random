@@ -229,7 +229,7 @@ export async function unlockWithRawDek(rawDek: Uint8Array): Promise<UnlockedVaul
         dataPrefix: toHex(prefixBytes),
         dek,
         // This path cannot migrate the wrap (no passphrase) — surface it.
-        kdfLegacy: slot.kdfParams.algorithm !== DEFAULT_KDF_PARAMS.algorithm,
+        kdfLegacy: slot.kdfParams?.algorithm !== DEFAULT_KDF_PARAMS.algorithm,
       }
     } catch {
       // Not this slot.

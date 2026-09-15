@@ -26,6 +26,7 @@ interface ContactsManager {
 }
 
 const PAGE = 100
+const MAX_CONTACTS_FILE_BYTES = 32 * 1024 * 1024
 /** Above this many contacts a file starts unselected: pick, don't dump. */
 const PRESELECT_MAX = 25
 
@@ -111,6 +112,11 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
 
   const readFile = async (file: File) => {
     setError(null)
+    // A contacts export is kilobytes; a huge file would only sink the tab.
+    if (file.size > MAX_CONTACTS_FILE_BYTES) {
+      setError('That file is too big to be a contacts export (over 32 MB).')
+      return
+    }
     let parsed: ReturnType<typeof parseContacts>
     try {
       parsed = parseContacts(await readText(file), file.name)

@@ -14,6 +14,7 @@ import {
   DEFAULT_BACKGROUND_GRACE_SECONDS,
 } from './lib/models'
 import { currentDisguise, subscribeDisguise } from './lib/disguise'
+import { onLock } from './lib/sessionCaches'
 import {
   hasDueItems,
   notificationsGranted,
@@ -91,6 +92,7 @@ function useKeyboardInset() {
  */
 const TAB_ROUTES = new Set(['/', '/settings'])
 const scrollMemory = new Map<string, number>()
+onLock(() => scrollMemory.clear())
 /** Tapping the tab you are on pops to its top and forgets the place. */
 function forgetScroll(route: string) {
   scrollMemory.delete(route)
@@ -116,7 +118,10 @@ function useScrollReset() {
   // remembered position never flashes the top first.
   useLayoutEffect(() => {
     if (navType !== 'PUSH') return
-    const top = TAB_ROUTES.has(route) ? (scrollMemory.get(route) ?? 0) : 0
+    // A search in progress (a facet tap from a dossier) shows other rows
+    // than the remembered plain list: start at the top.
+    const searching = route === '/' && useVaultStore.getState().homeQuery.trim() !== ''
+    const top = TAB_ROUTES.has(route) && !searching ? (scrollMemory.get(route) ?? 0) : 0
     window.scrollTo({ top, behavior: 'instant' as ScrollBehavior })
     // A route change announces nothing on its own (the title stays the
     // disguise): land focus on the new view's heading unless the view
@@ -212,37 +217,67 @@ export default function App() {
 
   // Timer-driven locks save any in-progress capture draft as an encrypted
   // note first — a memory aid must not eat the fact you just typed. The
-  // panic Lock button skips this: panic means drop everything NOW.
+  // wait is bounded: the flush queues behind every in-flight write (a big
+  // import can hold the chain for seconds), and a lock must not. A flush
+  // that lands after the lock is dropped by the store's epoch guard.
   const timerLock = async () => {
     try {
-      await flushDrafts()
+      await Promise.race([flushDrafts(), new Promise((r) => setTimeout(r, 1500))])
     } finally {
       lock()
     }
   }
+  // The panic paths (header button, shake) give the draft a moment too,
+  // but §6.4 says "immediately": a third of a second, then the DEK goes.
+  const panic = () =>
+    void Promise.race([flushDrafts(), new Promise((r) => setTimeout(r, 300))]).finally(() =>
+      panicLock(),
+    )
 
   // Backgrounding starts a grace timer before locking (§6.3): an instant
   // lock would destroy capture drafts on every notification tap and break
   // the OS file picker. Returning within the window cancels it. Armed at
   // effect setup too — the page may already be hidden when the vault
   // unlocks (the WebAuthn sheet backgrounds the page on some platforms).
+  // Timers alone are not enough: a suspended page (a backgrounded Home
+  // Screen app, a frozen tab, the back-forward cache) runs no timers, and
+  // on resume the "visible" event would cancel a grace that never got to
+  // fire. So the moment of hiding is written down, and coming back after
+  // the grace has passed by the wall clock locks at once.
   useEffect(() => {
     if (!unlocked) return
     let timer: ReturnType<typeof setTimeout> | undefined
+    let hiddenAt: number | null = null
+    const graceMs = Math.max(1, graceSeconds) * 1000
     const arm = () => {
-      timer ??= setTimeout(() => void timerLock(), Math.max(1, graceSeconds) * 1000)
+      hiddenAt ??= Date.now()
+      timer ??= setTimeout(() => void timerLock(), graceMs)
     }
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') arm()
-      else if (timer !== undefined) {
+    const back = () => {
+      if (timer !== undefined) {
         clearTimeout(timer)
         timer = undefined
       }
+      const overdue = hiddenAt !== null && Date.now() - hiddenAt >= graceMs
+      hiddenAt = null
+      if (overdue) void timerLock()
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') arm()
+      else back()
+    }
+    const onPageHide = () => arm()
+    const onPageShow = () => {
+      if (document.visibilityState !== 'hidden') back()
     }
     if (document.visibilityState === 'hidden') arm()
     document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', onPageHide)
+    window.addEventListener('pageshow', onPageShow)
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', onPageHide)
+      window.removeEventListener('pageshow', onPageShow)
       if (timer !== undefined) clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -256,7 +291,11 @@ export default function App() {
     let lockTimer: ReturnType<typeof setTimeout>
     let warnTimer: ReturnType<typeof setTimeout> | undefined
     const totalMs = autoLockMinutes * 60_000
+    // Wall clock as well as the timer (see the grace effect): a page that
+    // slept through its countdown locks on the first sign of life.
+    let lastActivityAt = Date.now()
     const reset = () => {
+      lastActivityAt = Date.now()
       clearTimeout(lockTimer)
       if (warnTimer !== undefined) clearTimeout(warnTimer)
       setLockWarning(false)
@@ -269,15 +308,23 @@ export default function App() {
       }, totalMs)
     }
     reset()
+    const onWake = () => {
+      if (document.visibilityState === 'hidden') return
+      if (Date.now() - lastActivityAt >= totalMs) void timerLock()
+    }
     // focusin counts: a screen-reader user reading a long dossier moves
     // focus, not the pointer.
     const events: (keyof DocumentEventMap)[] = ['pointerdown', 'keydown', 'wheel', 'input', 'focusin']
     for (const ev of events) document.addEventListener(ev, reset, { passive: true })
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('pageshow', onWake)
     return () => {
       clearTimeout(lockTimer)
       if (warnTimer !== undefined) clearTimeout(warnTimer)
       setLockWarning(false)
       for (const ev of events) document.removeEventListener(ev, reset)
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('pageshow', onWake)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlocked, autoLockMinutes])
@@ -308,7 +355,7 @@ export default function App() {
         if (spikes.length >= 3) {
           fired = true
           spikes = []
-          void flushDrafts().finally(() => panicLock())
+          panic()
         }
       }
     }
@@ -433,15 +480,15 @@ export default function App() {
             Settings
           </NavLink>
         </nav>
-        {/* Panic lock (§6.4): drops the DEK AND the session PIN. It still
-            saves a capture draft first — data loss is a shake's job, not a
-            button's. Named so it can't be confused with the tab-bar Lock. */}
+        {/* Panic lock (§6.4): drops the DEK AND the session PIN. It gives a
+            capture draft a moment to save first (bounded, see `panic`).
+            Named so it can't be confused with the tab-bar Lock. */}
         <button
           // On a phone the tab bar already has an everyday Lock; the header
           // one earns its place only when it does something more (dropping
           // an armed PIN), so it hides until then.
           className={`lock-button ${pinArmed ? 'panic' : 'plain'}`}
-          onClick={() => void flushDrafts().finally(() => panicLock())}
+          onClick={panic}
           aria-label={
             pinArmed
               ? 'Lock & forget PIN — reopen with your passphrase or Face ID'

@@ -127,6 +127,7 @@ function Facts({
   setEditing: (v: boolean) => void
 }) {
   const records = useVaultStore((s) => s.records)
+  const setHomeQuery = useVaultStore((s) => s.setHomeQuery)
   const circles = useMemo(() => selectCirclesOf(records, person.id), [records, person.id])
   if (editing)
     return (
@@ -141,14 +142,16 @@ function Facts({
     )
 
   // Tags, likes, and dislikes are facets: each is a link into the home
-  // search so "everyone who likes karaoke" is one tap away.
+  // search so "everyone who likes karaoke" is one tap away. The query
+  // rides in the store, not the URL: a tag is data, and a URL lands in
+  // the browser's history and address-bar suggestions (§6.1).
   const facet = (values: string[]) =>
     values.length === 0
       ? undefined
       : values.map((v, i) => (
           <span key={v}>
             {i > 0 && ', '}
-            <Link to={`/?q=${encodeURIComponent(v)}`} className="facet">
+            <Link to="/" className="facet" onClick={() => setHomeQuery(v)}>
               {v}
             </Link>
           </span>
@@ -219,7 +222,7 @@ function Facts({
  */
 function CopyAsTextButton({ person }: { person: Person }) {
   const records = useVaultStore((s) => s.records)
-  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const [state, setState] = useState<'idle' | 'copied' | 'copied-warn' | 'failed'>('idle')
   const copy = async () => {
     const lines: string[] = [person.displayName]
     if (person.nicknames.length) lines.push(`Nicknames: ${csv(person.nicknames)}`)
@@ -283,7 +286,16 @@ function CopyAsTextButton({ person }: { person: Person }) {
     }
     try {
       await navigator.clipboard.writeText(lines.join('\n'))
-      setState('copied')
+      // §6.7: say once that a clipboard can outlive the tap — history
+      // managers and cross-device clipboard sync keep what was copied.
+      let warned = true
+      try {
+        warned = localStorage.getItem('clipboard-warned') === '1'
+        localStorage.setItem('clipboard-warned', '1')
+      } catch {
+        // No storage: warn this time, then again next time.
+      }
+      setState(warned ? 'copied' : 'copied-warn')
     } catch {
       setState('failed')
     }
@@ -291,7 +303,13 @@ function CopyAsTextButton({ person }: { person: Person }) {
   }
   return (
     <button className="quiet" onClick={() => void copy()} aria-live="polite">
-      {state === 'copied' ? 'Copied' : state === 'failed' ? 'Copy failed' : 'Copy as text'}
+      {state === 'copied'
+        ? 'Copied'
+        : state === 'copied-warn'
+          ? 'Copied — clipboards can sync and keep history'
+          : state === 'failed'
+            ? 'Copy failed'
+            : 'Copy as text'}
     </button>
   )
 }
@@ -1696,11 +1714,16 @@ type PromoteTarget = (typeof PROMOTE_TARGETS)[number]['id']
 
 /** A note body rendered with @mentions as links. */
 function NoteBody({ body }: { body: string }) {
+  // A mention links only when its id is a person here: imported text can
+  // carry the token shape, and a link to nowhere would look like a tie.
+  const records = useVaultStore((s) => s.records)
   return (
     <p>
       {segmentBody(body).map((seg, i) =>
         seg.type === 'text' ? (
           <span key={i}>{seg.text}</span>
+        ) : records.get(seg.personId)?.kind !== 'person' ? (
+          <span key={i}>@{seg.name}</span>
         ) : (
           <Link key={i} to={`/person/${seg.personId}`} className="mention">
             @{seg.name}

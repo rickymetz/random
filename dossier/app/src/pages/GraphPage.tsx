@@ -28,6 +28,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
 import { CIRCLE_COLORS, colorName, type Person, type Relationship } from '../lib/models'
 import { getPhotoUrl } from '../lib/photoCache'
+import { onLock } from '../lib/sessionCaches'
 import type { UnlockedVault } from '../lib/vault'
 import {
   selectAvatar,
@@ -1514,6 +1515,9 @@ let graphMemory: {
   viewKey: string
   fitKey: string
 } | null = null
+onLock(() => {
+  graphMemory = null
+})
 
 function useCanvasGraph(
   nodes: GraphNode[],

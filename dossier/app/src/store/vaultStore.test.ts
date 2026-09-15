@@ -656,6 +656,29 @@ describe('bulk add (addPeople / addRelationships)', () => {
     expect(searchPeopleIds('Priya').length).toBe(1)
   })
 
+  it('former roles, their dates, a custom type\'s family and the suggestions switch survive lock and unlock', async () => {
+    // The sanitizer runs on every unlock: anything it drops is silently
+    // lost on the next relock, so every persisted field must round-trip.
+    const a = await store().addPerson('Ada')
+    const b = await store().addPerson('Bea')
+    const mentor = await store().addRelationshipType('mentor', '#123456', true, 'work')
+    await store().addRelationship(a.id, b.id, mentor.id, undefined, {
+      former: true,
+      startDate: { year: 2019, month: 3 },
+      endDate: { year: 2021, month: 6 },
+    })
+    await store().updateSecurity({ nameSuggestions: false })
+    store().lock()
+    expect(await store().unlock('open sesame')).toBe(true)
+    const rel = selectRelationships(store().records).find((r) => r.typeId === mentor.id)!
+    expect(rel.former).toBe(true)
+    expect(rel.startDate).toEqual({ year: 2019, month: 3 })
+    expect(rel.endDate).toEqual({ year: 2021, month: 6 })
+    const type = selectRelationshipTypes(store().records).find((t) => t.id === mentor.id)!
+    expect(type.family).toBe('work')
+    expect(selectSettings(store().records)?.nameSuggestions).toBe(false)
+  })
+
   it('a pair can carry several roles, never the same one twice, and a role can change in place', async () => {
     const a = await store().addPerson('Ada')
     const b = await store().addPerson('Bea')

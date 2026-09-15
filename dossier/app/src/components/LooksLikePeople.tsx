@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import type { Person } from '../lib/models'
+import { onLock } from '../lib/sessionCaches'
 import { detectNames, type NameCandidate } from '../lib/nameDetect'
 import { selectPeople, useVaultStore } from '../store/vaultStore'
 
@@ -14,6 +15,8 @@ import { selectPeople, useVaultStore } from '../store/vaultStore'
  * note until the app is reloaded.
  */
 const declinedThisSession = new Set<string>()
+// Phrases come from note text: they go when the vault locks.
+onLock(() => declinedThisSession.clear())
 
 const UNDO_MS = 30000
 
