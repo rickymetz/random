@@ -96,6 +96,119 @@
     }
   }
 
+  /* ---------- validation ----------
+   * Everything that comes back from storage or a backup file is treated as
+   * hostile. A backup is a file a person can hand-edit, truncate, or be sent
+   * by someone else, and this app is the only copy of their data — so a bad
+   * one must be survivable, not fatal. Every value below is type-checked and
+   * range-clamped, and anything unrecognisable is dropped rather than kept.
+   */
+
+  function num(value, min, max, fallback) {
+    var n = Number(value);
+    if (!isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, n));
+  }
+
+  function str(value, limit, fallback) {
+    return typeof value === 'string' && value ? value.slice(0, limit) : fallback;
+  }
+
+  function sanitizeExercise(ex) {
+    if (!ex || typeof ex !== 'object') return null;
+    var id = str(ex.id, 60, null);
+    if (!id) return null;
+    var out = {
+      id: id,
+      name: str(ex.name, 80, id),
+      mode: ex.mode === 'time' || ex.mode === 'none' ? ex.mode : 'reps',
+      // An unclamped `sets` is not cosmetic: buildSteps loops over it, so a
+      // large one hangs the renderer the moment you press Start.
+      sets: Math.round(num(ex.sets, 1, 20, 1)),
+      min: Math.round(num(ex.min, 0, 3600, 0)),
+      max: Math.round(num(ex.max, 0, 3600, 0)),
+      rest: Math.round(num(ex.rest, 0, 600, 0))
+    };
+    if (out.max < out.min) out.max = out.min;
+    if (ex.perSide) {
+      out.perSide = true;
+      out.sideWord = ex.sideWord === 'leg' || ex.sideWord === 'arm' ? ex.sideWord : 'side';
+    }
+    return out;
+  }
+
+  function sanitizeRoutine(routine) {
+    if (!routine || typeof routine !== 'object' || !Array.isArray(routine.workouts)) return null;
+    var workouts = routine.workouts.map(function (w) {
+      if (!w || typeof w !== 'object' || !Array.isArray(w.blocks)) return null;
+      var id = str(w.id, 40, null);
+      if (!id) return null;
+      var blocks = w.blocks.map(function (b) {
+        if (!b || typeof b !== 'object' || !Array.isArray(b.items)) return null;
+        return { name: str(b.name, 60, ''), items: b.items.map(sanitizeExercise).filter(Boolean) };
+      }).filter(Boolean);
+      if (!blocks.length) return null;
+      return {
+        id: id,
+        name: str(w.name, 60, id),
+        kind: w.kind === 'mobility' || w.kind === 'rest' ? w.kind : 'strength',
+        blocks: blocks
+      };
+    }).filter(Boolean);
+    return workouts.length ? { version: 1, workouts: workouts } : null;
+  }
+
+  function sanitizeSessions(sessions) {
+    var out = {};
+    if (!sessions || typeof sessions !== 'object') return out;
+    Object.keys(sessions).forEach(function (iso) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return;
+      var raw = sessions[iso];
+      if (!raw || typeof raw !== 'object') return;
+      var items = {};
+      var src = raw.items && typeof raw.items === 'object' ? raw.items : {};
+      Object.keys(src).forEach(function (exId) {
+        var log = src[exId];
+        if (!log || typeof log !== 'object') return;
+        items[exId] = {
+          sets: (Array.isArray(log.sets) ? log.sets : []).slice(0, 20).map(function (n) {
+            var v = Number(n);
+            return isFinite(v) && v > 0 ? Math.min(100000, Math.round(v)) : 0;
+          }),
+          note: str(log.note, 500, ''),
+          done: !!log.done
+        };
+      });
+      var entry = {
+        workoutId: str(raw.workoutId, 40, 'rest'),
+        items: items,
+        note: str(raw.note, 1000, ''),
+        done: !!raw.done,
+        startedAt: isFinite(Number(raw.startedAt)) ? Number(raw.startedAt) : Date.now()
+      };
+      if (isFinite(Number(raw.finishedAt))) entry.finishedAt = Number(raw.finishedAt);
+      if (isFinite(Number(raw.workedAt))) entry.workedAt = Number(raw.workedAt);
+      if (Array.isArray(raw.itemIds)) {
+        entry.itemIds = raw.itemIds.filter(function (v) { return typeof v === 'string'; }).slice(0, 60);
+      }
+      out[iso] = entry;
+    });
+    return out;
+  }
+
+  /* Copied key by key from an allow-list: Object.assign would carry a JSON
+   * `__proto__` key straight onto the live settings object. */
+  function sanitizeSettings(raw) {
+    var base = blankState().settings;
+    var src = raw && typeof raw === 'object' ? raw : {};
+    var out = { restDefault: Math.round(num(src.restDefault, 0, 600, base.restDefault)) };
+    ['sound', 'vibrate', 'keepAwake', 'autoAdvance'].forEach(function (key) {
+      out[key] = typeof src[key] === 'boolean' ? src[key] : base[key];
+    });
+    out.theme = src.theme === 'light' || src.theme === 'dark' ? src.theme : 'auto';
+    return out;
+  }
+
   function migrate(data) {
     var base = blankState();
     if (!data || typeof data !== 'object') return base;
@@ -103,9 +216,9 @@
       version: 1,
       anchorMonday: /^\d{4}-\d{2}-\d{2}$/.test(data.anchorMonday) ? data.anchorMonday : base.anchorMonday,
       phaseOffset: data.phaseOffset === 1 ? 1 : 0,
-      routine: data.routine && data.routine.workouts ? data.routine : null,
-      sessions: data.sessions && typeof data.sessions === 'object' ? data.sessions : {},
-      settings: Object.assign({}, base.settings, data.settings || {})
+      routine: sanitizeRoutine(data.routine),
+      sessions: sanitizeSessions(data.sessions),
+      settings: sanitizeSettings(data.settings)
     };
     // The anchor must be a Monday, or every week number after it is off by a day.
     out.anchorMonday = toISO(mondayOf(fromISO(out.anchorMonday)));
@@ -113,14 +226,22 @@
   }
 
   var saveTimer = null;
+  var saveErrorHandler = null;
+  var saveFailed = false;
   function save() {
     if (saveTimer) return;
     saveTimer = setTimeout(function () {
       saveTimer = null;
       try {
         global.localStorage.setItem(KEY, JSON.stringify(state));
+        saveFailed = false;
       } catch (e) {
-        /* Storage full or blocked: the session still works, it just won't outlive the tab. */
+        /* A silent failure here loses a whole workout: the app keeps showing
+         * the sets in memory and they are gone on the next reload. Note that
+         * the 5 MB quota is shared with every other app on this origin, so
+         * this can happen even though Cadence itself is nowhere near it. */
+        if (!saveFailed && saveErrorHandler) saveErrorHandler(e);
+        saveFailed = true;
       }
     }, 120);
   }
@@ -380,9 +501,10 @@
 
   function importData(text) {
     var parsed = JSON.parse(text);
-    var data = parsed && parsed.data ? parsed.data : parsed;
-    if (!data || typeof data !== 'object' || !data.sessions) throw new Error('That file does not look like a Cadence backup.');
-    state = migrate(data);
+    if (!parsed || typeof parsed !== 'object' || parsed.app !== 'cadence' || !parsed.data || typeof parsed.data !== 'object') {
+      throw new Error('That is not a Cadence backup file.');
+    }
+    state = migrate(parsed.data);
     emit();
   }
 
@@ -439,6 +561,7 @@
     updateRoutine: updateRoutine,
     resetRoutine: resetRoutine,
     exportData: exportData,
+    onSaveError: function (fn) { saveErrorHandler = fn; },
     importData: importData,
     clearAll: clearAll
   };

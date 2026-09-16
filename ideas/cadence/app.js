@@ -104,8 +104,19 @@
       wakeLock = null;
     }
   }
+  var hiddenAt = 0;
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible' && session.open) keepAwake(true);
+    if (!session.open) return;
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = Date.now();
+      return;
+    }
+    keepAwake(true);
+    if (hiddenAt) {
+      session.discountSuspended(Date.now() - hiddenAt);
+      hiddenAt = 0;
+      session.paintTimer();
+    }
   });
 
   /* ---------- theme ---------- */
@@ -1175,17 +1186,40 @@
 
     startTimer: function (seconds) {
       var self = this;
-      this.timer = { target: seconds, accumulated: 0, startedAt: Date.now(), running: true };
+      this.timer = {
+        target: seconds, accumulated: 0, startedAt: Date.now(),
+        running: true, suspended: 0, lastTick: Date.now()
+      };
       this.tick = setInterval(function () { self.onTick(); }, 200);
     },
 
     elapsed: function () {
       if (!this.timer) return 0;
-      return this.timer.accumulated + (this.timer.running ? (Date.now() - this.timer.startedAt) / 1000 : 0);
+      var t = this.timer;
+      if (!t.running) return t.accumulated;
+      return t.accumulated + Math.max(0, Date.now() - t.startedAt - t.suspended) / 1000;
+    },
+
+    /* Time the phone spent asleep, or the tab spent hidden, is not time you
+     * spent holding the position. Without discounting it, a 40-second plank
+     * interrupted by a ten-minute screen-off logs 606 seconds — and since the
+     * chart takes your best set, that wrong number is permanent. */
+    discountSuspended: function (ms) {
+      if (this.timer && ms > 0) {
+        this.timer.suspended += ms;
+        this.timer.lastTick = Date.now();
+      }
     },
 
     onTick: function () {
       if (!this.timer) return; // a tick can outlive its step
+      var now = Date.now();
+      // The interval is 200ms. A gap far beyond that means we were frozen,
+      // which visibilitychange does not always report (a locked phone often
+      // suspends the page without firing it).
+      var gap = now - this.timer.lastTick;
+      if (gap > 2000) this.timer.suspended += gap - 200;
+      this.timer.lastTick = now;
       var remaining = this.timer.target - this.elapsed();
       if (remaining <= 0 && !this.chimed) {
         this.chimed = true;
@@ -1208,6 +1242,8 @@
         this.timer.running = false;
       } else {
         this.timer.startedAt = Date.now();
+        this.timer.suspended = 0;
+        this.timer.lastTick = Date.now();
         this.timer.running = true;
       }
       this.paint();
@@ -1534,11 +1570,48 @@
 
   var renderQueued = false;
   function render() {
-    if (currentView === 'today') renderToday();
-    else if (currentView === 'week') renderWeek();
-    else if (currentView === 'progress') renderProgress();
-    else renderSettings();
-    if (session.open) session.paint();
+    try {
+      if (currentView === 'today') renderToday();
+      else if (currentView === 'week') renderWeek();
+      else if (currentView === 'progress') renderProgress();
+      else renderSettings();
+      if (session.open) session.paint();
+    } catch (err) {
+      renderRecovery(err);
+    }
+  }
+
+  /* If bad data makes a view throw, the app still has to offer a way out.
+   * The erase button used to live inside the routine editor — which is the
+   * thing that throws on a corrupt routine — so a bad backup left no route
+   * back except clearing site data, taking every logged session with it. */
+  function renderRecovery(err) {
+    try { if (session.open) session.close(); } catch (e) { /* best effort */ }
+    var root = views[currentView] || views.today;
+    Object.keys(views).forEach(function (key) { views[key].hidden = views[key] !== root; });
+    clear(root);
+    root.appendChild(h('section', { class: 'card' }, [
+      h('h2', { text: 'Cadence could not draw this screen' }),
+      h('p', {
+        class: 'small muted', style: 'margin-top:.45rem',
+        text: 'Something in the stored data is wrong: ' + ((err && err.message) || 'unknown error') +
+          '. Export a backup first if you want a copy of it, then reset the routine — that keeps your logged sessions.'
+      }),
+      h('div', { class: 'btn-row', style: 'margin-top:.9rem' }, [
+        h('button', { class: 'btn btn-sm', type: 'button', text: 'Export backup', onclick: doExport }),
+        h('button', {
+          class: 'btn btn-sm', type: 'button', text: 'Reset the routine',
+          onclick: function () { S.resetRoutine(); toast('Routine reset'); }
+        }),
+        h('button', {
+          class: 'btn btn-sm btn-danger', type: 'button', text: 'Erase everything',
+          onclick: function () {
+            if (!global.confirm('Erase every logged session and any routine edits? This cannot be undone.')) return;
+            S.clearAll();
+          }
+        })
+      ])
+    ]));
   }
 
   S.subscribe(function () {
@@ -1563,6 +1636,12 @@
       navigator.serviceWorker.register('sw.js').catch(function () { /* offline support is optional */ });
     });
   }
+
+  S.onSaveError(function (err) {
+    toast(err && err.name === 'QuotaExceededError'
+      ? 'Storage is full — this session was not saved.'
+      : 'Could not save to this browser’s storage.');
+  });
 
   applyTheme();
   show('today');
