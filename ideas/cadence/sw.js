@@ -4,12 +4,14 @@
  * no signal at all, which is the point in a basement gym), and a fresh copy is
  * fetched in the background for next time. Bump CACHE to force a refresh.
  */
-var CACHE = 'cadence-v1';
+var CACHE = 'cadence-v2';
 var SHELL = [
   './',
   'index.html',
   'styles.css',
   'routine.js',
+  'figures.js',
+  'media.js',
   'store.js',
   'charts.js',
   'app.js',

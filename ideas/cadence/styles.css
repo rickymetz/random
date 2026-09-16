@@ -729,6 +729,8 @@ table.data td.num, table.data th.num { text-align: right; }
   max-width: calc(100vw - 2rem);
 }
 .toast[hidden] { display: none; }
+/* During a session the toast would sit right on the primary button. */
+body.is-session .toast { top: 4.5rem; bottom: auto; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
@@ -738,3 +740,99 @@ table.data td.num, table.data th.num { text-align: right; }
   .views { padding: 1.25rem 1.25rem 2rem; }
   .session-name { font-size: 2.1rem; }
 }
+
+/* ---------- the demonstration panel ---------- */
+
+.demo { margin-bottom: 0.8rem; }
+
+.demo-stage {
+  display: grid;
+  place-items: center;
+  height: clamp(7rem, 23vh, 10.5rem);
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.figure { display: block; width: 100%; height: 100%; }
+
+/* Strokes stay the same weight whatever the pose's bounding box does. */
+.figure-limb {
+  stroke: var(--accent);
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
+  fill: none;
+}
+.figure-head {
+  stroke: var(--accent);
+  fill: var(--card-2);
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
+}
+.figure-far { opacity: 0.34; }
+.figure-ground {
+  stroke: var(--line-strong);
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+
+.demo-media {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--card-2);
+}
+
+.demo-loading { color: var(--muted); font-size: 0.82rem; }
+
+.demo-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-top: 0.45rem;
+}
+.demo-cue {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.demo-controls { display: flex; gap: 0.3rem; flex: 0 0 auto; }
+.demo-btn {
+  min-height: 2rem;
+  padding: 0 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+.demo-btn:hover { border-color: var(--accent); color: var(--ink); }
+
+/* The figure has to share the screen with the dial, so the dial gives way. */
+.session-body.has-demo .dial { width: min(10.5rem, 40vw); }
+.session-body.has-demo .dial-time { font-size: 2.2rem; }
+.session-body.has-demo .session-name { font-size: 1.5rem; }
+
+.demo-rest {
+  height: 5rem;
+  margin-top: 0.7rem;
+  opacity: 0.85;
+}
+.demo-rest .figure { height: 5rem; }
+
+.editor-demo { display: flex; gap: 0.7rem; align-items: center; }
+.editor-demo-thumb {
+  flex: 0 0 4.5rem;
+  height: 3.4rem;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  overflow: hidden;
+}
+.editor-demo-body { flex: 1; min-width: 0; }

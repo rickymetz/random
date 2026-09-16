@@ -207,6 +207,133 @@
     return h('div', { class: 'rows' }, rows);
   }
 
+
+  /* ---------- the demonstration panel ---------- */
+
+  var Figures = global.CadenceFigures;
+  var Media = global.CadenceMedia;
+
+  var demoCache = { key: null, node: null, stop: null };
+  var demoMode = {};   /* exId -> 'drawing' while you have a clip but want the figure */
+
+  function prefersReducedMotion() {
+    return !!(global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  function showingClip(ex) {
+    return !!Media.info(ex.id) && demoMode[ex.id] !== 'drawing';
+  }
+
+  function resetDemo() {
+    demoCache.key = null;
+  }
+
+  /* One live demo at a time: rebuilding it on every repaint would restart the
+   * animation (and leak a rAF loop) every time a set is logged. */
+  function demoStage(ex) {
+    var clip = Media.info(ex.id);
+    var useClip = showingClip(ex);
+    var key = ex.id + '|' + (useClip ? 'clip:' + clip.addedAt : 'drawing');
+    if (demoCache.key === key && demoCache.node) return demoCache.node;
+    if (demoCache.stop) demoCache.stop();
+    demoCache = { key: key, node: null, stop: null };
+
+    if (useClip) {
+      var url = Media.url(ex.id);
+      if (!url) {
+        Media.load(ex.id).then(function () { resetDemo(); render(); });
+        demoCache.key = null;   // rebuild once the blob has resolved
+        return h('div', { class: 'demo-loading', text: 'Loading your clip…' });
+      }
+      if (/^video\//.test(clip.type)) {
+        var video = h('video', { class: 'demo-media', src: url, loop: true, playsinline: true, preload: 'auto' });
+        video.muted = true;
+        if (prefersReducedMotion()) {
+          video.controls = true;
+        } else {
+          video.autoplay = true;
+          var playing = video.play();
+          if (playing && playing.catch) playing.catch(function () { video.controls = true; });
+        }
+        demoCache.node = video;
+        demoCache.stop = function () { try { video.pause(); } catch (e) {} };
+        return video;
+      }
+      demoCache.node = h('img', { class: 'demo-media', src: url, alt: 'Your clip for ' + ex.name });
+      return demoCache.node;
+    }
+
+    var fig = Figures.create(ex.id, {});
+    demoCache.node = fig.node;
+    demoCache.stop = fig.stop;
+    return fig.node;
+  }
+
+  function pickClip(ex, onDone) {
+    var input = h('input', { type: 'file', accept: 'image/*,video/*' });
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      if (!file) return;
+      Media.save(ex.id, file).then(function () {
+        demoMode[ex.id] = 'clip';
+        resetDemo();
+        toast('Saved a clip for ' + ex.name);
+        if (onDone) onDone();
+        render();
+      }).catch(function (err) {
+        toast(err.message || 'That clip could not be saved');
+      });
+    });
+    input.click();
+  }
+
+  function removeClip(ex) {
+    if (!global.confirm('Remove your clip for “' + ex.name + '”? The drawing comes back.')) return;
+    Media.remove(ex.id).then(function () {
+      resetDemo();
+      toast('Clip removed');
+      render();
+    });
+  }
+
+  function demoPanel(ex) {
+    var clip = Media.info(ex.id);
+    var onClip = showingClip(ex);
+    var controls = [];
+
+    if (Media.supported) {
+      if (clip) {
+        controls.push(h('button', {
+          class: 'demo-btn', type: 'button',
+          'aria-label': onClip ? 'Show the drawing instead' : 'Show your clip instead',
+          text: onClip ? 'Drawing' : 'My clip',
+          onclick: function () {
+            demoMode[ex.id] = onClip ? 'drawing' : 'clip';
+            resetDemo();
+            render();
+          }
+        }));
+        controls.push(h('button', {
+          class: 'demo-btn', type: 'button', 'aria-label': 'Remove your clip', text: '✕',
+          onclick: function () { removeClip(ex); }
+        }));
+      } else {
+        controls.push(h('button', {
+          class: 'demo-btn', type: 'button', text: '＋ Your clip',
+          onclick: function () { pickClip(ex); }
+        }));
+      }
+    }
+
+    return h('div', { class: 'demo' }, [
+      h('div', { class: 'demo-stage' }, [demoStage(ex)]),
+      h('div', { class: 'demo-bar' }, [
+        h('span', { class: 'demo-cue', text: Figures.cue(ex.id) }),
+        h('span', { class: 'demo-controls' }, controls)
+      ])
+    ]);
+  }
+
   /* ---------- today ---------- */
 
   function renderToday() {
@@ -625,6 +752,11 @@
     var dataCard = h('section', { class: 'card' }, [
       h('div', { class: 'card-head' }, [h('h2', { text: 'Your data' })]),
       h('p', { class: 'small muted', text: 'Everything is stored in this browser and nowhere else. Clearing site data wipes it, so keep a backup file if the history matters to you.' }),
+      Media.supported ? h('p', { class: 'small muted', style: 'margin-top:.5rem' }, [
+        Media.count()
+          ? 'Your own clips (' + Media.count() + ', ' + Media.formatBytes(Media.totalBytes()) + ') are stored separately and are too big for the backup file — they stay on this device.'
+          : 'Clips you add to an exercise are stored on this device only, and are not included in the backup file.'
+      ]) : null,
       h('div', { class: 'btn-row', style: 'margin-top:.8rem' }, [
         h('button', { class: 'btn btn-sm', type: 'button', text: 'Export backup', onclick: doExport }),
         h('button', { class: 'btn btn-sm', type: 'button', text: 'Import backup', onclick: doImport }),
@@ -909,6 +1041,38 @@
           h('option', { value: 'arm', selected: ex.sideWord === 'arm', text: 'arm' })
         ])
       ]) : null,
+      Media.supported ? h('div', { class: 'field' }, [
+        h('label', { text: 'Demonstration' }),
+        h('div', { class: 'editor-demo' }, [
+          h('div', { class: 'editor-demo-thumb' }, [Figures.create(ex.id, { still: true }).node]),
+          h('div', { class: 'editor-demo-body' }, [
+            h('div', {
+              class: 'small muted',
+              text: (function () {
+                var clip = Media.info(ex.id);
+                return clip
+                  ? clip.name + ' · ' + Media.formatBytes(clip.size)
+                  : 'Showing the built-in drawing.';
+              })()
+            }),
+            h('div', { class: 'btn-row', style: 'margin-top:.45rem' }, (function () {
+              var clip = Media.info(ex.id);
+              var buttons = [h('button', {
+                class: 'btn btn-sm', type: 'button',
+                text: clip ? 'Replace clip' : 'Add a clip',
+                onclick: function () { pickClip(ex); }
+              })];
+              if (clip) {
+                buttons.push(h('button', {
+                  class: 'btn btn-sm btn-ghost', type: 'button', text: 'Remove',
+                  onclick: function () { removeClip(ex); }
+                }));
+              }
+              return buttons;
+            })())
+          ])
+        ])
+      ]) : null,
       h('button', {
         class: 'btn btn-sm', type: 'button', text: 'Done', style: 'margin-top:.4rem',
         onclick: function () { editingItem = null; render(); }
@@ -945,6 +1109,7 @@
       S.ensureSession(date);
       document.getElementById('session-root').hidden = false;
       document.body.style.overflow = 'hidden';
+      document.body.classList.add('is-session');
       keepAwake(true);
       beep([0]); // unlocks the audio context on the starting tap
       this.enter();
@@ -959,9 +1124,12 @@
 
     close: function () {
       this.stopTimer();
+      if (demoCache.stop) demoCache.stop();
+      demoCache = { key: null, node: null, stop: null };
       this.open = false;
       document.getElementById('session-root').hidden = true;
       document.body.style.overflow = '';
+      document.body.classList.remove('is-session');
       keepAwake(false);
       render();
     },
@@ -1136,8 +1304,9 @@
       var row = this.items[step.i];
       var ex = row.ex;
       var sets = ex.sets || 1;
-      var body = h('div', { class: 'session-body' });
+      var body = h('div', { class: 'session-body has-demo' });
 
+      body.appendChild(demoPanel(ex));
       if (row.block) body.appendChild(h('div', { class: 'session-block', text: row.block }));
       body.appendChild(h('div', { class: 'session-name', text: ex.name }));
       body.appendChild(h('div', { class: 'session-target', text: R.targetLabel(ex) }));
@@ -1163,7 +1332,7 @@
         body.appendChild(this.dial());
         body.appendChild(h('div', {
           class: 'session-hint',
-          text: this.timer && !this.timer.running ? 'Paused' : ex.perSide ? 'Hold, then swap sides.' : 'Hold steady.'
+          text: this.timer && !this.timer.running ? 'Paused' : ex.perSide ? 'Hold, then swap sides.' : ''
         }));
         actions.appendChild(h('button', {
           class: 'btn btn-primary btn-lg btn-block', type: 'button',
@@ -1249,7 +1418,8 @@
         h('div', {
           class: 'session-hint',
           text: nextEx ? 'Next: ' + nextEx.name + (nextStep.set != null && (nextEx.sets || 1) > 1 ? ' · set ' + (nextStep.set + 1) : '') : 'Almost there.'
-        })
+        }),
+        nextEx ? h('div', { class: 'demo-rest' }, [Figures.create(nextEx.id, { still: true }).node]) : null
       ]);
       var actions = h('div', { class: 'session-actions' }, [
         h('button', { class: 'btn btn-primary btn-lg btn-block', type: 'button', text: 'Skip rest', onclick: function () { self.go(1); } }),
@@ -1396,4 +1566,10 @@
 
   applyTheme();
   show('today');
+
+  if (Media.supported) {
+    Media.ready().then(function () {
+      if (Media.count()) { resetDemo(); render(); }
+    });
+  }
 })(window);
