@@ -148,6 +148,7 @@ interface VaultState {
         | 'nameSuggestions'
         | 'remindersEnabled'
         | 'lastReminderDay'
+        | 'formSetupDone'
       >
     >,
   ) => Promise<void>

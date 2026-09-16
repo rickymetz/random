@@ -183,6 +183,13 @@ export interface Settings {
   recentIds?: string[]
   /** "Looks like people" chips after saving a note (§4.2). Default on. */
   nameSuggestions?: boolean
+  /**
+   * The starter-pack offer has been answered — picked or waved off — so
+   * it stops asking. Settings are device-local, so a restore doesn't
+   * bring it back; it wouldn't show anyway, since a restored vault
+   * arrives with its form already in it.
+   */
+  formSetupDone?: boolean
 }
 
 /** How many recently opened dossiers the home screen remembers. */

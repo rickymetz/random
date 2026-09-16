@@ -4265,3 +4265,19 @@ a.facet {
   background: var(--chip-color, var(--text-4));
   flex: 0 0 auto;
 }
+
+/* The one-time "what do you want to remember?" offer on the home screen.
+   A card, not a banner: it asks a real question and takes an answer. */
+.form-setup {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s3);
+  margin-bottom: var(--s3);
+}
+.form-setup h2 {
+  margin: 0 0 var(--s1);
+  font-size: var(--fs-body);
+}
+.form-setup .packs {
+  margin-bottom: var(--s2);
+}

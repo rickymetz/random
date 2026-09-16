@@ -31,6 +31,24 @@ await page.fill('input[aria-label="Repeat passphrase"]', 'correct horse battery'
 await page.click('button[type=submit]')
 await page.waitForSelector('input[type=search]')
 
+// 0. A fresh vault asks the question on the home screen, because a blank
+// page in Settings is one nobody would think to look for.
+await page.waitForSelector('.form-setup', { timeout: 10000 })
+const sets = await page.$$eval('.form-setup button.pack .pack-name', (e) =>
+  e.map((n) => n.textContent.trim()),
+)
+if (sets.length !== 3) fail(`expected three sets on offer, got ${JSON.stringify(sets)}`)
+await page.click('.form-setup button:has-text("Not now")')
+await page.waitForSelector('.form-setup', { state: 'detached', timeout: 8000 })
+// Waving it off is an answer: it does not come back on the next unlock.
+await page.reload()
+await page.fill('input[type=password]', 'correct horse battery')
+await page.click('button[type=submit]')
+await page.waitForSelector('input[type=search]')
+await page.waitForTimeout(600)
+if (await page.locator('.form-setup').count()) fail('the setup offer came back after "Not now"')
+console.log('the first-run offer asks once:', sets.join(', '))
+
 // 1. A starter pack is a form to edit, not a blank page.
 await settings()
 await page.click(`${FORM} button.pack:has-text("Family & friends")`)
