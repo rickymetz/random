@@ -23,6 +23,7 @@ import PersonPicker from '../components/PersonPicker'
 import Sheet from '../components/Sheet'
 import DangerConfirm from '../components/DangerConfirm'
 import { familyOf, lineStyle, pairKey, roleDates, roleLabel, type LineStyle } from '../lib/relationships'
+import { chipAction, toggleIsolate } from '../lib/chipIsolate'
 import { quietLabel, quietMonths } from '../lib/quiet'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { selectSelf, shortestPath } from '../lib/graphQueries'
@@ -147,6 +148,8 @@ interface Filters {
   former: boolean
   /** The quiet lens: off by default, a look rather than a filter. */
   quiet: boolean
+  /** You on the graph: on by default; off draws your people without you. */
+  self: boolean
   hiddenCircles: string[]
 }
 function loadFilters(): Filters {
@@ -159,19 +162,21 @@ function loadFilters(): Filters {
         mentions: parsed.mentions ?? true,
         former: parsed.former ?? true,
         quiet: parsed.quiet ?? false,
+        self: parsed.self ?? true,
         hiddenCircles: parsed.hiddenCircles ?? [],
       }
     }
   } catch {
     // Private windows may refuse; defaults are fine.
   }
-  return { hidden: [], mentions: true, former: true, quiet: false, hiddenCircles: [] }
+  return { hidden: [], mentions: true, former: true, quiet: false, self: true, hiddenCircles: [] }
 }
 function saveFilters(
   hidden: Set<string>,
   mentions: boolean,
   former: boolean,
   quiet: boolean,
+  self: boolean,
   hiddenCircles: Set<string>,
 ): void {
   try {
@@ -182,6 +187,7 @@ function saveFilters(
         mentions,
         former,
         quiet,
+        self,
         hiddenCircles: [...hiddenCircles],
       }),
     )
@@ -244,6 +250,16 @@ type Tap =
   | null
 
 const NODE_R = 14
+/**
+ * A person's disc stops growing at the iOS minimum tap target, 44px
+ * across (§7). Past that, zooming adds space between people rather than
+ * size to each one: the layout keeps its world-space distances, so the
+ * gaps open up on screen while the discs stay a thumb wide. It also
+ * means that once you are in close enough to read names, every person is
+ * a proper target — the small ones catch up with the hubs instead of
+ * both ballooning.
+ */
+const MAX_NODE_SCREEN_R = 22
 // Degradation ladder (§4.3): labels thin out first as the graph grows.
 const LABEL_MAX_NODES = 250
 /** Circle chips shown inline before a “+N more” toggle. */
@@ -373,12 +389,13 @@ export default function GraphPage() {
   const [showMentions, setShowMentions] = useState(() => loadFilters().mentions)
   const [showFormer, setShowFormer] = useState(() => loadFilters().former)
   const [quietLens, setQuietLens] = useState(() => loadFilters().quiet)
+  const [showSelf, setShowSelf] = useState(() => loadFilters().self)
   const [hiddenCircles, setHiddenCircles] = useState<Set<string>>(
     () => new Set(loadFilters().hiddenCircles),
   )
   useEffect(() => {
-    saveFilters(hiddenTypes, showMentions, showFormer, quietLens, hiddenCircles)
-  }, [hiddenTypes, showMentions, showFormer, quietLens, hiddenCircles])
+    saveFilters(hiddenTypes, showMentions, showFormer, quietLens, showSelf, hiddenCircles)
+  }, [hiddenTypes, showMentions, showFormer, quietLens, showSelf, hiddenCircles])
   const allCircles = useMemo(() => selectCircles(records), [records])
   const focusedCircle = useMemo(
     () => (circleFocusId ? allCircles.find((c) => c.id === circleFocusId) : undefined),
@@ -409,7 +426,7 @@ export default function GraphPage() {
     [params, setParams],
   )
 
-  const { nodes, links, circles } = useMemo(() => {
+  const { nodes, links, circles, scopeIds } = useMemo(() => {
     const typeById = new Map(types.map((t) => [t.id, t]))
     const people = selectPeople(records)
     let edges = selectRelationships(records).filter((e) => {
@@ -449,6 +466,39 @@ export default function GraphPage() {
       }
       visiblePeople = people.filter((p) => keep.has(p.id))
     }
+    // The rail's own scope, before the circle chips narrow it: the chips
+    // must keep listing every circle you could tap back on, or isolating
+    // one in an ego view would take the others off the rail with it.
+    const scopeIds = new Set(visiblePeople.map((p) => p.id))
+
+    // A highlighted path outranks the filters, person by person, the way
+    // its edges already do: a breadcrumb reading "You → Sam → Grace"
+    // over a drawing missing Sam is worse than no breadcrumb at all.
+    const onPath = new Set(pathInfo?.reason === 'ok' ? pathInfo.nodeIds : [])
+
+    // Circle chips narrow the people, not just the bubbles — "only my
+    // climbing friends" means the rest of the vault leaves the screen.
+    // The pool is the rail's own list (in an ego view, the circles with
+    // someone in scope), so what narrows the graph is exactly what you
+    // can see and switch back on: a circle hidden in one view can't go
+    // on filtering from off-stage in another. All chips on means no
+    // narrowing, and all off means the same, so a stale filter can never
+    // empty the graph on its own.
+    const circlePool = focusId
+      ? allCircles.filter((c) => c.memberIds.some((id) => scopeIds.has(id)))
+      : allCircles
+    const shownCircles = circlePool.filter((c) => !hiddenCircles.has(c.id))
+    if (!focusedCircle && shownCircles.length > 0 && shownCircles.length < circlePool.length) {
+      const members = new Set(shownCircles.flatMap((c) => c.memberIds))
+      visiblePeople = visiblePeople.filter((p) => members.has(p.id) || onPath.has(p.id))
+    }
+
+    // You are joined to everyone, so the dot in the middle is the one
+    // that tells you least and pulls the layout hardest. Hiding yourself
+    // leaves your people and the ties between *them* — which is the
+    // shape you can't otherwise see. An ego view still starts from you
+    // (it is your neighbourhood either way); you just aren't drawn in it.
+    if (!showSelf) visiblePeople = visiblePeople.filter((p) => !p.isSelf || onPath.has(p.id))
 
     const ids = new Set(visiblePeople.map((p) => p.id))
     const visibleEdges = edges.filter((e) => ids.has(e.fromId) && ids.has(e.toId))
@@ -499,7 +549,7 @@ export default function GraphPage() {
         return { id: c.id, name: c.name, color: c.color, memberIds: visible, total }
       })
       .filter((c) => c.memberIds.length >= Math.min(2, c.total) && c.memberIds.length > 0)
-    return { nodes, links, circles }
+    return { nodes, links, circles, scopeIds }
   }, [
     records,
     types,
@@ -512,6 +562,7 @@ export default function GraphPage() {
     pathInfo,
     allCircles,
     hiddenCircles,
+    showSelf,
   ])
 
   // In an ego view only circles with someone on screen get a chip; a
@@ -519,13 +570,25 @@ export default function GraphPage() {
   // screens wide on a phone.
   const railCircles = useMemo(() => {
     if (!focusId) return allCircles
-    const visible = new Set(nodes.map((n) => n.id))
-    return allCircles.filter((c) => c.memberIds.some((id) => visible.has(id)))
-  }, [allCircles, focusId, nodes])
+    return allCircles.filter((c) => c.memberIds.some((id) => scopeIds.has(id)))
+  }, [allCircles, focusId, scopeIds])
+
+  // "mentioned" has its own chip further along the rail, so it is not
+  // one of the types the type chips isolate within.
+  const railTypes = useMemo(() => types.filter((t) => t.label !== 'mentioned'), [types])
 
   // A graph with no links and no circles is two dots and a legend about
   // dotted lines: show the "how to start" copy instead of the rail.
-  const bare = !focusedCircle && !focusId && links.length === 0 && circles.length === 0
+  // "Nothing to draw" is a fact about the vault, never about the filters:
+  // reading it off the filtered graph meant switching every type and
+  // circle off replaced the rail with "No relationships yet" — a claim
+  // that wasn't true, on a screen whose only way back (the rail's
+  // "N hidden · Show all") had just been taken away with it.
+  const hasTiesOrCircles = useMemo(
+    () => allCircles.length > 0 || selectRelationships(records).length > 0,
+    [allCircles, records],
+  )
+  const bare = !focusedCircle && !focusId && !hasTiesOrCircles
 
   const focusName = useMemo(() => {
     if (!focusId) return undefined
@@ -539,7 +602,17 @@ export default function GraphPage() {
   const onOpen = useCallback((id: string) => navigate(`/person/${id}`), [navigate])
   const pathNodeIds = pathInfo?.reason === 'ok' ? pathInfo.nodeIds : null
   // A different view (ego ↔ all, 1 ↔ 2 hops, a circle) re-fits the camera.
-  const viewKey = `${focusId ?? ''}|${depth}|${circleFocusId ?? ''}|${showAll ? 1 : 0}`
+  // Isolating circles is a view change too — it takes people off the
+  // screen, and the handful left would otherwise sit wherever the old
+  // camera happened to be pointing.
+  // In an ego view the walk follows edges, so switching a tie type off
+  // takes people off the screen too and the camera has to follow. In the
+  // whole-graph view the same tap moves nobody, and a re-fit there would
+  // be a camera jump for nothing.
+  const egoEdgeKey = focusId
+    ? `${[...hiddenTypes].sort().join(',')}|${showMentions ? 1 : 0}${showFormer ? 1 : 0}`
+    : ''
+  const viewKey = `${focusId ?? ''}|${depth}|${circleFocusId ?? ''}|${showAll ? 1 : 0}|${showSelf ? 1 : 0}|${[...hiddenCircles].sort().join(',')}|${egoEdgeKey}`
   const canvasRef = useCanvasGraph(
     nodes,
     links,
@@ -572,15 +645,35 @@ export default function GraphPage() {
     }
   }, [peek])
   const hiddenCount =
-    types.filter((t) => t.label !== 'mentioned' && hiddenTypes.has(t.id)).length +
+    railTypes.filter((t) => hiddenTypes.has(t.id)).length +
     (showMentions ? 0 : 1) +
     (showFormer ? 0 : 1) +
+    (self && !showSelf ? 1 : 0) +
     railCircles.filter((c) => hiddenCircles.has(c.id)).length
   const showAllFilters = () => {
     setHiddenTypes(new Set())
     setShowMentions(true)
     setShowFormer(true)
+    setShowSelf(true)
     setHiddenCircles(new Set())
+  }
+  const circlePool = railCircles.map((c) => c.id)
+  const typePool = railTypes.map((t) => t.id)
+  // The "N hidden · Show all" chip is sticky, so it covers the strip's
+  // start once the strip has scrolled. Its width becomes the strip's
+  // scroll padding, and a tapped chip scrolls clear of it — otherwise the
+  // very chip you isolated with ends up half underneath the chip that
+  // appeared because you tapped it. Measured, not guessed: the label
+  // grows with the count and with Dynamic Type.
+  const railRef = useRef<HTMLDivElement | null>(null)
+  useLayoutEffect(() => {
+    const rail = railRef.current
+    if (!rail) return
+    const chip = rail.querySelector<HTMLElement>('.chip.hidden-status')
+    rail.style.setProperty('--hidden-chip-w', `${chip ? chip.offsetWidth : 0}px`)
+  }, [hiddenCount])
+  const keepChipInView = (el: HTMLElement) => {
+    requestAnimationFrame(() => el.scrollIntoView({ inline: 'nearest', block: 'nearest' }))
   }
   const allPeople = useMemo(() => selectPeople(records), [records])
   const hasSelfNode = nodes.some((n) => n.isSelf)
@@ -665,7 +758,7 @@ export default function GraphPage() {
           </button>
         </div>
       )}
-      <div className="graph-controls">
+      <div className="graph-controls" ref={railRef}>
         {focusName && (
           <span className="chip focus-chip no-dot depth">
             {focusName} connections
@@ -747,20 +840,20 @@ export default function GraphPage() {
                 >
                   {/* Two real buttons side by side (never one inside the
                       other): toggle, and the keyboard/AT path to the card —
-                      the only path for an empty circle, which draws no bubble. */}
+                      the only path for an empty circle, which draws no bubble.
+                      `data-filter-id` names the chip's subject, so a test can
+                      rebuild a saved filter set without guessing at ids. */}
                   <button
                     type="button"
                     className={`chip circle-filter ${on ? '' : 'off'}`}
+                    data-filter-id={c.id}
                     aria-pressed={on}
-                    aria-label={`${c.name} circle, ${n} ${n === 1 ? 'person' : 'people'} — ${on ? 'shown' : 'hidden'}`}
-                    onClick={() =>
-                      setHiddenCircles((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(c.id)) next.delete(c.id)
-                        else next.add(c.id)
-                        return next
-                      })
-                    }
+                    aria-label={`${c.name} circle, ${n} ${n === 1 ? 'person' : 'people'} — ${on ? 'shown' : 'hidden'}. ${chipAction(hiddenCircles, circlePool, c.id, c.name)}`}
+                    title={chipAction(hiddenCircles, circlePool, c.id, c.name)}
+                    onClick={(ev) => {
+                      keepChipInView(ev.currentTarget)
+                      setHiddenCircles((prev) => toggleIsolate(prev, circlePool, c.id))
+                    }}
                   >
                     <span className="name">{c.name}</span>
                   </button>
@@ -787,45 +880,70 @@ export default function GraphPage() {
             )}
           </span>
         )}
-        {types
-          .filter((t) => t.label !== 'mentioned')
-          .map((t) => (
-            <button
-              key={t.id}
-              className={`chip ${hiddenTypes.has(t.id) ? 'off' : ''}`}
-              style={{ '--chip-color': t.color } as React.CSSProperties}
-              aria-pressed={!hiddenTypes.has(t.id)}
-              onClick={() =>
-                setHiddenTypes((prev) => {
-                  const next = new Set(prev)
-                  if (next.has(t.id)) next.delete(t.id)
-                  else next.add(t.id)
-                  return next
-                })
-              }
-            >
-              {t.label}
-            </button>
-          ))}
+        {railTypes.map((t) => (
+          <button
+            key={t.id}
+            className={`chip ${hiddenTypes.has(t.id) ? 'off' : ''}`}
+            style={{ '--chip-color': t.color } as React.CSSProperties}
+            data-filter-id={t.id}
+            aria-pressed={!hiddenTypes.has(t.id)}
+            aria-label={`${t.label} — ${hiddenTypes.has(t.id) ? 'hidden' : 'shown'}. ${chipAction(hiddenTypes, typePool, t.id, t.label)}`}
+            title={chipAction(hiddenTypes, typePool, t.id, t.label)}
+            onClick={(ev) => {
+              keepChipInView(ev.currentTarget)
+              setHiddenTypes((prev) => toggleIsolate(prev, typePool, t.id))
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
         <button
           className={`chip ${showMentions ? '' : 'off'}`}
           aria-pressed={showMentions}
-          onClick={() => setShowMentions((v) => !v)}
+          onClick={(ev) => {
+            keepChipInView(ev.currentTarget)
+            setShowMentions((v) => !v)
+          }}
         >
           mentions
         </button>
         <button
           className={`chip no-dot former ${showFormer ? '' : 'off'}`}
           aria-pressed={showFormer}
-          onClick={() => setShowFormer((v) => !v)}
+          onClick={(ev) => {
+            keepChipInView(ev.currentTarget)
+            setShowFormer((v) => !v)
+          }}
           title="Past roles: former partners, old bosses"
         >
           former
         </button>
+        {self && (
+          <button
+            className={`chip self-lens ${showSelf ? '' : 'off'}`}
+            style={{ '--chip-color': 'var(--accent)' } as React.CSSProperties}
+            aria-pressed={showSelf}
+            aria-label={`You on the graph — ${showSelf ? 'shown' : 'hidden'}`}
+            onClick={(ev) => {
+              keepChipInView(ev.currentTarget)
+              setShowSelf((v) => !v)
+            }}
+            title={
+              showSelf
+                ? 'Hide yourself — you link to everyone, so the graph reads better without you'
+                : 'Show yourself'
+            }
+          >
+            me
+          </button>
+        )}
         <button
           className={`chip no-dot quiet ${quietLens ? 'on' : ''}`}
           aria-pressed={quietLens}
-          onClick={() => setQuietLens((v) => !v)}
+          onClick={(ev) => {
+            keepChipInView(ev.currentTarget)
+            setQuietLens((v) => !v)
+          }}
           title="Mark people with no note or follow-up in 6 months"
         >
           quiet
@@ -891,6 +1009,16 @@ export default function GraphPage() {
           <p className="empty">
             No relationships yet. Add one from a person’s page, or load the sample people
             in <Link to="/settings">Settings</Link>.
+          </p>
+        ) : nodes.length === 0 && hiddenCount > 0 ? (
+          // Isolating an empty circle leaves a blank canvas; say so, and
+          // put the way back in the middle of the screen rather than only
+          // in a chip at the far end of a rail that scrolls sideways.
+          <p className="empty" role="status">
+            Nobody matches these filters.{' '}
+            <button className="subtle" onClick={showAllFilters}>
+              Show all
+            </button>
           </p>
         ) : (
           <>
@@ -1952,6 +2080,16 @@ function useCanvasGraph(
       const maxY = (height / 2 - transform.y) / k + NODE_R * 2
       const inView = (x: number, y: number) => x >= minX && x <= maxX && y >= minY && y <= maxY
 
+      // The cap expressed in graph units at this zoom, and the drawn
+      // radius of a person. Everything that follows the disc — the ring,
+      // the photo crop, the halo, the pin tick, the boxes names dodge —
+      // reads `radiusOf`, so they all stop growing together.
+      const capR = MAX_NODE_SCREEN_R / k
+      const radiusOf = (n: GraphNode) => (n.r < capR ? n.r : capR)
+      // Initials ride the disc: once it stops growing they hold still at
+      // whatever screen size they had reached.
+      const glyphScale = capR < NODE_R ? capR / NODE_R : 1
+
       const lit = litSet()
       if (lit) lastLit = lit
       const dimTarget = lit ? 1 : 0
@@ -2119,8 +2257,9 @@ function useCanvasGraph(
         const t = link.target as GraphNode
         const c = strandControl(link)
         const angle = c ? Math.atan2(t.y! - c.y, t.x! - c.x) : Math.atan2(t.y! - s.y!, t.x! - s.x!)
-        const ax = t.x! - Math.cos(angle) * (t.r + 4)
-        const ay = t.y! - Math.sin(angle) * (t.r + 4)
+        const gap = radiusOf(t) + 4 / k
+        const ax = t.x! - Math.cos(angle) * gap
+        const ay = t.y! - Math.sin(angle) * gap
         const size = 6 / Math.sqrt(k)
         const on = litEdge(link)
         ctx.globalAlpha = on ? 0.9 : unlitEdgeAlpha * 0.8
@@ -2149,7 +2288,7 @@ function useCanvasGraph(
       // Pass 1: discs with avatar or initials, one font for all nodes.
       // Plain nodes (no photo, not focused, not you, not lit) share one
       // fill path and one ring path; initials skip when under ~7px.
-      ctx.font = `600 ${11 * dt}px system-ui`
+      ctx.font = `600 ${11 * dt * glyphScale}px system-ui`
       const visibleNodes: GraphNode[] = []
       const plain: GraphNode[] = []
       const faded: GraphNode[] = []
@@ -2176,8 +2315,9 @@ function useCanvasGraph(
         ctx.globalAlpha = alpha
         ctx.beginPath()
         for (const node of batch) {
-          ctx.moveTo(node.x! + node.r, node.y!)
-          ctx.arc(node.x!, node.y!, node.r, 0, Math.PI * 2)
+          const r = radiusOf(node)
+          ctx.moveTo(node.x! + r, node.y!)
+          ctx.arc(node.x!, node.y!, r, 0, Math.PI * 2)
         }
         ctx.fillStyle = quietOnes ? '#1c1b1a' : '#232120'
         ctx.fill()
@@ -2189,7 +2329,7 @@ function useCanvasGraph(
         ctx.strokeStyle = '#7d786f'
         ctx.stroke()
         if (quietOnes) ctx.setLineDash(solid)
-        if (k * 11 >= 7) {
+        if (k * 11 * glyphScale >= 7) {
           ctx.fillStyle = quietOnes ? '#8b857a' : '#ece8e1'
           for (const node of batch) ctx.fillText(node.initials, node.x!, node.y!)
         }
@@ -2225,7 +2365,7 @@ function useCanvasGraph(
         ctx.globalAlpha = isLitNode(node.id) || isSelected ? 1 : unlitNodeAlpha
         // Gold is yours alone; the focus of an ego view and the person
         // whose card is open get a bright ring instead.
-        const r = isFocus ? node.r + 3 : node.r
+        const r = isFocus ? radiusOf(node) + 3 / k : radiusOf(node)
         const ring = node.isSelf ? '#d8a657' : isFocus || isSelected ? '#ece8e1' : '#7d786f'
         const ringW = node.isSelf ? 1.5 : isFocus || isSelected ? 2.5 : 1
         if (image instanceof HTMLImageElement) {
@@ -2274,7 +2414,8 @@ function useCanvasGraph(
           if (!pinnedRef.current.has(node.id)) continue
           const a = -Math.PI / 4
           ctx.beginPath()
-          ctx.arc(node.x! + Math.cos(a) * node.r, node.y! + Math.sin(a) * node.r, 2.5 / k, 0, Math.PI * 2)
+          const pr = radiusOf(node)
+          ctx.arc(node.x! + Math.cos(a) * pr, node.y! + Math.sin(a) * pr, 2.5 / k, 0, Math.PI * 2)
           ctx.fill()
         }
       }
@@ -2289,7 +2430,10 @@ function useCanvasGraph(
       // dots are minor, and a hub's name matters more than a dot under it.
       const nodeBoxes = visibleNodes
         .filter((nd) => !dots.has(nd.id))
-        .map((nd) => ({ id: nd.id, x: nd.x! - nd.r, y: nd.y! - nd.r, w: nd.r * 2, h: nd.r * 2 }))
+        .map((nd) => {
+          const r = radiusOf(nd)
+          return { id: nd.id, x: nd.x! - r, y: nd.y! - r, w: r * 2, h: r * 2 }
+        })
       const overlaps = (b: { x: number; y: number; w: number; h: number }) => (o: typeof b) =>
         b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y
       const nameBoxes: { x: number; y: number; w: number; h: number }[] = []
@@ -2322,7 +2466,8 @@ function useCanvasGraph(
           const text = node.isSelf ? `${node.name} (you)` : node.name
           const w = ctx.measureText(text).width
           // Below the disc, else above it; skip when both would overprint.
-          const candidates = [node.y! + node.r + 13 / k, node.y! - node.r - 5 / k]
+          const nr = radiusOf(node)
+          const candidates = [node.y! + nr + 13 / k, node.y! - nr - 5 / k]
           let placed = false
           for (const y of candidates) {
             // A little taller than the glyphs so two names never abut.
@@ -2354,12 +2499,15 @@ function useCanvasGraph(
         ctx.lineWidth = 3 / k
         ctx.strokeStyle = 'rgba(18, 17, 16, 0.8)'
         const placed: { x: number; y: number; w: number; h: number }[] = [...nameBoxes]
-        const captionBoxes = visibleNodes.map((nd) => ({
-          x: nd.x! - nd.r - 4 / k,
-          y: nd.y! - nd.r - 4 / k,
-          w: nd.r * 2 + 8 / k,
-          h: nd.r * 2 + 18 / k,
-        }))
+        const captionBoxes = visibleNodes.map((nd) => {
+          const r = radiusOf(nd)
+          return {
+            x: nd.x! - r - 4 / k,
+            y: nd.y! - r - 4 / k,
+            w: r * 2 + 8 / k,
+            h: r * 2 + 18 / k,
+          }
+        })
         const hits = (b: { x: number; y: number; w: number; h: number }) =>
           placed.some(overlaps(b)) || captionBoxes.some(overlaps(b))
         for (const c of circlesNow) {
@@ -2620,7 +2768,11 @@ function useCanvasGraph(
       let bestDist = Infinity
       for (const node of simNodes) {
         if (node.x == null || node.y == null) continue
-        const hitR = Math.max(node.r, 18 / transform.k)
+        // The target is the disc you can see, and at least a finger.
+        const hitR = Math.max(
+          Math.min(node.r, MAX_NODE_SCREEN_R / transform.k),
+          18 / transform.k,
+        )
         const dx = p.x - node.x
         const dy = p.y - node.y
         const d = dx * dx + dy * dy

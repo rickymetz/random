@@ -53,7 +53,7 @@ export default function MentionTextarea({
   const listId = useId()
   const [caret, setCaret] = useState(0)
   const [dismissed, setDismissed] = useState(false)
-  const [active, setActive] = useState(0)
+  const [activeRaw, setActive] = useState(0)
   const [navigated, setNavigated] = useState(false)
   const pointerPicked = useRef(false)
 
@@ -135,7 +135,8 @@ export default function MentionTextarea({
     }
   }
 
-  const pick = async (s: Suggestion) => {
+  const pick = async (s: Suggestion | undefined) => {
+    if (!s) return
     if (s.kind === 'person') return insertToken(s.person)
     const created = await onCreatePerson!(s.name)
     insertToken(created)
@@ -149,6 +150,12 @@ export default function MentionTextarea({
   }
 
   const open = suggestions.length > 0
+  // `active` is state and the effect that resets it runs *after* render,
+  // so a keystroke landing in that window indexes a list that has already
+  // got shorter: arrow down to the third match, keep typing until one is
+  // left, press Enter, and the note editor threw on `undefined.kind`.
+  // Reading it clamped means the window can't exist.
+  const active = Math.min(activeRaw, Math.max(0, suggestions.length - 1))
   const optionId = (i: number) => `${listId}-opt-${i}`
 
   return (
@@ -178,11 +185,11 @@ export default function MentionTextarea({
           } else if (e.key === 'ArrowDown') {
             e.preventDefault()
             setNavigated(true)
-            setActive((i) => (i + 1) % suggestions.length)
+            setActive((active + 1) % suggestions.length)
           } else if (e.key === 'ArrowUp') {
             e.preventDefault()
             setNavigated(true)
-            setActive((i) => (i - 1 + suggestions.length) % suggestions.length)
+            setActive((active - 1 + suggestions.length) % suggestions.length)
           } else if (e.key === 'Tab') {
             // Tab leaves the field; it never inserts.
             setDismissed(true)

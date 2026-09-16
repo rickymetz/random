@@ -65,14 +65,22 @@ for (const name of ['Meridian Labs', 'Webb family', 'Climbing crew']) {
 }
 console.log('graph: three circle chips on')
 
-// 2. Toggle a circle chip off/on persists
+// 2. A circle chip isolates its circle, and that survives leaving the tab
 await page.click('.chip.circle-filter:has-text("Webb family")')
-await page.waitForSelector('.chip.circle-filter:has-text("Webb family")[aria-pressed="false"]')
+await page.waitForSelector('.chip.circle-filter:has-text("Webb family")[aria-pressed="true"]')
+for (const other of ['Meridian Labs', 'Climbing crew']) {
+  await page.waitForSelector(`.chip.circle-filter:has-text("${other}")[aria-pressed="false"]`)
+}
 await blur(); await page.click('nav a:has-text("People"):visible')
 await blur(); await page.click('nav a:has-text("Graph"):visible')
-await page.waitForSelector('.chip.circle-filter:has-text("Webb family")[aria-pressed="false"]')
+await page.waitForSelector('.chip.circle-filter:has-text("Meridian Labs")[aria-pressed="false"]')
+console.log('circle isolation persists across visits')
+// The last circle standing, tapped again, is the way back to everything.
 await page.click('.chip.circle-filter:has-text("Webb family")')
-console.log('circle chip toggle persists across visits')
+for (const name of ['Meridian Labs', 'Webb family', 'Climbing crew']) {
+  await page.waitForSelector(`.chip.circle-filter:has-text("${name}")[aria-pressed="true"]`)
+}
+console.log('tapping the last circle standing brings them all back')
 
 // 3. Tap a bubble → circle card; rename, focus
 await page.waitForTimeout(1500)
@@ -147,6 +155,40 @@ await blur(); await page.click('nav a:has-text("People"):visible')
 await page.fill('input[type=search]', 'Rosa')
 await page.waitForSelector('a.person-row:has-text("Rosa Delgado")')
 console.log('deleting a circle keeps its people')
+
+// A filter set saved before the chips isolated — or any future route to
+// "everything off" — must not strand you. The rail, and with it the
+// "N hidden · Show all" way back, has to survive an empty-looking graph;
+// it used to be replaced by "No relationships yet", which was both untrue
+// and the end of the road, because the filters persist for the session.
+await page.goto(`${BASE}/#/graph`)
+await page.waitForSelector('canvas.graph-canvas', { timeout: 30000 })
+const more = page.locator('.graph-controls button[aria-expanded="false"]:has-text("more")')
+if (await more.count()) await more.first().click()
+const everythingOff = await page.evaluate(() => ({
+  hiddenCircles: [...document.querySelectorAll('.chip.circle-filter[data-filter-id]')].map((b) => b.dataset.filterId),
+  hidden: [...document.querySelectorAll('.graph-controls .chip[data-filter-id]:not(.circle-filter)')].map((b) => b.dataset.filterId),
+}))
+if (!everythingOff.hiddenCircles.length || !everythingOff.hidden.length) fail('no filter ids on the rail')
+await page.evaluate((f) => {
+  const cur = JSON.parse(sessionStorage.getItem('graph-filters') ?? '{}')
+  sessionStorage.setItem('graph-filters', JSON.stringify({ ...cur, ...f, mentions: false, former: false }))
+}, everythingOff)
+// Remount the page so it reads the saved set, without a reload (which
+// would lock the vault).
+await blur(); await page.click('nav a:has-text("People"):visible')
+await blur(); await page.click('nav a:has-text("Graph"):visible')
+await page.waitForSelector('.graph-controls', { timeout: 30000 })
+if (await page.locator('.graph.bare').count()) fail('filtering everything out claimed there are no relationships')
+if (!(await page.locator('canvas.graph-canvas').count())) fail('the canvas went away when every filter was switched off')
+const back = page.locator('.chip.hidden-status')
+if (!(await back.count())) fail('no "Show all" chip after hiding everything')
+console.log('everything hidden:', (await back.textContent()).trim())
+await page.evaluate(() => document.querySelector('.chip.hidden-status').click())
+await page.waitForTimeout(400)
+if (await page.locator('.chip.hidden-status').count()) fail('"Show all" did not restore the filters')
+if (!(await page.locator('.chip.circle-filter[aria-pressed="true"]').count())) fail('circles stayed hidden after Show all')
+console.log('Show all brings every circle and type back')
 
 await browser.close()
 console.log('SMOKE10 OK')
