@@ -245,6 +245,16 @@ type Tap =
   | null
 
 const NODE_R = 14
+/**
+ * A person's disc stops growing at the iOS minimum tap target, 44px
+ * across (§7). Past that, zooming adds space between people rather than
+ * size to each one: the layout keeps its world-space distances, so the
+ * gaps open up on screen while the discs stay a thumb wide. It also
+ * means that once you are in close enough to read names, every person is
+ * a proper target — the small ones catch up with the hubs instead of
+ * both ballooning.
+ */
+const MAX_NODE_SCREEN_R = 22
 // Degradation ladder (§4.3): labels thin out first as the graph grows.
 const LABEL_MAX_NODES = 250
 /** Circle chips shown inline before a “+N more” toggle. */
@@ -2007,6 +2017,16 @@ function useCanvasGraph(
       const maxY = (height / 2 - transform.y) / k + NODE_R * 2
       const inView = (x: number, y: number) => x >= minX && x <= maxX && y >= minY && y <= maxY
 
+      // The cap expressed in graph units at this zoom, and the drawn
+      // radius of a person. Everything that follows the disc — the ring,
+      // the photo crop, the halo, the pin tick, the boxes names dodge —
+      // reads `radiusOf`, so they all stop growing together.
+      const capR = MAX_NODE_SCREEN_R / k
+      const radiusOf = (n: GraphNode) => (n.r < capR ? n.r : capR)
+      // Initials ride the disc: once it stops growing they hold still at
+      // whatever screen size they had reached.
+      const glyphScale = capR < NODE_R ? capR / NODE_R : 1
+
       const lit = litSet()
       if (lit) lastLit = lit
       const dimTarget = lit ? 1 : 0
@@ -2174,8 +2194,9 @@ function useCanvasGraph(
         const t = link.target as GraphNode
         const c = strandControl(link)
         const angle = c ? Math.atan2(t.y! - c.y, t.x! - c.x) : Math.atan2(t.y! - s.y!, t.x! - s.x!)
-        const ax = t.x! - Math.cos(angle) * (t.r + 4)
-        const ay = t.y! - Math.sin(angle) * (t.r + 4)
+        const gap = radiusOf(t) + 4 / k
+        const ax = t.x! - Math.cos(angle) * gap
+        const ay = t.y! - Math.sin(angle) * gap
         const size = 6 / Math.sqrt(k)
         const on = litEdge(link)
         ctx.globalAlpha = on ? 0.9 : unlitEdgeAlpha * 0.8
@@ -2204,7 +2225,7 @@ function useCanvasGraph(
       // Pass 1: discs with avatar or initials, one font for all nodes.
       // Plain nodes (no photo, not focused, not you, not lit) share one
       // fill path and one ring path; initials skip when under ~7px.
-      ctx.font = `600 ${11 * dt}px system-ui`
+      ctx.font = `600 ${11 * dt * glyphScale}px system-ui`
       const visibleNodes: GraphNode[] = []
       const plain: GraphNode[] = []
       const faded: GraphNode[] = []
@@ -2231,8 +2252,9 @@ function useCanvasGraph(
         ctx.globalAlpha = alpha
         ctx.beginPath()
         for (const node of batch) {
-          ctx.moveTo(node.x! + node.r, node.y!)
-          ctx.arc(node.x!, node.y!, node.r, 0, Math.PI * 2)
+          const r = radiusOf(node)
+          ctx.moveTo(node.x! + r, node.y!)
+          ctx.arc(node.x!, node.y!, r, 0, Math.PI * 2)
         }
         ctx.fillStyle = quietOnes ? '#1c1b1a' : '#232120'
         ctx.fill()
@@ -2244,7 +2266,7 @@ function useCanvasGraph(
         ctx.strokeStyle = '#7d786f'
         ctx.stroke()
         if (quietOnes) ctx.setLineDash(solid)
-        if (k * 11 >= 7) {
+        if (k * 11 * glyphScale >= 7) {
           ctx.fillStyle = quietOnes ? '#8b857a' : '#ece8e1'
           for (const node of batch) ctx.fillText(node.initials, node.x!, node.y!)
         }
@@ -2280,7 +2302,7 @@ function useCanvasGraph(
         ctx.globalAlpha = isLitNode(node.id) || isSelected ? 1 : unlitNodeAlpha
         // Gold is yours alone; the focus of an ego view and the person
         // whose card is open get a bright ring instead.
-        const r = isFocus ? node.r + 3 : node.r
+        const r = isFocus ? radiusOf(node) + 3 / k : radiusOf(node)
         const ring = node.isSelf ? '#d8a657' : isFocus || isSelected ? '#ece8e1' : '#7d786f'
         const ringW = node.isSelf ? 1.5 : isFocus || isSelected ? 2.5 : 1
         if (image instanceof HTMLImageElement) {
@@ -2329,7 +2351,8 @@ function useCanvasGraph(
           if (!pinnedRef.current.has(node.id)) continue
           const a = -Math.PI / 4
           ctx.beginPath()
-          ctx.arc(node.x! + Math.cos(a) * node.r, node.y! + Math.sin(a) * node.r, 2.5 / k, 0, Math.PI * 2)
+          const pr = radiusOf(node)
+          ctx.arc(node.x! + Math.cos(a) * pr, node.y! + Math.sin(a) * pr, 2.5 / k, 0, Math.PI * 2)
           ctx.fill()
         }
       }
@@ -2344,7 +2367,10 @@ function useCanvasGraph(
       // dots are minor, and a hub's name matters more than a dot under it.
       const nodeBoxes = visibleNodes
         .filter((nd) => !dots.has(nd.id))
-        .map((nd) => ({ id: nd.id, x: nd.x! - nd.r, y: nd.y! - nd.r, w: nd.r * 2, h: nd.r * 2 }))
+        .map((nd) => {
+          const r = radiusOf(nd)
+          return { id: nd.id, x: nd.x! - r, y: nd.y! - r, w: r * 2, h: r * 2 }
+        })
       const overlaps = (b: { x: number; y: number; w: number; h: number }) => (o: typeof b) =>
         b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y
       const nameBoxes: { x: number; y: number; w: number; h: number }[] = []
@@ -2377,7 +2403,8 @@ function useCanvasGraph(
           const text = node.isSelf ? `${node.name} (you)` : node.name
           const w = ctx.measureText(text).width
           // Below the disc, else above it; skip when both would overprint.
-          const candidates = [node.y! + node.r + 13 / k, node.y! - node.r - 5 / k]
+          const nr = radiusOf(node)
+          const candidates = [node.y! + nr + 13 / k, node.y! - nr - 5 / k]
           let placed = false
           for (const y of candidates) {
             // A little taller than the glyphs so two names never abut.
@@ -2409,12 +2436,15 @@ function useCanvasGraph(
         ctx.lineWidth = 3 / k
         ctx.strokeStyle = 'rgba(18, 17, 16, 0.8)'
         const placed: { x: number; y: number; w: number; h: number }[] = [...nameBoxes]
-        const captionBoxes = visibleNodes.map((nd) => ({
-          x: nd.x! - nd.r - 4 / k,
-          y: nd.y! - nd.r - 4 / k,
-          w: nd.r * 2 + 8 / k,
-          h: nd.r * 2 + 18 / k,
-        }))
+        const captionBoxes = visibleNodes.map((nd) => {
+          const r = radiusOf(nd)
+          return {
+            x: nd.x! - r - 4 / k,
+            y: nd.y! - r - 4 / k,
+            w: r * 2 + 8 / k,
+            h: r * 2 + 18 / k,
+          }
+        })
         const hits = (b: { x: number; y: number; w: number; h: number }) =>
           placed.some(overlaps(b)) || captionBoxes.some(overlaps(b))
         for (const c of circlesNow) {
@@ -2675,7 +2705,11 @@ function useCanvasGraph(
       let bestDist = Infinity
       for (const node of simNodes) {
         if (node.x == null || node.y == null) continue
-        const hitR = Math.max(node.r, 18 / transform.k)
+        // The target is the disc you can see, and at least a finger.
+        const hitR = Math.max(
+          Math.min(node.r, MAX_NODE_SCREEN_R / transform.k),
+          18 / transform.k,
+        )
         const dx = p.x - node.x
         const dy = p.y - node.y
         const d = dx * dx + dy * dy
