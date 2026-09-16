@@ -121,6 +121,73 @@ await tap(TYPES, 0); await settle()
 if ((await page.getAttribute(TYPES, 'title')) !== 'Show all again') fail('the isolated chip should offer the way back')
 console.log('the chip names its next tap:', title)
 
+// --- a circle off-stage can't filter from off-stage --------------------
+// The rail only lists circles with someone in scope, so in an ego view a
+// circle hidden earlier, elsewhere, has no chip and no share of the
+// "N hidden" count. It must not narrow the graph either, or you land on
+// a thinner picture with nothing on screen saying why or how to undo it.
+await page.evaluate(() => document.querySelector('.chip.hidden-status')?.click())
+await settle()
+const allCircleIds = await page.evaluate(() =>
+  [...document.querySelectorAll('.chip.circle-filter[data-filter-id]')].map((b) => b.dataset.filterId),
+)
+await page.goto(`${BASE}/#/people`)
+await page.fill('input[type=search]', 'Priya')
+await page.click('a.person-row:has-text("Priya Raman")')
+await page.click('a:has-text("See on graph"), a:has-text("see on graph")')
+await page.waitForSelector('canvas.graph-canvas', { timeout: 15000 })
+await page.waitForTimeout(2500)
+// Keep the ego view's own URL: a plain tab tap would drop ?focus= and
+// measure the whole graph instead.
+const egoUrl = page.url()
+if (!/focus=/.test(egoUrl)) fail(`expected an ego view, got ${egoUrl}`)
+const egoPeople = await peopleDrawn()
+const onRail = await page.evaluate(() =>
+  [...document.querySelectorAll('.chip.circle-filter[data-filter-id]')].map((b) => b.dataset.filterId),
+)
+const offStage = allCircleIds.filter((id) => !onRail.includes(id))
+if (offStage.length === 0) fail('expected at least one circle off the rail in an ego view')
+await page.evaluate((hidden) => {
+  const cur = JSON.parse(sessionStorage.getItem('graph-filters') ?? '{}')
+  sessionStorage.setItem('graph-filters', JSON.stringify({ ...cur, hiddenCircles: hidden }))
+}, offStage)
+await page.goto(`${BASE}/#/people`)
+await page.goto(egoUrl)
+await page.waitForSelector('canvas.graph-canvas', { timeout: 15000 })
+await page.waitForTimeout(2500)
+if ((await peopleDrawn()) !== egoPeople) {
+  fail(`a circle with no chip narrowed the ego view: ${egoPeople} → ${await peopleDrawn()} people`)
+}
+if (await page.locator('.chip.hidden-status').count()) fail('an off-rail circle was counted as hidden')
+console.log('a circle off the rail neither filters nor counts')
+// Clear it through the UI, so the live component lets go of it too: a
+// hash change alone would leave the old state in place.
+await page.goto(`${BASE}/#/graph`)
+await page.waitForSelector('canvas.graph-canvas', { timeout: 15000 })
+await page.evaluate(() => document.querySelector('.chip.hidden-status')?.click())
+await page.waitForTimeout(2500)
+if (await page.locator('.chip.hidden-status').count()) fail('filters did not reset before the path check')
+
+// --- a path outranks an isolated circle -------------------------------
+// The breadcrumb names every step, so every step has to be drawn.
+await tap(CIRCLES, 0); await settle()
+const isolatedAgain = await peopleDrawn()
+await page.goto(`${BASE}/#/people`)
+await page.fill('input[type=search]', 'Grace')
+const graceHref = await page.getAttribute('a.person-row:has-text("Grace Liu")', 'href')
+await page.goto(`${BASE}/#/graph?path=${graceHref.split('/').pop()}`)
+await page.waitForSelector('.chip.focus-chip', { timeout: 15000 })
+await page.waitForTimeout(2500)
+const steps = (await page.locator('.chip.focus-chip').first().textContent()).trim().replace(/×$/, '').split(' → ')
+const withPath = await peopleDrawn()
+if (withPath < steps.length) {
+  fail(`the breadcrumb names ${steps.length} people but only ${withPath} are drawn`)
+}
+if (withPath <= isolatedAgain) fail('the path did not bring its people back past the circle filter')
+console.log(`an isolated circle drew ${isolatedAgain}; the path brings its ${steps.length} steps back (${withPath} on screen)`)
+await page.evaluate(() => document.querySelector('.chip.focus-chip button')?.click())
+await page.waitForTimeout(1200)
+
 // --- hiding yourself --------------------------------------------------
 // You are joined to everyone, so the dot in the middle tells you least
 // and pulls the layout hardest; the `me` lens takes it out and leaves

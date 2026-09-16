@@ -58,7 +58,10 @@ function BiometricButton({ onError }: { onError: (message: string | null) => voi
           // again looked exactly like one you'd changed your mind about:
           // Face ID said yes and the screen sat there.
           const result = await unlockWithBiometric()
-          if (result === 'ok' || result === 'cancelled') onError(null)
+          // 'none' means there was no enrollment to begin with: the
+          // button has just taken itself away, and there is nothing to
+          // report about a passkey that never existed.
+          if (result === 'ok' || result === 'cancelled' || result === 'none') onError(null)
           else if (result === 'stale')
             onError(
               'Couldn’t unlock — this passkey doesn’t open this vault. Open with your passphrase, then turn Face ID on again in Settings.',

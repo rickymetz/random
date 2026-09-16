@@ -97,5 +97,44 @@ await page.click('button[type=submit]:has-text("Open")')
 await page.waitForSelector('.unlock', { state: 'detached', timeout: 15000 })
 console.log('the passphrase still opens it')
 
+// 4. Retiring is scoped to the credential that failed: another
+// enrollment may still be the one that works, so it must survive.
+await enroll()
+const decoyId = await page.evaluate(() => new Promise((res) => {
+  const req = indexedDB.open('ledger')
+  req.onsuccess = () => {
+    const tx = req.result.transaction('auth', 'readwrite')
+    const store = tx.objectStore('auth')
+    const all = store.getAll()
+    let id = null
+    all.onsuccess = () => {
+      const real = all.result[0]
+      id = `${real.id.slice(0, -2)}ff`
+      // A second enrollment the authenticator knows nothing about, and a
+      // real one whose wrap no longer matches.
+      store.put({ ...real, id })
+      store.put({ ...real, prfSalt: crypto.getRandomValues(new Uint8Array(32)) })
+    }
+    tx.oncomplete = () => res(id)
+  }
+}))
+await lock()
+await page.click('button:has-text("Use Face ID / fingerprint")')
+await alert.first().waitFor({ timeout: 15000 })
+const left = await page.evaluate(() => new Promise((res) => {
+  const req = indexedDB.open('ledger')
+  req.onsuccess = () => {
+    const g = req.result.transaction('auth').objectStore('auth').getAll()
+    g.onsuccess = () => res(g.result.map((r) => r.id))
+  }
+}))
+if (left.length !== 1 || left[0] !== decoyId) {
+  fail(`a failing passkey took the other enrollment with it: ${JSON.stringify(left)}`)
+}
+if (!(await page.locator('button:has-text("Use Face ID / fingerprint")').count())) {
+  fail('the surviving enrollment is no longer offered')
+}
+console.log('only the credential that failed is retired')
+
 await browser.close()
 console.log('SMOKE23 OK')

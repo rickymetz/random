@@ -174,7 +174,7 @@ export async function removeBiometricEnrollment(credentialId: string): Promise<v
  * had just chosen not to use: Face ID succeeded and nothing happened.
  */
 export type UnlockResult =
-  | { status: 'ok'; rawDek: Uint8Array }
+  | { status: 'ok'; rawDek: Uint8Array; credentialId: string }
   /** No enrollment here — the button should not have been offered. */
   | { status: 'none' }
   /** The assertion came back without a PRF output: this browser can't. */
@@ -182,9 +182,11 @@ export type UnlockResult =
   /**
    * The passkey is real and answered, but its key opens nothing here —
    * the vault was restored or re-created after enrolling. Unrecoverable
-   * by retrying: the caller drops the enrollment and says so.
+   * by retrying: the caller drops *this* enrollment and says so.
    */
-  | { status: 'stale' }
+  | { status: 'stale'; credentialId: string }
+  /** The authenticator answered with a credential that is not ours. */
+  | { status: 'failed' }
 
 /**
  * Authenticate and return the raw DEK bytes (the caller passes them to
@@ -227,17 +229,24 @@ export async function biometricUnlock(): Promise<UnlockResult> {
   })) as PublicKeyCredential | null
   if (!asserted) return { status: 'no-prf' }
   const row = rows.find((r) => r.id === toHex(new Uint8Array(asserted.rawId)))
-  if (!row) return { status: 'stale' }
+  // We asked for our own credentials by id, so an answer from anything
+  // else is a platform oddity, not a passkey to retire.
+  if (!row) return { status: 'failed' }
   const prfOutput = prfOutputOf(asserted)
   if (!prfOutput) return { status: 'no-prf' }
   try {
     const kek = await deriveKeyFromPrf(prfOutput, row.hkdfSalt)
     const rawDek = await unwrapDek({ iv: row.wrappedDekIv, ciphertext: row.wrappedDek }, kek)
-    return { status: 'ok', rawDek }
-  } catch {
-    // AES-GCM refused the wrap: the PRF output is not the one that made
-    // it. Nothing the user can do at this screen.
-    return { status: 'stale' }
+    return { status: 'ok', rawDek, credentialId: row.id }
+  } catch (error) {
+    // AES-GCM refusing the wrap — and only that — means the PRF output
+    // is not the one that made it: the passkey belongs to a vault that
+    // is gone. Every other failure here is the platform having a bad
+    // moment, and must not cost the user an enrollment that still works.
+    if (error instanceof DOMException && error.name === 'OperationError') {
+      return { status: 'stale', credentialId: row.id }
+    }
+    throw error
   } finally {
     wipe(prfOutput)
   }

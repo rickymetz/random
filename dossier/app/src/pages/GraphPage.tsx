@@ -471,14 +471,26 @@ export default function GraphPage() {
     // one in an ego view would take the others off the rail with it.
     const scopeIds = new Set(visiblePeople.map((p) => p.id))
 
+    // A highlighted path outranks the filters, person by person, the way
+    // its edges already do: a breadcrumb reading "You → Sam → Grace"
+    // over a drawing missing Sam is worse than no breadcrumb at all.
+    const onPath = new Set(pathInfo?.reason === 'ok' ? pathInfo.nodeIds : [])
+
     // Circle chips narrow the people, not just the bubbles — "only my
     // climbing friends" means the rest of the vault leaves the screen.
-    // All chips on means no narrowing at all; all off means the same,
-    // so a stale filter can never empty the graph on its own.
-    const shownCircles = allCircles.filter((c) => !hiddenCircles.has(c.id))
-    if (!focusedCircle && shownCircles.length > 0 && shownCircles.length < allCircles.length) {
+    // The pool is the rail's own list (in an ego view, the circles with
+    // someone in scope), so what narrows the graph is exactly what you
+    // can see and switch back on: a circle hidden in one view can't go
+    // on filtering from off-stage in another. All chips on means no
+    // narrowing, and all off means the same, so a stale filter can never
+    // empty the graph on its own.
+    const circlePool = focusId
+      ? allCircles.filter((c) => c.memberIds.some((id) => scopeIds.has(id)))
+      : allCircles
+    const shownCircles = circlePool.filter((c) => !hiddenCircles.has(c.id))
+    if (!focusedCircle && shownCircles.length > 0 && shownCircles.length < circlePool.length) {
       const members = new Set(shownCircles.flatMap((c) => c.memberIds))
-      visiblePeople = visiblePeople.filter((p) => members.has(p.id))
+      visiblePeople = visiblePeople.filter((p) => members.has(p.id) || onPath.has(p.id))
     }
 
     // You are joined to everyone, so the dot in the middle is the one
@@ -486,9 +498,7 @@ export default function GraphPage() {
     // leaves your people and the ties between *them* — which is the
     // shape you can't otherwise see. An ego view still starts from you
     // (it is your neighbourhood either way); you just aren't drawn in it.
-    // A highlighted path keeps you: it starts at you, and half a path is
-    // a lie — the same rule the path's own edges already follow.
-    if (!showSelf && !pathInfo) visiblePeople = visiblePeople.filter((p) => !p.isSelf)
+    if (!showSelf) visiblePeople = visiblePeople.filter((p) => !p.isSelf || onPath.has(p.id))
 
     const ids = new Set(visiblePeople.map((p) => p.id))
     const visibleEdges = edges.filter((e) => ids.has(e.fromId) && ids.has(e.toId))
@@ -595,7 +605,14 @@ export default function GraphPage() {
   // Isolating circles is a view change too — it takes people off the
   // screen, and the handful left would otherwise sit wherever the old
   // camera happened to be pointing.
-  const viewKey = `${focusId ?? ''}|${depth}|${circleFocusId ?? ''}|${showAll ? 1 : 0}|${showSelf ? 1 : 0}|${[...hiddenCircles].sort().join(',')}`
+  // In an ego view the walk follows edges, so switching a tie type off
+  // takes people off the screen too and the camera has to follow. In the
+  // whole-graph view the same tap moves nobody, and a re-fit there would
+  // be a camera jump for nothing.
+  const egoEdgeKey = focusId
+    ? `${[...hiddenTypes].sort().join(',')}|${showMentions ? 1 : 0}${showFormer ? 1 : 0}`
+    : ''
+  const viewKey = `${focusId ?? ''}|${depth}|${circleFocusId ?? ''}|${showAll ? 1 : 0}|${showSelf ? 1 : 0}|${[...hiddenCircles].sort().join(',')}|${egoEdgeKey}`
   const canvasRef = useCanvasGraph(
     nodes,
     links,
@@ -631,7 +648,7 @@ export default function GraphPage() {
     railTypes.filter((t) => hiddenTypes.has(t.id)).length +
     (showMentions ? 0 : 1) +
     (showFormer ? 0 : 1) +
-    (showSelf ? 0 : 1) +
+    (self && !showSelf ? 1 : 0) +
     railCircles.filter((c) => hiddenCircles.has(c.id)).length
   const showAllFilters = () => {
     setHiddenTypes(new Set())
