@@ -31,12 +31,20 @@
   function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
   var toastTimer = null;
-  function toast(message) {
+  function toast(message, action) {
     var el = document.getElementById('toast');
-    el.textContent = message;
+    clear(el);
+    el.appendChild(document.createTextNode(message));
+    if (action) {
+      el.appendChild(h('button', {
+        class: 'toast-action', type: 'button', text: action.label,
+        onclick: function () { el.hidden = true; action.onClick(); }
+      }));
+    }
     el.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.hidden = true; }, 2600);
+    // A toast with something to press has to wait for the press.
+    if (!action) toastTimer = setTimeout(function () { el.hidden = true; }, 2600);
   }
 
   /* ---------- formatting ---------- */
@@ -1118,6 +1126,7 @@
       this.index = this.stepForItem(itemIndex || 0);
       this.open = true;
       S.ensureSession(date);
+      requestPersistence();
       document.getElementById('session-root').hidden = false;
       document.body.style.overflow = 'hidden';
       document.body.classList.add('is-session');
@@ -1631,10 +1640,54 @@
     if (currentView === 'settings') render();
   });
 
+  /* An update is offered rather than swapped in: the service worker no longer
+   * calls skipWaiting, so a new version cannot replace the code under a
+   * session that is halfway through a set without the person knowing. */
+  function announceUpdate(worker) {
+    toast('A new version of Cadence is ready.', {
+      label: 'Reload',
+      onClick: function () { worker.postMessage('skip-waiting'); }
+    });
+  }
+
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     global.addEventListener('load', function () {
-      navigator.serviceWorker.register('sw.js').catch(function () { /* offline support is optional */ });
+      var hadController = !!navigator.serviceWorker.controller;
+      var reloading = false;
+
+      navigator.serviceWorker.register('sw.js').then(function (reg) {
+        function watch(worker) {
+          if (!worker) return;
+          worker.addEventListener('statechange', function () {
+            // A controller already present means this is an update, not a
+            // first install — only then is there anything to announce.
+            if (worker.state === 'installed' && navigator.serviceWorker.controller) announceUpdate(worker);
+          });
+        }
+        if (reg.waiting && navigator.serviceWorker.controller) announceUpdate(reg.waiting);
+        reg.addEventListener('updatefound', function () { watch(reg.installing); });
+      }).catch(function () { /* offline support is optional */ });
+
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (!hadController || reloading) return;   // not the first install
+        reloading = true;
+        global.location.reload();
+      });
     });
+  }
+
+  /* Without this, iOS evicts an uninstalled site's storage after a week
+   * without a visit, and Android may evict it under disk pressure — which for
+   * this app means the entire training history. Asked once, on first use. */
+  var persistenceAsked = false;
+  function requestPersistence() {
+    if (persistenceAsked || !navigator.storage || !navigator.storage.persist) return;
+    persistenceAsked = true;
+    try {
+      navigator.storage.persisted().then(function (already) {
+        if (!already) navigator.storage.persist();
+      }).catch(function () {});
+    } catch (e) { /* not available */ }
   }
 
   S.onSaveError(function (err) {

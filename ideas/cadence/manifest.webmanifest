@@ -1,4 +1,5 @@
 {
+  "id": "./",
   "name": "Cadence — weekly workout tracker",
   "short_name": "Cadence",
   "description": "A weekly calisthenics and mobility tracker: guided sessions with timers, set-by-set logging, and progress over time.",
