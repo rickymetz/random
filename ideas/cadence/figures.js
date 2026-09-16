@@ -183,17 +183,23 @@
       nearLeg.setAttribute('d', limbPath(sk.hip, sk.knee[0], sk.foot[0]));
     }
 
-    var raf = null;
+    /* ~20fps. These are two-to-five-second eases between two poses, so the
+     * extra 40 frames a second buy nothing visible and cost more than double
+     * the CPU — and it has to be a timer rather than a throttled rAF, because
+     * the expense is asking for the frame, not the work done inside it. */
+    var FRAME_MS = 50;
+    var timer = null;
     var started = 0;
     var still = options.still || (reduceMotion && reduceMotion.matches);
 
-    function frame(now) {
+    function frame() {
+      var now = Date.now();
       if (!started) started = now;
       var cycle = (def.cycle || 2.6) * 1000;
       var phase = ((now - started) % cycle) / cycle;
       var u = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
       paint(blend(skeletons[0], skeletons[1] || skeletons[0], easeInOutSine(u)));
-      raf = global.requestAnimationFrame(frame);
+      timer = global.setTimeout(frame, FRAME_MS);
     }
 
     if (still) {
@@ -205,14 +211,14 @@
         paint(skeletons[options.poseIndex === 0 ? 0 : 1] || skeletons[0]);
       }
     } else {
-      raf = global.requestAnimationFrame(frame);
+      frame();
     }
 
     return {
       node: svg,
       stop: function () {
-        if (raf) global.cancelAnimationFrame(raf);
-        raf = null;
+        if (timer) global.clearTimeout(timer);
+        timer = null;
       }
     };
   }
