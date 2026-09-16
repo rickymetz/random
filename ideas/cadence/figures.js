@@ -229,7 +229,7 @@
 
   var FIGURES = {
     warmup: {
-      cue: 'Easy march, swing the arms, get warm.',
+      cue: 'March and circle the arms, then rehearse today’s first two moves at half effort.',
       cycle: 1.7,
       poses: [
         { hip: [50, 50], t: 3, ua: [228, 138], fa: [248, 122], th: [108, 184], sh: [162, 184] },
@@ -239,17 +239,19 @@
     pushups: {
       cue: 'One straight line from head to heels, elbows close in.',
       cycle: 2.6,
+      // Thigh = torso + 180 is what makes the body actually straight; the
+      // torso angle is picked so hands and toes share one floor.
       poses: [
-        { hip: [46, 64], t: 74, head: 10, ua: 176, fa: 176, th: 233, sh: 233 },
-        { hip: [44, 68], t: 74, head: 16, ua: 200, fa: 139, th: 242, sh: 242 }
+        { hip: [50, 58], t: 62, head: 15, ua: 180, fa: 180, th: 242, sh: 242 },
+        { hip: [52.6, 64.2], t: 75, head: 15, ua: 250, fa: 140, th: 255, sh: 255 }
       ]
     },
     squats: {
-      cue: 'Chest up, knees tracking over the toes.',
+      cue: 'Sit down between your heels — knees point the same way as your toes.',
       cycle: 2.8,
       poses: [
         { hip: [50, 50], t: 0, ua: [172, 188], fa: [172, 188], th: 180, sh: 180 },
-        { hip: [46, 63], t: 22, ua: 100, fa: 96, th: 140, sh: 198 }
+        { hip: [45, 68], t: 30, ua: 100, fa: 95, th: 90, sh: 220 }
       ]
     },
     'reverse-lunges': {
@@ -257,11 +259,11 @@
       cycle: 3,
       poses: [
         { hip: [50, 50], t: 0, ua: [174, 186], fa: [174, 186], th: 180, sh: 180 },
-        { hip: [50, 64], t: 7, ua: [170, 190], fa: [168, 192], th: [145, 218], sh: [186, 255] }
+        { hip: [48, 62], t: 5, ua: [170, 190], fa: [168, 192], th: [124, 217], sh: [225, 245] }
       ]
     },
     plank: {
-      cue: 'Elbows under shoulders, ribs down, breathe.',
+      cue: 'Elbows under shoulders, ribs down, glutes tight — breathe.',
       cycle: 4.5,
       poses: [
         { hip: [47, 70], t: 76, head: 14, ua: 178, fa: 92, th: 256, sh: 256 },
@@ -269,15 +271,15 @@
       ]
     },
     cooldown: {
-      cue: 'Let it go — fold, breathe, unwind.',
+      cue: 'Walk it off, breathe slow, stretch whatever you just worked.',
       cycle: 4,
       poses: [
-        { hip: [50, 50], t: 0, ua: [174, 186], fa: [174, 186], th: 180, sh: 180 },
-        { hip: [50, 50], t: 108, ua: 178, fa: 178, th: 182, sh: 178 }
+        { hip: [50, 50], t: 0, ua: [8, -8], fa: [5, -5], th: 180, sh: 180 },
+        { hip: [50, 50], t: 12, ua: [16, -2], fa: [13, -6], th: 182, sh: 178 }
       ]
     },
     'pike-pushups': {
-      cue: 'Hips high, lower the crown of the head toward the floor.',
+      cue: 'Hips stacked over your hands — lower until your head is just off the floor, weight in the hands.',
       cycle: 2.8,
       poses: [
         { hip: [46, 56], t: 125, head: 8, ua: 125, fa: 125, th: 201, sh: 201 },
@@ -288,28 +290,28 @@
       cue: 'Ribs down, squeeze the glutes, lift from the hips.',
       cycle: 2.6,
       poses: [
-        { hip: [52, 76], t: 265, head: 2, ua: 100, fa: 100, th: 55, sh: 170 },
-        { hip: [52, 66], t: 250, head: 12, ua: 100, fa: 96, th: 75, sh: 176 }
+        { hip: [60, 76], t: 265, head: -2, ua: 95, fa: 95, th: 40, sh: 164 },
+        { hip: [58, 66], t: 241, head: 22, ua: 95, fa: 95, th: 86, sh: 176 }
       ]
     },
     'split-squats': {
       cue: 'Weight through the front heel, back knee straight down.',
       cycle: 3,
       poses: [
-        { hip: [50, 52], t: 8, ua: [174, 186], fa: [174, 186], th: [168, 205], sh: [182, 188] },
-        { hip: [50, 64], t: 8, ua: [174, 186], fa: [174, 186], th: [158, 212], sh: [188, 240] }
+        { hip: [46, 56], t: 6, ua: [174, 186], fa: [174, 186], th: [127, 214], sh: [187, 224] },
+        { hip: [46, 68], t: 8, ua: [174, 186], fa: [174, 186], th: [82, 220], sh: [199, 268] }
       ]
     },
     'bird-dogs': {
-      cue: 'Opposite arm and leg, hips level, no rocking.',
+      cue: 'Opposite arm and leg — reach long, not high; hips stay level.',
       cycle: 3.4,
       poses: [
-        { hip: [56, 70], t: 288, head: -18, ua: [180, 265], fa: [180, 265], th: [180, 100], sh: [265, 95] },
-        { hip: [56, 70], t: 288, head: -18, ua: [265, 180], fa: [265, 180], th: [100, 180], sh: [95, 265] }
+        { hip: [56, 70], t: 288, head: -18, ua: [180, 265], fa: [180, 265], th: [180, 100], sh: [95, 95] },
+        { hip: [56, 70], t: 288, head: -18, ua: [265, 180], fa: [265, 180], th: [100, 180], sh: [95, 95] }
       ]
     },
     'hip-switches': {
-      cue: 'Sit tall, let both knees fall side to side.',
+      cue: 'Sit tall on your sit bones and rotate the knees side to side — no leaning back.',
       cycle: 3,
       poses: [
         { hip: [50, 58], t: 0, ua: [140, 220], fa: [155, 205], th: [125, 155], sh: [95, 62] },
@@ -317,36 +319,36 @@
       ]
     },
     'hip-flexor': {
-      cue: 'Tuck the tailbone, then press the hips gently forward.',
+      cue: 'Tuck the tailbone, ribs down, then press the hips forward — don’t lean back.',
       cycle: 4.5,
       poses: [
-        { hip: [45, 73], t: -6, ua: [160, 200], fa: [170, 190], th: [90, 216], sh: [180, 250] },
-        { hip: [50, 73], t: -12, ua: [160, 200], fa: [170, 190], th: [96, 224], sh: [178, 252] }
+        { hip: [46, 65], t: 0, ua: [150, 200], fa: [160, 190], th: [90, 195], sh: [176, 265] },
+        { hip: [51, 65], t: 3, ua: [150, 200], fa: [160, 190], th: [88, 211], sh: [195, 265] }
       ]
     },
     'adductor-rock-backs': {
       cue: 'One leg out to the side, rock the hips back slowly.',
       cycle: 3.6,
       poses: [
-        { hip: [56, 70], t: 288, head: -18, ua: [180, 186], fa: [180, 186], th: [180, 120], sh: [265, 120] },
-        { hip: [66, 74], t: 292, head: -18, ua: [166, 172], fa: [172, 178], th: [190, 128], sh: [256, 128] }
+        { hip: [56, 70], t: 288, head: -18, ua: [180, 186], fa: [180, 186], th: [180, 120], sh: [95, 120] },
+        { hip: [66, 74], t: 292, head: -18, ua: [166, 172], fa: [172, 178], th: [190, 128], sh: [95, 128] }
       ]
     },
     straddle: {
       cue: 'Soles together or legs wide — hinge from the hips, not the back.',
       cycle: 5,
       poses: [
-        { hip: [46, 70], t: -4, ua: [168, 192], fa: [172, 188], th: [97, 106], sh: [94, 103] },
-        { hip: [46, 70], t: 44, ua: [128, 140], fa: [116, 128], th: [97, 106], sh: [94, 103] }
+        { hip: [46, 72], t: -2, ua: [165, 195], fa: [170, 190], th: [120, 128], sh: [265, 258] },
+        { hip: [46, 72], t: 40, ua: [140, 160], fa: [130, 150], th: [120, 128], sh: [265, 258] }
       ]
     },
     'knee-to-wall-rocks': {
-      cue: 'Heel stays down, drive the knee out over the toes.',
+      cue: 'Heel stays down — drive the knee forward over the second toe.',
       cycle: 2.4,
       prop: 'wall',
       poses: [
-        { hip: [44, 52], t: 4, ua: [150, 160], fa: [120, 130], th: [178, 200], sh: [182, 196] },
-        { hip: [44, 55], t: 8, ua: [150, 160], fa: [114, 124], th: [166, 202], sh: [200, 198] }
+        { hip: [44, 52], t: 4, ua: [150, 160], fa: [120, 130], th: [178, 202], sh: [182, 196] },
+        { hip: [44, 58], t: 10, ua: [150, 160], fa: [112, 122], th: [150, 206], sh: [215, 196] }
       ]
     },
     'knee-to-wall-hold': {
@@ -354,8 +356,8 @@
       cycle: 5,
       prop: 'wall',
       poses: [
-        { hip: [44, 55], t: 8, ua: [150, 160], fa: [114, 124], th: [166, 202], sh: [200, 198] },
-        { hip: [44, 56], t: 9, ua: [150, 160], fa: [113, 123], th: [164, 202], sh: [202, 198] }
+        { hip: [44, 58], t: 10, ua: [150, 160], fa: [112, 122], th: [150, 206], sh: [215, 196] },
+        { hip: [44, 59], t: 11, ua: [150, 160], fa: [111, 121], th: [148, 206], sh: [217, 196] }
       ]
     },
     'calf-stretch': {
@@ -363,16 +365,16 @@
       cycle: 5,
       prop: 'wall',
       poses: [
-        { hip: [44, 54], t: 12, ua: [120, 128], fa: [105, 113], th: [165, 205], sh: [185, 205] },
-        { hip: [42, 56], t: 16, ua: [118, 126], fa: [103, 111], th: [162, 208], sh: [188, 208] }
+        { hip: [44, 54], t: 20, ua: [118, 126], fa: [104, 112], th: [160, 213], sh: [193, 213] },
+        { hip: [42, 56], t: 26, ua: [116, 124], fa: [102, 110], th: [155, 215], sh: [198, 215] }
       ]
     },
     'cat-cow': {
-      cue: 'Round the back, then let it dip — move with the breath.',
+      cue: 'Exhale and round, inhale and let it dip — only as far as it’s comfortable.',
       cycle: 4,
       poses: [
-        { hip: [56, 70], t: 288, head: 4, ua: 180, fa: 180, th: 180, sh: 265, bow: -6 },
-        { hip: [56, 70], t: 288, head: -46, ua: 180, fa: 180, th: 180, sh: 265, bow: 8 }
+        { hip: [56, 70], t: 288, head: 4, ua: 180, fa: 180, th: 180, sh: 95, bow: -4 },
+        { hip: [56, 70], t: 288, head: -46, ua: 180, fa: 180, th: 180, sh: 95, bow: 6 }
       ]
     },
     'open-book': {
@@ -387,12 +389,12 @@
       cue: 'Hips toward the heels, arms long, breathe into the back.',
       cycle: 5,
       poses: [
-        { hip: [62, 50], t: 235, head: 15, ua: [272, 278], fa: [278, 284], th: [200, 206], sh: [100, 95], bow: -3 },
-        { hip: [63, 51], t: 237, head: 15, ua: [273, 279], fa: [279, 285], th: [200, 206], sh: [100, 95], bow: -6 }
+        { hip: [62, 68], t: 258, head: 12, ua: [262, 266], fa: [268, 272], th: [227, 232], sh: [90, 86], bow: -3 },
+        { hip: [62, 69], t: 260, head: 12, ua: [263, 267], fa: [269, 273], th: [227, 232], sh: [90, 86], bow: -5 }
       ]
     },
     'focus-stretch': {
-      cue: 'Whatever felt tightest today — two quiet minutes on it.',
+      cue: 'Whatever felt tightest today — two quiet minutes, strong but never sharp.',
       cycle: 5,
       poses: [
         { hip: [50, 66], t: -2, ua: [152, 208], fa: [138, 222], th: [118, 242], sh: [244, 116] },
