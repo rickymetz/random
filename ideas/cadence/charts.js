@@ -55,6 +55,9 @@
 
     var tip = document.createElement('div');
     tip.className = 'chart-tip';
+    // Mutating aria-label on a static role="img" is not re-announced, so the
+    // keyboard walk through the points was silent. This is.
+    tip.setAttribute('role', 'status');
     tip.hidden = true;
     wrap.appendChild(tip);
 
@@ -103,6 +106,10 @@
           x: pad.left, y: bandTop, width: plotW, height: Math.max(2, bandBottom - bandTop),
           class: 'chart-band'
         }));
+        // A 12%-opacity wash is about 1.1:1 against the card — not a boundary
+        // anyone can see. The edges carry it.
+        svg.appendChild(el('line', { x1: pad.left, x2: pad.left + plotW, y1: bandTop, y2: bandTop, class: 'chart-band-edge' }));
+        svg.appendChild(el('line', { x1: pad.left, x2: pad.left + plotW, y1: bandBottom, y2: bandBottom, class: 'chart-band-edge' }));
       }
 
       ticks.forEach(function (t) {

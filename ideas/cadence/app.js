@@ -47,6 +47,46 @@
     if (!action) toastTimer = setTimeout(function () { el.hidden = true; }, 2600);
   }
 
+  /* Screen readers get nothing from a chime or a repainted screen, so every
+   * step change, every finished timer and every toast is spoken here. */
+  var liveTimer = null;
+  function announce(message) {
+    var el = document.getElementById('live');
+    if (!el) return;
+    el.textContent = '';                       // identical text is not re-announced
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(function () { el.textContent = message; }, 60);
+  }
+
+  /* ---------- focus that survives a re-render ---------- */
+
+  /* Views are rebuilt wholesale on every state change, which used to drop
+   * focus to <body> after every single interaction — six exercises ticked off
+   * meant six trips back from the top of the page. Interactive controls carry
+   * a stable key so the equivalent node can be re-focused afterwards. */
+  function activeFocusKey() {
+    var el = document.activeElement;
+    return el && el.getAttribute ? el.getAttribute('data-fkey') : null;
+  }
+
+  function findByKey(key) {
+    var all = document.querySelectorAll('[data-fkey]');
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].getAttribute('data-fkey') === key) return all[i];
+    }
+    return null;
+  }
+
+  function restoreFocus(key) {
+    if (!key) return;
+    var el = document.activeElement;
+    if (el && el !== document.body && el.getAttribute && el.getAttribute('data-fkey') === key) return;
+    var next = findByKey(key);
+    if (next && next.focus) {
+      try { next.focus(); } catch (e) { /* detached */ }
+    }
+  }
+
   /* ---------- formatting ---------- */
 
   function mmss(seconds) {
@@ -179,10 +219,7 @@
         h('span', { text: label }),
         h('span', { class: 'value', text: value + ' / ' + max })
       ]),
-      h('div', {
-        class: 'meter-track', role: 'meter', 'aria-label': label,
-        'aria-valuenow': value, 'aria-valuemin': 0, 'aria-valuemax': max
-      }, pips)
+      h('div', { class: 'meter-track', 'aria-hidden': true }, pips)
     ]);
   }
 
@@ -201,10 +238,12 @@
       var note = log && log.note ? log.note : '';
       var detail = [actual, note].filter(Boolean).join(' — ');
 
+      var iso = S.toISO(date);
       rows.push(h('div', { class: 'row' + (done ? ' is-done' : '') }, [
         h('button', {
           class: 'row-main',
           type: 'button',
+          'data-fkey': 'row:' + iso + ':' + ex.id,
           onclick: function () { session.start(date, index); }
         }, [
           h('div', { class: 'row-name', text: ex.name }),
@@ -214,6 +253,7 @@
         h('button', {
           class: 'check',
           type: 'button',
+          'data-fkey': 'check:' + iso + ':' + ex.id,
           'aria-pressed': done ? 'true' : 'false',
           'aria-label': (done ? 'Mark not done: ' : 'Mark done: ') + ex.name,
           onclick: function () {
@@ -390,6 +430,7 @@
       h('button', {
         class: 'btn btn-primary btn-block btn-lg',
         type: 'button',
+        'data-fkey': 'hero:start',
         onclick: function () {
           if (isRest) {
             if (done) { S.reopenSession(date); toast('Rest day reopened'); }
@@ -495,7 +536,7 @@
 
     root.appendChild(h('div', { class: 'week-nav' }, [
       h('button', {
-        class: 'icon-btn', type: 'button', 'aria-label': 'Previous week', text: '‹',
+        class: 'icon-btn', type: 'button', 'aria-label': 'Previous week', text: '‹', 'data-fkey': 'week:prev',
         onclick: function () { weekCursor = S.addDays(monday, -7); render(); }
       }),
       h('div', { class: 'week-nav-title' }, [
@@ -503,7 +544,7 @@
         h('span', { class: 'small muted', text: S.weekLabel(monday) })
       ]),
       h('button', {
-        class: 'icon-btn', type: 'button', 'aria-label': 'Next week', text: '›',
+        class: 'icon-btn', type: 'button', 'aria-label': 'Next week', text: '›', 'data-fkey': 'week:next',
         onclick: function () { weekCursor = S.addDays(monday, 7); render(); }
       })
     ]));
@@ -533,12 +574,14 @@
           h('textarea', {
             class: 'note-input',
             rows: 2,
+            'aria-label': 'Notes for ' + S.formatDate(date, { weekday: 'long', month: 'short', day: 'numeric' }),
             placeholder: 'Notes for the day…',
             oninput: function (e) { S.setSessionNote(date, e.target.value); }
           }),
           h('div', { class: 'btn-row', style: 'margin-top:.6rem' }, [
             workout.kind === 'rest' ? null : h('button', {
               class: 'btn btn-sm btn-primary', type: 'button',
+              'data-fkey': 'daystart:' + iso,
               text: progress.done ? 'Continue' : 'Start',
               onclick: function () { session.start(date, firstUndone(date, workout)); }
             }),
@@ -554,6 +597,7 @@
         root.appendChild(h('article', { class: 'day' + (isToday ? ' is-today' : '') }, [
           h('button', {
             class: 'day-head', type: 'button',
+            'data-fkey': 'day:' + iso,
             'aria-expanded': isOpen ? 'true' : 'false',
             onclick: function () { expandedDays[iso] = !isOpen; render(); }
           }, [
@@ -565,7 +609,7 @@
             h('span', { class: 'day-count' }, [
               done ? h('span', { class: 'day-done-dot', text: '●' }) : null,
               h('span', { text: progress.done + '/' + progress.total }),
-              h('span', { text: isOpen ? '▴' : '▾' })
+              h('span', { 'aria-hidden': true, text: isOpen ? '▴' : '▾' })
             ])
           ]),
           body
@@ -603,14 +647,14 @@
     }
 
     var picker = h('select', {
-      'aria-label': 'Exercise',
+      'aria-label': 'Exercise', 'data-fkey': 'progress:exercise',
       onchange: function (e) { progressPick.exId = e.target.value; render(); }
     }, logged.map(function (row) {
       return h('option', { value: row.id, selected: row.id === progressPick.exId, text: row.ex.name });
     }));
 
     var metric = h('select', {
-      'aria-label': 'Measure',
+      'aria-label': 'Measure', 'data-fkey': 'progress:metric',
       onchange: function (e) { progressPick.metric = e.target.value; render(); }
     }, [
       h('option', { value: 'best', selected: progressPick.metric === 'best', text: 'Best set' }),
@@ -881,6 +925,7 @@
       var wrap = h('div', { class: 'editor-workout' }, [
         h('button', {
           class: 'editor-head', type: 'button', 'aria-expanded': open ? 'true' : 'false',
+          'data-fkey': 'editor:' + workout.id,
           onclick: function () { editorOpen[workout.id] = !open; render(); }
         }, [
           h('span', { text: workout.name }),
@@ -892,7 +937,7 @@
         workout.blocks.forEach(function (block, bIdx) {
           if (workout.blocks.length > 1) {
             var nameInput = h('input', {
-              type: 'text', value: block.name, placeholder: 'Section name',
+              type: 'text', value: block.name, placeholder: 'Section name', 'aria-label': 'Section name',
               onchange: function (e) {
                 var value = e.target.value;
                 S.updateRoutine(function (next) { next.workouts[wIdx].blocks[bIdx].name = value; });
@@ -947,15 +992,15 @@
 
     var head = h('div', { class: 'editor-item-head' }, [
       h('button', {
-        class: 'row-main', type: 'button',
+        class: 'row-main', type: 'button', 'data-fkey': 'edit:' + key,
         onclick: function () { editingItem = isEditing ? null : key; render(); }
       }, [
         h('div', { class: 'editor-item-name', text: ex.name }),
         h('div', { class: 'editor-item-target', text: R.targetLabel(ex) })
       ]),
       h('div', { class: 'editor-tools' }, [
-        h('button', { type: 'button', 'aria-label': 'Move up', text: '↑', disabled: iIdx === 0, onclick: function () { move(-1); } }),
-        h('button', { type: 'button', 'aria-label': 'Move down', text: '↓', disabled: iIdx === siblingCount - 1, onclick: function () { move(1); } }),
+        h('button', { type: 'button', 'aria-label': 'Move ' + ex.name + ' up', text: '↑', 'data-fkey': 'up:' + workout.id + ':' + bIdx + ':' + Math.max(0, iIdx - 1), disabled: iIdx === 0, onclick: function () { move(-1); } }),
+        h('button', { type: 'button', 'aria-label': 'Move ' + ex.name + ' down', text: '↓', 'data-fkey': 'down:' + workout.id + ':' + bIdx + ':' + Math.min(siblingCount - 1, iIdx + 1), disabled: iIdx === siblingCount - 1, onclick: function () { move(1); } }),
         h('button', {
           type: 'button', 'aria-label': 'Delete ' + ex.name, text: '✕',
           onclick: function () {
@@ -977,7 +1022,7 @@
       h('div', { class: 'field' }, [
         h('label', { text: 'Name' }),
         h('input', {
-          type: 'text', value: ex.name,
+          type: 'text', value: ex.name, 'aria-label': 'Exercise name',
           onchange: function (e) { var v = e.target.value.trim() || 'Untitled'; mutate(function (item) { item.name = v; }); }
         })
       ]),
@@ -986,6 +1031,7 @@
           h('label', { text: 'Measured in' }),
           (function () {
             var sel = h('select', {
+              'aria-label': 'Measured in',
               onchange: function (e) {
                 var v = e.target.value;
                 mutate(function (item) {
@@ -1005,7 +1051,7 @@
         h('div', { class: 'field' }, [
           h('label', { text: 'Sets' }),
           h('input', {
-            type: 'number', min: 1, max: 10, value: ex.sets || 1,
+            type: 'number', min: 1, max: 10, value: ex.sets || 1, 'aria-label': 'Sets',
             onchange: function (e) { var v = Math.max(1, Number(e.target.value) || 1); mutate(function (item) { item.sets = v; }); }
           })
         ])
@@ -1014,7 +1060,7 @@
         h('div', { class: 'field' }, [
           h('label', { text: 'Low (' + unitWord + ')' }),
           h('input', {
-            type: 'number', min: 0, value: ex.min,
+            type: 'number', min: 0, value: ex.min, 'aria-label': 'Low, in ' + unitWord,
             onchange: function (e) {
               var v = Math.max(0, Number(e.target.value) || 0);
               mutate(function (item) { item.min = v; if (item.max < v) item.max = v; });
@@ -1024,7 +1070,7 @@
         h('div', { class: 'field' }, [
           h('label', { text: 'High (' + unitWord + ')' }),
           h('input', {
-            type: 'number', min: 0, value: ex.max,
+            type: 'number', min: 0, value: ex.max, 'aria-label': 'High, in ' + unitWord,
             onchange: function (e) {
               var v = Math.max(0, Number(e.target.value) || 0);
               mutate(function (item) { item.max = v; if (item.min > v) item.min = v; });
@@ -1036,6 +1082,7 @@
         h('label', { text: 'Rest after each set (seconds)' }),
         h('input', {
           type: 'number', min: 0, max: 300, step: 5, value: ex.rest || 0,
+          'aria-label': 'Rest after each set, in seconds',
           onchange: function (e) { var v = Math.max(0, Number(e.target.value) || 0); mutate(function (item) { item.rest = v; }); }
         })
       ]),
@@ -1053,6 +1100,7 @@
       ex.perSide && ex.mode !== 'none' ? h('div', { class: 'field', style: 'margin-top:.6rem' }, [
         h('label', { text: 'Word for a side' }),
         h('select', {
+          'aria-label': 'Word for a side',
           onchange: function (e) { var v = e.target.value; mutate(function (item) { item.sideWord = v; }); }
         }, [
           h('option', { value: 'side', selected: (ex.sideWord || 'side') === 'side', text: 'side' }),
@@ -1127,12 +1175,26 @@
       this.open = true;
       S.ensureSession(date);
       requestPersistence();
-      document.getElementById('session-root').hidden = false;
+      this.returnFocusKey = activeFocusKey();
+
+      /* It looked modal and behaved like a sheet of glass: focus never entered
+       * it, Tab walked straight through to the covered page, and people could
+       * operate controls they could not see. */
+      var root = document.getElementById('session-root');
+      root.hidden = false;
+      root.setAttribute('role', 'dialog');
+      root.setAttribute('aria-modal', 'true');
+      root.setAttribute('aria-label', workout.name + ' — guided session');
+      var app = document.querySelector('.app');
+      app.setAttribute('inert', '');
+      app.setAttribute('aria-hidden', 'true');
+
       document.body.style.overflow = 'hidden';
       document.body.classList.add('is-session');
       keepAwake(true);
       beep([0]); // unlocks the audio context on the starting tap
       this.enter();
+      root.focus();
     },
 
     stepForItem: function (itemIndex) {
@@ -1147,11 +1209,22 @@
       if (demoCache.stop) demoCache.stop();
       demoCache = { key: null, node: null, stop: null };
       this.open = false;
-      document.getElementById('session-root').hidden = true;
+
+      var root = document.getElementById('session-root');
+      root.hidden = true;
+      root.removeAttribute('role');
+      root.removeAttribute('aria-modal');
+      root.removeAttribute('aria-label');
+      var app = document.querySelector('.app');
+      app.removeAttribute('inert');
+      app.removeAttribute('aria-hidden');
+
       document.body.style.overflow = '';
       document.body.classList.remove('is-session');
       keepAwake(false);
       render();
+      restoreFocus(this.returnFocusKey);
+      this.returnFocusKey = null;
     },
 
     stopTimer: function () {
@@ -1178,6 +1251,31 @@
         this.startTimer(step.seconds);
       }
       this.paint();
+      this.announceStep();
+    },
+
+    announceStep: function () {
+      var step = this.steps[this.index];
+      if (!step) return;
+      if (step.kind === 'done') {
+        var progress = S.sessionProgress(this.date);
+        announce(progress.done === progress.total
+          ? 'Session complete. ' + progress.done + ' of ' + progress.total + ' exercises.'
+          : 'Session paused. ' + progress.done + ' of ' + progress.total + ' exercises logged.');
+        return;
+      }
+      if (step.kind === 'rest') {
+        var nextStep = this.steps[this.index + 1];
+        var nextEx = nextStep && nextStep.kind === 'work' ? this.items[nextStep.i].ex : null;
+        announce('Rest, ' + step.seconds + ' seconds' + (nextEx ? '. Next: ' + nextEx.name : '') + '.');
+        return;
+      }
+      var ex = this.items[step.i].ex;
+      var parts = [ex.name];
+      if ((ex.sets || 1) > 1) parts.push('set ' + (step.set + 1) + ' of ' + ex.sets);
+      if (step.sides > 1) parts.push('side ' + (step.side + 1) + ' of 2');
+      if (ex.mode !== 'none') parts.push('target ' + R.targetLabel(ex));
+      announce(parts.join(', ') + '.');
     },
 
     /* Start from what you managed last time — that is the whole point of logging. */
@@ -1234,6 +1332,7 @@
         this.chimed = true;
         beep([660, 880]);
         buzz([60, 80, 60]);
+        announce('Time.');
         var auto = S.state.settings.autoAdvance;
         if (auto === undefined || auto) {
           var self = this;
@@ -1564,12 +1663,28 @@
     return steps;
   }
 
+  function trapTab(e) {
+    var root = document.getElementById('session-root');
+    var candidates = root.querySelectorAll('button:not([disabled]), input, select, textarea, a[href]');
+    var list = Array.prototype.slice.call(candidates);
+    if (!list.length) { e.preventDefault(); root.focus(); return; }
+    var first = list[0];
+    var last = list[list.length - 1];
+    var el = document.activeElement;
+    if (!root.contains(el)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }
+    if (e.shiftKey && (el === first || el === root)) { e.preventDefault(); last.focus(); return; }
+    if (!e.shiftKey && el === last) { e.preventDefault(); first.focus(); }
+  }
+
   document.addEventListener('keydown', function (e) {
     if (!session.open) return;
     if (e.key === 'Escape') { session.close(); return; }
+    if (e.key === 'Tab') { trapTab(e); return; }
     if (e.key === ' ' || e.key === 'Enter') {
-      var tag = document.activeElement && document.activeElement.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+      /* Only when focus is on the dialog itself. Anywhere else, Space is
+       * either activating the focused control or scrolling the page — both
+       * of which the person meant, and neither of which should log a set. */
+      if (document.activeElement !== document.getElementById('session-root')) return;
       e.preventDefault();
       session.complete();
     }
@@ -1579,12 +1694,14 @@
 
   var renderQueued = false;
   function render() {
+    var focusKey = activeFocusKey();
     try {
       if (currentView === 'today') renderToday();
       else if (currentView === 'week') renderWeek();
       else if (currentView === 'progress') renderProgress();
       else renderSettings();
       if (session.open) session.paint();
+      restoreFocus(focusKey);
     } catch (err) {
       renderRecovery(err);
     }

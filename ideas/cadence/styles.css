@@ -17,7 +17,8 @@
   --good: #0ca30c;
   --series: #b3542e;      /* chart mark: validated on the card surface */
   --grid: #e1e0d9;
-  --axis: #898781;
+  --axis: #6b6b6b;
+  --line-check: #767676;
   --shadow: 0 1px 2px rgba(26, 26, 26, 0.05), 0 6px 20px rgba(26, 26, 26, 0.05);
   --radius: 0.85rem;
   --tap: 2.75rem;
@@ -41,7 +42,8 @@
     --good: #0ca30c;
     --series: #d4783f;    /* stepped for the dark surface, not the light hue reused */
     --grid: #2c2c2a;
-    --axis: #898781;
+    --axis: #9a9a9a;
+    --line-check: #8a8a8a;
     --shadow: none;
   }
 }
@@ -63,7 +65,8 @@
   --good: #0ca30c;
   --series: #d4783f;
   --grid: #2c2c2a;
-  --axis: #898781;
+  --axis: #9a9a9a;
+  --line-check: #8a8a8a;
   --shadow: none;
 }
 
@@ -375,7 +378,7 @@ button { cursor: pointer; }
   place-items: center;
   width: 1.45rem;
   height: 1.45rem;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--line-check);
   border-radius: 0.45rem;
   font-size: 0.85rem;
   line-height: 1;
@@ -461,7 +464,9 @@ button { cursor: pointer; }
 
 .chart-wrap { position: relative; width: 100%; }
 .chart-svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
-.chart-band { fill: var(--series); opacity: 0.10; }
+.chart-band { fill: var(--series); opacity: 0.12; }
+/* A 1.1:1 wash is not a perceivable boundary; the edges carry it. */
+.chart-band-edge { stroke: var(--axis); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .chart-grid { stroke: var(--grid); stroke-width: 1; }
 .chart-line { stroke: var(--series); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .chart-dot { fill: var(--series); stroke: var(--card); stroke-width: 2; }
@@ -683,7 +688,8 @@ table.data td.num, table.data th.num { text-align: right; }
 }
 .counter input::-webkit-outer-spin-button,
 .counter input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.counter input:focus { outline: none; border-bottom-color: var(--accent); }
+.counter input:focus { border-bottom-color: var(--accent); }
+.counter input:focus:not(:focus-visible) { outline: none; }
 .counter-unit { font-size: 0.8rem; color: var(--muted); }
 
 .session-actions {
@@ -847,3 +853,17 @@ body.is-session .toast { top: 4.5rem; bottom: auto; }
   overflow: hidden;
 }
 .editor-demo-body { flex: 1; min-width: 0; }
+
+/* Visible to assistive technology only. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

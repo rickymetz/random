@@ -139,8 +139,10 @@
       viewBox: fit.x + ' ' + fit.y + ' ' + fit.w + ' ' + fit.h,
       class: 'figure',
       preserveAspectRatio: 'xMidYMid meet',
-      role: 'img',
-      'aria-label': def.alt || def.cue || 'Exercise demonstration'
+      // The cue is rendered as text right beside this, so announcing the
+      // drawing as well just said everything twice.
+      'aria-hidden': 'true',
+      focusable: 'false'
     });
     var g = svgEl('g', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', fill: 'none' });
     svg.appendChild(g);
