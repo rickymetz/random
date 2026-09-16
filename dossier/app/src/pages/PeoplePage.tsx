@@ -14,6 +14,7 @@ import Avatar from '../components/Avatar'
 import BatchAddPanel from '../components/BatchAddPanel'
 import ContactImportPanel from '../components/ContactImportPanel'
 import { daysUntilDue, daysUntilNext, formatPartialDate } from '../lib/dates'
+import { fieldDefsIn, yearlyDatesOf } from '../lib/fieldDefs'
 import type { Person } from '../lib/models'
 import { RAIL_LETTERS, letterOf, rowsToReveal, shortName } from '../lib/names'
 import { matchSnippet } from '../lib/search'
@@ -892,17 +893,33 @@ function Upcoming() {
     const people = selectPeople(records)
     const byId = new Map(people.map((p) => [p.id, p]))
     const list: UpcomingItem[] = []
+    const defs = fieldDefsIn(records)
     for (const p of people) {
-      if (!p.birthday) continue
-      const days = daysUntilNext(p.birthday, today)
-      if (days !== null && days <= HORIZON_DAYS) {
+      if (p.birthday) {
+        const days = daysUntilNext(p.birthday, today)
+        if (days !== null && days <= HORIZON_DAYS) {
+          list.push({
+            key: `bday-${p.id}`,
+            days,
+            overdue: false,
+            personId: p.id,
+            personName: p.displayName,
+            label: `birthday · ${formatPartialDate(p.birthday)}`,
+          })
+        }
+      }
+      // Anniversaries, work start dates, whatever this vault decided to
+      // be reminded about (§8.1) — same strip, same shape as a birthday.
+      for (const yearly of yearlyDatesOf(p, defs)) {
+        const days = daysUntilNext(yearly.date, today)
+        if (days === null || days > HORIZON_DAYS) continue
         list.push({
-          key: `bday-${p.id}`,
+          key: `yr-${p.id}-${yearly.fieldId}`,
           days,
           overdue: false,
           personId: p.id,
           personName: p.displayName,
-          label: `birthday · ${formatPartialDate(p.birthday)}`,
+          label: `${yearly.label.toLowerCase()} · ${formatPartialDate(yearly.date)}`,
         })
       }
     }

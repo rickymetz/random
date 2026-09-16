@@ -18,6 +18,7 @@ import { assignTypeFamilies, migrateExToFormer, pairKey } from '../lib/relations
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
   SETTINGS_ID,
+  type CustomValue,
   type DomainRecord,
   type FieldDef,
   type FollowUp,
@@ -227,6 +228,14 @@ interface VaultState {
     },
   ) => Promise<void>
   removeRelationship: (relationshipId: string) => Promise<void>
+  /** Rename or re-colour a tie type; every tie points at it by id. */
+  updateRelationshipType: (type: RelationshipType) => Promise<'ok' | 'name-taken'>
+  /**
+   * A type in use retires; one nothing uses is deleted. Returns which
+   * happened, so the UI can say so.
+   */
+  retireRelationshipType: (typeId: string) => Promise<'retired' | 'deleted' | 'kept'>
+  restoreRelationshipType: (typeId: string) => Promise<void>
   addRelationshipType: (
     label: string,
     color: string,
@@ -1164,6 +1173,47 @@ export const useVaultStore = create<VaultState>((set, get) => {
       return type
     }),
 
+    updateRelationshipType: (type) =>
+      enqueue(async () => {
+        const before = get().records.get(type.id)
+        if (before?.kind !== 'relationshipType') return 'ok' as const
+        const label = type.label.trim()
+        if (!label) return 'name-taken' as const
+        const clash = selectRelationshipTypes(get().records).some(
+          (t) => t.id !== type.id && t.label.toLowerCase() === label.toLowerCase(),
+        )
+        if (clash) return 'name-taken' as const
+        // Ties point at the type by id, so a rename lands on all of them
+        // at once — including the "mentioned" edges the notes drew.
+        await apply([{ ...type, label }])
+        return 'ok' as const
+      }),
+
+    retireRelationshipType: (typeId) =>
+      enqueue(async () => {
+        const type = get().records.get(typeId)
+        if (type?.kind !== 'relationshipType') return 'kept' as const
+        // "mentioned" is the app's own machinery, not vocabulary: the
+        // note parser creates those edges and nothing else can.
+        if (type.builtIn && type.label === 'mentioned') return 'kept' as const
+        const inUse = [...get().records.values()].some(
+          (r) => r.kind === 'relationship' && r.typeId === typeId,
+        )
+        if (!inUse) {
+          await apply([], [typeId])
+          return 'deleted' as const
+        }
+        await apply([{ ...type, retired: true }])
+        return 'retired' as const
+      }),
+
+    restoreRelationshipType: (typeId) =>
+      enqueue(async () => {
+        const type = get().records.get(typeId)
+        if (type?.kind !== 'relationshipType' || !type.retired) return
+        await apply([{ ...type, retired: undefined }])
+      }),
+
     addField: (seed) =>
       enqueue(async () => {
         const defs = selectFieldDefs(get().records)
@@ -1426,6 +1476,20 @@ export const useVaultStore = create<VaultState>((set, get) => {
           .filter((r): r is RelationshipType => r.kind === 'relationshipType' && r.builtIn)
           .map((r) => [r.label, r.id]),
       )
+      // A form row already here by the same name is the same row: a
+      // restore must not leave two "Allergies" with the answers split
+      // between them. Incoming answers are rewritten onto the id we keep.
+      const fieldByLabel = new Map(
+        [...current.values()]
+          .filter((r): r is FieldDef => r.kind === 'fieldDef')
+          .map((r) => [r.label.trim().toLowerCase(), r.id]),
+      )
+      const fieldRemap = new Map<string, string>()
+      for (const record of sanitized) {
+        if (record.kind !== 'fieldDef') continue
+        const existingId = fieldByLabel.get(record.label.trim().toLowerCase())
+        if (existingId && existingId !== record.id) fieldRemap.set(record.id, existingId)
+      }
       const idRemap = new Map<string, string>()
       // Map every built-in type BEFORE any relationship is remapped: bundle
       // rows arrive in arbitrary key order, so a relationship that precedes
@@ -1464,6 +1528,16 @@ export const useVaultStore = create<VaultState>((set, get) => {
           const freshBlobId = crypto.randomUUID()
           blobWrites.push({ id: freshBlobId, bytes })
           puts.push({ ...record, blobRecordId: freshBlobId })
+          continue
+        }
+        // A duplicate row is dropped; its answers ride onto the keeper.
+        if (record.kind === 'fieldDef' && fieldRemap.has(record.id)) continue
+        if (record.kind === 'person' && record.custom && fieldRemap.size > 0) {
+          const custom: Record<string, CustomValue> = {}
+          for (const [key, value] of Object.entries(record.custom)) {
+            custom[fieldRemap.get(key) ?? key] = value
+          }
+          puts.push({ ...record, custom })
           continue
         }
         puts.push(

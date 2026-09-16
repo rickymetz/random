@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import FormEditor from '../components/FormEditor'
 import InlineField from '../components/InlineField'
+import TypeEditor from '../components/TypeEditor'
 import LabelText from '../components/LabelText'
 import { Link, useSearchParams } from 'react-router-dom'
 import { destroyAllData } from '../lib/db'
@@ -46,6 +48,8 @@ export default function SettingsPage() {
       <ExportSection />
       <ImportSection />
       <StorageSection />
+      <FormEditor />
+      <TypeEditor />
       <SecuritySection />
       <DisguiseSection />
       <SampleDataSection />

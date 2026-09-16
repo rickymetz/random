@@ -192,6 +192,7 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
         directed: bool(r.directed),
         builtIn: bool(r.builtIn),
         family: isFamily(r.family) ? r.family : undefined,
+        retired: r.retired === true || undefined,
       }
       return type
     }

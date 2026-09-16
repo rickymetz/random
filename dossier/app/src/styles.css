@@ -4147,3 +4147,121 @@ a.facet {
 .edges.roles-list .role-editor {
   grid-column: 1 / -1;
 }
+
+/* ------------------------------------------- the person form editor */
+/* Settings: the rows this vault added for itself (§8.1). A row reads as
+   its name over what it holds, with its controls at the trailing edge —
+   the same shape as a relationship row on a dossier. */
+.field-defs {
+  list-style: none;
+  margin: var(--s2) 0;
+  padding: 0;
+}
+.field-defs > li {
+  border-bottom: 1px solid var(--line);
+}
+.field-defs > li:last-child {
+  border-bottom: 0;
+}
+.field-def-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: var(--s1) 0;
+}
+/* The name is the target, so it is a button that looks like text and
+   fills the row — one big tap per field rather than four small words. */
+.field-def-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: var(--s2) 0;
+  color: var(--text);
+  font: inherit;
+  min-height: var(--ctl-h);
+  justify-content: center;
+}
+/* What the row holds sits under its name, always — inline it squeezed
+   the name into a column narrow enough to break "Anniversary" in half. */
+.field-def-name .desc {
+  display: block;
+  margin: 0;
+}
+.field-def-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0;
+}
+/* Reorder arrows: a full target, drawn light — they repeat down the
+   list, and a column of boxes would read louder than the names. */
+.field-def-actions .icon {
+  min-width: var(--ctl-h);
+  min-height: var(--ctl-h);
+  background: none;
+  border: 0;
+  color: var(--text-3);
+}
+.field-def-actions .icon:disabled {
+  opacity: 0.3;
+}
+/* Retire leads, Save trails. When the three don't fit on one line the
+   auto margin keeps Retire at the left edge rather than stranding it
+   right-aligned above the others. */
+.editor-actions {
+  justify-content: flex-end;
+}
+.editor-actions > .quiet:first-child {
+  margin-inline-end: auto;
+}
+.add-field {
+  display: grid;
+  gap: var(--s2);
+  padding: var(--s3) 0;
+  max-width: 28rem;
+}
+.add-field .row {
+  justify-content: flex-end;
+}
+/* Starter packs: a first form to edit, rather than a blank page. */
+.packs {
+  display: grid;
+  gap: var(--s2);
+  margin: var(--s2) 0;
+}
+.packs-more {
+  width: 100%;
+}
+.packs-more[open] summary {
+  margin-bottom: var(--s2);
+}
+.pack {
+  display: block;
+  text-align: left;
+  width: 100%;
+  padding: var(--s2) var(--s3);
+}
+.pack .pack-name {
+  display: block;
+  color: var(--text);
+}
+.pack .desc {
+  display: block;
+}
+/* A tie type's hue reads beside its word, as it does on the graph rail. */
+.type-swatch-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.type-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--chip-color, var(--text-4));
+  flex: 0 0 auto;
+}

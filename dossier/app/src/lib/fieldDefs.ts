@@ -9,7 +9,7 @@
  * never touches an answer, and retiring a field leaves every answer in
  * place under that same key, waiting to be restored.
  */
-import type { CustomValue, FieldDef, FieldType, PartialDate } from './models'
+import type { CustomValue, DomainRecord, FieldDef, FieldType, PartialDate, Person } from './models'
 
 /** Enough rows to describe a person; past this the form stops being one. */
 export const MAX_FIELDS = 40
@@ -141,4 +141,43 @@ export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   choice: 'Pick one',
   number: 'Number',
   boolean: 'Yes or no',
+}
+
+/** A date a person carries that comes round every year. */
+export interface YearlyDate {
+  fieldId: string
+  label: string
+  date: PartialDate
+  /** Days of warning the field asks for; 0 is on the day. */
+  leadDays: number
+}
+
+/**
+ * The custom date fields marked "remind me every year", with the answers
+ * this person gave (§8.1). Birthdays are not here — they have their own
+ * slot and their own line everywhere — so a caller wanting both adds the
+ * birthday itself.
+ */
+export function yearlyDatesOf(person: Person, defs: FieldDef[]): YearlyDate[] {
+  if (!person.custom) return []
+  const out: YearlyDate[] = []
+  for (const def of defs) {
+    if (def.type !== 'date' || !def.remindYearly || def.retired) continue
+    const value = person.custom[def.id]
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const date = value as PartialDate
+    if (date.month === undefined) continue
+    out.push({
+      fieldId: def.id,
+      label: def.label,
+      date,
+      leadDays: def.remindLeadDays ?? 0,
+    })
+  }
+  return out
+}
+
+/** The field definitions in a records map, for callers outside the store. */
+export function fieldDefsIn(records: Map<string, DomainRecord>): FieldDef[] {
+  return [...records.values()].filter((r): r is FieldDef => r.kind === 'fieldDef')
 }

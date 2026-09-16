@@ -141,6 +141,12 @@ export interface RelationshipType {
   directed: boolean
   /** Hue family; built-ins have one, older custom types read as 'other'. */
   family?: TypeFamily
+  /**
+   * Off the picker for new ties, but every existing tie keeps it and
+   * still draws — the same rule the person form's rows follow. A type
+   * nothing uses is deleted outright instead.
+   */
+  retired?: boolean
   builtIn: boolean
 }
 
