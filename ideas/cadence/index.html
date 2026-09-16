@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cadence</title>
+<meta name="description" content="A weekly calisthenics and mobility tracker — guided sessions with timers, set-by-set logging, and progress over time. Installable, offline, all on your device.">
+<meta name="theme-color" content="#faf9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cadence">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="app-bar">
+      <a class="hub-link" href="../../" aria-label="Back to random"><span aria-hidden="true">←</span></a>
+      <h1 id="app-title">Cadence</h1>
+      <button type="button" class="icon-btn" id="theme-btn" aria-label="Switch theme">◐</button>
+    </header>
+
+    <main class="views">
+      <section class="view" id="view-today" aria-labelledby="tab-today"></section>
+      <section class="view" id="view-week" hidden aria-labelledby="tab-week"></section>
+      <section class="view" id="view-progress" hidden aria-labelledby="tab-progress"></section>
+      <section class="view" id="view-settings" hidden aria-labelledby="tab-settings"></section>
+    </main>
+
+    <nav class="tabbar" aria-label="Sections">
+      <button type="button" class="tab is-active" id="tab-today" data-view="today"><span class="tab-glyph" aria-hidden="true">◉</span>Today</button>
+      <button type="button" class="tab" id="tab-week" data-view="week"><span class="tab-glyph" aria-hidden="true">▤</span>Week</button>
+      <button type="button" class="tab" id="tab-progress" data-view="progress"><span class="tab-glyph" aria-hidden="true">◪</span>Progress</button>
+      <button type="button" class="tab" id="tab-settings" data-view="settings"><span class="tab-glyph" aria-hidden="true">⚙</span>Settings</button>
+    </nav>
+  </div>
+
+  <div class="session-root" id="session-root" tabindex="-1" hidden></div>
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <!-- Nothing about a guided session was announced: a blind user got a chime
+       they may have muted and no word that the app had moved them on. -->
+  <div class="sr-only" id="live" role="status" aria-live="polite"></div>
+
+  <script src="routine.js"></script>
+  <script src="figures.js"></script>
+  <script src="media.js"></script>
+  <script src="store.js"></script>
+  <script src="charts.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
