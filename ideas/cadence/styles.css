@@ -869,3 +869,76 @@ body.is-session .toast { top: 4.5rem; bottom: auto; }
   white-space: nowrap;
   border: 0;
 }
+
+/* ---------- quick logging from a checklist row ---------- */
+
+.quick-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0 0.7rem;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.quick-step {
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--card);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.quick-step:hover { border-color: var(--accent); }
+.quick-input {
+  width: 3.6rem;
+  min-height: 2.4rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.5rem;
+  background: var(--card-2);
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 600;
+  -moz-appearance: textfield;
+}
+.quick-input::-webkit-outer-spin-button,
+.quick-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.quick-unit { font-size: 0.78rem; color: var(--muted); margin-right: auto; }
+
+/* A nudge that names a specific session is a thing you can act on. */
+.banner-action {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.banner-action:hover { border-color: var(--accent); }
+
+/* A missed day should not look like one that has not arrived yet. */
+.day.is-missed { opacity: 0.72; }
+.day.is-missed .day-key { color: var(--muted); }
+
+/* ---------- session summary ---------- */
+
+.summary-list {
+  margin-top: 1rem;
+  text-align: left;
+  border-top: 1px solid var(--line);
+}
+.summary-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+}
+.summary-name { flex: 1; min-width: 0; }
+.summary-sets { color: var(--muted); font-variant-numeric: tabular-nums; }
+.summary-delta { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+.summary-delta.is-up { color: var(--good); }
+
+/* The two things you read from arm's length were the smallest text here. */
+.session-setline { font-size: 1.2rem; }
+.demo-cue { font-size: 0.94rem; }

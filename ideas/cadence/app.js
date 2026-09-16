@@ -223,6 +223,51 @@
     ]);
   }
 
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+  /* Ticking a box used to store nothing at all, so the "I already know these
+   * movements" path silently opted you out of the entire Progress tab with
+   * nothing saying so. One stepper, prefilled from last time, fixes that. */
+  var quickLog = null;
+  var quickValue = 0;
+
+  function suggestQuick(date, ex) {
+    var history = S.historyFor(ex.id, 'best').filter(function (row) { return row.iso !== S.toISO(date); });
+    if (history.length) return history[history.length - 1].value;
+    return ex.mode === 'time' ? R.timerSeconds(ex, (S.workoutForSession(date) || {}).kind) : ex.min || 0;
+  }
+
+  function quickRow(date, ex) {
+    var input = h('input', {
+      type: 'number', min: 0, max: 999, class: 'quick-input',
+      'aria-label': ex.name + ', ' + (ex.mode === 'time' ? 'seconds held' : 'reps'),
+      oninput: function (e) { quickValue = Math.max(0, Math.min(999, Number(e.target.value) || 0)); }
+    });
+    input.value = String(quickValue);
+    function step(by) {
+      quickValue = Math.max(0, Math.min(999, quickValue + by));
+      input.value = String(quickValue);
+    }
+    return h('div', { class: 'quick-row' }, [
+      h('button', { class: 'quick-step', type: 'button', 'aria-label': 'One fewer', text: '−', onclick: function () { step(-1); } }),
+      input,
+      h('button', { class: 'quick-step', type: 'button', 'aria-label': 'One more', text: '+', onclick: function () { step(1); } }),
+      h('span', { class: 'quick-unit', text: ex.mode === 'time' ? 'sec' : 'reps' }),
+      h('button', {
+        class: 'btn btn-sm btn-primary', type: 'button', text: 'Log',
+        onclick: function () {
+          S.setItem(date, ex.id, { sets: [quickValue], done: true });
+          quickLog = null;
+          buzz(12);
+        }
+      }),
+      h('button', {
+        class: 'btn btn-sm btn-ghost', type: 'button', text: 'No number',
+        onclick: function () { quickLog = null; S.toggleItem(date, ex.id); }
+      })
+    ]);
+  }
+
   function exerciseRows(date, workout) {
     var rows = [];
     var lastBlock = null;
@@ -261,11 +306,16 @@
           'aria-pressed': done ? 'true' : 'false',
           'aria-label': (done ? 'Mark not done: ' : 'Mark done: ') + ex.name,
           onclick: function () {
-            var next = S.toggleItem(date, ex.id);
-            buzz(next ? 12 : 0);
+            if (done) { S.toggleItem(date, ex.id); return; }
+            var hasNumbers = log && (log.sets || []).some(function (n) { return n > 0; });
+            if (ex.mode === 'none' || hasNumbers) { S.toggleItem(date, ex.id); buzz(12); return; }
+            quickLog = S.toISO(date) + ':' + ex.id;
+            quickValue = suggestQuick(date, ex);
+            render();
           }
         }, [h('span', { text: done ? '✓' : '' })])
       ]));
+      if (quickLog === iso + ':' + ex.id) rows.push(quickRow(date, ex));
     });
 
     // Anything this session contained that the routine no longer does.
@@ -394,7 +444,15 @@
   function demoPanel(ex) {
     var clip = Media.info(ex.id);
     var onClip = showingClip(ex);
-    var controls = [];
+    // A quarter of the screen, above the fold, on the 180th time you have
+    // done push-ups. Putting it away is remembered.
+    var hidden = !!S.state.demoHidden[ex.id];
+    var controls = [h('button', {
+      class: 'demo-btn', type: 'button',
+      'aria-label': (hidden ? 'Show' : 'Hide') + ' the demonstration for ' + ex.name,
+      text: hidden ? 'Show' : 'Hide',
+      onclick: function () { stopDemo(); S.toggleDemoHidden(ex.id); }
+    })];
 
     if (Media.supported) {
       if (clip) {
@@ -421,7 +479,7 @@
     }
 
     return h('div', { class: 'demo' }, [
-      h('div', { class: 'demo-stage' }, [demoStage(ex)]),
+      hidden ? null : h('div', { class: 'demo-stage' }, [demoStage(ex)]),
       h('div', { class: 'demo-bar' }, [
         h('span', { class: 'demo-cue', text: Figures.cue(ex.id) }),
         h('span', { class: 'demo-controls' }, controls)
@@ -473,7 +531,7 @@
             else { S.finishSession(date); S.setItem(date, 'recovery', { done: true }); buzz([18, 60, 18]); toast('Rest day logged'); }
             return;
           }
-          session.start(date, progress.done && !done ? firstUndone(date, workout) : 0);
+          session.start(date, done ? 0 : null);
         },
         text: isRest
           ? (done ? 'Rest day logged ✓' : 'Log the rest day')
@@ -482,15 +540,35 @@
     ]);
     root.appendChild(hero);
 
-    var nudge = nudgeFor(date, stats);
-    if (nudge) {
+    var away = S.lastLoggedDate();
+    var gapDays = away ? Math.round((date - away) / 86400000) : 0;
+    if (gapDays > 10) {
+      var lastWorkout = S.workoutForSession(away);
       root.appendChild(h('div', { class: 'banner' }, [
-        h('span', { class: 'banner-glyph', text: nudge.glyph }),
-        h('span', { text: nudge.text })
+        h('span', { class: 'banner-glyph', 'aria-hidden': true, text: '↩' }),
+        h('span', {
+          text: Math.round(gapDays / 7) + ' weeks off. Your last session was ' +
+            (lastWorkout ? lastWorkout.name + ' on ' : '') + S.formatDate(away) +
+            '. Start a rep or two under what you were doing and you’ll be back inside a fortnight.'
+        })
       ]));
     }
 
-    var streak = S.streak();
+    var nudge = nudgeFor(date, stats);
+    if (nudge) {
+      var content = [
+        h('span', { class: 'banner-glyph', 'aria-hidden': true, text: nudge.glyph }),
+        h('span', { text: nudge.text })
+      ];
+      root.appendChild(nudge.date
+        ? h('button', {
+            class: 'banner banner-action', type: 'button',
+            onclick: function () { session.start(nudge.date, null); }
+          }, content)
+        : h('div', { class: 'banner' }, content));
+    }
+
+    var streak = S.streakInfo();
     root.appendChild(h('div', { class: 'stat-grid' }, [
       h('section', { class: 'card' }, [
         h('div', { class: 'eyebrow', text: 'This week' }),
@@ -498,13 +576,30 @@
         meter('Calisthenics', stats.strength, stats.strengthTarget),
         meter('Mobility', stats.mobility, stats.mobilityTarget)
       ]),
-      h('section', { class: 'card' }, [
-        h('div', { class: 'eyebrow', text: 'Streak' }),
-        h('div', { class: 'stat-value', text: String(streak) }),
-        h('div', { class: 'stat-label', text: streak === 1 ? 'full week in a row' : 'full weeks in a row' }),
-        h('div', { style: 'height:.5rem' }),
-        h('div', { class: 'small muted', text: stats.complete ? 'This week is already complete.' : 'A week counts when both targets are met.' })
-      ])
+      /* A bare zero under "a week counts when both targets are met" is the
+       * same card a brand-new install shows — five good weeks and one missed
+       * one rendered as though none of it had happened. The streak only
+       * appears once there is one, and it always carries the best run. */
+      streak.best > 0
+        ? h('section', { class: 'card' }, [
+            h('div', { class: 'eyebrow', text: 'Streak' }),
+            h('div', { class: 'stat-value', text: String(streak.current) }),
+            h('div', { class: 'stat-label', text: streak.current === 1 ? 'full week in a row' : 'full weeks in a row' }),
+            h('div', { style: 'height:.5rem' }),
+            h('div', { class: 'small muted', text: streakLine(streak, stats) })
+          ])
+        : h('section', { class: 'card' }, [
+            h('div', { class: 'eyebrow', text: 'Week ' + weekNo }),
+            h('div', { class: 'stat-value', text: (stats.strength + stats.mobility) + ' / ' + (stats.strengthTarget + stats.mobilityTarget) }),
+            h('div', { class: 'stat-label', text: 'sessions this week' }),
+            h('div', { style: 'height:.5rem' }),
+            h('div', {
+              class: 'small muted',
+              text: stats.partial
+                ? 'A part week — the target is only what was left of it when you started.'
+                : 'Finish a full week and a streak starts here.'
+            })
+          ])
     ]));
 
     if (!isRest) {
@@ -520,6 +615,16 @@
         exerciseRows(date, workout)
       ]));
     }
+  }
+
+  function streakLine(streak, stats) {
+    if (streak.current === 0) {
+      return 'Your best run was ' + plural(streak.best, 'week', 'weeks') + '. ' +
+        streak.sessionsDone + ' of your last ' + streak.sessionsPossible + ' sessions landed.';
+    }
+    if (stats.complete) return 'This week is already complete.';
+    if (streak.best > streak.current) return 'Best run so far: ' + plural(streak.best, 'week', 'weeks') + '.';
+    return 'A week counts when both targets are met.';
   }
 
   function firstUndone(date, workout) {
@@ -540,19 +645,47 @@
     return Math.max(1, Math.round(seconds / 60));
   }
 
+  /* It used to stay quiet from Monday to Wednesday — exactly while a catch-up
+   * session could still save the week — then start counting your debt once
+   * the week was already lost, including on the rest day, where it once read
+   * "behind by 3 sessions with 1 days left" above a meter showing 3 of 3. */
   function nudgeFor(date, stats) {
     if (stats.complete) return { glyph: '✦', text: 'Both targets met this week. Anything else is a bonus.' };
-    var dayIdx = S.dayIndex(date);
-    var strengthShort = stats.strengthTarget - stats.strength;
-    var mobilityShort = stats.mobilityTarget - stats.mobility;
-    var daysLeft = 6 - dayIdx;
-    if (dayIdx < 3) return null;
-    if (strengthShort + mobilityShort > daysLeft + 1) {
-      return { glyph: '◔', text: 'Behind by ' + (strengthShort + mobilityShort) + ' sessions with ' + (daysLeft + 1) + ' days left. Pick the one that matters most and let the rest go.' };
+
+    var workout = S.workoutForSession(date);
+    if (workout && workout.kind === 'rest') return null;
+
+    var short = (stats.strengthTarget - stats.strength) + (stats.mobilityTarget - stats.mobility);
+    if (short <= 0) return null;
+
+    var monday = S.mondayOf(date);
+    var todayIdx = S.dayIndex(date);
+
+    var open = null;
+    for (var i = 0; i < todayIdx && !open; i++) {
+      var past = S.addDays(monday, i);
+      var pastWorkout = S.workoutForSession(past);
+      if (!pastWorkout || pastWorkout.kind === 'rest' || S.isSessionDone(past)) continue;
+      open = { date: past, workout: pastWorkout, day: R.DAYS[i] };
     }
-    if (mobilityShort > 0 && strengthShort === 0) return { glyph: '◑', text: 'Strength is covered — you’re ' + mobilityShort + ' mobility session' + (mobilityShort > 1 ? 's' : '') + ' short.' };
-    if (strengthShort > 0 && mobilityShort === 0) return { glyph: '◑', text: 'Mobility is covered — you’re ' + strengthShort + ' calisthenics session' + (strengthShort > 1 ? 's' : '') + ' short.' };
-    return null;
+
+    var remaining = 0;
+    for (var j = todayIdx; j < 7; j++) {
+      var day = S.addDays(monday, j);
+      var dayWorkout = S.workoutForSession(day);
+      if (dayWorkout && dayWorkout.kind !== 'rest' && !S.isSessionDone(day)) remaining++;
+    }
+
+    if (short > remaining) {
+      return { glyph: '○', text: 'This one isn’t going to be a full week. Get one good session in and start clean on Monday.' };
+    }
+    if (open) {
+      return {
+        glyph: '◑', date: open.date,
+        text: open.day.long + '’s ' + open.workout.name + ' is still open. Do it today and the week’s still on.'
+      };
+    }
+    return { glyph: '◑', text: plural(short, 'session', 'sessions') + ' to go, with ' + plural(remaining, 'day', 'days') + ' scheduled to do ' + (short === 1 ? 'it' : 'them') + '.' };
   }
 
   /* ---------- week ---------- */
@@ -603,6 +736,7 @@
         var isToday = iso === todayISO;
         var isOpen = expandedDays[iso] != null ? expandedDays[iso] : isToday;
         var done = S.isSessionDone(date);
+        var missed = iso < todayISO && !done && workout.kind !== 'rest' && progress.done === 0;
         var session_ = S.sessionFor(date);
 
         var body = h('div', { class: 'day-body', hidden: !isOpen }, [
@@ -619,7 +753,7 @@
               class: 'btn btn-sm btn-primary', type: 'button',
               'data-fkey': 'daystart:' + iso,
               text: progress.done ? 'Continue' : 'Start',
-              onclick: function () { session.start(date, firstUndone(date, workout)); }
+              onclick: function () { session.start(date, null); }
             }),
             h('button', {
               class: 'btn btn-sm', type: 'button',
@@ -630,7 +764,7 @@
         ]);
         body.querySelector('textarea').value = session_ ? session_.note || '' : '';
 
-        root.appendChild(h('article', { class: 'day' + (isToday ? ' is-today' : '') }, [
+        root.appendChild(h('article', { class: 'day' + (isToday ? ' is-today' : '') + (missed ? ' is-missed' : '') }, [
           h('button', {
             class: 'day-head', type: 'button',
             'data-fkey': 'day:' + iso,
@@ -640,7 +774,10 @@
             h('span', { class: 'day-key', text: day.label }),
             h('span', {}, [
               h('div', { class: 'day-name', text: workout.name }),
-              h('div', { class: 'day-meta', text: S.formatDate(date) + (workout.kind === 'rest' ? '' : ' · about ' + estimateMinutes(workout) + ' min') })
+              h('div', {
+                class: 'day-meta',
+                text: S.formatDate(date) + (missed ? ' · missed' : workout.kind === 'rest' ? '' : ' · about ' + estimateMinutes(workout) + ' min')
+              })
             ]),
             h('span', { class: 'day-count' }, [
               done ? h('span', { class: 'day-done-dot', text: '●' }) : null,
@@ -679,7 +816,18 @@
     }
 
     if (!progressPick.exId || !logged.some(function (row) { return row.id === progressPick.exId; })) {
-      progressPick.exId = logged[0].id;
+      /* Sorting by most-recent activity handed the default to whatever you
+       * did last — usually the focus stretch, a fixed two-minute hold that
+       * draws as a dead-flat line. Open on the one with something to show. */
+      var interest = function (id) {
+        var history = S.historyFor(id, 'best');
+        if (history.length < 2) return 0;
+        var values = history.map(function (row) { return row.value; });
+        return (Math.max.apply(null, values) - Math.min.apply(null, values)) * 10 + history.length;
+      };
+      var pick = logged[0];
+      logged.forEach(function (row) { if (interest(row.id) > interest(pick.id)) pick = row; });
+      progressPick.exId = pick.id;
     }
 
     var picker = h('select', {
@@ -1016,12 +1164,15 @@
             style: 'margin:.4rem 0 .8rem',
             onclick: function () {
               var id = 'custom-' + Date.now().toString(36);
+              var at = block.items.length;
+              // Adding one used to schedule it after the cool-down.
+              if (at && block.items[at - 1].id === 'cooldown') at -= 1;
               S.updateRoutine(function (next) {
-                next.workouts[wIdx].blocks[bIdx].items.push({
+                next.workouts[wIdx].blocks[bIdx].items.splice(at, 0, {
                   id: id, name: 'New exercise', mode: 'reps', sets: 3, min: 8, max: 12, rest: S.state.settings.restDefault
                 });
               });
-              editingItem = workout.id + ':' + bIdx + ':' + (block.items.length);
+              editingItem = workout.id + ':' + bIdx + ':' + at;
             }
           }));
         });
@@ -1237,7 +1388,7 @@
       this.workout = workout;
       this.items = R.flatten(workout);
       this.steps = buildSteps(this.items);
-      this.index = this.stepForItem(itemIndex || 0);
+      this.index = itemIndex == null ? this.firstIncompleteStep() : this.stepForItem(itemIndex);
       this.open = true;
       S.ensureSession(date);
       requestPersistence();
@@ -1261,6 +1412,33 @@
       beep([0]); // unlocks the audio context on the starting tap
       this.enter();
       root.focus();
+    },
+
+    /* "Continue" used to land on set 1 of 3 with the number you already did
+     * sitting in the counter and nothing saying it was banked, so you either
+     * repeated it or assumed the app had lost it. */
+    firstIncompleteStep: function () {
+      for (var i = 0; i < this.steps.length; i++) {
+        var step = this.steps[i];
+        if (step.kind !== 'work') continue;
+        var ex = this.items[step.i].ex;
+        if (ex.mode === 'none') {
+          if (!S.isItemDone(this.date, ex.id)) return i;
+          continue;
+        }
+        if (!this.loggedValue(ex, step)) return i;
+      }
+      return 0;
+    },
+
+    loggedValue: function (ex, step) {
+      var log = S.itemLog(this.date, ex.id);
+      if (!log) return 0;
+      if (step.sides > 1) {
+        var pair = (log.sides || [])[step.set] || [];
+        return pair[step.side] || 0;
+      }
+      return (log.sets || [])[step.set] || 0;
     },
 
     stepForItem: function (itemIndex) {
@@ -1602,8 +1780,7 @@
           class: 'counter-unit',
           text: step.sides > 1 ? 'reps this ' + (ex.sideWord || 'side') : 'reps'
         }));
-        var lastTime = this.lastTimeHint(ex, step.set);
-        body.appendChild(h('div', { class: 'session-hint', text: lastTime }));
+        body.appendChild(h('div', { class: 'session-hint', text: this.lastTimeHint(ex, step) }));
         actions.appendChild(h('button', {
           class: 'btn btn-primary btn-lg btn-block', type: 'button', text: 'Log set',
           onclick: function () { self.complete(); }
@@ -1637,13 +1814,15 @@
       if (ex.mode === 'time') this.paintTimer();
     },
 
-    lastTimeHint: function (ex, setIndex) {
+    lastTimeHint: function (ex, step) {
+      var banked = this.loggedValue(ex, step);
+      if (banked) return 'Already logged: ' + banked + '. Logging again replaces it.';
       var history = S.historyFor(ex.id, 'best').filter(function (row) { return row.iso !== S.toISO(session.date); });
       if (!history.length) return 'Aim for ' + R.amountLabel(ex) + '.';
       var previous = history[history.length - 1];
-      var value = previous.sets[setIndex];
+      var value = previous.sets[step.set];
       if (typeof value !== 'number' || !value) return 'Aim for ' + R.amountLabel(ex) + '.';
-      return 'Last time, set ' + (setIndex + 1) + ': ' + value + '.';
+      return 'Last time, set ' + (step.set + 1) + ': ' + value + '. Add one if the last rep moved clean.';
     },
 
     paintRest: function (root, step) {
@@ -1652,8 +1831,17 @@
       var nextStep = this.steps[this.index + 1];
       var nextEx = nextStep && nextStep.kind === 'work' ? this.items[nextStep.i].ex : null;
 
+      var justLogged = '';
+      var previous = this.steps[this.index - 1];
+      if (previous && previous.kind === 'work') {
+        var prevEx = this.items[previous.i].ex;
+        var value = this.loggedValue(prevEx, previous);
+        if (value) justLogged = prevEx.name + ': ' + value + (prevEx.mode === 'time' ? ' sec' : '') + ' logged';
+      }
+
       var body = h('div', { class: 'session-body' }, [
         h('div', { class: 'session-block', text: 'Rest' }),
+        justLogged ? h('div', { class: 'session-target', text: justLogged }) : null,
         this.dial(),
         h('div', {
           class: 'session-hint',
@@ -1661,8 +1849,11 @@
         }),
         nextEx ? h('div', { class: 'demo-rest' }, [Figures.create(nextEx.id, { still: true }).node]) : null
       ]);
+      /* The primary used to read "Skip rest", in the same place "Log set" had
+       * been a second earlier — so tapping twice, which is what you do at
+       * 6am, cut every prescribed rest to nothing. */
       var actions = h('div', { class: 'session-actions' }, [
-        h('button', { class: 'btn btn-primary btn-lg btn-block', type: 'button', text: 'Skip rest', onclick: function () { self.go(1); } }),
+        h('button', { class: 'btn btn-primary btn-lg btn-block', type: 'button', text: 'Next set', onclick: function () { self.go(1); } }),
         h('div', { class: 'btn-row' }, [
           h('button', { class: 'btn btn-sm', type: 'button', text: '+15s', onclick: function () { self.addTime(15); } }),
           h('button', { class: 'btn btn-sm btn-ghost', type: 'button', text: '‹ Back', onclick: function () { self.go(-1); } })
@@ -1726,18 +1917,57 @@
       var complete = progress.done === progress.total;
       var stats = S.weekStats(S.mondayOf(this.date));
       var entry = S.sessionFor(this.date);
-      var minutes = entry && entry.startedAt ? Math.max(1, Math.round((Date.now() - entry.startedAt) / 60000)) : null;
+      /* Timed from the first set actually logged. It used to run from the
+       * moment the record was created — which is a checkbox tapped over
+       * breakfast — so training at six in the evening reported 780 minutes. */
+      var minutes = entry && entry.workedAt ? Math.round((Date.now() - entry.workedAt) / 60000) : null;
+      if (minutes != null && (minutes < 1 || minutes > 180)) minutes = null;
+
+      var logged = this.items.filter(function (row) {
+        var log = S.itemLog(self.date, row.ex.id);
+        return log && (log.sets || []).some(function (n) { return n > 0; });
+      });
 
       var body = h('div', { class: 'session-body' }, [
-        h('div', { class: 'session-block', text: complete ? 'Session complete' : 'Session paused' }),
-        h('div', { class: 'summary-figure', text: progress.done + '/' + progress.total }),
-        h('div', { class: 'session-target', text: complete ? this.workout.name + ' done' + (minutes ? ' in about ' + minutes + ' min' : '') : 'exercises logged so far' }),
-        h('div', { style: 'height:1rem' }),
-        h('div', { style: 'text-align:left' }, [
+        h('div', { class: 'session-block', text: complete ? 'Session complete' : 'Stopped for now' }),
+        h('div', {
+          class: 'summary-figure',
+          text: complete ? this.workout.name : plural(logged.length, 'exercise', 'exercises')
+        }),
+        h('div', {
+          class: 'session-target',
+          text: complete
+            ? (minutes ? 'done in about ' + plural(minutes, 'minute', 'minutes') : 'done')
+            : 'logged — that counts.'
+        })
+      ]);
+
+      if (logged.length) {
+        body.appendChild(h('div', { class: 'summary-list' }, logged.map(function (row) {
+          var ex = row.ex;
+          var log = S.itemLog(self.date, ex.id);
+          var history = S.historyFor(ex.id, 'best').filter(function (r) { return r.iso !== S.toISO(self.date); });
+          var previous = history.length ? history[history.length - 1].value : null;
+          var best = S.bestOfSets(log.sets);
+          var delta = previous != null && best != null ? best - previous : 0;
+          return h('div', { class: 'summary-row' }, [
+            h('span', { class: 'summary-name', text: ex.name }),
+            h('span', { class: 'summary-sets', text: setsSummary(ex, log.sets) }),
+            delta ? h('span', {
+              class: 'summary-delta' + (delta > 0 ? ' is-up' : ''),
+              text: (delta > 0 ? '+' : '−') + Math.abs(delta) + ' on last time'
+            }) : null
+          ]);
+        })));
+      }
+
+      // The weekly meters on a session you bailed out of only twist the knife.
+      if (complete) {
+        body.appendChild(h('div', { style: 'text-align:left;margin-top:1rem' }, [
           meter('Calisthenics', stats.strength, stats.strengthTarget),
           meter('Mobility', stats.mobility, stats.mobilityTarget)
-        ])
-      ]);
+        ]));
+      }
 
       this.progressionCandidates().forEach(function (ex) {
         var step = ex.mode === 'time' ? 5 : 2;
@@ -1760,7 +1990,7 @@
       var actions = h('div', { class: 'session-actions' }, [
         h('button', {
           class: 'btn btn-primary btn-lg btn-block', type: 'button',
-          text: complete ? 'Finish' : 'Save and close',
+          text: complete ? 'Finish' : 'Done for now',
           onclick: function () {
             if (complete) S.finishSession(self.date);
             buzz([20, 70, 20]);

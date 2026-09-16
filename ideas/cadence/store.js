@@ -76,8 +76,10 @@
       anchorMonday: toISO(mondayOf(today())),
       phaseOffset: 0,
       routine: null,
+      startedISO: toISO(today()),
       sessions: {},
       retired: {},
+      demoHidden: {},
       settings: { restDefault: 60, sound: true, vibrate: true, keepAwake: true, autoAdvance: true, theme: 'auto' }
     };
   }
@@ -209,6 +211,13 @@
     return out;
   }
 
+  function sanitizeFlags(raw) {
+    var out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    Object.keys(raw).forEach(function (key) { if (raw[key]) out[String(key).slice(0, 60)] = true; });
+    return out;
+  }
+
   /* Copied key by key from an allow-list: Object.assign would carry a JSON
    * `__proto__` key straight onto the live settings object. */
   function sanitizeSettings(raw) {
@@ -228,6 +237,8 @@
     var out = {
       version: 1,
       anchorMonday: /^\d{4}-\d{2}-\d{2}$/.test(data.anchorMonday) ? data.anchorMonday : base.anchorMonday,
+      startedISO: /^\d{4}-\d{2}-\d{2}$/.test(data.startedISO) ? data.startedISO : base.startedISO,
+      demoHidden: sanitizeFlags(data.demoHidden),
       phaseOffset: data.phaseOffset === 1 ? 1 : 0,
       routine: sanitizeRoutine(data.routine),
       sessions: sanitizeSessions(data.sessions),
@@ -338,6 +349,9 @@
     var s = ensureSession(date);
     var log = s.items[exId] || (s.items[exId] = { sets: [], note: '', done: false });
     Object.assign(log, patch);
+    // When the work actually started, as opposed to when the record was first
+    // touched — which could be a checkbox tapped over breakfast.
+    if (patch.sets && !s.workedAt) s.workedAt = Date.now();
     if (!s.done && allItemsDone(date)) {
       s.done = true;
       s.finishedAt = Date.now();
@@ -400,45 +414,66 @@
 
   /* ---------- weekly counters & streak ---------- */
 
+  /* A week's target is only the sessions that were actually available in it.
+   * Installing on a Wednesday used to leave week one needing 3 + 3 with four
+   * days gone, so a perfect first week still ended on a streak of zero. */
   function weekStats(monday) {
     var strength = 0;
     var mobility = 0;
     var planned = { strength: 0, mobility: 0 };
+    var partial = false;
     for (var i = 0; i < 7; i++) {
       var date = addDays(monday, i);
-      var plannedId = workoutIdFor(date);
-      var plannedWorkout = R.findWorkout(routine(), plannedId);
-      if (plannedWorkout && plannedWorkout.kind === 'strength') planned.strength++;
-      if (plannedWorkout && plannedWorkout.kind === 'mobility') planned.mobility++;
+      var available = !state.startedISO || toISO(date) >= state.startedISO;
+      var plannedWorkout = R.findWorkout(routine(), workoutIdFor(date));
+      if (plannedWorkout && plannedWorkout.kind !== 'rest') {
+        if (available) planned[plannedWorkout.kind === 'strength' ? 'strength' : 'mobility']++;
+        else partial = true;
+      }
       if (!isSessionDone(date)) continue;
       var done = workoutForSession(date);
       if (!done) continue;
       if (done.kind === 'strength') strength++;
       if (done.kind === 'mobility') mobility++;
     }
+    var total = planned.strength + planned.mobility;
     return {
       strength: strength,
       mobility: mobility,
-      strengthTarget: planned.strength || 3,
-      mobilityTarget: planned.mobility || 3,
-      complete: strength >= (planned.strength || 3) && mobility >= (planned.mobility || 3)
+      strengthTarget: planned.strength,
+      mobilityTarget: planned.mobility,
+      partial: partial,
+      complete: total > 0 && strength >= planned.strength && mobility >= planned.mobility
     };
   }
 
-  /* Consecutive complete weeks ending with the last one that could still count.
-   * The week in progress never breaks a streak — it just hasn't finished yet. */
-  function streak() {
+  /* The current run, the best run ever, and how many sessions of the last six
+   * weeks landed. A bare zero after five good weeks reads as "you failed";
+   * the best run is what stops it saying that. */
+  function streakInfo() {
     var monday = mondayOf(today());
-    var count = 0;
-    if (weekStats(monday).complete) count++;
-    var cursor = addDays(monday, -7);
-    var anchor = fromISO(state.anchorMonday);
-    while (cursor >= anchor) {
-      if (!weekStats(cursor).complete) break;
-      count++;
-      cursor = addDays(cursor, -7);
+    var anchor = mondayOf(fromISO(state.anchorMonday));
+    var flags = [];
+    for (var c = new Date(anchor.getTime()); c <= monday; c = addDays(c, 7)) {
+      flags.push(weekStats(c).complete);
     }
-    return count;
+    var best = 0;
+    var run = 0;
+    flags.forEach(function (ok) { run = ok ? run + 1 : 0; best = Math.max(best, run); });
+
+    var i = flags.length - 1;
+    if (i >= 0 && !flags[i]) i--;          // the week in progress hasn't failed yet
+    var current = 0;
+    for (; i >= 0 && flags[i]; i--) current++;
+
+    var done = 0;
+    var possible = 0;
+    for (var w = Math.max(0, flags.length - 6); w < flags.length; w++) {
+      var stats = weekStats(addDays(anchor, w * 7));
+      done += stats.strength + stats.mobility;
+      possible += stats.strengthTarget + stats.mobilityTarget;
+    }
+    return { current: current, best: best, weeks: flags.length, sessionsDone: done, sessionsPossible: possible };
   }
 
   /* ---------- history for the progress view ---------- */
@@ -499,10 +534,10 @@
     var first = mondayOf(fromISO(isos[0]));
     var last = mondayOf(today());
     var out = [];
+    // Empty weeks stay in the table. Dropping them hid the gap while the
+    // streak was busy punishing you for it.
     for (var cursor = last; cursor >= first; cursor = addDays(cursor, -7)) {
-      var stats = weekStats(cursor);
-      if (!stats.strength && !stats.mobility) continue;
-      out.push({ monday: cursor, weekNo: weekNumber(cursor), stats: stats });
+      out.push({ monday: cursor, weekNo: weekNumber(cursor), stats: weekStats(cursor) });
     }
     return out;
   }
@@ -513,6 +548,20 @@
   function retireExercise(ex) {
     if (!ex || !ex.id) return;
     state.retired[ex.id] = R.clone(ex);
+  }
+
+  function lastLoggedDate() {
+    var isos = Object.keys(state.sessions).filter(function (iso) {
+      var entry = state.sessions[iso];
+      return entry.done || Object.keys(entry.items || {}).length;
+    }).sort();
+    return isos.length ? fromISO(isos[isos.length - 1]) : null;
+  }
+
+  function toggleDemoHidden(exId) {
+    if (state.demoHidden[exId]) delete state.demoHidden[exId];
+    else state.demoHidden[exId] = true;
+    emit();
   }
 
   function setSetting(key, value) {
@@ -611,7 +660,9 @@
     reopenSession: reopenSession,
     setSessionNote: setSessionNote,
     weekStats: weekStats,
-    streak: streak,
+    streakInfo: streakInfo,
+    lastLoggedDate: lastLoggedDate,
+    toggleDemoHidden: toggleDemoHidden,
     historyFor: historyFor,
     loggedExercises: loggedExercises,
     completedWeeks: completedWeeks,
