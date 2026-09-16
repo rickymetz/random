@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../lib/db'
 import { mentionToken } from '../lib/mentions'
+import { MAX_FIELDS, activeFields } from '../lib/fieldDefs'
+import type { CustomValue, FieldDef, FieldType, Person } from '../lib/models'
 import {
   searchPeopleIds,
   selectCircles,
+  selectFieldDefs,
   selectCirclesOf,
   selectNotes,
   selectPeople,
@@ -839,5 +842,135 @@ describe('contacts import (importPeople)', () => {
     // Undo path: removing them drops the note too.
     await store().removePeople(people.map((p) => p.id))
     expect([...store().records.values()].some((r) => r.kind === 'note')).toBe(false)
+  })
+})
+
+describe('the person form this vault defines', () => {
+  beforeEach(async () => {
+    await db.slots.clear()
+    await db.records.clear()
+    await db.blobs.clear()
+    await db.auth.clear()
+    useVaultStore.setState({
+      status: 'unknown',
+      vault: null,
+      records: new Map(),
+      corrupted: 0,
+      homeQuery: '',
+    })
+    await store().create('open sesame')
+  })
+
+  const addField = async (label: string, type: FieldType = 'chips') => {
+    const def = await store().addField({ label, type })
+    expect(typeof def).not.toBe('string')
+    return def as FieldDef
+  }
+  const answer = async (personId: string, fieldId: string, value: CustomValue) => {
+    const person = store().records.get(personId) as Person
+    await store().updatePerson({ ...person, custom: { ...person.custom, [fieldId]: value } })
+  }
+  const personById = (id: string) => store().records.get(id) as Person
+
+  it('answers survive lock and unlock, every shape of them', async () => {
+    // The sanitizer runs on every unlock: anything it drops is silently
+    // lost on the next relock. A "no" and a zero are answers too.
+    const ada = await store().addPerson('Ada')
+    const allergies = await addField('Allergies', 'chips')
+    const cards = await addField('Sends cards', 'boolean')
+    const kids = await addField('Kids', 'number')
+    const anniversary = await addField('Anniversary', 'date')
+    const met = await addField('Where we met', 'choice')
+    await answer(ada.id, allergies.id, ['peanuts', 'shellfish'])
+    await answer(ada.id, cards.id, false)
+    await answer(ada.id, kids.id, 0)
+    await answer(ada.id, anniversary.id, { year: 2014, month: 6, day: 21 })
+    await answer(ada.id, met.id, 'conference')
+    store().lock()
+    expect(await store().unlock('open sesame')).toBe(true)
+    expect(personById(ada.id).custom).toEqual({
+      [allergies.id]: ['peanuts', 'shellfish'],
+      [cards.id]: false,
+      [kids.id]: 0,
+      [anniversary.id]: { year: 2014, month: 6, day: 21 },
+      [met.id]: 'conference',
+    })
+    const def = selectFieldDefs(store().records).find((d) => d.id === allergies.id)!
+    expect(def).toMatchObject({ label: 'Allergies', type: 'chips' })
+  })
+
+  it('finds a person by what they answered, and stops when the field retires', async () => {
+    const ada = await store().addPerson('Ada')
+    await store().addPerson('Bea')
+    const allergies = await addField('Allergies')
+    await answer(ada.id, allergies.id, ['peanuts'])
+    expect(searchPeopleIds('peanuts')).toEqual([ada.id])
+    await store().retireField(allergies.id)
+    expect(searchPeopleIds('peanuts')).toEqual([])
+    await store().restoreField(allergies.id)
+    expect(searchPeopleIds('peanuts')).toEqual([ada.id])
+  })
+
+  it('retiring keeps every answer, and restoring brings them back', async () => {
+    const ada = await store().addPerson('Ada')
+    const fears = await addField('Fears', 'longText')
+    await answer(ada.id, fears.id, 'heights')
+    await store().retireField(fears.id)
+    expect(personById(ada.id).custom?.[fears.id]).toBe('heights')
+    expect(activeFields(selectFieldDefs(store().records))).toHaveLength(0)
+    // And through a relock, since that is when a sanitizer would eat it.
+    store().lock()
+    expect(await store().unlock('open sesame')).toBe(true)
+    expect(personById(ada.id).custom?.[fears.id]).toBe('heights')
+    expect(await store().restoreField(fears.id)).toBe('ok')
+    expect(activeFields(selectFieldDefs(store().records))).toHaveLength(1)
+    expect(personById(ada.id).custom?.[fears.id]).toBe('heights')
+  })
+
+  it('deleting the answers takes the field and the answers, and nothing else', async () => {
+    const ada = await store().addPerson('Ada')
+    const fears = await addField('Fears', 'longText')
+    const likes = await addField('Gift ideas')
+    await answer(ada.id, fears.id, 'heights')
+    await answer(ada.id, likes.id, ['books'])
+    await store().retireField(fears.id)
+    await store().deleteFieldAndAnswers(fears.id)
+    expect(selectFieldDefs(store().records).find((d) => d.id === fears.id)).toBeUndefined()
+    expect(personById(ada.id).custom).toEqual({ [likes.id]: ['books'] })
+    expect(personById(ada.id).displayName).toBe('Ada')
+  })
+
+  it('refuses a duplicate label and keeps the form under its cap', async () => {
+    await addField('Allergies')
+    expect(await store().addField({ label: 'allergies ', type: 'text' })).toBe('name-taken')
+    expect(await store().addField({ label: '   ', type: 'text' })).toBe('name-taken')
+    for (let i = 1; i < MAX_FIELDS; i++) await addField(`Field ${i}`)
+    expect(await store().addField({ label: 'One too many', type: 'text' })).toBe('full')
+  })
+
+  it('renaming a field never touches an answer', async () => {
+    const ada = await store().addPerson('Ada')
+    const def = await addField('Allergies')
+    await answer(ada.id, def.id, ['peanuts'])
+    expect(await store().updateField({ ...def, label: 'Dietary needs' })).toBe('ok')
+    expect(personById(ada.id).custom?.[def.id]).toEqual(['peanuts'])
+    expect(searchPeopleIds('peanuts')).toEqual([ada.id])
+  })
+
+  it('a packs run seeds the form and never duplicates a row you already have', async () => {
+    const first = await store().applyFieldPacks(['family', 'work'])
+    expect(first).toBeGreaterThan(0)
+    const labels = activeFields(selectFieldDefs(store().records)).map((d) => d.label)
+    // "How we met" is in both the family pack and the essentials pack.
+    expect(new Set(labels).size).toBe(labels.length)
+    expect(await store().applyFieldPacks(['family'])).toBe(0)
+  })
+
+  it('reordering renumbers the form', async () => {
+    const a = await addField('A')
+    const b = await addField('B')
+    const c = await addField('C')
+    await store().reorderFields([c.id, a.id, b.id])
+    expect(activeFields(selectFieldDefs(store().records)).map((d) => d.label)).toEqual(['C', 'A', 'B'])
   })
 })

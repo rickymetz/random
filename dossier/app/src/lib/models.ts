@@ -24,8 +24,57 @@ export interface Person {
   likes: string[]
   dislikes: string[]
   tags: string[]
+  /**
+   * Answers to the fields this vault added for itself, keyed by
+   * `FieldDef.id` (§8.1). The built-ins above keep their own slots —
+   * birthdays, contacts import, name detection and the quiet lens all
+   * read named fields — so this bag holds only what the user invented.
+   * A key with no definition is an answer to a retired field: kept, not
+   * drawn, and restored with the field.
+   */
+  custom?: Record<string, CustomValue>
   /** True for the implicit "me" node graph queries anchor on (§11 Q2). */
   isSelf?: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+/** What a field can hold. `chips` is a list; the rest are scalars. */
+export type FieldType =
+  | 'text'
+  | 'longText'
+  | 'chips'
+  | 'date'
+  | 'choice'
+  | 'number'
+  | 'boolean'
+
+export type CustomValue = string | number | boolean | string[] | PartialDate
+
+/**
+ * One row of the person form, as this vault defines it (§8.1). The id is
+ * a uuid and never changes, so renaming a field is a label change and
+ * never touches an answer.
+ */
+export interface FieldDef {
+  kind: 'fieldDef'
+  id: string
+  label: string
+  type: FieldType
+  /** Options for a 'choice' field. Editing them never rewrites answers. */
+  options?: string[]
+  /** Position in the form and on the dossier; ties break by label. */
+  order: number
+  /**
+   * Retired: off the form and off every dossier, but the answers stay in
+   * the person records, and Restore brings both back. Tidying a form
+   * must never be the thing that loses what you typed.
+   */
+  retired?: boolean
+  /** A 'date' field can raise the same yearly reminder a birthday does. */
+  remindYearly?: boolean
+  /** Days of warning for that reminder; 0 (the default) is on the day. */
+  remindLeadDays?: number
   createdAt: number
   updatedAt: number
 }
@@ -156,6 +205,7 @@ export interface Circle {
 
 export type DomainRecord =
   | Circle
+  | FieldDef
   | Person
   | NoteEntry
   | FollowUp

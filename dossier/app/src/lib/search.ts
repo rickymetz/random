@@ -9,7 +9,8 @@
  */
 import MiniSearch from 'minisearch'
 import { plainText } from './mentions'
-import type { DomainRecord, NoteEntry, Person } from './models'
+import { searchableValue } from './fieldDefs'
+import type { DomainRecord, FieldDef, NoteEntry, Person } from './models'
 
 interface PersonDoc {
   id: string
@@ -36,9 +37,11 @@ function personTexts(records: Map<string, DomainRecord>, personId: string) {
   const notes: NoteEntry[] = []
   const edgeNotes: string[] = []
   const circleNames: string[] = []
+  const defs = new Map<string, FieldDef>()
   for (const r of records.values()) {
     if (r.kind === 'note' && r.personId === personId) notes.push(r)
     else if (r.kind === 'circle' && r.memberIds.includes(personId)) circleNames.push(r.name)
+    else if (r.kind === 'fieldDef') defs.set(r.id, r)
     else if (
       r.kind === 'relationship' &&
       r.note &&
@@ -47,7 +50,24 @@ function personTexts(records: Map<string, DomainRecord>, personId: string) {
       edgeNotes.push(r.note)
     }
   }
-  return { notes, edgeNotes, circleNames }
+  return { notes, edgeNotes, circleNames, defs }
+}
+
+/**
+ * The searchable text of a person's custom answers (§8.1). A retired
+ * field's answers stay out: they are not on the dossier either, and a
+ * search hit you cannot see explained is worse than no hit.
+ */
+function customText(person: Person, defs: Map<string, FieldDef>): string {
+  if (!person.custom) return ''
+  const parts: string[] = []
+  for (const [fieldId, value] of Object.entries(person.custom)) {
+    const def = defs.get(fieldId)
+    if (!def || def.retired) continue
+    const text = searchableValue(def, value)
+    if (text) parts.push(text)
+  }
+  return parts.join(' ')
 }
 
 function toDoc(
@@ -55,6 +75,7 @@ function toDoc(
   notes: NoteEntry[],
   edgeNotes: string[],
   circleNames: string[] = [],
+  defs: Map<string, FieldDef> = new Map(),
 ): PersonDoc {
   return {
     id: person.id,
@@ -70,6 +91,7 @@ function toDoc(
       person.contact?.other,
       ...person.likes,
       ...person.dislikes,
+      customText(person, defs),
     ]
       .filter(Boolean)
       .join(' '),
@@ -89,6 +111,7 @@ export function rebuildIndex(
   const notes = new Map<string, NoteEntry[]>()
   const edgeNotes = new Map<string, string[]>()
   const circleNames = new Map<string, string[]>()
+  const defs = new Map<string, FieldDef>()
   const push = <T,>(map: Map<string, T[]>, key: string, value: T) => {
     const list = map.get(key)
     if (list) list.push(value)
@@ -98,6 +121,7 @@ export function rebuildIndex(
     if (r.kind === 'person') people.push(r)
     else if (r.kind === 'note') push(notes, r.personId, r)
     else if (r.kind === 'circle') for (const id of r.memberIds) push(circleNames, id, r.name)
+    else if (r.kind === 'fieldDef') defs.set(r.id, r)
     else if (r.kind === 'relationship' && r.note) {
       push(edgeNotes, r.fromId, r.note)
       push(edgeNotes, r.toId, r.note)
@@ -105,7 +129,7 @@ export function rebuildIndex(
   }
   index.addAll(
     people.map((p) =>
-      toDoc(p, notes.get(p.id) ?? [], edgeNotes.get(p.id) ?? [], circleNames.get(p.id) ?? []),
+      toDoc(p, notes.get(p.id) ?? [], edgeNotes.get(p.id) ?? [], circleNames.get(p.id) ?? [], defs),
     ),
   )
 }
@@ -119,8 +143,8 @@ export function reindexPerson(
   const person = records.get(personId)
   if (index.has(personId)) index.discard(personId)
   if (!person || person.kind !== 'person') return
-  const { notes, edgeNotes, circleNames } = personTexts(records, personId)
-  index.add(toDoc(person, notes, edgeNotes, circleNames))
+  const { notes, edgeNotes, circleNames, defs } = personTexts(records, personId)
+  index.add(toDoc(person, notes, edgeNotes, circleNames, defs))
 }
 
 export function searchPeople(index: MiniSearch<PersonDoc>, query: string): string[] {
