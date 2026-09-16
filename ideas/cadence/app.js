@@ -226,7 +226,11 @@
   function exerciseRows(date, workout) {
     var rows = [];
     var lastBlock = null;
+    var sessionIds = S.sessionItemIds(date);
+    var rendered = {};
     R.flatten(workout).forEach(function (row, index) {
+      if (sessionIds.indexOf(row.ex.id) === -1) return;   // added to the routine after this day
+      rendered[row.ex.id] = true;
       if (row.block && row.block !== lastBlock) {
         rows.push(h('div', { class: 'block-head', text: row.block }));
       }
@@ -260,6 +264,30 @@
             var next = S.toggleItem(date, ex.id);
             buzz(next ? 12 : 0);
           }
+        }, [h('span', { text: done ? '✓' : '' })])
+      ]));
+    });
+
+    // Anything this session contained that the routine no longer does.
+    sessionIds.forEach(function (id) {
+      if (rendered[id]) return;
+      var found = R.findExercise(S.routine(), id);
+      var ex = found ? found.ex : S.state.retired[id];
+      if (!ex) return;
+      var log = S.itemLog(date, id);
+      var done = !!(log && log.done);
+      rows.push(h('div', { class: 'row' + (done ? ' is-done' : '') }, [
+        h('span', { class: 'row-main' }, [
+          h('div', { class: 'row-name', text: ex.name }),
+          h('div', { class: 'row-actual', text: 'No longer in your routine' })
+        ]),
+        h('span', { class: 'row-target', text: R.targetLabel(ex) }),
+        h('button', {
+          class: 'check', type: 'button',
+          'data-fkey': 'check:' + S.toISO(date) + ':' + id,
+          'aria-pressed': done ? 'true' : 'false',
+          'aria-label': (done ? 'Mark not done: ' : 'Mark done: ') + ex.name,
+          onclick: function () { S.toggleItem(date, id); }
         }, [h('span', { text: done ? '✓' : '' })])
       ]));
     });
@@ -498,7 +526,7 @@
       var ex = row.ex;
       var sets = ex.sets || 1;
       if (ex.mode === 'time') seconds += R.timerSeconds(ex) * sets * (ex.perSide ? 2 : 1);
-      else if (ex.mode === 'reps') seconds += 30 * sets;
+      else if (ex.mode === 'reps') seconds += 30 * sets * (ex.perSide ? 2 : 1);
       seconds += (ex.rest || 0) * Math.max(0, sets - 1);
     });
     return Math.max(1, Math.round(seconds / 60));
@@ -650,7 +678,10 @@
       'aria-label': 'Exercise', 'data-fkey': 'progress:exercise',
       onchange: function (e) { progressPick.exId = e.target.value; render(); }
     }, logged.map(function (row) {
-      return h('option', { value: row.id, selected: row.id === progressPick.exId, text: row.ex.name });
+      return h('option', {
+        value: row.id, selected: row.id === progressPick.exId,
+        text: row.ex.name + (row.removed ? ' (no longer in your routine)' : '')
+      });
     }));
 
     var metric = h('select', {
@@ -668,8 +699,14 @@
       ])
     ]));
 
-    var found = R.findExercise(S.routine(), progressPick.exId);
-    var ex = found.ex;
+    // Read the exercise off the picker row, not the routine: a deleted one
+    // still has history to chart and is no longer in the routine at all.
+    var picked = null;
+    for (var li = 0; li < logged.length; li++) {
+      if (logged[li].id === progressPick.exId) { picked = logged[li]; break; }
+    }
+    if (!picked) picked = logged[0];
+    var ex = picked.ex;
     var history = S.historyFor(progressPick.exId, progressPick.metric);
     var unit = ex.mode === 'time' ? 'seconds' : 'reps';
     var isBest = progressPick.metric === 'best';
@@ -678,7 +715,11 @@
       h('div', { class: 'card-head' }, [
         h('div', {}, [
           h('h2', { text: ex.name }),
-          h('div', { class: 'small muted', text: (isBest ? 'Best set' : 'Session total') + ', in ' + unit + ' · target ' + R.targetLabel(ex) })
+          h('div', {
+            class: 'small muted',
+            text: (isBest ? 'Best set' : 'Session total') + ', in ' + unit + ' · target ' + R.targetLabel(ex) +
+              (picked.removed ? ' · no longer in your routine' : '')
+          })
         ])
       ])
     ]);
@@ -879,12 +920,24 @@
     toast('Backup downloaded');
   }
 
+  /* Blob.text() is the one modern API without a guard elsewhere; older Safari
+   * would have thrown here and the import would have done nothing at all. */
+  function readFile(file) {
+    if (file.text) return file.text();
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(String(reader.result)); };
+      reader.onerror = function () { reject(reader.error); };
+      reader.readAsText(file);
+    });
+  }
+
   function doImport() {
     var input = h('input', { type: 'file', accept: 'application/json,.json' });
     input.addEventListener('change', function () {
       var file = input.files && input.files[0];
       if (!file) return;
-      file.text().then(function (text) {
+      readFile(file).then(function (text) {
         try {
           S.importData(text);
           weekCursor = null;
@@ -1004,7 +1057,12 @@
         h('button', {
           type: 'button', 'aria-label': 'Delete ' + ex.name, text: '✕',
           onclick: function () {
-            if (!global.confirm('Remove “' + ex.name + '” from ' + workout.name + '?')) return;
+            var logged = S.historyFor(ex.id, 'best').length;
+            var warning = logged
+              ? '\n\nYou have ' + logged + ' session' + (logged > 1 ? 's' : '') + ' logged for it. The history is kept and stays in Progress under “no longer in your routine”.'
+              : '';
+            if (!global.confirm('Remove “' + ex.name + '” from ' + workout.name + '?' + warning)) return;
+            S.retireExercise(ex);
             S.updateRoutine(function (next) { next.workouts[wIdx].blocks[bIdx].items.splice(iIdx, 1); });
             editingItem = null;
           }
@@ -1372,6 +1430,7 @@
         var ex = row.ex;
         var log = S.itemLog(this.date, ex.id) || { sets: [], note: '', done: false };
         var sets = (log.sets || []).slice();
+        var patchSides = null;
 
         if (ex.mode === 'time') {
           var elapsed = this.elapsed();
@@ -1379,13 +1438,28 @@
           // Landing within a couple of seconds of the target counts as the
           // target — otherwise auto-advance would log 31s for a 30s hold.
           var held = Math.abs(elapsed - target) <= 2 ? target : Math.round(elapsed);
-          sets[step.set] = step.side === 0 ? held : Math.max(sets[step.set] || 0, held);
+          if (step.sides > 1) {
+            /* Each side is kept separately. Taking a running max meant going
+             * back to redo a mis-logged side one was silently ignored, and
+             * going back to side zero wiped the other side's value. */
+            var sides = Array.isArray(log.sides) ? log.sides.map(function (pair) { return (pair || []).slice(); }) : [];
+            sides[step.set] = sides[step.set] || [];
+            sides[step.set][step.side] = held;
+            patchSides = sides;
+            sets[step.set] = Math.max(sides[step.set][0] || 0, sides[step.set][1] || 0);
+          } else {
+            sets[step.set] = held;
+          }
         } else if (ex.mode === 'reps') {
-          sets[step.set] = Math.max(0, Math.round(this.value) || 0);
+          sets[step.set] = Math.max(0, Math.min(999, Math.round(this.value) || 0));
         }
+        // Reducing an exercise's set count used to leave orphans behind that
+        // "Session total" kept adding up.
+        if (sets.length > (ex.sets || 1)) sets.length = ex.sets || 1;
 
         var isLastStepOfItem = !this.steps.slice(this.index + 1).some(function (s) { return s.kind === 'work' && s.i === step.i; });
         var patch = { sets: sets };
+        if (patchSides) patch.sides = patchSides;
         if (isLastStepOfItem) patch.done = true;
         S.setItem(this.date, ex.id, patch);
         if (isLastStepOfItem) buzz(14);
@@ -1397,8 +1471,9 @@
 
     go: function (delta) {
       var next = this.index + delta;
-      if (next < 0) next = 0;
-      if (next >= this.steps.length) next = this.steps.length - 1;
+      // Clamping used to re-enter the current step, throwing away an
+      // in-progress hold when someone pressed Back on the first exercise.
+      if (next < 0 || next >= this.steps.length) return;
       this.index = next;
       this.enter();
     },
@@ -1492,7 +1567,7 @@
         var input = h('input', {
           type: 'number', inputmode: 'numeric', min: 0, max: 999,
           'aria-label': 'Reps completed',
-          oninput: function (e) { self.value = Number(e.target.value) || 0; }
+          oninput: function (e) { self.value = Math.max(0, Math.min(999, Number(e.target.value) || 0)); }
         });
         input.value = String(this.value);
         body.appendChild(h('div', { class: 'counter' }, [
@@ -1503,7 +1578,7 @@
           input,
           h('button', {
             type: 'button', 'aria-label': 'One more', text: '+',
-            onclick: function () { self.value = self.value + 1; input.value = String(self.value); buzz(8); }
+            onclick: function () { self.value = Math.min(999, self.value + 1); input.value = String(self.value); buzz(8); }
           })
         ]));
         body.appendChild(h('div', { class: 'counter-unit', text: ex.perSide ? 'reps per ' + (ex.sideWord || 'side') : 'reps' }));
@@ -1741,9 +1816,15 @@
   }
 
   S.subscribe(function () {
-    // Never yank a field out from under someone mid-type: the value is already saved.
-    var tag = document.activeElement && document.activeElement.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    /* Don't yank a field out from under someone mid-type — but a <select> or
+     * a checkbox fires `change` only once the value is committed, and
+     * swallowing that repaint left the editor showing "(seconds)" next to a
+     * reps exercise until some unrelated click repainted it. Focus is
+     * restored by key afterwards, so repainting these is safe. */
+    var el = document.activeElement;
+    var tag = el && el.tagName;
+    var typing = tag === 'TEXTAREA' || (tag === 'INPUT' && (el.type === 'text' || el.type === 'file'));
+    if (typing) return;
     if (renderQueued) return;
     renderQueued = true;
     requestAnimationFrame(function () { renderQueued = false; render(); });

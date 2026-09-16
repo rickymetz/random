@@ -69,13 +69,6 @@
       var height = opts.height || 220;
       var values = points.map(function (p) { return p.value; });
 
-      // The end label is the only direct label, so the right gutter is sized to
-      // hold it rather than left to crop it.
-      var endText = format(values[values.length - 1], true);
-      var pad = { top: 18, right: Math.max(24, endText.length * 8 + 14), bottom: 30, left: 38 };
-      var plotW = width - pad.left - pad.right;
-      var plotH = height - pad.top - pad.bottom;
-
       var lo = Math.min.apply(null, values);
       var hi = Math.max.apply(null, values);
       if (band) { lo = Math.min(lo, band.min); hi = Math.max(hi, band.max); }
@@ -86,6 +79,20 @@
 
       var ticks = ticksFor(yMin, yMax);
       yMax = Math.max(yMax, ticks[ticks.length - 1]);
+
+      // Both gutters are sized from the text that has to fit in them. The
+      // left one used to be a hard-coded 38, so a five-digit total ran off
+      // the edge of the card.
+      var endText = format(values[values.length - 1], true);
+      var widestTick = ticks.reduce(function (w, t) { return Math.max(w, String(format(t, true)).length); }, 1);
+      var pad = {
+        top: 18,
+        right: Math.max(24, endText.length * 8 + 14),
+        bottom: 30,
+        left: Math.max(26, widestTick * 7 + 14)
+      };
+      var plotW = width - pad.left - pad.right;
+      var plotH = height - pad.top - pad.bottom;
 
       var n = points.length;
       function x(i) { return n === 1 ? pad.left + plotW / 2 : pad.left + (plotW * i) / (n - 1); }
@@ -159,6 +166,16 @@
       if (active >= 0) highlight(active);
     }
 
+    /* The SVG is laid out at 100% width but keeps its own user-unit
+     * coordinate system, so below ~300px the two stop agreeing and hovering
+     * a dot highlighted a different one. */
+    function cssScale() {
+      var attrW = Number(svg.getAttribute('width'));
+      if (!attrW) return 1;
+      var rect = svg.getBoundingClientRect();
+      return (rect.width || attrW) / attrW;
+    }
+
     function highlight(i) {
       if (!svg) return;
       active = i;
@@ -170,7 +187,7 @@
       }
       var p = points[i];
       var px = geom.x(i);
-      svg.__crosshair.setAttribute('x1', px);
+      svg.__crosshair.setAttribute('x1', px);   // inside the SVG: user units
       svg.__crosshair.setAttribute('x2', px);
       svg.__crosshair.style.display = '';
       tip.innerHTML = '';
@@ -181,16 +198,19 @@
       tip.appendChild(strong);
       tip.appendChild(small);
       tip.hidden = false;
+      // …but the tooltip is a DOM node, so it is placed in CSS pixels.
+      var scale = cssScale();
       var tipW = tip.offsetWidth;
-      var left = Math.min(Math.max(px - tipW / 2, 4), (svg.getAttribute('width') - tipW - 4));
+      var wrapW = wrap.clientWidth || Number(svg.getAttribute('width'));
+      var left = Math.min(Math.max(px * scale - tipW / 2, 4), Math.max(4, wrapW - tipW - 4));
       tip.style.left = left + 'px';
-      tip.style.top = Math.max(0, geom.y(p.value) - tip.offsetHeight - 12) + 'px';
+      tip.style.top = Math.max(0, geom.y(p.value) * scale - tip.offsetHeight - 12) + 'px';
       svg.setAttribute('aria-label', (opts.ariaLabel || 'Progress') + '. ' + p.label + ': ' + format(p.value));
     }
 
     function nearest(clientX) {
       var rect = svg.getBoundingClientRect();
-      var localX = clientX - rect.left;
+      var localX = (clientX - rect.left) / (cssScale() || 1);
       var best = 0;
       var bestD = Infinity;
       for (var i = 0; i < points.length; i++) {
@@ -218,6 +238,7 @@
     if (global.ResizeObserver) {
       var lastWidth = wrap.clientWidth;
       var ro = new ResizeObserver(function () {
+        if (!wrap.isConnected) { ro.disconnect(); return; }
         if (Math.abs(wrap.clientWidth - lastWidth) < 2) return;
         lastWidth = wrap.clientWidth;
         if (svg && svg.parentNode) svg.parentNode.removeChild(svg);

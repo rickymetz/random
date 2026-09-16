@@ -110,6 +110,7 @@ button { cursor: pointer; }
   align-items: center;
   gap: 0.5rem;
   padding: max(0.5rem, env(safe-area-inset-top)) 0.6rem 0.5rem;
+  background: var(--bg);
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
@@ -152,6 +153,7 @@ button { cursor: pointer; }
   grid-template-columns: repeat(4, 1fr);
   gap: 0.25rem;
   padding: 0.35rem 0.4rem calc(0.35rem + env(safe-area-inset-bottom));
+  background: var(--bg);
   background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--line);
@@ -711,7 +713,7 @@ table.data td.num, table.data th.num { text-align: right; }
   background: var(--accent-wash);
 }
 .set-pip.is-done { background: var(--accent); }
-.set-pip.is-current { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.set-pip.is-current { background: var(--accent-soft); background: color-mix(in srgb, var(--accent) 45%, transparent); }
 
 .summary-figure {
   font-size: 3.25rem;

@@ -77,6 +77,7 @@
       phaseOffset: 0,
       routine: null,
       sessions: {},
+      retired: {},
       settings: { restDefault: 60, sound: true, vibrate: true, keepAwake: true, autoAdvance: true, theme: 'auto' }
     };
   }
@@ -196,6 +197,18 @@
     return out;
   }
 
+  /* Exercises deleted from the routine, kept so months of logged history stay
+   * reachable in Progress instead of vanishing with the routine entry. */
+  function sanitizeRetired(raw) {
+    var out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    Object.keys(raw).forEach(function (id) {
+      var ex = sanitizeExercise(raw[id]);
+      if (ex) out[ex.id] = ex;
+    });
+    return out;
+  }
+
   /* Copied key by key from an allow-list: Object.assign would carry a JSON
    * `__proto__` key straight onto the live settings object. */
   function sanitizeSettings(raw) {
@@ -218,6 +231,7 @@
       phaseOffset: data.phaseOffset === 1 ? 1 : 0,
       routine: sanitizeRoutine(data.routine),
       sessions: sanitizeSessions(data.sessions),
+      retired: sanitizeRetired(data.retired),
       settings: sanitizeSettings(data.settings)
     };
     // The anchor must be a Monday, or every week number after it is off by a day.
@@ -288,6 +302,20 @@
     return state.sessions[iso];
   }
 
+  /* The ids a session actually contained. Without this, adding an exercise
+   * made every finished day in the past read 6/7 with a "done" tick beside
+   * it, and deleting one silently re-scored them all from 6/6 to 5/5. */
+  function currentItemIds(date) {
+    var workout = workoutForSession(date);
+    return workout ? R.flatten(workout).map(function (row) { return row.ex.id; }) : [];
+  }
+
+  function sessionItemIds(date) {
+    var s = sessionFor(date);
+    if (s && Array.isArray(s.itemIds) && s.itemIds.length) return s.itemIds;
+    return currentItemIds(date);
+  }
+
   function itemLog(date, exId) {
     var s = sessionFor(date);
     return (s && s.items[exId]) || null;
@@ -313,6 +341,7 @@
     if (!s.done && allItemsDone(date)) {
       s.done = true;
       s.finishedAt = Date.now();
+      s.itemIds = currentItemIds(date);
     }
     emit();
     return log;
@@ -338,10 +367,9 @@
   }
 
   function sessionProgress(date) {
-    var workout = workoutForSession(date);
-    var items = workout ? R.flatten(workout) : [];
-    var done = items.filter(function (row) { return isItemDone(date, row.ex.id); }).length;
-    return { done: done, total: items.length };
+    var ids = sessionItemIds(date);
+    var done = ids.filter(function (id) { return isItemDone(date, id); }).length;
+    return { done: done, total: ids.length };
   }
 
   function isSessionDone(date) {
@@ -353,6 +381,7 @@
     var s = ensureSession(date);
     s.done = true;
     s.finishedAt = Date.now();
+    s.itemIds = currentItemIds(date);
     emit();
   }
 
@@ -451,7 +480,14 @@
     return Object.keys(seen)
       .map(function (id) {
         var found = R.findExercise(routine(), id);
-        return { id: id, last: seen[id], ex: found ? found.ex : null, workout: found ? found.workout : null };
+        var retired = state.retired[id];
+        return {
+          id: id,
+          last: seen[id],
+          ex: found ? found.ex : retired || null,
+          workout: found ? found.workout : null,
+          removed: !found
+        };
       })
       .filter(function (row) { return row.ex; })
       .sort(function (a, b) { return a.last < b.last ? 1 : -1; });
@@ -472,6 +508,12 @@
   }
 
   /* ---------- settings, routine editing, backup ---------- */
+
+  /* Called before an exercise is spliced out of the routine. */
+  function retireExercise(ex) {
+    if (!ex || !ex.id) return;
+    state.retired[ex.id] = R.clone(ex);
+  }
 
   function setSetting(key, value) {
     state.settings[key] = value;
@@ -545,6 +587,8 @@
     setItem: setItem,
     toggleItem: toggleItem,
     sessionProgress: sessionProgress,
+    sessionItemIds: sessionItemIds,
+    retireExercise: retireExercise,
     isSessionDone: isSessionDone,
     finishSession: finishSession,
     reopenSession: reopenSession,
