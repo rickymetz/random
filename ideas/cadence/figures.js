@@ -153,6 +153,21 @@
         x1: fit.x, y1: fit.ground, x2: fit.x + fit.w, y2: fit.ground
       }));
     }
+    if (def.prop === 'bar') {
+      // The thing the hands are holding, drawn at hand height.
+      var barY = Infinity, barL = Infinity, barR = -Infinity;
+      skeletons.forEach(function (sk) {
+        sk.hand.forEach(function (hand) {
+          barY = Math.min(barY, hand[1]);
+          barL = Math.min(barL, hand[0]);
+          barR = Math.max(barR, hand[0]);
+        });
+      });
+      g.appendChild(svgEl('line', {
+        class: 'figure-ground',
+        x1: barL - 10, y1: barY - 2, x2: barR + 10, y2: barY - 2
+      }));
+    }
     if (def.prop === 'wall') {
       g.appendChild(svgEl('line', {
         class: 'figure-ground',
@@ -284,6 +299,23 @@
       poses: [
         { hip: [46, 56], t: 125, head: 8, ua: 125, fa: 125, th: 201, sh: 201 },
         { hip: [46, 56], t: 125, head: 34, ua: 145, fa: 106, th: 201, sh: 201 }
+      ]
+    },
+    'table-rows': {
+      cue: 'Body straight from heels to head — pull your chest to the bar, shoulders away from your ears.',
+      cycle: 2.8,
+      prop: 'bar',
+      poses: [
+        { hip: [50, 62], t: 70, head: 10, ua: 0, fa: 0, th: 250, sh: 250 },
+        { hip: [48.3, 58.2], t: 62, head: 10, ua: 50, fa: 325, th: 242, sh: 242 }
+      ]
+    },
+    'prone-ytw': {
+      cue: 'Thumbs up, arms light — lift from between the shoulder blades, not the neck.',
+      cycle: 2.6,
+      poses: [
+        { hip: [50, 74], t: 92, head: -20, ua: [85, 88], fa: [85, 88], th: 272, sh: 272 },
+        { hip: [50, 74], t: 88, head: -25, ua: [70, 74], fa: [65, 69], th: 272, sh: 272, bow: -3 }
       ]
     },
     'glute-bridges': {

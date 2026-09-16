@@ -29,6 +29,7 @@
             items: [
               Object.assign({}, WARMUP),
               { id: 'pushups', name: 'Push-ups', mode: 'reps', sets: 3, min: 8, max: 15, rest: 60 },
+              { id: 'table-rows', name: 'Table rows', mode: 'reps', sets: 3, min: 6, max: 12, rest: 60 },
               { id: 'squats', name: 'Bodyweight squats', mode: 'reps', sets: 3, min: 12, max: 20, rest: 60 },
               { id: 'reverse-lunges', name: 'Reverse lunges', mode: 'reps', sets: 3, min: 6, max: 12, perSide: true, sideWord: 'leg', rest: 60 },
               { id: 'plank', name: 'Plank', mode: 'time', sets: 3, min: 20, max: 40, rest: 45 },
@@ -47,6 +48,7 @@
             items: [
               Object.assign({}, WARMUP),
               { id: 'pike-pushups', name: 'Pike push-ups', mode: 'reps', sets: 3, min: 6, max: 12, rest: 60 },
+              { id: 'prone-ytw', name: 'Prone Y-T-W', mode: 'reps', sets: 3, min: 8, max: 12, rest: 45 },
               { id: 'glute-bridges', name: 'Glute bridges', mode: 'reps', sets: 3, min: 8, max: 15, rest: 60 },
               { id: 'split-squats', name: 'Split squats', mode: 'reps', sets: 3, min: 6, max: 10, perSide: true, sideWord: 'leg', rest: 60 },
               { id: 'bird-dogs', name: 'Bird-dogs', mode: 'reps', sets: 3, min: 6, max: 12, perSide: true, sideWord: 'side', rest: 60 },
@@ -139,9 +141,12 @@
     return t;
   }
 
-  /* Seconds a timed set counts down from: the top of the range is the thing to
-   * aim at, and stopping early still logs what you actually held. */
-  function timerSeconds(ex) {
+  /* A stretch counts down from the top of its range: holding longer is free.
+   * A strength hold counts down from the bottom, because a dial reading "18
+   * seconds left" while your hips are already sagging is an invitation to
+   * grind past the point the hold stops being worth doing. */
+  function timerSeconds(ex, kind) {
+    if (kind === 'strength') return ex.min || ex.max || 0;
     return ex.max || ex.min || 0;
   }
 

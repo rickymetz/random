@@ -533,7 +533,7 @@
     R.flatten(workout).forEach(function (row) {
       var ex = row.ex;
       var sets = ex.sets || 1;
-      if (ex.mode === 'time') seconds += R.timerSeconds(ex) * sets * (ex.perSide ? 2 : 1);
+      if (ex.mode === 'time') seconds += R.timerSeconds(ex, workout.kind) * sets * (ex.perSide ? 2 : 1);
       else if (ex.mode === 'reps') seconds += 30 * sets * (ex.perSide ? 2 : 1);
       seconds += (ex.rest || 0) * Math.max(0, sets - 1);
     });
@@ -863,7 +863,7 @@
 
     var dataCard = h('section', { class: 'card' }, [
       h('div', { class: 'card-head' }, [h('h2', { text: 'Your data' })]),
-      h('p', { class: 'small muted', text: 'Everything is stored in this browser and nowhere else. Clearing site data wipes it, so keep a backup file if the history matters to you.' }),
+      h('p', { class: 'small muted', text: 'Cadence never uploads anything and talks to no third party — it only fetches its own files from the site it is served from. Your data is stored in this browser, which also means any other page published on this same domain can read it. Clearing site data wipes it, so keep a backup file if the history matters to you.' }),
       Media.supported ? h('p', { class: 'small muted', style: 'margin-top:.5rem' }, [
         Media.count()
           ? 'Your own clips (' + Media.count() + ', ' + Media.formatBytes(Media.totalBytes()) + ') are stored separately and are too big for the backup file — they stay on this device.'
@@ -1309,7 +1309,7 @@
       if (step.kind === 'work') {
         var ex = this.items[step.i].ex;
         if (ex.mode === 'time') {
-          this.startTimer(R.timerSeconds(ex));
+          this.startTimer(R.timerSeconds(ex, this.workout && this.workout.kind));
         } else if (ex.mode === 'reps') {
           this.value = this.suggestedReps(ex, step.set);
         }
@@ -1459,7 +1459,16 @@
             sets[step.set] = held;
           }
         } else if (ex.mode === 'reps') {
-          sets[step.set] = Math.max(0, Math.min(999, Math.round(this.value) || 0));
+          var reps = Math.max(0, Math.min(999, Math.round(this.value) || 0));
+          if (step.sides > 1) {
+            var repSides = Array.isArray(log.sides) ? log.sides.map(function (pair) { return (pair || []).slice(); }) : [];
+            repSides[step.set] = repSides[step.set] || [];
+            repSides[step.set][step.side] = reps;
+            patchSides = repSides;
+            sets[step.set] = Math.max(repSides[step.set][0] || 0, repSides[step.set][1] || 0);
+          } else {
+            sets[step.set] = reps;
+          }
         }
         // Reducing an exercise's set count used to leave orphans behind that
         // "Session total" kept adding up.
@@ -1589,7 +1598,10 @@
             onclick: function () { self.value = Math.min(999, self.value + 1); input.value = String(self.value); buzz(8); }
           })
         ]));
-        body.appendChild(h('div', { class: 'counter-unit', text: ex.perSide ? 'reps per ' + (ex.sideWord || 'side') : 'reps' }));
+        body.appendChild(h('div', {
+          class: 'counter-unit',
+          text: step.sides > 1 ? 'reps this ' + (ex.sideWord || 'side') : 'reps'
+        }));
         var lastTime = this.lastTimeHint(ex, step.set);
         body.appendChild(h('div', { class: 'session-hint', text: lastTime }));
         actions.appendChild(h('button', {
@@ -1689,6 +1701,24 @@
       ]);
     },
 
+    /* Three sessions at or above the top of the range means the range is out
+     * of date. The app had all of this and never said anything. */
+    progressionCandidates: function () {
+      var self = this;
+      if (!this.workout || this.workout.kind !== 'strength') return [];
+      var out = [];
+      this.items.forEach(function (row) {
+        var ex = row.ex;
+        if ((ex.mode !== 'reps' && ex.mode !== 'time') || !ex.max) return;
+        var hist = S.historyFor(ex.id, 'best');
+        if (hist.length < 3) return;
+        var last3 = hist.slice(-3);
+        var atTop = last3.every(function (entry) { return entry.value >= ex.max; });
+        if (atTop) out.push(ex);
+      });
+      return out;
+    },
+
     paintSummary: function (root) {
       var self = this;
       stopDemo();
@@ -1708,6 +1738,24 @@
           meter('Mobility', stats.mobility, stats.mobilityTarget)
         ])
       ]);
+
+      this.progressionCandidates().forEach(function (ex) {
+        var step = ex.mode === 'time' ? 5 : 2;
+        body.appendChild(h('div', { class: 'banner', style: 'text-align:left;margin-top:.9rem' }, [
+          h('span', { class: 'banner-glyph', 'aria-hidden': true, text: '↗' }),
+          h('span', {}, [
+            h('div', { text: ex.name + ': three sessions at or above ' + R.amountLabel(ex) + '.' }),
+            h('button', {
+              class: 'btn btn-sm', type: 'button', style: 'margin-top:.5rem',
+              text: 'Raise the target to ' + (ex.min + step) + '–' + (ex.max + step) + (ex.mode === 'time' ? ' sec' : ''),
+              onclick: function () {
+                S.bumpTarget(ex.id, step);
+                toast(ex.name + ' target raised');
+              }
+            })
+          ])
+        ]));
+      });
 
       var actions = h('div', { class: 'session-actions' }, [
         h('button', {
@@ -1738,10 +1786,19 @@
         return;
       }
       var sets = ex.sets || 1;
-      var sides = ex.perSide && ex.mode === 'time' ? 2 : 1;
+      // Every per-side exercise gets a pass each side, not just the timed
+      // ones — otherwise a left/right difference, which is the most useful
+      // thing a home trainee can spot, never reaches the log at all.
+      var sides = ex.perSide ? 2 : 1;
       for (var s = 0; s < sets; s++) {
         for (var sd = 0; sd < sides; sd++) steps.push({ kind: 'work', i: i, set: s, side: sd, sides: sides });
         if ((ex.rest || 0) > 0 && s < sets - 1) steps.push({ kind: 'rest', i: i, set: s, seconds: ex.rest });
+      }
+      // …and a rest before the next exercise. The third set of squats used to
+      // run straight into the first set of lunges with no pause at all.
+      var next = items[i + 1];
+      if (next && (ex.rest || 0) > 0 && next.ex.mode !== 'none') {
+        steps.push({ kind: 'rest', i: i, set: sets - 1, seconds: ex.rest });
       }
     });
     steps.push({ kind: 'done' });

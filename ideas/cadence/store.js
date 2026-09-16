@@ -532,6 +532,23 @@
     emit();
   }
 
+  /* Raise an exercise's whole range. The app records what you did but never
+   * told you when to make it harder, so the ranges never moved and a chart
+   * could sit above its own target band for months. */
+  function bumpTarget(exId, delta) {
+    updateRoutine(function (next) {
+      next.workouts.forEach(function (w) {
+        w.blocks.forEach(function (b) {
+          b.items.forEach(function (item) {
+            if (item.id !== exId) return;
+            item.min = Math.max(0, Math.round(item.min + delta));
+            item.max = Math.max(item.min, Math.round(item.max + delta));
+          });
+        });
+      });
+    });
+  }
+
   function resetRoutine() {
     state.routine = null;
     emit();
@@ -603,6 +620,7 @@
     setSetting: setSetting,
     setPhaseOffset: setPhaseOffset,
     updateRoutine: updateRoutine,
+    bumpTarget: bumpTarget,
     resetRoutine: resetRoutine,
     exportData: exportData,
     onSaveError: function (fn) { saveErrorHandler = fn; },
