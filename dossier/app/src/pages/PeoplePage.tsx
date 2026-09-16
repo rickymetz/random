@@ -14,6 +14,7 @@ import Avatar from '../components/Avatar'
 import BatchAddPanel from '../components/BatchAddPanel'
 import ContactImportPanel from '../components/ContactImportPanel'
 import { daysUntilDue, daysUntilNext, formatPartialDate } from '../lib/dates'
+import { FIELD_PACKS, fieldDefsIn, yearlyDatesOf } from '../lib/fieldDefs'
 import type { Person } from '../lib/models'
 import { RAIL_LETTERS, letterOf, rowsToReveal, shortName } from '../lib/names'
 import { matchSnippet } from '../lib/search'
@@ -358,6 +359,7 @@ export default function PeoplePage() {
       <PinFailureNotice />
       {showRecent && <Recent people={sorted} withRail={showRail} />}
       {!trimmed && !circle && !quietView && <Upcoming />}
+      {!trimmed && !circle && !quietView && <FormSetup />}
       {!trimmed && !circle && !quietView && <QuietLine />}
       {!trimmed && !circle && !quietView && <BackupNag />}
       {circleHits.length > 0 && (
@@ -788,6 +790,53 @@ const PersonRow = memo(function PersonRow({
   )
 })
 
+/**
+ * The one-time offer of a starter form (§8.1). It shows on the home
+ * screen of a vault that has no rows of its own and hasn't answered yet,
+ * because the alternative is a blank page in Settings that nobody would
+ * think to look for. Picking a set or waving it off both answer it, and
+ * it never comes back.
+ */
+function FormSetup() {
+  const records = useVaultStore((s) => s.records)
+  const applyFieldPacks = useVaultStore((s) => s.applyFieldPacks)
+  const updateSecurity = useVaultStore((s) => s.updateSecurity)
+  const answered = selectSettings(records)?.formSetupDone
+  const hasRows = useMemo(() => fieldDefsIn(records).length > 0, [records])
+  const [busy, setBusy] = useState(false)
+  if (answered || hasRows) return null
+  const pick = async (packId?: string) => {
+    if (busy) return
+    setBusy(true)
+    try {
+      if (packId) await applyFieldPacks([packId])
+      await updateSecurity({ formSetupDone: true })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <section className="form-setup">
+      <h2>What do you want to remember about people?</h2>
+      <p className="hint">
+        Name, pronouns and birthday are always there. Pick a set to start from — you can
+        change any of it later in Settings.
+      </p>
+      <div className="packs">
+        {FIELD_PACKS.map((pack) => (
+          <button key={pack.id} className="subtle pack" disabled={busy} onClick={() => void pick(pack.id)}>
+            <span className="pack-name">{pack.name}</span>
+            <span className="hint desc">{pack.blurb}</span>
+          </button>
+        ))}
+      </div>
+      <button className="quiet" disabled={busy} onClick={() => void pick()}>
+        Not now
+      </button>
+    </section>
+  )
+}
+
 /** Who have you lost touch with? One line, only when there's someone. */
 function QuietLine() {
   const records = useVaultStore((s) => s.records)
@@ -892,17 +941,33 @@ function Upcoming() {
     const people = selectPeople(records)
     const byId = new Map(people.map((p) => [p.id, p]))
     const list: UpcomingItem[] = []
+    const defs = fieldDefsIn(records)
     for (const p of people) {
-      if (!p.birthday) continue
-      const days = daysUntilNext(p.birthday, today)
-      if (days !== null && days <= HORIZON_DAYS) {
+      if (p.birthday) {
+        const days = daysUntilNext(p.birthday, today)
+        if (days !== null && days <= HORIZON_DAYS) {
+          list.push({
+            key: `bday-${p.id}`,
+            days,
+            overdue: false,
+            personId: p.id,
+            personName: p.displayName,
+            label: `birthday · ${formatPartialDate(p.birthday)}`,
+          })
+        }
+      }
+      // Anniversaries, work start dates, whatever this vault decided to
+      // be reminded about (§8.1) — same strip, same shape as a birthday.
+      for (const yearly of yearlyDatesOf(p, defs)) {
+        const days = daysUntilNext(yearly.date, today)
+        if (days === null || days > HORIZON_DAYS) continue
         list.push({
-          key: `bday-${p.id}`,
+          key: `yr-${p.id}-${yearly.fieldId}`,
           days,
           overdue: false,
           personId: p.id,
           personName: p.displayName,
-          label: `birthday · ${formatPartialDate(p.birthday)}`,
+          label: `${yearly.label.toLowerCase()} · ${formatPartialDate(yearly.date)}`,
         })
       }
     }

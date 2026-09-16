@@ -18,7 +18,9 @@ import { assignTypeFamilies, migrateExToFormer, pairKey } from '../lib/relations
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
   SETTINGS_ID,
+  type CustomValue,
   type DomainRecord,
+  type FieldDef,
   type FollowUp,
   type NoteEntry,
   type PartialDate,
@@ -57,6 +59,14 @@ import {
   vaultExists,
   type UnlockedVault,
 } from '../lib/vault'
+import {
+  FIELD_PACKS,
+  MAX_FIELDS,
+  activeFields,
+  labelTaken,
+  nextOrder,
+  type FieldSeed,
+} from '../lib/fieldDefs'
 import {
   biometricEnrollments,
   biometricUnlock,
@@ -138,6 +148,7 @@ interface VaultState {
         | 'nameSuggestions'
         | 'remindersEnabled'
         | 'lastReminderDay'
+        | 'formSetupDone'
       >
     >,
   ) => Promise<void>
@@ -180,6 +191,17 @@ interface VaultState {
   removeNote: (noteId: string) => Promise<void>
   updateNote: (noteId: string, body: string) => Promise<void>
   /** Circles (§4.6): named, colored groups drawn as bubbles on the graph. */
+  /** The person form this vault defines (§8.1). */
+  addField: (seed: FieldSeed) => Promise<FieldDef | 'name-taken' | 'full'>
+  updateField: (def: FieldDef) => Promise<'ok' | 'name-taken'>
+  /** Off the form, answers kept. Restore brings both back. */
+  retireField: (fieldId: string) => Promise<void>
+  restoreField: (fieldId: string) => Promise<'ok' | 'name-taken' | 'full'>
+  /** Deletes a retired field AND every answer to it. Asks first, upstream. */
+  deleteFieldAndAnswers: (fieldId: string) => Promise<void>
+  reorderFields: (fieldIds: string[]) => Promise<void>
+  /** Seed the form from the starter packs; skips labels already taken. */
+  applyFieldPacks: (packIds: string[]) => Promise<number>
   addCircle: (name: string, color?: string) => Promise<Circle>
   /** Resolves 'name-taken' (nothing written) if another circle has that name. */
   updateCircle: (circle: Circle) => Promise<'ok' | 'name-taken'>
@@ -207,6 +229,14 @@ interface VaultState {
     },
   ) => Promise<void>
   removeRelationship: (relationshipId: string) => Promise<void>
+  /** Rename or re-colour a tie type; every tie points at it by id. */
+  updateRelationshipType: (type: RelationshipType) => Promise<'ok' | 'name-taken'>
+  /**
+   * A type in use retires; one nothing uses is deleted. Returns which
+   * happened, so the UI can say so.
+   */
+  retireRelationshipType: (typeId: string) => Promise<'retired' | 'deleted' | 'kept'>
+  restoreRelationshipType: (typeId: string) => Promise<void>
   addRelationshipType: (
     label: string,
     color: string,
@@ -1144,6 +1174,188 @@ export const useVaultStore = create<VaultState>((set, get) => {
       return type
     }),
 
+    updateRelationshipType: (type) =>
+      enqueue(async () => {
+        const before = get().records.get(type.id)
+        if (before?.kind !== 'relationshipType') return 'ok' as const
+        const label = type.label.trim()
+        if (!label) return 'name-taken' as const
+        const clash = selectRelationshipTypes(get().records).some(
+          (t) => t.id !== type.id && t.label.toLowerCase() === label.toLowerCase(),
+        )
+        if (clash) return 'name-taken' as const
+        // Ties point at the type by id, so a rename lands on all of them
+        // at once — including the "mentioned" edges the notes drew.
+        await apply([{ ...type, label }])
+        return 'ok' as const
+      }),
+
+    retireRelationshipType: (typeId) =>
+      enqueue(async () => {
+        const type = get().records.get(typeId)
+        if (type?.kind !== 'relationshipType') return 'kept' as const
+        // "mentioned" is the app's own machinery, not vocabulary: the
+        // note parser creates those edges and nothing else can.
+        if (type.builtIn && type.label === 'mentioned') return 'kept' as const
+        const inUse = [...get().records.values()].some(
+          (r) => r.kind === 'relationship' && r.typeId === typeId,
+        )
+        if (!inUse) {
+          await apply([], [typeId])
+          return 'deleted' as const
+        }
+        await apply([{ ...type, retired: true }])
+        return 'retired' as const
+      }),
+
+    restoreRelationshipType: (typeId) =>
+      enqueue(async () => {
+        const type = get().records.get(typeId)
+        if (type?.kind !== 'relationshipType' || !type.retired) return
+        await apply([{ ...type, retired: undefined }])
+      }),
+
+    addField: (seed) =>
+      enqueue(async () => {
+        const defs = selectFieldDefs(get().records)
+        const label = seed.label.trim()
+        if (!label) return 'name-taken' as const
+        if (labelTaken(defs, label)) return 'name-taken' as const
+        if (activeFields(defs).length >= MAX_FIELDS) return 'full' as const
+        const def: FieldDef = {
+          kind: 'fieldDef',
+          id: crypto.randomUUID(),
+          label,
+          type: seed.type,
+          options: seed.type === 'choice' ? seed.options : undefined,
+          order: nextOrder(defs),
+          remindYearly: seed.type === 'date' ? seed.remindYearly : undefined,
+          remindLeadDays: seed.type === 'date' ? seed.remindLeadDays : undefined,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }
+        await apply([def])
+        return def
+      }),
+
+    updateField: (def) =>
+      enqueue(async () => {
+        const before = get().records.get(def.id)
+        if (before?.kind !== 'fieldDef') return 'ok' as const
+        const label = def.label.trim()
+        if (!label) return 'name-taken' as const
+        if (labelTaken(selectFieldDefs(get().records), label, def.id)) return 'name-taken' as const
+        // The type is fixed after creation: changing it would leave every
+        // existing answer the wrong shape, and there is no honest way to
+        // turn a list of allergies into a date.
+        const next: FieldDef = {
+          ...def,
+          label,
+          type: before.type,
+          options: before.type === 'choice' ? def.options : undefined,
+          remindYearly: before.type === 'date' ? def.remindYearly : undefined,
+          remindLeadDays: before.type === 'date' ? def.remindLeadDays : undefined,
+          updatedAt: Date.now(),
+        }
+        // A renamed field is searchable under its new name on the people
+        // who answered it — a boolean indexes as its label.
+        await apply([next], [], next.type === 'boolean' ? answeredBy(get().records, def.id) : [])
+        return 'ok' as const
+      }),
+
+    retireField: (fieldId) =>
+      enqueue(async () => {
+        const def = get().records.get(fieldId)
+        if (def?.kind !== 'fieldDef' || def.retired) return
+        // The answers stay exactly where they are: only the definition
+        // changes, so Restore is a second flag flip and nothing else.
+        await apply(
+          [{ ...def, retired: true, updatedAt: Date.now() }],
+          [],
+          answeredBy(get().records, fieldId),
+        )
+      }),
+
+    restoreField: (fieldId) =>
+      enqueue(async () => {
+        const def = get().records.get(fieldId)
+        if (def?.kind !== 'fieldDef') return 'ok' as const
+        const defs = selectFieldDefs(get().records)
+        if (labelTaken(defs, def.label, def.id)) return 'name-taken' as const
+        if (activeFields(defs).length >= MAX_FIELDS) return 'full' as const
+        await apply(
+          [{ ...def, retired: undefined, order: nextOrder(defs), updatedAt: Date.now() }],
+          [],
+          answeredBy(get().records, fieldId),
+        )
+        return 'ok' as const
+      }),
+
+    deleteFieldAndAnswers: (fieldId) =>
+      enqueue(async () => {
+        const def = get().records.get(fieldId)
+        if (def?.kind !== 'fieldDef') return
+        const puts: DomainRecord[] = []
+        const reindex: string[] = []
+        for (const r of get().records.values()) {
+          if (r.kind !== 'person' || !r.custom || !(fieldId in r.custom)) continue
+          const custom = { ...r.custom }
+          delete custom[fieldId]
+          puts.push({
+            ...r,
+            custom: Object.keys(custom).length > 0 ? custom : undefined,
+            updatedAt: Date.now(),
+          })
+          reindex.push(r.id)
+        }
+        await apply(puts, [fieldId], reindex)
+      }),
+
+    reorderFields: (fieldIds) =>
+      enqueue(async () => {
+        const puts: DomainRecord[] = []
+        fieldIds.forEach((id, i) => {
+          const def = get().records.get(id)
+          if (def?.kind === 'fieldDef' && def.order !== i) {
+            puts.push({ ...def, order: i, updatedAt: Date.now() })
+          }
+        })
+        if (puts.length > 0) await apply(puts)
+      }),
+
+    applyFieldPacks: (packIds) =>
+      enqueue(async () => {
+        const defs = selectFieldDefs(get().records)
+        const taken = new Set(defs.map((d) => d.label.trim().toLowerCase()))
+        let order = nextOrder(defs)
+        let room = MAX_FIELDS - activeFields(defs).length
+        const puts: DomainRecord[] = []
+        for (const pack of FIELD_PACKS.filter((p) => packIds.includes(p.id))) {
+          for (const seed of pack.fields) {
+            // Packs overlap — "How we met" is in two of them — and a
+            // second copy of a row you already have is never wanted.
+            const key = seed.label.trim().toLowerCase()
+            if (taken.has(key) || room <= 0) continue
+            taken.add(key)
+            room--
+            puts.push({
+              kind: 'fieldDef',
+              id: crypto.randomUUID(),
+              label: seed.label,
+              type: seed.type,
+              options: seed.options,
+              order: order++,
+              remindYearly: seed.remindYearly,
+              remindLeadDays: seed.remindLeadDays,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            })
+          }
+        }
+        if (puts.length > 0) await apply(puts)
+        return puts.length
+      }),
+
     addCircle: (name, color) =>
       enqueue(async () => {
         const trimmed = name.trim()
@@ -1265,6 +1477,20 @@ export const useVaultStore = create<VaultState>((set, get) => {
           .filter((r): r is RelationshipType => r.kind === 'relationshipType' && r.builtIn)
           .map((r) => [r.label, r.id]),
       )
+      // A form row already here by the same name is the same row: a
+      // restore must not leave two "Allergies" with the answers split
+      // between them. Incoming answers are rewritten onto the id we keep.
+      const fieldByLabel = new Map(
+        [...current.values()]
+          .filter((r): r is FieldDef => r.kind === 'fieldDef')
+          .map((r) => [r.label.trim().toLowerCase(), r.id]),
+      )
+      const fieldRemap = new Map<string, string>()
+      for (const record of sanitized) {
+        if (record.kind !== 'fieldDef') continue
+        const existingId = fieldByLabel.get(record.label.trim().toLowerCase())
+        if (existingId && existingId !== record.id) fieldRemap.set(record.id, existingId)
+      }
       const idRemap = new Map<string, string>()
       // Map every built-in type BEFORE any relationship is remapped: bundle
       // rows arrive in arbitrary key order, so a relationship that precedes
@@ -1303,6 +1529,16 @@ export const useVaultStore = create<VaultState>((set, get) => {
           const freshBlobId = crypto.randomUUID()
           blobWrites.push({ id: freshBlobId, bytes })
           puts.push({ ...record, blobRecordId: freshBlobId })
+          continue
+        }
+        // A duplicate row is dropped; its answers ride onto the keeper.
+        if (record.kind === 'fieldDef' && fieldRemap.has(record.id)) continue
+        if (record.kind === 'person' && record.custom && fieldRemap.size > 0) {
+          const custom: Record<string, CustomValue> = {}
+          for (const [key, value] of Object.entries(record.custom)) {
+            custom[fieldRemap.get(key) ?? key] = value
+          }
+          puts.push({ ...record, custom })
           continue
         }
         puts.push(
@@ -1453,6 +1689,19 @@ export const useVaultStore = create<VaultState>((set, get) => {
       }),
   }
 })
+
+export function selectFieldDefs(records: Map<string, DomainRecord>): FieldDef[] {
+  return [...records.values()].filter((r): r is FieldDef => r.kind === 'fieldDef')
+}
+
+/** Everyone who has an answer to this field — the rows search must redo. */
+function answeredBy(records: Map<string, DomainRecord>, fieldId: string): string[] {
+  const ids: string[] = []
+  for (const r of records.values()) {
+    if (r.kind === 'person' && r.custom && fieldId in r.custom) ids.push(r.id)
+  }
+  return ids
+}
 
 export function selectPeople(records: Map<string, DomainRecord>): Person[] {
   return [...records.values()].filter((r): r is Person => r.kind === 'person')

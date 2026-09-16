@@ -42,7 +42,9 @@ export default function BatchAddPanel({
   const types = useMemo(
     () =>
       selectRelationshipTypes(records)
-        .filter((t) => t.label !== 'mentioned')
+        // A retired type stops being offered for new ties; the ties that
+        // already carry it keep it, and keep drawing (§8.2).
+        .filter((t) => t.label !== 'mentioned' && !t.retired)
         .sort((a, b) => a.label.localeCompare(b.label)),
     [records],
   )

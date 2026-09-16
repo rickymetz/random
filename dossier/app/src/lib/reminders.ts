@@ -5,6 +5,7 @@
  * (§6.5: notifications must not out the app's contents).
  */
 import { daysUntilDue, daysUntilNext } from './dates'
+import { fieldDefsIn, yearlyDatesOf } from './fieldDefs'
 import { currentDisguise } from './disguise'
 import type { DomainRecord, Person } from './models'
 
@@ -25,8 +26,18 @@ export function hasDueItems(records: Map<string, DomainRecord>, now: Date = new 
   for (const r of records.values()) {
     if (r.kind === 'person') people.set(r.id, r)
   }
+  const defs = fieldDefsIn(records)
   for (const r of records.values()) {
     if (r.kind === 'person' && r.birthday && daysUntilNext(r.birthday, now) === 0) return true
+    if (r.kind === 'person') {
+      // A date row marked "remind me every year" fires inside the lead
+      // time it asked for: a week's warning for an anniversary is the
+      // point of the setting, where a birthday only wants the day.
+      for (const yearly of yearlyDatesOf(r, defs)) {
+        const days = daysUntilNext(yearly.date, now)
+        if (days !== null && days >= 0 && days <= yearly.leadDays) return true
+      }
+    }
     if (r.kind === 'followUp' && !r.done && r.dueDate && people.has(r.personId)) {
       const days = daysUntilDue(r.dueDate, now)
       if (days !== null && days <= 0 && days >= -OVERDUE_WINDOW_DAYS) return true

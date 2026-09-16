@@ -4,6 +4,8 @@ import Avatar from '../components/Avatar'
 import BatchAddPanel from '../components/BatchAddPanel'
 import PersonPicker from '../components/PersonPicker'
 import ChipInput from '../components/ChipInput'
+import CustomFieldInputs, { draftFrom, type DraftValue } from '../components/CustomFieldInputs'
+import { activeFields, hasValue } from '../lib/fieldDefs'
 import DangerConfirm from '../components/DangerConfirm'
 import LooksLikePeople from '../components/LooksLikePeople'
 import MentionTextarea from '../components/MentionTextarea'
@@ -15,12 +17,21 @@ import type { Photo } from '../lib/models'
 import { formatPartialDate, parsePartialDate, timeAgo } from '../lib/dates'
 import { plainText, retokenize, segmentBody } from '../lib/mentions'
 import { detectNames } from '../lib/nameDetect'
-import { TYPE_FAMILIES, type Person, type Relationship, type TypeFamily } from '../lib/models'
+import {
+  TYPE_FAMILIES,
+  type CustomValue,
+  type FieldDef,
+  type PartialDate,
+  type Person,
+  type Relationship,
+  type TypeFamily,
+} from '../lib/models'
 import {
   selectCircles,
   selectCirclesOf,
   selectFollowUps,
   selectNotes,
+  selectFieldDefs,
   selectPeople,
   selectPhotos,
   selectRelationships,
@@ -30,6 +41,23 @@ import {
 } from '../store/vaultStore'
 
 const csv = (list: string[]) => list.join(', ')
+
+/**
+ * One custom answer, as the dossier draws it. Lists become facets like
+ * tags and likes — tap "rock climbing" to see everyone who shares it —
+ * and a "no" shows as a "no", because someone answered that on purpose.
+ */
+function customRow(
+  def: FieldDef,
+  value: CustomValue | undefined,
+  facet: (values: string[]) => ReactNode,
+): ReactNode {
+  if (!hasValue(value)) return undefined
+  if (def.type === 'chips') return facet(value as string[])
+  if (def.type === 'boolean') return value === true ? 'Yes' : 'No'
+  if (def.type === 'date') return formatPartialDate(value as PartialDate)
+  return String(value)
+}
 
 /** "friend of Ada", but "boss of Ada" — not "boss of of Ada". */
 const relOf = (label: string | undefined, name: string) => {
@@ -186,6 +214,13 @@ function Facts({
     ['Likes', facet(person.likes)],
     ['Dislikes', facet(person.dislikes)],
     ['Tags', facet(person.tags)],
+    // The rows this vault added for itself, in form order. Only what has
+    // been answered draws: a form of twenty fields still leaves a short
+    // page for a work contact you know three things about. A retired
+    // field's answers wait quietly in the record, off the page.
+    ...activeFields(selectFieldDefs(records)).map(
+      (def): [string, ReactNode] => [def.label, customRow(def, person.custom?.[def.id], facet)],
+    ),
   ]
   const filled = rows.filter(([, v]) => v)
   // Nothing to copy from an empty dossier: the button waits for content.
@@ -352,6 +387,12 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     circles: selectCirclesOf(records, person.id).map((c) => c.name),
   }
   const [form, setForm] = useState(initial)
+  // The rows this vault added for itself (§8.1), in form order.
+  const customDefs = useMemo(() => activeFields(selectFieldDefs(records)), [records])
+  const initialCustom = useMemo(() => draftFrom(customDefs, person), [customDefs, person])
+  const [custom, setCustom] = useState<Record<string, DraftValue>>(initialCustom)
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
+  const allPeople = useMemo(() => selectPeople(records), [records])
   const addCircle = useVaultStore((s) => s.addCircle)
   const setPersonCircles = useVaultStore((s) => s.setPersonCircles)
   // Shared vocabulary across all people, so spellings converge (§4.1).
@@ -374,7 +415,9 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
   const [dateError, setDateError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const dirty =
-    JSON.stringify(form) !== JSON.stringify(initial) || isSelf !== Boolean(person.isSelf)
+    JSON.stringify(form) !== JSON.stringify(initial) ||
+    JSON.stringify(custom) !== JSON.stringify(initialCustom) ||
+    isSelf !== Boolean(person.isSelf)
 
   type TextKey =
     | 'displayName'
@@ -445,6 +488,46 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
       return
     }
     setDateError(null)
+    // Every custom date gets the same treatment as the birthday above: a
+    // date you typed that we can't read is an error to show, never a
+    // field quietly saved empty.
+    const customValues: Record<string, CustomValue> = {}
+    const dateErrors: Record<string, string> = {}
+    for (const def of customDefs) {
+      const draft = custom[def.id]
+      if (def.type === 'date') {
+        const text = typeof draft === 'string' ? draft.trim() : ''
+        if (!text) continue
+        const parsed = parsePartialDate(text)
+        if (!parsed) {
+          dateErrors[def.id] = 'Try a date like Jun 21 or 1984-06-21, or just June.'
+          continue
+        }
+        customValues[def.id] = parsed
+        continue
+      }
+      if (def.type === 'number' && typeof draft === 'string') continue
+      if (typeof draft === 'string' && !draft.trim()) continue
+      if (draft !== undefined && hasValue(draft as CustomValue)) {
+        customValues[def.id] = typeof draft === 'string' ? draft.trim() : (draft as CustomValue)
+      }
+    }
+    if (Object.keys(dateErrors).length > 0) {
+      setCustomErrors(dateErrors)
+      requestAnimationFrame(() =>
+        document.querySelector<HTMLInputElement>('.facts-form input[aria-invalid="true"]')?.focus(),
+      )
+      return
+    }
+    setCustomErrors({})
+    // Answers to fields that have since retired are kept exactly as they
+    // are: they are not on this form, so this form must not drop them.
+    const retainedCustom: Record<string, CustomValue> = {}
+    const onForm = new Set(customDefs.map((d) => d.id))
+    for (const [id, value] of Object.entries(person.custom ?? {})) {
+      if (!onForm.has(id)) retainedCustom[id] = value
+    }
+    const nextCustom = { ...retainedCustom, ...customValues }
     // Claiming "this is me" silently un-marks the current self — say so.
     if (
       isSelf &&
@@ -475,6 +558,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         likes: form.likes,
         dislikes: form.dislikes,
         tags: form.tags,
+        custom: Object.keys(nextCustom).length > 0 ? nextCustom : undefined,
         isSelf: isSelf || undefined,
       })
       // Circle chips are names; unknown names become new circles.
@@ -594,6 +678,26 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
           {chips('tags', 'Tags', vocab.tags, { placeholder: 'college' })}
         </div>
       </fieldset>
+      {customDefs.length > 0 && (
+        <fieldset className="field-group">
+          <legend>More details</legend>
+          <CustomFieldInputs
+            defs={customDefs}
+            people={allPeople}
+            draft={custom}
+            onChange={(id, value) => setCustom((c) => ({ ...c, [id]: value }))}
+            errors={customErrors}
+            clearError={(id) =>
+              setCustomErrors((e) => {
+                if (!(id in e)) return e
+                const next = { ...e }
+                delete next[id]
+                return next
+              })
+            }
+          />
+        </fieldset>
+      )}
       {/* Deleting lives in edit mode, not next to the everyday note box. */}
       <DangerConfirm
         className="delete-person"
@@ -1210,7 +1314,9 @@ function RelationshipSection({ person }: { person: Person }) {
   const types = useMemo(
     () =>
       selectRelationshipTypes(records)
-        .filter((t) => t.label !== 'mentioned')
+        // A retired type stops being offered for new ties; the ties that
+        // already carry it keep it, and keep drawing (§8.2).
+        .filter((t) => t.label !== 'mentioned' && !t.retired)
         .sort((a, b) => a.label.localeCompare(b.label)),
     [records],
   )

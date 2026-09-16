@@ -7,7 +7,10 @@
  */
 import type {
   Circle,
+  CustomValue,
   DomainRecord,
+  FieldDef,
+  FieldType,
   FollowUp,
   NoteEntry,
   PartialDate,
@@ -35,6 +38,44 @@ const num = (v: unknown): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : Date.now()
 
 const bool = (v: unknown): boolean => v === true
+
+const FIELD_TYPES = ['text', 'longText', 'chips', 'date', 'choice', 'number', 'boolean'] as const
+const isFieldType = (v: unknown): v is FieldType =>
+  typeof v === 'string' && (FIELD_TYPES as readonly string[]).includes(v)
+
+/**
+ * A custom answer, checked against nothing but its own shape: the field
+ * it belongs to may be retired, or may not have arrived in this bundle
+ * yet, and an answer whose field is missing is still the user's writing.
+ * Anything that isn't one of the five shapes is dropped rather than
+ * stored for a renderer to trip over later.
+ */
+function customValue(v: unknown): CustomValue | undefined {
+  if (typeof v === 'boolean') return v
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined
+  if (typeof v === 'string') return v.length <= 10_000 ? v : undefined
+  if (Array.isArray(v)) {
+    const list = strList(v)
+    return list.length > 0 ? list : undefined
+  }
+  if (v && typeof v === 'object') return partialDate(v)
+  return undefined
+}
+
+/** At most 200 answers per person, so a hostile bundle can't bloat a row. */
+function customBag(v: unknown): Record<string, CustomValue> | undefined {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined
+  const out: Record<string, CustomValue> = {}
+  let n = 0
+  for (const [key, raw] of Object.entries(v as Record<string, unknown>)) {
+    if (!ID_RE.test(key)) continue
+    const value = customValue(raw)
+    if (value === undefined) continue
+    out[key] = value
+    if (++n >= 200) break
+  }
+  return n > 0 ? out : undefined
+}
 const isFamily = (v: unknown): v is TypeFamily =>
   v === 'family' || v === 'work' || v === 'social' || v === 'other'
 
@@ -82,6 +123,7 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
         likes: strList(r.likes),
         dislikes: strList(r.dislikes),
         tags: strList(r.tags),
+        custom: customBag(r.custom),
         isSelf: bool(r.isSelf) || undefined,
         createdAt: num(r.createdAt),
         updatedAt: num(r.updatedAt),
@@ -150,6 +192,7 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
         directed: bool(r.directed),
         builtIn: bool(r.builtIn),
         family: isFamily(r.family) ? r.family : undefined,
+        retired: r.retired === true || undefined,
       }
       return type
     }
@@ -187,6 +230,34 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
       }
       return circle
     }
+    case 'fieldDef': {
+      const label = str(r.label, 60)?.trim()
+      if (!label || !isFieldType(r.type)) return null
+      const options = r.type === 'choice' ? [...new Set(strList(r.options, 50))] : undefined
+      const def: FieldDef = {
+        kind: 'fieldDef',
+        id: rid,
+        label,
+        type: r.type,
+        options: options && options.length > 0 ? options : undefined,
+        order: typeof r.order === 'number' && Number.isFinite(r.order) ? r.order : 0,
+        retired: r.retired === true || undefined,
+        // Only a date field can carry the reminder switches; anywhere
+        // else they would be settings nothing reads.
+        remindYearly: r.type === 'date' && r.remindYearly === true ? true : undefined,
+        remindLeadDays:
+          r.type === 'date' &&
+          typeof r.remindLeadDays === 'number' &&
+          Number.isInteger(r.remindLeadDays) &&
+          r.remindLeadDays >= 0 &&
+          r.remindLeadDays <= 90
+            ? r.remindLeadDays
+            : undefined,
+        createdAt: num(r.createdAt),
+        updatedAt: num(r.updatedAt),
+      }
+      return def
+    }
     case 'settings': {
       const finite = (v: unknown, min: number, max: number): number | undefined =>
         typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : undefined
@@ -198,6 +269,7 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
         backgroundGraceSeconds: finite(r.backgroundGraceSeconds, 0, 3600),
         shakeToLock: r.shakeToLock === true || undefined,
         nameSuggestions: r.nameSuggestions === false ? false : undefined,
+        formSetupDone: r.formSetupDone === true || undefined,
         remindersEnabled: r.remindersEnabled === true || undefined,
         lastReminderDay:
           typeof r.lastReminderDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.lastReminderDay)
