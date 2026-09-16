@@ -148,6 +148,8 @@ interface Filters {
   former: boolean
   /** The quiet lens: off by default, a look rather than a filter. */
   quiet: boolean
+  /** You on the graph: on by default; off draws your people without you. */
+  self: boolean
   hiddenCircles: string[]
 }
 function loadFilters(): Filters {
@@ -160,19 +162,21 @@ function loadFilters(): Filters {
         mentions: parsed.mentions ?? true,
         former: parsed.former ?? true,
         quiet: parsed.quiet ?? false,
+        self: parsed.self ?? true,
         hiddenCircles: parsed.hiddenCircles ?? [],
       }
     }
   } catch {
     // Private windows may refuse; defaults are fine.
   }
-  return { hidden: [], mentions: true, former: true, quiet: false, hiddenCircles: [] }
+  return { hidden: [], mentions: true, former: true, quiet: false, self: true, hiddenCircles: [] }
 }
 function saveFilters(
   hidden: Set<string>,
   mentions: boolean,
   former: boolean,
   quiet: boolean,
+  self: boolean,
   hiddenCircles: Set<string>,
 ): void {
   try {
@@ -183,6 +187,7 @@ function saveFilters(
         mentions,
         former,
         quiet,
+        self,
         hiddenCircles: [...hiddenCircles],
       }),
     )
@@ -384,12 +389,13 @@ export default function GraphPage() {
   const [showMentions, setShowMentions] = useState(() => loadFilters().mentions)
   const [showFormer, setShowFormer] = useState(() => loadFilters().former)
   const [quietLens, setQuietLens] = useState(() => loadFilters().quiet)
+  const [showSelf, setShowSelf] = useState(() => loadFilters().self)
   const [hiddenCircles, setHiddenCircles] = useState<Set<string>>(
     () => new Set(loadFilters().hiddenCircles),
   )
   useEffect(() => {
-    saveFilters(hiddenTypes, showMentions, showFormer, quietLens, hiddenCircles)
-  }, [hiddenTypes, showMentions, showFormer, quietLens, hiddenCircles])
+    saveFilters(hiddenTypes, showMentions, showFormer, quietLens, showSelf, hiddenCircles)
+  }, [hiddenTypes, showMentions, showFormer, quietLens, showSelf, hiddenCircles])
   const allCircles = useMemo(() => selectCircles(records), [records])
   const focusedCircle = useMemo(
     () => (circleFocusId ? allCircles.find((c) => c.id === circleFocusId) : undefined),
@@ -475,6 +481,15 @@ export default function GraphPage() {
       visiblePeople = visiblePeople.filter((p) => members.has(p.id))
     }
 
+    // You are joined to everyone, so the dot in the middle is the one
+    // that tells you least and pulls the layout hardest. Hiding yourself
+    // leaves your people and the ties between *them* — which is the
+    // shape you can't otherwise see. An ego view still starts from you
+    // (it is your neighbourhood either way); you just aren't drawn in it.
+    // A highlighted path keeps you: it starts at you, and half a path is
+    // a lie — the same rule the path's own edges already follow.
+    if (!showSelf && !pathInfo) visiblePeople = visiblePeople.filter((p) => !p.isSelf)
+
     const ids = new Set(visiblePeople.map((p) => p.id))
     const visibleEdges = edges.filter((e) => ids.has(e.fromId) && ids.has(e.toId))
     const degree = new Map<string, number>()
@@ -537,6 +552,7 @@ export default function GraphPage() {
     pathInfo,
     allCircles,
     hiddenCircles,
+    showSelf,
   ])
 
   // In an ego view only circles with someone on screen get a chip; a
@@ -579,7 +595,7 @@ export default function GraphPage() {
   // Isolating circles is a view change too — it takes people off the
   // screen, and the handful left would otherwise sit wherever the old
   // camera happened to be pointing.
-  const viewKey = `${focusId ?? ''}|${depth}|${circleFocusId ?? ''}|${showAll ? 1 : 0}|${[...hiddenCircles].sort().join(',')}`
+  const viewKey = `${focusId ?? ''}|${depth}|${circleFocusId ?? ''}|${showAll ? 1 : 0}|${showSelf ? 1 : 0}|${[...hiddenCircles].sort().join(',')}`
   const canvasRef = useCanvasGraph(
     nodes,
     links,
@@ -615,11 +631,13 @@ export default function GraphPage() {
     railTypes.filter((t) => hiddenTypes.has(t.id)).length +
     (showMentions ? 0 : 1) +
     (showFormer ? 0 : 1) +
+    (showSelf ? 0 : 1) +
     railCircles.filter((c) => hiddenCircles.has(c.id)).length
   const showAllFilters = () => {
     setHiddenTypes(new Set())
     setShowMentions(true)
     setShowFormer(true)
+    setShowSelf(true)
     setHiddenCircles(new Set())
   }
   const circlePool = railCircles.map((c) => c.id)
@@ -865,22 +883,50 @@ export default function GraphPage() {
         <button
           className={`chip ${showMentions ? '' : 'off'}`}
           aria-pressed={showMentions}
-          onClick={() => setShowMentions((v) => !v)}
+          onClick={(ev) => {
+            keepChipInView(ev.currentTarget)
+            setShowMentions((v) => !v)
+          }}
         >
           mentions
         </button>
         <button
           className={`chip no-dot former ${showFormer ? '' : 'off'}`}
           aria-pressed={showFormer}
-          onClick={() => setShowFormer((v) => !v)}
+          onClick={(ev) => {
+            keepChipInView(ev.currentTarget)
+            setShowFormer((v) => !v)
+          }}
           title="Past roles: former partners, old bosses"
         >
           former
         </button>
+        {self && (
+          <button
+            className={`chip self-lens ${showSelf ? '' : 'off'}`}
+            style={{ '--chip-color': 'var(--accent)' } as React.CSSProperties}
+            aria-pressed={showSelf}
+            aria-label={`You on the graph — ${showSelf ? 'shown' : 'hidden'}`}
+            onClick={(ev) => {
+              keepChipInView(ev.currentTarget)
+              setShowSelf((v) => !v)
+            }}
+            title={
+              showSelf
+                ? 'Hide yourself — you link to everyone, so the graph reads better without you'
+                : 'Show yourself'
+            }
+          >
+            me
+          </button>
+        )}
         <button
           className={`chip no-dot quiet ${quietLens ? 'on' : ''}`}
           aria-pressed={quietLens}
-          onClick={() => setQuietLens((v) => !v)}
+          onClick={(ev) => {
+            keepChipInView(ev.currentTarget)
+            setQuietLens((v) => !v)
+          }}
           title="Mark people with no note or follow-up in 6 months"
         >
           quiet
