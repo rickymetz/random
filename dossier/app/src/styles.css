@@ -4281,3 +4281,28 @@ a.facet {
 .form-setup .packs {
   margin-bottom: var(--s2);
 }
+/* The first-run form offer, shrunk to a line once the list is long. */
+.form-setup-line {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0 0 var(--s3);
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+}
+.form-setup-line span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.form-setup-line a {
+  color: var(--text-2);
+}
+.form-setup-line button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-height: var(--ctl-h);
+  padding: 0 var(--s2);
+  /* A dismissal, at the size of the line it dismisses. */
+  font-size: var(--fs-meta);
+  font-weight: 500;
+}

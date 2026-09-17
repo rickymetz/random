@@ -28,8 +28,12 @@ export default function BatchAddPanel({
 }: {
   /** The dossier this list belongs to; undefined on the People page. */
   anchor?: Person
-  /** Called on Done/Cancel/Escape; the parent puts focus back on its toggle. */
-  onClose: () => void
+  /**
+   * Called on Done/Cancel/Escape. `added` is true when this sitting
+   * created people: the parent lands you on the list instead of on the
+   * toggle, which by then is far below a much longer list.
+   */
+  onClose: (added?: boolean) => void
   /** 2 on the People page (siblings are h2), 3 inside a dossier section. */
   headingLevel?: 2 | 3
   /** For the toggle's aria-controls. */
@@ -38,6 +42,7 @@ export default function BatchAddPanel({
   const records = useVaultStore((s) => s.records)
   const addPeople = useVaultStore((s) => s.addPeople)
   const addRelationships = useVaultStore((s) => s.addRelationships)
+  const removePeople = useVaultStore((s) => s.removePeople)
   const people = useMemo(() => selectPeople(records), [records])
   const types = useMemo(
     () =>
@@ -54,6 +59,17 @@ export default function BatchAddPanel({
   )
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
+  /** How many this sitting created, net of undo: the parent lands you
+   *  on the list when anybody is left. */
+  const [addedCount, setAddedCount] = useState(0)
+  /**
+   * The last submit's new people, so a mistaken paste is one tap to take
+   * back — as the contacts import and "Looks like people" both allow.
+   * Only when the submit made people and nothing else: inside a dossier
+   * the same submit also writes ties (and clears the mention edges they
+   * replace), and half an undo is worse than none.
+   */
+  const [undoIds, setUndoIds] = useState<string[]>([])
   const titleId = useId()
   const hintId = useId()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -84,6 +100,7 @@ export default function BatchAddPanel({
   const fresh = entries.filter((e) => !e.existing)
   const toLink = entries.filter((e) => e.existing && !linkedIds.has(e.existing.id))
   const alreadyLinked = entries.filter((e) => e.existing && linkedIds.has(e.existing.id))
+  const allNew = entries.length > 0 && fresh.length === entries.length
   const defaultType = types.find((t) => t.id === defaultTypeId) ?? types[0]
   const first = anchor?.displayName.split(' ')[0]
 
@@ -117,11 +134,28 @@ export default function BatchAddPanel({
       if (anchor) parts.push(`linked ${linked}`)
       if (alreadyLinked.length) parts.push(`${alreadyLinked.length} already linked`)
       setStatus(`${parts.join(', ')}`)
+      setAddedCount((n) => n + created.length)
+      setUndoIds(!anchor ? created.map((p) => p.id) : [])
       setText('')
       // Ready for the next paste; the disabled Add would drop focus.
       requestAnimationFrame(() => textareaRef.current?.focus())
     } catch {
       setStatus('Could not add them — try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const undo = async () => {
+    if (busy || undoIds.length === 0) return
+    setBusy(true)
+    try {
+      await removePeople(undoIds)
+      setStatus(`Took back ${undoIds.length} ${undoIds.length === 1 ? 'person' : 'people'}`)
+      setAddedCount((n) => Math.max(0, n - undoIds.length))
+      setUndoIds([])
+    } catch {
+      setStatus('Could not take them back — try again.')
     } finally {
       setBusy(false)
     }
@@ -142,7 +176,7 @@ export default function BatchAddPanel({
       setAskDiscard(true)
       return
     }
-    onClose()
+    onClose(addedCount > 0)
   }
   return (
     <Sheet id={id} labelledBy={titleId} onDismiss={requestClose}>
@@ -211,6 +245,21 @@ export default function BatchAddPanel({
           </select>
         </label>
       )}
+      {/* A long paste is read as a count, not row by row: say up front
+          what it adds up to, as the contacts import does — but only when
+          there is something to say. With nothing but new names the Add
+          button already carries the number. */}
+      {entries.length > 8 && !allNew && (
+        <p className="hint import-summary">
+          {entries.length} {entries.length === 1 ? 'name' : 'names'}
+          {fresh.length < entries.length && ` · ${fresh.length} new`}
+          {alreadyLinked.length > 0 && ` · ${alreadyLinked.length} already linked`}
+          {anchor
+            ? toLink.length > 0 && ` · ${toLink.length} to link`
+            : entries.length - fresh.length > 0 &&
+              ` · ${entries.length - fresh.length} already here`}
+        </p>
+      )}
       {entries.length > 0 && (
         <ul
           className="batch-preview"
@@ -223,7 +272,9 @@ export default function BatchAddPanel({
               <li key={e.name.toLowerCase()}>
                 <span className="name">{e.existing?.displayName ?? e.name}</span>
                 {!e.existing ? (
-                  <span className="tag">new</span>
+                  // With nothing but new names, "new" on all of them is
+                  // noise; the badges are there to mark the exceptions.
+                  allNew ? null : <span className="tag">new</span>
                 ) : linkedAlready ? (
                   <span className="tag known">already linked</span>
                 ) : (
@@ -255,7 +306,17 @@ export default function BatchAddPanel({
         </button>
         {/* Cancel is explicit: it closes without asking. Escape, the
             backdrop and a swipe down ask first when a list is typed. */}
-        <button type="button" className="quiet" onClick={onClose} disabled={busy}>
+        {undoIds.length > 0 && (
+          <button type="button" className="quiet undo" onClick={() => void undo()} disabled={busy}>
+            Undo
+          </button>
+        )}
+        <button
+          type="button"
+          className="quiet"
+          onClick={() => onClose(addedCount > 0)}
+          disabled={busy}
+        >
           {status ? 'Done' : 'Cancel'}
         </button>
         <span className="hint status-slot" role="status">
@@ -265,7 +326,7 @@ export default function BatchAddPanel({
       {askDiscard && (
         <div className="row confirm-row" role="group" aria-label="Discard the list you typed?">
           <span className="hint">Discard the list you typed?</span>
-          <button type="button" className="danger" onClick={onClose} autoFocus>
+          <button type="button" className="danger" onClick={() => onClose(addedCount > 0)} autoFocus>
             Discard
           </button>
           <button type="button" className="subtle" onClick={() => setAskDiscard(false)}>

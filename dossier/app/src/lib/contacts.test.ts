@@ -216,4 +216,24 @@ describe('parseContacts + matchContacts', () => {
       [undefined, undefined],
     ])
   })
+
+  it('flags a second card with the same name in the same file', () => {
+    // One person synced from three accounts, as every phone export has:
+    // the copy that adds nothing is dropped, the one that disagrees is
+    // kept but marked — never quietly turned into a second person.
+    const out = matchContacts(
+      [
+        { displayName: 'John Smith', contact: { phone: '+1 555 000 1111' } },
+        { displayName: 'John Smith', contact: { email: 'john@example.com' } },
+        { displayName: 'John Smith' },
+        { displayName: 'Jane Smith', contact: { email: 'jane@example.com' } },
+      ],
+      [],
+    )
+    expect(out.map((c) => [c.displayName, c.sameName])).toEqual([
+      ['John Smith', undefined],
+      ['John Smith', true],
+      ['Jane Smith', undefined],
+    ])
+  })
 })
