@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Container Compound</title>
 <meta name="description" content="Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.">
 <style>
   :root {
     --panel: rgba(252, 251, 248, 0.94);
     --ink: #2b2b28;
-    --muted: #77746c;
+    --muted: #6b6861;
     --line: #e2ded6;
     --accent: #b3542e;
     --shadow: 0 2px 16px rgba(30, 30, 25, 0.14);
@@ -100,23 +100,30 @@
   #menu button:active, #menu a:active { background: rgba(179, 84, 46, 0.1); color: var(--accent); }
 
   /* site plan actions: fit + export */
+  /* Zoom and fit, right of the stats pill. PNG and SVG moved into the ⋯ menu:
+     three always-on pills were spanning 200 px of drawing, and units and trees
+     under them could not be pressed at all. */
   #site-actions {
     position: fixed;
-    right: 0.75rem;
-    bottom: calc(0.75rem + var(--sab));
+    right: 0.9rem;
+    bottom: calc(5.4rem + var(--sab));
     z-index: 5;
     display: none;
-    gap: 0.4rem;
+    flex-direction: column;
+    gap: 0.35rem;
   }
-  body[data-mode="site"] #site-actions { display: flex; }
+  body[data-mode="plan"] #site-actions { display: flex; }
   #site-actions button {
     border: 1px solid var(--line);
     background: var(--panel);
     box-shadow: var(--shadow);
     border-radius: 999px;
-    padding: 0.45rem 0.8rem;
-    font-size: 0.78rem;
+    width: 44px; height: 44px;
+    display: grid; place-items: center;
+    font-size: 1.05rem;
+    padding: 0;
   }
+  body.has-selection[data-mode="plan"] #site-actions { bottom: calc(10rem + var(--sab)); }
   #site-actions button:active { border-color: var(--accent); color: var(--accent); }
 
   /* ---- add-unit FAB + bottom sheet ---- */
@@ -137,7 +144,10 @@
     box-shadow: 0 4px 18px rgba(30, 30, 25, 0.3);
   }
   #fab:active { filter: brightness(1.1); }
+  /* the tool strip owns the bottom band while a unit is selected; ✕ at its
+     left end is the one tap back to the add button */
   body.has-selection #fab { display: none; }
+  body.sheet-open #fab, body.add-open #fab { display: none; }
   #add-backdrop {
     position: fixed;
     inset: 0;
@@ -258,15 +268,14 @@
     #tabbar { left: 50%; right: auto; transform: translateX(-50%); min-width: 22rem; }
   }
 
-  /* mode visibility */
-  body[data-mode="dollhouse"] #fab,
-  body[data-mode="dollhouse"] #edge-tools,
-  body[data-mode="site"] #fab,
-  body[data-mode="site"] #edge-tools,
-  body[data-mode="site"] #stats-pill,
-  body[data-mode="site"] #stats-pop,
-  body[data-mode="site"] #view-tools { display: none; }
-  body[data-mode="dollhouse"] #info .row { display: none; }
+  /* mode visibility: the plan edits, the 3D view looks */
+  body[data-mode="view"] #fab,
+  body[data-mode="view"] #edge-tools { display: none; }
+  body[data-mode="plan"] #view-tools { display: none; }
+  /* 3D is read-only, so the sheet there carries no edit affordances */
+  body[data-mode="view"] #info .row { display: none; }
+  /* the dollhouse toggle reads as pressed while it is on */
+  #btn-doll.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
   /* ---- site plan: full-bleed pan/zoom workspace, swaps in for the 3D scene ---- */
   #site-panel {
@@ -280,14 +289,22 @@
     cursor: grab;
   }
   #site-panel:active { cursor: grabbing; }
-  body[data-mode="site"] #site-panel { display: block; }
-  #site-svg {
+  /* over something draggable, the paper stops offering to pan */
+  #site-panel.over-object, #site-panel.over-object:active { cursor: move; }
+  body[data-mode="plan"] #site-panel { display: block; }
+  #site-stage {
     position: absolute;
     top: 0; left: 0;
     transform-origin: 0 0;
     will-change: transform;
   }
-  #site-svg svg { display: block; }
+  #site-svg, #site-chrome { position: absolute; top: 0; left: 0; }
+  #site-chrome { pointer-events: none; }
+  #site-svg svg, #site-chrome svg { display: block; }
+  /* mid-drag the sheet's settled marks would be stale, so the live
+     chrome overlay speaks for them until the unit lands */
+  body.plan-dragging #site-svg #sep-layer,
+  body.plan-dragging #site-svg #dim-layer { display: none; }
 
   /* ---- parts list modal ---- */
   #parts-modal {
@@ -399,10 +416,21 @@
     flex-direction: column;
     gap: 0.65rem;
   }
-  #edge-tools { left: 0.75rem; }
+  /* Undo and redo used to float halfway down the left edge, on top of the
+     drawing, where they swallowed taps on any unit beneath them. They now sit
+     in the bottom-left stack with the other chrome, in reading order. */
+  #edge-tools {
+    left: 0.9rem;
+    top: auto;
+    transform: none;
+    bottom: calc(5.4rem + var(--sab));
+    z-index: 5;
+    flex-direction: row;
+    gap: 0.4rem;
+  }
   #view-tools { right: 0.75rem; }
   #edge-tools button, #view-tools button, #compass {
-    width: 2.8rem; height: 2.8rem;
+    width: 44px; height: 44px;
     border-radius: 50%;
     border: 1px solid var(--line);
     background: var(--panel);
@@ -411,7 +439,9 @@
     display: grid;
     place-items: center;
   }
-  #edge-tools button:disabled { opacity: 0.35; }
+  /* the tool strip lands in this band while something is selected */
+  body.has-selection[data-mode="plan"] #edge-tools { bottom: calc(9.2rem + var(--sab)); }
+  #edge-tools button:disabled { opacity: 0.55; }
   #edge-tools button:not(:disabled):active,
   #view-tools button:active { border-color: var(--accent); color: var(--accent); }
   #compass { position: relative; }
@@ -469,27 +499,42 @@
   }
   body.sheet-open #info { transform: translateY(0); }
 
-  /* ---- unified selection bar (compose mode) ---- */
+  /* ---- unified selection bar (plan mode) ---- */
   #toolstrip {
     position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: calc(0.75rem + var(--sab));
+    /* Centred by auto margins rather than left:50% + translateX. With
+       left:50% the shrink-to-fit width is only the half-viewport to the right
+       of the midpoint, so the strip could never lay out wider than 195px on a
+       390px phone — it wrapped, and at 2x text it pushed Delete off-screen. */
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    width: fit-content;
+    /* clears the stats pill, which it used to bury for the whole of an edit */
+    bottom: calc(4rem + var(--sab));
     max-width: calc(100vw - 1.5rem);
     z-index: 6;
     display: none;
     align-items: center;
-    gap: 0.1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.25rem;
     padding: 0.3rem 0.4rem;
-    border-radius: 999px;
+    border-radius: 1.4rem;
     border: 1px solid var(--line);
     background: var(--panel);
     box-shadow: var(--shadow);
   }
-  body.has-selection[data-mode="compose"] #toolstrip { display: flex; }
+  body.has-selection[data-mode="plan"] #toolstrip { display: flex; }
+  /* The sheet and the strip are both "the selected unit". They used to
+     coexist, and the strip won every tap over the sheet's Floor plan button —
+     so tapping Floor plan silently rotated the unit instead. */
+  body.sheet-open #toolstrip { display: none !important; }
   #toolstrip button {
     flex: none;
-    width: 2.6rem; height: 2.6rem;
+    /* fixed px, not rem: at 2x system text these grew until Delete, Duplicate
+       and Details were pushed off the right edge of the screen */
+    width: 44px; height: 44px;
     border: 0;
     border-radius: 50%;
     background: transparent;
@@ -618,6 +663,59 @@
     background: #fff;
   }
 
+  /* ---- mobile review fixes ---- */
+
+  /* A closed bottom sheet was hidden by transform alone, so it kept 14 live
+     tab stops scrolling around off-screen. */
+  #info, #add-sheet {
+    visibility: hidden;
+    transition: transform 220ms, visibility 0s 220ms;
+  }
+  body.sheet-open #info,
+  body.add-open #add-sheet { visibility: visible; transition-delay: 0s; }
+
+  /* There were no author focus styles at all. */
+  :where(button, a, [tabindex]):focus-visible {
+    outline: 3px solid #8c3b2e;
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+  }
+
+  /* Dismissing a sheet was a 25 px target in the hardest corner to reach. */
+  .x { width: 44px !important; height: 44px !important; }
+  .back { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
+  #btn-menu { width: 44px; height: 44px; }
+  #tabbar button { min-height: 44px; }
+  #stats-pill { min-height: 44px; }
+
+  /* Delete sat 1.6 px from Duplicate, against a ~45 px contact patch. */
+  #btn-delete { margin-left: 0.5rem; }
+
+  /* The drawer list has to scroll; only a mouse drags a row out of it. */
+  .add-row { touch-action: pan-y; }
+
+  /* Six 44 px buttons plus the unit name do not fit one phone row, and the
+     strip wrapped into a two-row slab over the drawing. The name is already
+     on the info sheet, so it steps aside first; wrapping stays as the
+     fallback at very large text rather than pushing Delete off-screen. */
+  @media (max-width: 460px) {
+    #toolstrip .div, #sel-name { display: none; }
+    #toolstrip { gap: 0.15rem; padding: 0.25rem 0.3rem; }
+    #btn-delete { margin-left: 0.3rem; }
+  }
+
+  /* The compass is a readout, not a control, and was styled as a button. */
+  #compass.readout { border-color: transparent; background: transparent; box-shadow: none; }
+
+  /* Mid-drag the settled findings are stale; the chrome overlay redraws them. */
+  body.plan-dragging #site-svg #findings-layer { display: none; }
+
+  #stats-pop tr.findings.warn td { color: #8c3b2e; font-weight: 700; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #info, #add-sheet, #toast { transition-duration: 1ms; }
+  }
+
   /* ---- toast ---- */
   #toast {
     position: fixed;
@@ -629,11 +727,13 @@
     padding: 0.45rem 0.9rem;
     border-radius: 999px;
     font-size: 0.76rem;
-    white-space: nowrap;
+    white-space: normal;
     opacity: 0;
     transition: opacity 200ms;
     pointer-events: none;
     z-index: 11;
+    max-width: min(30rem, calc(100vw - 2.5rem));
+    text-align: center;
   }
   #toast.show { opacity: 1; }
 
@@ -662,29 +762,34 @@
 <body>
 
 <header id="topbar" class="panel">
-  <a class="back" href="../../">←</a>
+  <a class="back" href="../../" aria-label="Back to all ideas">←</a>
   <h1>Container Compound</h1>
   <button id="btn-menu" aria-label="Menu">⋯</button>
 </header>
 
 <div id="menu" class="panel">
   <button id="btn-share">Share layout</button>
+  <button id="site-png">Download PNG</button>
+  <button id="site-svg-dl">Download SVG</button>
   <button id="btn-va">VA notes</button>
   <a id="menu-studio" href="plans/">Unit plan studio</a>
-  <button id="btn-reset">Reset compound</button>
+  <button id="btn-clear">Clear the acre</button>
+  <button id="btn-reset">Reset to the example</button>
 </div>
 
-<div id="tabbar">
-  <button data-mode="compose" class="active">Compose</button>
-  <button data-mode="dollhouse">Dollhouse</button>
-  <button data-mode="site">Site plan</button>
+<div id="tabbar" role="tablist" aria-label="View">
+  <button data-mode="plan" class="active" role="tab" aria-selected="true">Plan</button>
+  <button data-mode="view" role="tab" aria-selected="false">3D</button>
 </div>
 
 <div id="site-panel">
-  <div id="site-svg"><!-- populated by main.js --></div>
+  <div id="site-stage">
+    <div id="site-svg"><!-- the drawing; this is what exports --></div>
+    <div id="site-chrome"><!-- selection, guides, redlines; never exported --></div>
+  </div>
 </div>
 
-<div id="parts-modal">
+<div id="parts-modal" role="dialog" aria-modal="true" aria-label="Parts list">
   <div class="box">
     <h2>Parts list</h2>
     <div id="parts-list"><!-- populated by main.js --></div>
@@ -692,7 +797,7 @@
   </div>
 </div>
 
-<div id="plan-modal">
+<div id="plan-modal" role="dialog" aria-modal="true" aria-label="Unit floor plan">
   <div class="box">
     <h2 id="plan-title"></h2>
     <div class="sub" id="plan-sub"></div>
@@ -702,20 +807,21 @@
 </div>
 
 <div id="edge-tools">
-  <button id="btn-redo" aria-label="Redo" disabled>↪</button>
   <button id="btn-undo" aria-label="Undo" disabled>↩</button>
+  <button id="btn-redo" aria-label="Redo" disabled>↪</button>
 </div>
 
 <div id="view-tools">
+  <button id="btn-doll" aria-label="Dollhouse view: lift every roof" aria-pressed="false" title="Dollhouse: roofs on">⌂</button>
   <button id="btn-sun" aria-label="Cycle sun" title="Midday">☀</button>
-  <div id="compass" title="North"><span id="needle">↑</span><span class="n">N</span></div>
+  <div id="compass" class="readout" aria-hidden="true"><span id="needle">↑</span><span class="n">N</span></div>
   <button id="btn-fit" aria-label="Recenter view">⌖</button>
 </div>
 
 <div id="site-actions">
-  <button id="site-fit">⌖ Fit</button>
-  <button id="site-png">↓ PNG</button>
-  <button id="site-svg-dl">↓ SVG</button>
+  <button id="site-zoom-out" aria-label="Zoom out">−</button>
+  <button id="site-zoom-in" aria-label="Zoom in">+</button>
+  <button id="site-fit" aria-label="Fit the compound on screen">⌖</button>
 </div>
 
 <button id="stats-pill" class="panel">0 units</button>
@@ -727,6 +833,7 @@
     <tr><td>Enclosed area</td><td id="st-sqft">0 sq ft</td></tr>
     <tr><td>Deck area</td><td id="st-deck">0 sq ft</td></tr>
     <tr><td>Utility trenches</td><td id="st-trench">—</td></tr>
+    <tr class="findings"><td>Code findings</td><td id="st-findings">None</td></tr>
     <tr class="total"><td>Rough cost</td><td id="st-cost">$0</td></tr>
   </table>
   <div class="fine">Ballpark, fully fitted-out. Site work, utilities &amp; delivery extra.</div>
@@ -765,7 +872,7 @@
   <button id="btn-desel" aria-label="Deselect">✕</button>
   <span id="sel-name"></span>
   <span class="div"></span>
-  <button id="tool-move" class="active" aria-label="Move (drag the unit)">
+  <button id="tool-move" aria-pressed="false" aria-label="Move: tap the plan to place this unit">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>
   </button>
   <button id="btn-rotate" aria-label="Rotate 90°">⟳</button>
@@ -777,7 +884,7 @@
   <button id="btn-info" aria-label="Details">ⓘ</button>
 </div>
 
-<div id="va-modal">
+<div id="va-modal" role="dialog" aria-modal="true" aria-label="Virginia code notes">
   <div class="box">
     <h2>Designed within Virginia limits</h2>
     <ul>
@@ -805,7 +912,7 @@
   </div>
 </div>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js" } }
