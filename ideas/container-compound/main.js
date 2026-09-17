@@ -99,26 +99,37 @@ grid.material.opacity = 0.22;
 grid.position.y = 0.05;
 scene.add(grid);
 
-// gravel drive: a strip from the south edge toward the center
-const drive = new THREE.Mesh(
-  new THREE.PlaneGeometry(14, 96),
-  new THREE.MeshLambertMaterial({ color: 0xb6ae9f })
-);
-drive.rotation.x = -Math.PI / 2;
-drive.position.set(52, 0.04, 56);
-drive.receiveShadow = true;
-scene.add(drive);
-const drivePad = new THREE.Mesh(
-  new THREE.CircleGeometry(16, 24),
-  new THREE.MeshLambertMaterial({ color: 0xb6ae9f })
-);
-drivePad.rotation.x = -Math.PI / 2;
-drivePad.position.set(52, 0.045, 10);
-drivePad.receiveShadow = true;
-scene.add(drivePad);
+// ---- editable scenery: the gravel drive and the trees ----
+// Both are saved state, not fixtures: they move with the layout, ride the
+// share link and sit on the undo stack. The parcel itself stays a fixed acre.
 
-function tree(x, z, s) {
+const DRIVE_LEN = 96, DRIVE_WID = 14, PAD_R = 16, PAD_OFF = -46;
+const DEFAULT_DRIVE = { x: 52, z: 56, rot: 0 };
+const DEFAULT_TREES = [
+  [-88, -78, 1.5], [-70, -92, 1.1], [-95, -30, 1.2], [-84, 30, 1.6], [-92, 72, 1.0],
+  [-60, 88, 1.3], [-10, 94, 1.1], [24, 90, 1.5], [88, 84, 1.2], [94, 40, 1.0],
+  [92, -32, 1.4], [80, -80, 1.6], [40, -92, 1.0], [-30, -95, 1.3], [8, -88, 0.9],
+];
+
+let drive = { ...DEFAULT_DRIVE };
+let trees = DEFAULT_TREES.map(([x, z, s], i) => ({ id: i + 1, x, z, s }));
+let nextTreeId = trees.length + 1;
+
+// the drive's turnaround pad, in world feet, for hit tests and the plan
+function padCenter(d = drive) {
+  const [dx, dz] = DIRS[d.rot % 4];
+  // local +z maps to world by the same rotation the mesh group uses
+  return { x: d.x - dz * PAD_OFF, z: d.z + dx * PAD_OFF };
+}
+
+const sceneryRoot = new THREE.Group();
+scene.add(sceneryRoot);
+
+const gravelMat = new THREE.MeshLambertMaterial({ color: 0xb6ae9f });
+
+function buildTree(t) {
   const g = new THREE.Group();
+  const s = t.s;
   const trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(0.5 * s, 0.7 * s, 7 * s, 6),
     new THREE.MeshLambertMaterial({ color: 0x7a5c3e })
@@ -136,15 +147,36 @@ function tree(x, z, s) {
     puff.castShadow = true;
     g.add(puff);
   }
-  g.position.set(x, 0, z);
-  scene.add(g);
+  g.position.set(t.x, 0, t.z);
+  return g;
 }
-const TREES = [
-  [-88, -78, 1.5], [-70, -92, 1.1], [-95, -30, 1.2], [-84, 30, 1.6], [-92, 72, 1.0],
-  [-60, 88, 1.3], [-10, 94, 1.1], [24, 90, 1.5], [88, 84, 1.2], [94, 40, 1.0],
-  [92, -32, 1.4], [80, -80, 1.6], [40, -92, 1.0], [-30, -95, 1.3], [8, -88, 0.9],
-];
-TREES.forEach(([x, z, s]) => tree(x, z, s));
+
+function rebuildScenery() {
+  for (const child of [...sceneryRoot.children]) {
+    child.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material && !Array.isArray(o.material)) o.material.dispose();
+    });
+    sceneryRoot.remove(child);
+  }
+
+  const driveG = new THREE.Group();
+  const strip = new THREE.Mesh(new THREE.PlaneGeometry(DRIVE_WID, DRIVE_LEN), gravelMat);
+  strip.rotation.x = -Math.PI / 2;
+  strip.position.y = 0.04;
+  strip.receiveShadow = true;
+  driveG.add(strip);
+  const pad = new THREE.Mesh(new THREE.CircleGeometry(PAD_R, 24), gravelMat);
+  pad.rotation.x = -Math.PI / 2;
+  pad.position.set(0, 0.045, PAD_OFF);
+  pad.receiveShadow = true;
+  driveG.add(pad);
+  driveG.position.set(drive.x, 0, drive.z);
+  driveG.rotation.y = (drive.rot * Math.PI) / 2;
+  sceneryRoot.add(driveG);
+
+  for (const t of trees) sceneryRoot.add(buildTree(t));
+}
 
 // ------------------------------------------------------------ unit meshes
 
@@ -466,9 +498,9 @@ function select(item) {
   sepEl.style.display = msgs.length ? "block" : "none";
   document.getElementById("btn-plan").style.display = t.deck ? "none" : "block";
   document.getElementById("sel-name").textContent = t.name;
-  // compose: selection shows the tool strip; the sheet opens via the name chip.
-  // dollhouse: tap goes straight to the (view-only) sheet.
-  if (mode === "dollhouse") document.body.classList.add("sheet-open");
+  // plan: selection shows the tool strip; the sheet opens via the name chip.
+  // 3D: a tap goes straight to the (read-only) sheet.
+  if (mode === "view") document.body.classList.add("sheet-open");
   updateSelDims();
 }
 document.getElementById("btn-info").addEventListener("click", () =>
@@ -476,17 +508,17 @@ document.getElementById("btn-info").addEventListener("click", () =>
 document.getElementById("btn-desel").addEventListener("click", () => select(null));
 
 // find an open spot near the center for a newly added unit
-function findSpot(type) {
+function findSpot(type, ox = 0, oz = 0) {
   const step = 4;
   for (let r = 0; r < 26; r++) {
     for (let a = 0; a < Math.max(1, r * 8); a++) {
       const ang = (a / Math.max(1, r * 8)) * Math.PI * 2;
-      const x = Math.round((Math.cos(ang) * r * step) / 1) * 1;
-      const z = Math.round((Math.sin(ang) * r * step) / 1) * 1;
+      const x = Math.round(ox + Math.cos(ang) * r * step);
+      const z = Math.round(oz + Math.sin(ang) * r * step);
       if (isFree(x, z, type)) return { x, z };
     }
   }
-  return { x: 0, z: 0 };
+  return { x: Math.round(ox), z: Math.round(oz) };
 }
 function isFree(x, z, type) {
   const hw = type.len / 2 + 1, hd = type.wid / 2 + 1;
@@ -504,7 +536,12 @@ function isFree(x, z, type) {
 const LS_KEY = "container-compound-v1";
 
 function serialize() {
-  return { v: 1, items: items.map((i) => [i.typeId, i.x, i.z, i.rot]) };
+  return {
+    v: 2,
+    items: items.map((i) => [i.typeId, i.x, i.z, i.rot]),
+    trees: trees.map((t) => [t.x, t.z, t.s]),
+    drive: [drive.x, drive.z, drive.rot],
+  };
 }
 function save() {
   try { localStorage.setItem(LS_KEY, JSON.stringify(serialize())); } catch {}
@@ -518,8 +555,25 @@ function loadFrom(data) {
       if (TYPE_BY_ID[typeId]) addItem(typeId, x, z, rot | 0, { silent: true });
     }
   }
+  // v1 payloads carry no scenery — every share link already in the wild, and
+  // every browser still holding a v1 layout, falls back to the default acre.
+  if (Array.isArray(data?.trees)) {
+    trees = data.trees.map(([x, z, s], i) => ({ id: i + 1, x, z, s: s || 1.2 }));
+    nextTreeId = trees.length + 1;
+  } else {
+    trees = DEFAULT_TREES.map(([x, z, s], i) => ({ id: i + 1, x, z, s }));
+    nextTreeId = trees.length + 1;
+  }
+  if (Array.isArray(data?.drive)) {
+    const [x, z, rot] = data.drive;
+    drive = { x, z, rot: (rot | 0) % 4 };
+  } else {
+    drive = { ...DEFAULT_DRIVE };
+  }
+  rebuildScenery();
   save();
   updateStats();
+  if (mode === "plan") renderSitePlan();
 }
 
 function encodeShare() {
@@ -556,22 +610,35 @@ const EXAMPLE = {
 
 // --------------------------------------------------------------------- UI
 
-// ---- modes: compose (edit) / dollhouse (inspect) / parts (list) ----
-let mode = "compose";
-document.body.dataset.mode = "compose";
+// ---- modes: plan (the editor) / view (3D, read-only) ----
+// Everything that changes the compound happens on the plan sheet. The 3D
+// view inspects: orbit, sun, a dollhouse toggle, and tap-to-select.
+let mode = "plan";
+let dollhouseOn = false;
+document.body.dataset.mode = "plan";
 function setMode(m) {
   if (mode === m) return;
   mode = m;
   document.body.dataset.mode = m;
   for (const b of document.querySelectorAll("#tabbar button"))
     b.classList.toggle("active", b.dataset.mode === m);
-  select(null);
   closeAdd();
   clearDragLabels();
-  if (m === "site") renderSitePlan();
+  document.body.classList.remove("sheet-open");
+  // selection survives the switch, so you land on the same unit
+  if (m === "plan") renderSitePlan();
+  else { updateSelDims(); renderChrome(); }
 }
 for (const b of document.querySelectorAll("#tabbar button"))
   b.addEventListener("click", () => setMode(b.dataset.mode));
+
+const btnDoll = document.getElementById("btn-doll");
+btnDoll.addEventListener("click", () => {
+  dollhouseOn = !dollhouseOn;
+  btnDoll.classList.toggle("on", dollhouseOn);
+  btnDoll.title = dollhouseOn ? "Dollhouse: roofs lifted" : "Dollhouse: roofs on";
+  toast(dollhouseOn ? "Dollhouse — every roof lifted" : "Roofs back on");
+});
 
 const addList = document.getElementById("add-list");
 const openAdd = () => { select(null); document.body.classList.add("add-open"); };
@@ -579,6 +646,9 @@ const closeAdd = () => document.body.classList.remove("add-open");
 document.getElementById("fab").addEventListener("click", openAdd);
 document.getElementById("add-close").addEventListener("click", closeAdd);
 document.getElementById("add-backdrop").addEventListener("click", closeAdd);
+
+// drag-out-of-the-drawer placement state
+let pendingAdd = null;
 
 const ADD_GROUPS = [
   { label: "20′ high cubes — habitable", match: (t) => !t.deck && t.len === 20 },
@@ -604,15 +674,48 @@ for (const group of ADD_GROUPS) {
         <div class="add-meta">${meta}</div>
         <div class="add-desc">${t.desc}</div>
       </span>`;
+    // drag it onto the sheet to choose where it lands; a plain click still
+    // drops it on the nearest free ground under the middle of the view
+    row.addEventListener("pointerdown", (e) => {
+      pendingAdd = { type: t, from: { x: e.clientX, y: e.clientY }, armed: false };
+    });
     row.addEventListener("click", () => {
       pushUndo();
-      const spot = findSpot(t);
+      const c = viewCenterWorld();
+      const spot = findSpot(t, c.x, c.z);
       const item = addItem(t.id, spot.x, spot.z, 0);
       closeAdd();
       select(item);
+      renderSitePlan();
     });
     addList.appendChild(row);
   }
+}
+
+// a tree is scenery, not a unit, so it gets its own row under Site
+{
+  const row = document.createElement("button");
+  row.className = "add-row";
+  row.innerHTML = `<span class="add-chip mini" style="background:#6b8a55"></span>
+    <span>
+      <div class="add-name">Tree</div>
+      <div class="add-meta">Existing canopy · shade and screening</div>
+      <div class="add-desc">Drag onto the plan to place. Drag a tree to move it, double-tap to clear it.</div>
+    </span>`;
+  const TREE_TYPE = { id: "__tree", name: "Tree", deck: true, len: 12, wid: 12 };
+  row.addEventListener("pointerdown", (e) => {
+    pendingAdd = { type: TREE_TYPE, from: { x: e.clientX, y: e.clientY }, armed: false };
+  });
+  row.addEventListener("click", () => {
+    pushUndo();
+    const c = viewCenterWorld();
+    trees.push({ id: nextTreeId++, x: Math.round(c.x), z: Math.round(c.z), s: 1.2 });
+    rebuildScenery();
+    closeAdd();
+    save();
+    renderSitePlan();
+  });
+  addList.appendChild(row);
 }
 
 // ---- undo / redo ----
@@ -673,24 +776,26 @@ for (const id of ["btn-share", "btn-va", "btn-reset"])
     document.body.classList.remove("menu-open"));
 
 document.getElementById("btn-dup").addEventListener("click", () => {
-  if (!selected || mode !== "compose") return;
+  if (!selected || mode !== "plan") return;
   pushUndo();
   const t = TYPE_BY_ID[selected.typeId];
-  const spot = findSpot(t);
+  const spot = findSpot(t, selected.x, selected.z); // land beside the original
   const item = addItem(selected.typeId, spot.x, spot.z, selected.rot);
   select(item);
+  renderSitePlan();
 });
 
 document.getElementById("btn-rotate").addEventListener("click", rotateSelected);
 document.getElementById("btn-delete").addEventListener("click", () => {
-  if (!selected || mode !== "compose") return;
+  if (!selected || mode !== "plan") return;
   pushUndo();
   removeItem(selected);
+  renderSitePlan();
   toast("Deleted — ↩ to undo");
 });
 document.getElementById("btn-close").addEventListener("click", () => {
   document.body.classList.remove("sheet-open");
-  if (mode === "dollhouse") select(null);
+  if (mode === "view") select(null);
 });
 document.getElementById("stats-pill").addEventListener("click", () =>
   document.getElementById("stats-pop").classList.toggle("open"));
@@ -717,7 +822,7 @@ document.getElementById("btn-share").addEventListener("click", async () => {
 });
 
 function rotateSelected() {
-  if (!selected || mode !== "compose") return;
+  if (!selected || mode !== "plan") return;
   const preBlocked = blockedPairs().length;
   pushUndo();
   selected.rot = (selected.rot + 1) % 4;
@@ -732,6 +837,7 @@ function rotateSelected() {
   save();
   updateStats();
   select(selected); // refresh separation/plumbing hints
+  if (mode === "plan") renderSitePlan();
 }
 
 addEventListener("keydown", (e) => {
@@ -740,10 +846,11 @@ addEventListener("keydown", (e) => {
     e.preventDefault(); redo();
   } else if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
   else if (e.key === "r" || e.key === "R") rotateSelected();
-  else if ((e.key === "Delete" || e.key === "Backspace") && selected && mode === "compose") {
+  else if ((e.key === "Delete" || e.key === "Backspace") && selected && mode === "plan") {
     e.preventDefault();
     pushUndo();
     removeItem(selected);
+    renderSitePlan();
     toast("Deleted — ↩ to undo");
   } else if (e.key === "Escape") { closeAdd(); select(null); }
 });
@@ -939,27 +1046,10 @@ scene.add(dragLabelGroup, selDimGroup);
 function clearDragLabels() {
   for (const c of [...dragLabelGroup.children]) dragLabelGroup.remove(c);
 }
-// gap distances from the dragged unit to its nearest neighbors
-function updateDragLabels(it) {
-  clearDragLabels();
-  if (TYPE_BY_ID[it.typeId].deck) return;
-  const near = items
-    .filter((o) => o !== it && !TYPE_BY_ID[o.typeId].deck)
-    .map((o) => ({ o, gap: gapBetween(it, o) }))
-    .filter((e) => e.gap < 26)
-    .sort((a, b) => a.gap - b.gap)
-    .slice(0, 3);
-  for (const { o, gap } of near) {
-    const danger = gap > JOIN_EPS && gap < SEP_CLEAR;
-    const s = dimSprite(gap <= JOIN_EPS ? "butt" : `${Math.round(gap)}′`, danger);
-    s.position.set((it.x + o.x) / 2, 6, (it.z + o.z) / 2);
-    dragLabelGroup.add(s);
-  }
-}
 // footprint dimensions of the selected unit
 function updateSelDims() {
   for (const c of [...selDimGroup.children]) selDimGroup.remove(c);
-  if (!selected || mode !== "compose") return;
+  if (!selected || mode !== "view") return;
   const t = TYPE_BY_ID[selected.typeId];
   if (t.deck) return;
   const [hw, hd] = halfDims(selected);
@@ -975,17 +1065,12 @@ function updateSelDims() {
   selDimGroup.add(lenLabel, widLabel);
 }
 
-// ------------------------------------------------------- picking & dragging
+// -------------------------------------------------------------- picking
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
-const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-let dragging = null;
-let dragOffset = new THREE.Vector3();
 let downPos = null;
 let moved = false;
-let dragSnapshot = null;
-let preBlocked = 0;
 
 function itemAt(clientX, clientY) {
   pointer.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
@@ -1005,71 +1090,23 @@ function itemAt(clientX, clientY) {
   return best;
 }
 
-function groundPoint(clientX, clientY) {
-  pointer.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
-  raycaster.setFromCamera(pointer, camera);
-  const p = new THREE.Vector3();
-  return raycaster.ray.intersectPlane(groundPlane, p) ? p : null;
-}
-
+// 3D is read-only: a press selects (and opens the sheet), nothing moves.
 renderer.domElement.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
-  const it = itemAt(e.clientX, e.clientY);
   downPos = { x: e.clientX, y: e.clientY };
   moved = false;
-  if (it && mode === "compose") {
-    dragging = it;
-    dragSnapshot = JSON.stringify(serialize());
-    preBlocked = blockedPairs().length;
-    controls.enabled = false;
-    const p = groundPoint(e.clientX, e.clientY);
-    if (p) dragOffset.set(it.x - p.x, 0, it.z - p.z);
-    renderer.domElement.setPointerCapture(e.pointerId);
-  }
 });
 
 renderer.domElement.addEventListener("pointermove", (e) => {
-  if (!dragging || !downPos) return;
-  if (!moved && Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 4) {
-    moved = true;
-    undoStack.push(dragSnapshot); // pre-drag state, one undo step per drag
-    if (undoStack.length > 60) undoStack.shift();
-    redoStack.length = 0;
-    updateHistoryButtons();
-  }
-  if (!moved) return;
-  const p = groundPoint(e.clientX, e.clientY);
-  if (!p) return;
-  dragging.x = Math.round(p.x + dragOffset.x);
-  dragging.z = Math.round(p.z + dragOffset.z);
-  applyTransform(dragging);
-  updateCompliance(); // live separation + trench feedback while dragging
-  updateDragLabels(dragging);
-  if (dragging === selected) updateSelDims();
+  if (!downPos || moved) return;
+  if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 4) moved = true;
 });
 
 renderer.domElement.addEventListener("pointerup", (e) => {
-  if (dragging) {
-    if (moved) {
-      if (blockedPairs().length > preBlocked) {
-        const snap = undoStack.pop(); // the pre-drag snapshot
-        loadFrom(JSON.parse(snap));
-        updateHistoryButtons();
-        toast("That blocks a door wall — butt against solid sides only");
-      } else {
-        save();
-        updateStats();
-        if (selected) select(selected); // refresh plumbing/separation hints
-      }
-    } else select(selected === dragging ? null : dragging);
-    clearDragLabels();
-    dragging = null;
-    controls.enabled = true;
-  } else if (downPos && !moved) {
-    // click without a drag: select in dollhouse, deselect on empty ground
+  // an orbit drag is not a tap, so it must not change the selection
+  if (downPos && !moved) {
     const it = itemAt(e.clientX, e.clientY);
-    if (mode === "dollhouse") select(it && !TYPE_BY_ID[it.typeId].deck ? it : null);
-    else if (!it) select(null);
+    select(it && !TYPE_BY_ID[it.typeId].deck ? it : null);
   }
   downPos = null;
 });
@@ -1139,11 +1176,30 @@ const SHORT_NAME = {
   deck: "",
 };
 
-const SP_S = 8; // px per foot
+const SP_S = 8; // px per foot at 1x zoom
+const SP_M = 60; // sheet margin, px
+const SP_HALF = 104.5; // one acre, ~209 ft square
+const SP_MINX = -SP_HALF - 8, SP_MAXX = SP_HALF + 8;
+const SP_MINZ = -SP_HALF - 8, SP_MAXZ = SP_HALF + 8;
+const SP_W = (SP_MAXX - SP_MINX) * SP_S + SP_M * 2;
+const SP_H = (SP_MAXZ - SP_MINZ) * SP_S + SP_M * 2;
+// world feet <-> sheet pixels
+const spX = (x) => SP_M + (x - SP_MINX) * SP_S;
+const spY = (z) => SP_M + (z - SP_MINZ) * SP_S;
+const spInvX = (px) => (px - SP_M) / SP_S + SP_MINX;
+const spInvZ = (py) => (py - SP_M) / SP_S + SP_MINZ;
 const FONT = "ui-sans-serif, system-ui";
 
-// one unit (or deck) drawn architecturally in local coords, rotated into place
-function unitPlanGroup(it) {
+// Above this zoom the sheet stops drawing units as coarse footprints and
+// starts drawing them at floor-plan fidelity, so zooming from the whole
+// parcel down to one unit is continuous.
+const DETAIL_K = 2.0;
+let detailOn = false;
+
+// one unit (or deck) drawn architecturally in local coords, rotated into place.
+// `detail` is the zoomed-in reading: furniture labels, the finished-interior
+// line, egress arrows and the unit's own dimension string.
+function unitPlanGroup(it, detail) {
   const t = TYPE_BY_ID[it.typeId];
   const S = SP_S;
   const hw = (t.len / 2) * S, hd = (t.wid / 2) * S;
@@ -1160,10 +1216,19 @@ function unitPlanGroup(it) {
     g += `<rect x="${-hw}" y="${-hd}" width="${hw * 2}" height="${hd * 2}" fill="#ffffff" stroke="#23231f" stroke-width="2.6"/>`;
     g += `<rect x="${-hw + 3}" y="${-hd + 3}" width="${hw * 2 - 6}" height="${hd * 2 - 6}" fill="#${t.color.toString(16).padStart(6, "0")}" fill-opacity="0.16" stroke="#55524c" stroke-width="0.8"/>`;
 
-    // furniture outlines
-    for (const f of t.furniture) {
-      g += `<rect x="${(f.x - f.w / 2) * S}" y="${(f.z - f.d / 2) * S}" width="${f.w * S}" height="${f.d * S}" rx="1.5" fill="#f2efe9" stroke="#55524c" stroke-width="0.9"/>`;
+    // the finished interior after spray foam, only worth drawing up close
+    if (detail) {
+      g += `<rect x="${(-t.len / 2 + 0.55) * S}" y="${(-t.wid / 2 + 0.42) * S}" width="${(t.len - 1.1) * S}" height="${(t.wid - 0.84) * S}" fill="none" stroke="#b8b2a6" stroke-width="0.9" stroke-dasharray="4 3"/>`;
     }
+
+    // furniture outlines, labelled once there is room for the words
+    const labels = PLAN_LABELS[t.id] || [];
+    t.furniture.forEach((f, i) => {
+      g += `<rect x="${(f.x - f.w / 2) * S}" y="${(f.z - f.d / 2) * S}" width="${f.w * S}" height="${f.d * S}" rx="1.5" fill="#f2efe9" stroke="#55524c" stroke-width="0.9"/>`;
+      if (detail && labels[i] && f.w * S > 30) {
+        g += `<text x="${f.x * S}" y="${f.z * S + 2.5}" text-anchor="middle" font-size="5.5" fill="#55524c" font-family="${FONT}">${labels[i]}</text>`;
+      }
+    });
 
     // glazed apertures + door swings
     const ends = t.variant === "tunnel" ? [1, -1] : [1];
@@ -1176,19 +1241,30 @@ function unitPlanGroup(it) {
     if (t.variant === "openside") {
       g += `<line x1="${-hw + 5}" y1="${hd - 2}" x2="${hw - 5}" y2="${hd - 2}" stroke="#4a90c2" stroke-width="2.2"/>`;
     }
+
+    // egress arrows out through each aperture, and the unit's own dimension
+    if (detail) {
+      for (const e of ends) {
+        g += `<line x1="${e * (hw - 3.4 * S)}" y1="${-1.6 * S}" x2="${e * (hw + 1.2 * S)}" y2="${-1.6 * S}" stroke="#c0574a" stroke-width="1.3" marker-end="url(#sp-arr)"/>`;
+      }
+      const dy = hd + 13;
+      g += `<line x1="${-hw}" y1="${dy}" x2="${hw}" y2="${dy}" stroke="#77746c" stroke-width="0.8"/>`;
+      g += `<line x1="${-hw}" y1="${dy - 3}" x2="${-hw}" y2="${dy + 3}" stroke="#77746c" stroke-width="0.8"/>`;
+      g += `<line x1="${hw}" y1="${dy - 3}" x2="${hw}" y2="${dy + 3}" stroke="#77746c" stroke-width="0.8"/>`;
+      g += `<text x="0" y="${dy - 3}" text-anchor="middle" font-size="6.5" fill="#55524c" font-family="${FONT}">${t.len}′-0″</text>`;
+    }
   }
   return g;
 }
 
-function renderSitePlan() {
+function renderSitePlan(opts = {}) {
   updateCompliance();
-  const S = SP_S, M = 60;
-  const HALF = 104.5; // one acre, ~209 ft square
-  const minX = -HALF - 8, maxX = HALF + 8, minZ = -HALF - 8, maxZ = HALF + 8;
-  const X = (x) => M + (x - minX) * S;
-  const Y = (z) => M + (z - minZ) * S;
-  const width = (maxX - minX) * S + M * 2;
-  const height = (maxZ - minZ) * S + M * 2;
+  const S = SP_S, M = SP_M, HALF = SP_HALF;
+  const minX = SP_MINX, maxX = SP_MAXX, minZ = SP_MINZ, maxZ = SP_MAXZ;
+  const X = spX, Y = spY;
+  const width = SP_W, height = SP_H;
+  detailOn = sview.k >= DETAIL_K;
+  rendering = true;
   let s = "";
 
   // paper sheet with a soft shadow, sitting on the workspace
@@ -1208,12 +1284,15 @@ function renderSitePlan() {
   // property line (dash-dot) — the one-acre parcel
   s += `<rect x="${X(-HALF)}" y="${Y(-HALF)}" width="${HALF * 2 * S}" height="${HALF * 2 * S}" fill="none" stroke="#8a867c" stroke-width="1.6" stroke-dasharray="16 6 3 6"/>`;
 
-  // gravel drive
-  s += `<rect x="${X(45)}" y="${Y(8)}" width="${14 * S}" height="${96 * S}" fill="#e7e2d6" stroke="#cfc9ba" stroke-width="1"/>`;
-  s += `<circle cx="${X(52)}" cy="${Y(10)}" r="${16 * S}" fill="#e7e2d6" stroke="#cfc9ba" stroke-width="1"/>`;
+  // gravel drive (editable: the strip and its turnaround move together)
+  const pc = padCenter();
+  s += `<g id="drive-layer"><circle cx="${X(pc.x)}" cy="${Y(pc.z)}" r="${PAD_R * S}" fill="#e7e2d6" stroke="#cfc9ba" stroke-width="1"/>`;
+  s += `<g transform="translate(${X(drive.x)} ${Y(drive.z)}) rotate(${-drive.rot * 90})">`;
+  s += `<rect x="${-DRIVE_WID / 2 * S}" y="${-DRIVE_LEN / 2 * S}" width="${DRIVE_WID * S}" height="${DRIVE_LEN * S}" fill="#e7e2d6" stroke="#cfc9ba" stroke-width="1"/>`;
+  s += `</g></g>`;
 
   // tree canopies
-  for (const [tx, tz, ts] of TREES) {
+  for (const { x: tx, z: tz, s: ts } of trees) {
     s += `<circle cx="${X(tx)}" cy="${Y(tz)}" r="${6 * ts * S}" fill="#7c9464" fill-opacity="0.14" stroke="#7c9464" stroke-width="1"/>`;
     s += `<circle cx="${X(tx)}" cy="${Y(tz)}" r="2" fill="#5f7350"/>`;
   }
@@ -1239,23 +1318,35 @@ function renderSitePlan() {
   const drawOrder = [...items].sort((a, b) =>
     (TYPE_BY_ID[a.typeId].deck ? 0 : 1) - (TYPE_BY_ID[b.typeId].deck ? 0 : 1));
   for (const it of drawOrder) {
-    s += `<g transform="translate(${X(it.x)} ${Y(it.z)}) rotate(${-it.rot * 90})">${unitPlanGroup(it)}</g>`;
+    s += `<g id="u${it.id}" transform="translate(${X(it.x)} ${Y(it.z)}) rotate(${-it.rot * 90})">${unitPlanGroup(it, detailOn)}</g>`;
   }
-  // labels drawn unrotated, above everything
+  // labels drawn unrotated, above everything. Zoomed in, the room name moves
+  // off the footprint so it stops sitting on top of the furniture labels.
   for (const it of items) {
     const t = TYPE_BY_ID[it.typeId];
     if (t.deck) continue;
     const label = SHORT_NAME[it.typeId] || t.name;
-    s += `<text x="${X(it.x)}" y="${Y(it.z) - 2}" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="1.1" fill="#23231f" font-family="${FONT}">${label.toUpperCase()}</text>`;
-    s += `<text x="${X(it.x)}" y="${Y(it.z) + 10}" text-anchor="middle" font-size="8.5" fill="#77746c" font-family="${FONT}">${t.len * t.wid} SF</text>`;
+    // the label rides in its own group so a drag carries it with the unit
+    let inner;
+    if (detailOn) {
+      const [, hd] = halfDims(it);
+      inner = `<text x="0" y="${-hd * S - 7}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="1.1" fill="#23231f" font-family="${FONT}">${label.toUpperCase()} · ${t.len * t.wid} SF</text>`;
+    } else {
+      inner = `<text x="0" y="-2" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="1.1" fill="#23231f" font-family="${FONT}">${label.toUpperCase()}</text>`
+        + `<text x="0" y="10" text-anchor="middle" font-size="8.5" fill="#77746c" font-family="${FONT}">${t.len * t.wid} SF</text>`;
+    }
+    s += `<g id="ul${it.id}" transform="translate(${X(it.x)} ${Y(it.z)})">${inner}</g>`;
   }
 
   // fire-separation conflicts
+  s += `<g id="sep-layer">`;
   for (const p of sepPairs) {
     const mx = (X(p.a.x) + X(p.b.x)) / 2, my = (Y(p.a.z) + Y(p.b.z)) / 2;
     s += `<line x1="${X(p.a.x)}" y1="${Y(p.a.z)}" x2="${X(p.b.x)}" y2="${Y(p.b.z)}" stroke="#c0574a" stroke-width="1.5"/>`;
     s += `<text x="${mx}" y="${my - 5}" text-anchor="middle" font-size="11" font-weight="700" fill="#c0574a" font-family="${FONT}">${Math.max(1, Math.round(p.gap))}′ △</text>`;
   }
+
+  s += `</g>`;
 
   // compound extent dimension strings
   let uMinX = Infinity, uMaxX = -Infinity, uMinZ = Infinity, uMaxZ = -Infinity;
@@ -1265,6 +1356,7 @@ function renderSitePlan() {
     uMinZ = Math.min(uMinZ, it.z - hd); uMaxZ = Math.max(uMaxZ, it.z + hd);
   }
   if (items.length) {
+    s += `<g id="dim-layer">`;
     const tick = (x, y, dx, dy) => `<line x1="${x - dx}" y1="${y - dy}" x2="${x + dx}" y2="${y + dy}" stroke="#77746c" stroke-width="1.1"/>`;
     const dy = Y(uMaxZ) + 30;
     s += `<line x1="${X(uMinX)}" y1="${dy}" x2="${X(uMaxX)}" y2="${dy}" stroke="#77746c" stroke-width="1.1"/>`;
@@ -1276,6 +1368,7 @@ function renderSitePlan() {
     s += `<line x1="${dx2}" y1="${Y(uMinZ)}" x2="${dx2}" y2="${Y(uMaxZ)}" stroke="#77746c" stroke-width="1.1"/>`;
     s += tick(dx2, Y(uMinZ), 5, 0) + tick(dx2, Y(uMaxZ), 5, 0);
     s += `<text x="${dx2 + 9}" y="${(Y(uMinZ) + Y(uMaxZ)) / 2}" text-anchor="middle" font-size="13" fill="#23231f" font-family="${FONT}" transform="rotate(90 ${dx2 + 9} ${(Y(uMinZ) + Y(uMaxZ)) / 2})">${Math.round(uMaxZ - uMinZ)}′-0″</text>`;
+    s += `</g>`;
   }
 
   // north arrow (north = up)
@@ -1305,15 +1398,22 @@ function renderSitePlan() {
   s += `<text x="${tbx + 22 + 20 * S}" y="${tby + 107}" font-size="9" fill="#55524c" font-family="${FONT}">20 FT</text>`;
 
   const svgW = Math.round(width), svgH = Math.round(height);
+  const defs = `<defs><marker id="sp-arr" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 z" fill="#c0574a"/></marker></defs>`;
   document.getElementById("site-svg").innerHTML =
-    `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">${s}</svg>`;
+    `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">${defs}${s}</svg>`;
+  siteApply();
 
   // fit the compound (fall back to the whole sheet) under the chrome
   siteFitBox = items.length
     ? { x0: X(uMinX) - 60, x1: X(uMaxX) + 70, y0: Y(uMinZ) - 60, y1: Y(uMaxZ) + 70 }
     : { x0: 0, x1: svgW, y0: 0, y1: svgH };
-  siteFitView();
+  // an edit must not yank the sheet back to a fitted view under your finger
+  if (opts.fit || !siteFitted) { siteFitted = true; siteFitView(); }
+  renderChrome();
+  rendering = false;
 }
+let siteFitted = false;
+let rendering = false;
 
 let siteFitBox = null;
 function siteFitView() {
@@ -1325,7 +1425,7 @@ function siteFitView() {
   sview.k = k;
   sview.x = (vw - k * (x0 + x1)) / 2;
   sview.y = topPad + ((vh - topPad - pad) - k * (y1 - y0)) / 2 - k * y0;
-  siteApply();
+  afterZoom();
 }
 document.getElementById("site-fit").addEventListener("click", siteFitView);
 
@@ -1336,14 +1436,24 @@ function downloadBlob(name, blob) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
-document.getElementById("site-svg-dl").addEventListener("click", () => {
+// the exported drawing is the sheet at its own scale, with no editing chrome
+// (that lives in a separate overlay) and no trace of the current zoom
+function sheetForExport() {
   const svg = document.querySelector("#site-svg svg");
+  if (!svg) return null;
+  const clone = svg.cloneNode(true);
+  clone.setAttribute("width", SP_W);
+  clone.setAttribute("height", SP_H);
+  return clone;
+}
+document.getElementById("site-svg-dl").addEventListener("click", () => {
+  const svg = sheetForExport();
   if (!svg) return;
   downloadBlob("container-compound-site-plan.svg",
     new Blob([svg.outerHTML], { type: "image/svg+xml" }));
 });
 document.getElementById("site-png").addEventListener("click", () => {
-  const svg = document.querySelector("#site-svg svg");
+  const svg = sheetForExport();
   if (!svg) return;
   const w = +svg.getAttribute("width"), h = +svg.getAttribute("height");
   const url = URL.createObjectURL(new Blob([svg.outerHTML], { type: "image/svg+xml" }));
@@ -1363,13 +1473,33 @@ document.getElementById("site-png").addEventListener("click", () => {
   toast("Rendering PNG…");
 });
 
-// ---- figma-style pan/zoom for the site plan ----
+// ------------------------------------------------- the plan sheet as editor
+//
+// Press a unit and drag to move it; press empty paper and drag to pan; wheel
+// or pinch to zoom. Nothing is armed, and there is no tool to remember.
+
 const sitePanelEl = document.getElementById("site-panel");
-const siteSvgEl = document.getElementById("site-svg");
+const siteStageEl = document.getElementById("site-stage");
+const siteChromeEl = document.getElementById("site-chrome");
 const sview = { x: 0, y: 0, k: 1 };
 const sitePtrs = new Map();
+
+// Zoom resizes the drawing rather than CSS-scaling it. Scaling the layer
+// makes the browser stretch a bitmap, which turns the small drafting text to
+// mush exactly when you have zoomed in to read it; giving the SVG its real
+// size re-renders the vectors instead. Panning stays a cheap translate.
 function siteApply() {
-  siteSvgEl.style.transform = `translate(${sview.x}px, ${sview.y}px) scale(${sview.k})`;
+  siteStageEl.style.transform = `translate(${sview.x}px, ${sview.y}px)`;
+  const w = Math.round(SP_W * sview.k), h = Math.round(SP_H * sview.k);
+  for (const svg of siteStageEl.querySelectorAll("svg")) {
+    svg.setAttribute("width", w);
+    svg.setAttribute("height", h);
+  }
+}
+// crossing the detail threshold redraws the sheet at the other fidelity
+function afterZoom() {
+  siteApply();
+  if (!rendering && (sview.k >= DETAIL_K) !== detailOn) renderSitePlan();
 }
 function siteZoomAt(px, py, f) {
   const k2 = Math.min(6, Math.max(0.1, sview.k * f));
@@ -1377,37 +1507,511 @@ function siteZoomAt(px, py, f) {
   sview.x = px - f * (px - sview.x);
   sview.y = py - f * (py - sview.y);
   sview.k = k2;
+  afterZoom();
+}
+function clientToWorld(cx, cy) {
+  return {
+    x: spInvX((cx - sview.x) / sview.k),
+    z: spInvZ((cy - sview.y) / sview.k),
+  };
+}
+function viewCenterWorld() {
+  return clientToWorld(innerWidth / 2, innerHeight / 2);
+}
+
+// ---- hit tests, in world feet ----
+
+function unitAtWorld(p) {
+  // containers read above decks; later items above earlier ones
+  const ordered = [...items].sort(
+    (a, b) => (TYPE_BY_ID[a.typeId].deck ? 0 : 1) - (TYPE_BY_ID[b.typeId].deck ? 0 : 1));
+  for (let i = ordered.length - 1; i >= 0; i--) {
+    const it = ordered[i];
+    const [hw, hd] = halfDims(it);
+    if (Math.abs(p.x - it.x) <= hw && Math.abs(p.z - it.z) <= hd) return it;
+  }
+  return null;
+}
+function treeAtWorld(p) {
+  for (let i = trees.length - 1; i >= 0; i--) {
+    const t = trees[i];
+    if (Math.hypot(p.x - t.x, p.z - t.z) <= 6 * t.s) return t;
+  }
+  return null;
+}
+function driveAtWorld(p) {
+  const pc = padCenter();
+  if (Math.hypot(p.x - pc.x, p.z - pc.z) <= PAD_R) return true;
+  const [dx, dz] = DIRS[drive.rot % 4];
+  const rx = p.x - drive.x, rz = p.z - drive.z;
+  const lx = rx * dx + rz * dz;
+  const lz = -rx * dz + rz * dx;
+  return Math.abs(lx) <= DRIVE_WID / 2 && Math.abs(lz) <= DRIVE_LEN / 2;
+}
+
+// Butted units are one structure — the 256 sq ft rule already treats them
+// that way — so dragging any member takes the whole cluster with it.
+function clusterOf(root) {
+  if (TYPE_BY_ID[root.typeId].deck) return [root];
+  const units = items.filter((i) => !TYPE_BY_ID[i.typeId].deck);
+  const set = new Set([root]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const u of units) {
+      if (set.has(u)) continue;
+      for (const m of set) {
+        if (gapBetween(u, m) <= JOIN_EPS) { set.add(u); grew = true; break; }
+      }
+    }
+  }
+  return [...set];
+}
+
+// ---- snapping ----
+
+const SNAP_FT = 1.8;
+let snapGuides = [];
+
+function snapMove(primary, rawX, rawZ, moving) {
+  const [hw, hd] = halfDims(primary);
+  snapGuides = [];
+  let bestX = null, bestZ = null;
+  for (const o of items) {
+    if (moving.has(o)) continue;
+    const [ow, od] = halfDims(o);
+    const overlapZ = Math.abs(rawZ - o.z) < hd + od;
+    const overlapX = Math.abs(rawX - o.x) < hw + ow;
+    const candX = [
+      { v: o.x, line: o.x },                    // centrelines align
+      { v: o.x - ow + hw, line: o.x - ow },     // near edges flush
+      { v: o.x + ow - hw, line: o.x + ow },     // far edges flush
+    ];
+    if (overlapZ) candX.push({ v: o.x - ow - hw }, { v: o.x + ow + hw }); // butt
+    for (const c of candX) {
+      const d = Math.abs(c.v - rawX);
+      if (d <= SNAP_FT && (!bestX || d < bestX.d)) bestX = { ...c, d };
+    }
+    const candZ = [
+      { v: o.z, line: o.z },
+      { v: o.z - od + hd, line: o.z - od },
+      { v: o.z + od - hd, line: o.z + od },
+    ];
+    if (overlapX) candZ.push({ v: o.z - od - hd }, { v: o.z + od + hd });
+    for (const c of candZ) {
+      const d = Math.abs(c.v - rawZ);
+      if (d <= SNAP_FT && (!bestZ || d < bestZ.d)) bestZ = { ...c, d };
+    }
+  }
+  const x = bestX ? bestX.v : Math.round(rawX);
+  const z = bestZ ? bestZ.v : Math.round(rawZ);
+  if (bestX && bestX.line !== undefined) snapGuides.push({ axis: "x", at: bestX.line });
+  if (bestZ && bestZ.line !== undefined) snapGuides.push({ axis: "z", at: bestZ.line });
+  return { x, z };
+}
+
+// the band of empty ground between two footprints, for dimensions and hatching
+function gapBand(a, b) {
+  const [aw, ad] = halfDims(a), [bw, bd] = halfDims(b);
+  const gx = Math.abs(a.x - b.x) - (aw + bw);
+  const gz = Math.abs(a.z - b.z) - (ad + bd);
+  if (gx >= gz) {
+    const s = Math.sign(b.x - a.x) || 1;
+    const e0 = a.x + s * aw, e1 = b.x - s * bw;
+    const o0 = Math.max(a.z - ad, b.z - bd), o1 = Math.min(a.z + ad, b.z + bd);
+    return {
+      axis: "x", gap: Math.max(0, gx), overlap: o1 - o0,
+      x0: Math.min(e0, e1), x1: Math.max(e0, e1),
+      z0: Math.min(o0, o1), z1: Math.max(o0, o1),
+    };
+  }
+  const s = Math.sign(b.z - a.z) || 1;
+  const e0 = a.z + s * ad, e1 = b.z - s * bd;
+  const o0 = Math.max(a.x - aw, b.x - bw), o1 = Math.min(a.x + aw, b.x + bw);
+  return {
+    axis: "z", gap: Math.max(0, gz), overlap: o1 - o0,
+    x0: Math.min(o0, o1), x1: Math.max(o0, o1),
+    z0: Math.min(e0, e1), z1: Math.max(e0, e1),
+  };
+}
+
+// ---- the chrome overlay ----
+//
+// Selection, snap guides, in-flight ghosts, drag dimensions and the code
+// redlines all live here, on top of the drawing and out of the export.
+
+let planDrag = null;
+let ghost = null; // { type, x, z, rot } while adding by drag
+
+function renderChrome() {
+  if (mode !== "plan") { siteChromeEl.innerHTML = ""; return; }
+  const X = spX, Y = spY, S = SP_S;
+  let s = "";
+
+  // code redlines: draw the problem where it happens
+  for (const p of sepPairs) {
+    const b = gapBand(p.a, p.b);
+    if (b.overlap > 0) {
+      s += `<rect x="${X(b.x0)}" y="${Y(b.z0)}" width="${Math.max(1, (b.x1 - b.x0) * S)}" height="${Math.max(1, (b.z1 - b.z0) * S)}" fill="url(#ch-hatch)" stroke="#c0574a" stroke-width="1" stroke-dasharray="4 3"/>`;
+    }
+  }
+  const seen = new Set();
+  for (const it of items) {
+    const j = joined.get(it.id);
+    if (!j || j.sqft <= 256) continue;
+    const members = clusterOf(it);
+    const key = members.map((m) => m.id).sort().join(",");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const m of members) {
+      const [hw, hd] = halfDims(m);
+      x0 = Math.min(x0, m.x - hw); x1 = Math.max(x1, m.x + hw);
+      z0 = Math.min(z0, m.z - hd); z1 = Math.max(z1, m.z + hd);
+    }
+    s += `<rect x="${X(x0) - 6}" y="${Y(z0) - 6}" width="${(x1 - x0) * S + 12}" height="${(z1 - z0) * S + 12}" fill="none" stroke="#c0574a" stroke-width="1.8" stroke-dasharray="10 5"/>`;
+    s += `<text x="${X((x0 + x1) / 2)}" y="${Y(z0) - 12}" text-anchor="middle" font-size="11" font-weight="700" fill="#c0574a" font-family="${FONT}">${j.count} JOINED · ${j.sqft} SF &gt; 256 SF EXEMPTION</text>`;
+  }
+  const cores = items.filter((i) => TYPE_BY_ID[i.typeId].core);
+  for (const w of items.filter((i) => TYPE_BY_ID[i.typeId].wet)) {
+    const near = cores.length
+      ? Math.min(...cores.map((c) => Math.hypot(c.x - w.x, c.z - w.z))) : Infinity;
+    if (near <= WET_RADIUS) continue;
+    const [, hd] = halfDims(w);
+    s += `<text x="${X(w.x)}" y="${Y(w.z + hd) + 16}" text-anchor="middle" font-size="10" font-weight="700" fill="#c0574a" font-family="${FONT}">△ ${cores.length ? `${Math.round(near)}′ TO CORE` : "NO UTILITY CORE"}</text>`;
+  }
+
+  // selection halo
+  if (selected) {
+    const [hw, hd] = halfDims(selected);
+    s += `<rect x="${X(selected.x - hw) - 5}" y="${Y(selected.z - hd) - 5}" width="${hw * 2 * S + 10}" height="${hd * 2 * S + 10}" rx="3" fill="none" stroke="#b3542e" stroke-width="2.2"/>`;
+  }
+
+  // in-flight: snap guides, then the gaps this move is creating
+  if (planDrag && planDrag.moved && planDrag.kind === "unit") {
+    for (const g of snapGuides) {
+      s += g.axis === "x"
+        ? `<line x1="${X(g.at)}" y1="0" x2="${X(g.at)}" y2="${SP_H}" stroke="#b3542e" stroke-width="1" stroke-dasharray="7 5" opacity="0.8"/>`
+        : `<line x1="0" y1="${Y(g.at)}" x2="${SP_W}" y2="${Y(g.at)}" stroke="#b3542e" stroke-width="1" stroke-dasharray="7 5" opacity="0.8"/>`;
+    }
+    s += dragDimsSVG(planDrag.primary, new Set(planDrag.members));
+  }
+
+  // the unit being dragged out of the drawer
+  if (ghost) {
+    const hw = (ghost.rot % 2 ? ghost.type.wid : ghost.type.len) / 2;
+    const hd = (ghost.rot % 2 ? ghost.type.len : ghost.type.wid) / 2;
+    s += `<rect x="${X(ghost.x - hw)}" y="${Y(ghost.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="#b3542e" fill-opacity="0.13" stroke="#b3542e" stroke-width="2" stroke-dasharray="6 4"/>`;
+    s += `<text x="${X(ghost.x)}" y="${Y(ghost.z) + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="#b3542e" font-family="${FONT}">${(SHORT_NAME[ghost.type.id] || ghost.type.name).toUpperCase()}</text>`;
+    for (const g of snapGuides) {
+      s += g.axis === "x"
+        ? `<line x1="${X(g.at)}" y1="0" x2="${X(g.at)}" y2="${SP_H}" stroke="#b3542e" stroke-width="1" stroke-dasharray="7 5" opacity="0.8"/>`
+        : `<line x1="0" y1="${Y(g.at)}" x2="${SP_W}" y2="${Y(g.at)}" stroke="#b3542e" stroke-width="1" stroke-dasharray="7 5" opacity="0.8"/>`;
+    }
+  }
+
+  const defs = `<defs><pattern id="ch-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+    <line x1="0" y1="0" x2="0" y2="7" stroke="#c0574a" stroke-width="2" opacity="0.38"/></pattern></defs>`;
+  siteChromeEl.innerHTML =
+    `<svg width="${SP_W}" height="${SP_H}" viewBox="0 0 ${SP_W} ${SP_H}" xmlns="http://www.w3.org/2000/svg">${defs}${s}</svg>`;
   siteApply();
 }
+
+// live gap dimensions from the moving unit to its nearest neighbours
+function dragDimsSVG(it, moving) {
+  const X = spX, Y = spY;
+  let s = "";
+  const near = items
+    .filter((o) => !moving.has(o) && !TYPE_BY_ID[o.typeId].deck)
+    .map((o) => ({ o, gap: gapBetween(it, o) }))
+    .filter((e) => e.gap < 30)
+    .sort((a, b) => a.gap - b.gap)
+    .slice(0, 3);
+  for (const { o, gap } of near) {
+    const b = gapBand(it, o);
+    const danger = gap > JOIN_EPS && gap < SEP_CLEAR;
+    const col = gap <= JOIN_EPS ? "#2f7a4f" : danger ? "#c0574a" : "#b3542e";
+    const mx = b.axis === "x" ? (X(b.x0) + X(b.x1)) / 2 : X((b.x0 + b.x1) / 2);
+    const my = b.axis === "x" ? Y((b.z0 + b.z1) / 2) : (Y(b.z0) + Y(b.z1)) / 2;
+    if (b.axis === "x") {
+      s += `<line x1="${X(b.x0)}" y1="${my}" x2="${X(b.x1)}" y2="${my}" stroke="${col}" stroke-width="1.4"/>`;
+      s += `<line x1="${X(b.x0)}" y1="${my - 5}" x2="${X(b.x0)}" y2="${my + 5}" stroke="${col}" stroke-width="1.4"/>`;
+      s += `<line x1="${X(b.x1)}" y1="${my - 5}" x2="${X(b.x1)}" y2="${my + 5}" stroke="${col}" stroke-width="1.4"/>`;
+    } else {
+      s += `<line x1="${mx}" y1="${Y(b.z0)}" x2="${mx}" y2="${Y(b.z1)}" stroke="${col}" stroke-width="1.4"/>`;
+      s += `<line x1="${mx - 5}" y1="${Y(b.z0)}" x2="${mx + 5}" y2="${Y(b.z0)}" stroke="${col}" stroke-width="1.4"/>`;
+      s += `<line x1="${mx - 5}" y1="${Y(b.z1)}" x2="${mx + 5}" y2="${Y(b.z1)}" stroke="${col}" stroke-width="1.4"/>`;
+    }
+    const label = gap <= JOIN_EPS ? "BUTT" : `${Math.round(gap)}′`;
+    s += `<rect x="${mx - 20}" y="${my - 20}" width="40" height="15" rx="3" fill="#fbfaf6" stroke="${col}" stroke-width="1"/>`;
+    s += `<text x="${mx}" y="${my - 9}" text-anchor="middle" font-size="10" font-weight="700" fill="${col}" font-family="${FONT}">${label}</text>`;
+  }
+  return s;
+}
+
+// move one unit's group on the sheet without redrawing the whole thing
+function moveUnitGroup(it) {
+  const g = document.getElementById(`u${it.id}`);
+  if (g) g.setAttribute("transform",
+    `translate(${spX(it.x)} ${spY(it.z)}) rotate(${-it.rot * 90})`);
+  const lab = document.getElementById(`ul${it.id}`);
+  if (lab) lab.setAttribute("transform", `translate(${spX(it.x)} ${spY(it.z)})`);
+}
+
+// ---- pointer handling ----
+
+let sitePanning = false;
+let lastTap = { t: 0, key: "" };
+let breakoutTimer = null;
+
+function beginUnitDrag(it, p, solo) {
+  const members = solo ? [it] : clusterOf(it);
+  planDrag = {
+    kind: "unit", primary: it, members, solo,
+    offs: members.map((m) => ({ m, dx: m.x - it.x, dz: m.z - it.z })),
+    grabX: it.x - p.x, grabZ: it.z - p.z,
+    snapshot: JSON.stringify(serialize()),
+    preBlocked: blockedPairs().length,
+    moved: false,
+  };
+}
+
 sitePanelEl.addEventListener("pointerdown", (e) => {
   sitePanelEl.setPointerCapture(e.pointerId);
   sitePtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (sitePtrs.size > 1) { // a second finger turns the gesture into a pinch
+    cancelPlanDrag();
+    sitePanning = false;
+    return;
+  }
+  const p = clientToWorld(e.clientX, e.clientY);
+  const it = unitAtWorld(p);
+  if (it) {
+    beginUnitDrag(it, p, e.altKey || e.shiftKey);
+    // held still, a press breaks one unit out of its cluster
+    breakoutTimer = setTimeout(() => {
+      if (planDrag && planDrag.kind === "unit" && !planDrag.moved && !planDrag.solo
+          && planDrag.members.length > 1) {
+        planDrag.members = [planDrag.primary];
+        planDrag.offs = [{ m: planDrag.primary, dx: 0, dz: 0 }];
+        planDrag.solo = true;
+        toast("Breaking out — this unit moves alone");
+      }
+    }, 450);
+    return;
+  }
+  const tr = treeAtWorld(p);
+  if (tr) {
+    planDrag = { kind: "tree", tree: tr, grabX: tr.x - p.x, grabZ: tr.z - p.z,
+                 snapshot: JSON.stringify(serialize()), moved: false };
+    return;
+  }
+  if (driveAtWorld(p)) {
+    planDrag = { kind: "drive", grabX: drive.x - p.x, grabZ: drive.z - p.z,
+                 snapshot: JSON.stringify(serialize()), moved: false };
+    return;
+  }
+  sitePanning = true;
 });
+
 sitePanelEl.addEventListener("pointermove", (e) => {
-  if (!sitePtrs.has(e.pointerId)) return;
+  if (!sitePtrs.has(e.pointerId)) {
+    if (!planDrag && !sitePanning) hoverCursor(e);
+    return;
+  }
   const prev = sitePtrs.get(e.pointerId);
   const cur = { x: e.clientX, y: e.clientY };
-  if (sitePtrs.size === 1) {
-    sview.x += cur.x - prev.x;
-    sview.y += cur.y - prev.y;
-    siteApply();
-  } else if (sitePtrs.size === 2) {
+  sitePtrs.set(e.pointerId, cur);
+
+  if (sitePtrs.size === 2) {
     const other = [...sitePtrs.entries()].find(([id]) => id !== e.pointerId)?.[1];
     if (other) {
       const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
       const d1 = Math.hypot(cur.x - other.x, cur.y - other.y);
       if (d0 > 0) siteZoomAt((cur.x + other.x) / 2, (cur.y + other.y) / 2, d1 / d0);
     }
+    return;
   }
-  sitePtrs.set(e.pointerId, cur);
+
+  if (planDrag) {
+    if (!planDrag.moved) {
+      if (Math.hypot(cur.x - prev.x, cur.y - prev.y) < 1) return;
+      planDrag.moved = true;
+      clearTimeout(breakoutTimer);
+      undoStack.push(planDrag.snapshot); // one undo step per drag
+      if (undoStack.length > 60) undoStack.shift();
+      redoStack.length = 0;
+      updateHistoryButtons();
+      document.body.classList.add("plan-dragging");
+    }
+    const p = clientToWorld(cur.x, cur.y);
+    if (planDrag.kind === "unit") {
+      const moving = new Set(planDrag.members);
+      const snapped = snapMove(planDrag.primary, p.x + planDrag.grabX, p.z + planDrag.grabZ, moving);
+      for (const { m, dx, dz } of planDrag.offs) {
+        m.x = snapped.x + dx;
+        m.z = snapped.z + dz;
+        applyTransform(m);
+        moveUnitGroup(m);
+      }
+      updateCompliance(); // live separation + trench feedback
+    } else if (planDrag.kind === "tree") {
+      planDrag.tree.x = Math.round(p.x + planDrag.grabX);
+      planDrag.tree.z = Math.round(p.z + planDrag.grabZ);
+      renderSitePlan();
+    } else if (planDrag.kind === "drive") {
+      drive.x = Math.round(p.x + planDrag.grabX);
+      drive.z = Math.round(p.z + planDrag.grabZ);
+      renderSitePlan();
+    }
+    renderChrome();
+    return;
+  }
+
+  if (sitePanning) {
+    sview.x += cur.x - prev.x;
+    sview.y += cur.y - prev.y;
+    siteApply();
+  }
 });
-const sitePtrEnd = (e) => sitePtrs.delete(e.pointerId);
-sitePanelEl.addEventListener("pointerup", sitePtrEnd);
+
+function hoverCursor(e) {
+  const p = clientToWorld(e.clientX, e.clientY);
+  const over = !!unitAtWorld(p) || !!treeAtWorld(p) || driveAtWorld(p);
+  sitePanelEl.classList.toggle("over-object", over);
+}
+
+function cancelPlanDrag() {
+  clearTimeout(breakoutTimer);
+  if (planDrag && planDrag.moved) {
+    loadFrom(JSON.parse(planDrag.snapshot));
+    undoStack.pop();
+    updateHistoryButtons();
+  }
+  planDrag = null;
+  snapGuides = [];
+  document.body.classList.remove("plan-dragging");
+}
+
+sitePanelEl.addEventListener("pointerup", (e) => {
+  sitePtrs.delete(e.pointerId);
+  clearTimeout(breakoutTimer);
+  const d = planDrag;
+  planDrag = null;
+  sitePanning = false;
+  document.body.classList.remove("plan-dragging");
+
+  if (d && d.moved) {
+    snapGuides = [];
+    if (d.kind === "unit" && blockedPairs().length > d.preBlocked) {
+      undoStack.pop();
+      updateHistoryButtons();
+      loadFrom(JSON.parse(d.snapshot));
+      toast("That blocks a door wall — butt against solid sides only");
+      return;
+    }
+    if (d.kind !== "unit") rebuildScenery();
+    save();
+    updateStats();
+    // the unit you just moved is the one you are working on
+    if (d.kind === "unit") select(d.primary);
+    else if (selected) select(selected); // refresh separation/plumbing hints
+    renderSitePlan();
+    return;
+  }
+
+  if (!d) { // a press on empty paper clears the selection
+    const p = clientToWorld(e.clientX, e.clientY);
+    if (!unitAtWorld(p)) { select(null); renderChrome(); }
+    return;
+  }
+
+  // a press that did not move is a tap
+  const key = d.kind === "unit" ? `u${d.primary.id}`
+    : d.kind === "tree" ? `t${d.tree.id}` : "drive";
+  const now = Date.now();
+  const isDouble = now - lastTap.t < 380 && lastTap.key === key;
+  lastTap = { t: now, key };
+
+  if (d.kind === "unit") {
+    select(selected === d.primary ? null : d.primary);
+    renderChrome();
+  } else if (d.kind === "tree" && isDouble) {
+    pushUndo();
+    trees = trees.filter((t) => t !== d.tree);
+    rebuildScenery();
+    save();
+    renderSitePlan();
+    toast("Tree removed — ↩ to undo");
+  } else if (d.kind === "drive" && isDouble) {
+    pushUndo();
+    drive.rot = (drive.rot + 1) % 4;
+    rebuildScenery();
+    save();
+    renderSitePlan();
+    toast("Drive rotated 90°");
+  } else if (d.kind === "tree") {
+    toast("Drag to move · double-tap to remove");
+  } else {
+    toast("Drag to re-route · double-tap to rotate");
+  }
+});
+
+const sitePtrEnd = (e) => {
+  sitePtrs.delete(e.pointerId);
+  cancelPlanDrag();
+  sitePanning = false;
+};
 sitePanelEl.addEventListener("pointercancel", sitePtrEnd);
+
 sitePanelEl.addEventListener("wheel", (e) => {
   e.preventDefault();
   siteZoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0018));
 }, { passive: false });
+
+// ---- adding by dragging out of the drawer ----
+
+addEventListener("pointermove", (e) => {
+  if (!pendingAdd) return;
+  if (!pendingAdd.armed) {
+    if (Math.hypot(e.clientX - pendingAdd.from.x, e.clientY - pendingAdd.from.y) < 8) return;
+    pendingAdd.armed = true;
+    closeAdd();
+  }
+  const p = clientToWorld(e.clientX, e.clientY);
+  const probe = { typeId: pendingAdd.type.id, rot: 0, x: p.x, z: p.z };
+  const snapped = pendingAdd.type.deck
+    ? { x: Math.round(p.x), z: Math.round(p.z) }
+    : snapMove(probe, p.x, p.z, new Set());
+  ghost = { type: pendingAdd.type, x: snapped.x, z: snapped.z, rot: 0 };
+  renderChrome();
+});
+
+addEventListener("pointerup", () => {
+  if (!pendingAdd) return;
+  const pa = pendingAdd;
+  pendingAdd = null;
+  if (!pa.armed) return; // a plain click; the row's click handler places it
+  const g = ghost;
+  ghost = null;
+  snapGuides = [];
+  if (!g) { renderChrome(); return; }
+  pushUndo();
+  if (pa.type.id === "__tree") {
+    trees.push({ id: nextTreeId++, x: g.x, z: g.z, s: 1.2 });
+    rebuildScenery();
+    save();
+    renderSitePlan();
+    return;
+  }
+  const item = addItem(pa.type.id, g.x, g.z, 0);
+  if (blockedPairs().length) {
+    removeItem(item);
+    undoStack.pop();
+    updateHistoryButtons();
+    toast("That blocks a door wall — butt against solid sides only");
+  } else select(item);
+  renderSitePlan();
+});
 
 // ------------------------------------------------------------- floor plans
 
@@ -1490,7 +2094,7 @@ addEventListener("resize", () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-setTimeout(() => toast("+ adds units · drag to move · tap to peek inside"), 700);
+setTimeout(() => toast("Drag units on the plan to compose · 3D to look around"), 700);
 
 const clock = new THREE.Clock();
 const needle = document.getElementById("needle");
@@ -1503,9 +2107,10 @@ function animate() {
     needle.style.transform = `rotate(${az}rad)`;
     lastAzimuth = az;
   }
-  // peek: lift roof + fade walls on the selected unit (all units in dollhouse)
+  // peek: lift the roof and fade the walls, per unit or across the compound
   for (const it of items) {
-    const target = mode === "dollhouse" || it === selected ? 1 : 0;
+    // toggle on opens every unit; off, selecting one still peeks that one
+    const target = dollhouseOn || it === selected ? 1 : 0;
     if (Math.abs(it.peek - target) > 0.001) {
       it.peek += (target - it.peek) * Math.min(1, dt * 7);
       const ud = it.group.userData;

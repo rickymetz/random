@@ -62,25 +62,38 @@ are deliberately out. Undo/redo carries over and now covers every plan edit.
 
 **Butted units move as one.** Dragging any member of a joined cluster moves
 the whole group, which is how the code already treats them (`joined`, the
-256 sq ft check). A modifier or long-press breaks a single unit out.
+256 sq ft check). Holding Alt or Shift at the start of a drag, or pressing and
+holding for 450 ms, breaks a single unit out of its cluster.
 
 **Adding** is a drag out of the `+` drawer onto the sheet: the unit snaps and
-shows its gap dimensions in flight, exactly as moving an existing one does.
-`findSpot()` auto-placement is retired.
+shows its gap dimensions in flight, exactly as moving an existing one does. A
+plain click on a drawer row still works, but it no longer drops the unit at
+the first free spot mid-acre — `findSpot()` now takes an origin, so a click
+places near the middle of the current view and a duplicate lands beside the
+unit it was copied from.
 
 **Violations are drawn where they happen**, not just described in text. Hatch
 the 1–9 ft gaps that need rated walls, outline a butted cluster that exceeds
 the 256 sq ft permit exemption, mark a wet unit stranded outside the
 utility-core radius. The existing text in the info sheet stays as the
-explanation of what the redline means. Redlines are export-stripped along
-with the rest of the editing chrome.
+explanation of what the redline means. This new redlining is chrome and is
+export-stripped; the conflict line and gap label the sheet has always drawn
+between two too-close units stay in the drawing, because the title block's
+legend refers to them and they have always exported.
 
-**Zoom reveals detail.** Past a zoom threshold the sheet starts drawing each
-unit at floor-plan fidelity — the furniture labels, dimension strings and red
-egress arrows that `planSVG()` draws at 22 px/ft — so zooming from site to
-unit is continuous rather than hitting a wall of empty rectangles at 6×
-(48 px/ft). The per-unit floor plan modal survives as the clean, printable
-single-unit sheet.
+**Zoom reveals detail.** Past 2× the sheet starts drawing each unit at
+floor-plan fidelity — the furniture labels, finished-interior line, dimension
+string and red egress arrows that `planSVG()` draws at 22 px/ft — so zooming
+from site to unit is continuous rather than hitting a wall of empty rectangles
+at 6× (48 px/ft). At that fidelity the room name moves off the footprint so it
+stops covering the furniture labels. The per-unit floor plan modal survives as
+the clean, printable single-unit sheet.
+
+Zooming resizes the SVG rather than CSS-scaling it. Scaling the layer makes
+the browser stretch a rasterised bitmap, which turns the small drafting text
+to mush exactly when you have zoomed in to read it; giving the SVG its real
+width and height re-renders the vectors. Panning stays a cheap translate, and
+export normalises the sheet back to its own scale.
 
 ### 3D — the viewer
 
@@ -102,6 +115,11 @@ The gravel drive and the trees become editable — they are currently fixed
 scenery (`TREES`, a hardcoded array; the drive, two meshes pinned at
 `(52, 56)` and `(52, 10)`). The parcel itself stays a fixed Virginia acre.
 
+Both are dragged directly on the sheet. A tree is cleared with a double-tap
+and the drive rotates in 90° steps with one; neither joins the unit selection
+model, so the info sheet and tool strip stay about units. A tree is added from
+its own row in the `+` drawer, the same drag-out gesture as a unit.
+
 This is the largest consequence in this spec, because it moves scenery out of
 source and into state:
 
@@ -118,7 +136,7 @@ source and into state:
 Stated here rather than asked, and cheap to reverse:
 
 - Selection persists across Plan ↔ 3D, so switching tabs keeps you on the
-  same unit.
+  same unit, and dragging a unit selects it.
 - The existing info sheet and its compliance text are reused as-is in Plan;
   this rework does not redesign them.
 - Compose's 3D drag/rotate/duplicate/delete code is removed rather than left

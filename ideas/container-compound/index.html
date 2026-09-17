@@ -103,12 +103,13 @@
   #site-actions {
     position: fixed;
     right: 0.75rem;
-    bottom: calc(0.75rem + var(--sab));
+    /* clears the add button, which now shares this corner in plan mode */
+    bottom: calc(5.1rem + var(--sab));
     z-index: 5;
     display: none;
     gap: 0.4rem;
   }
-  body[data-mode="site"] #site-actions { display: flex; }
+  body[data-mode="plan"] #site-actions { display: flex; }
   #site-actions button {
     border: 1px solid var(--line);
     background: var(--panel);
@@ -258,15 +259,14 @@
     #tabbar { left: 50%; right: auto; transform: translateX(-50%); min-width: 22rem; }
   }
 
-  /* mode visibility */
-  body[data-mode="dollhouse"] #fab,
-  body[data-mode="dollhouse"] #edge-tools,
-  body[data-mode="site"] #fab,
-  body[data-mode="site"] #edge-tools,
-  body[data-mode="site"] #stats-pill,
-  body[data-mode="site"] #stats-pop,
-  body[data-mode="site"] #view-tools { display: none; }
-  body[data-mode="dollhouse"] #info .row { display: none; }
+  /* mode visibility: the plan edits, the 3D view looks */
+  body[data-mode="view"] #fab,
+  body[data-mode="view"] #edge-tools { display: none; }
+  body[data-mode="plan"] #view-tools { display: none; }
+  /* 3D is read-only, so the sheet there carries no edit affordances */
+  body[data-mode="view"] #info .row { display: none; }
+  /* the dollhouse toggle reads as pressed while it is on */
+  #btn-doll.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
   /* ---- site plan: full-bleed pan/zoom workspace, swaps in for the 3D scene ---- */
   #site-panel {
@@ -280,14 +280,22 @@
     cursor: grab;
   }
   #site-panel:active { cursor: grabbing; }
-  body[data-mode="site"] #site-panel { display: block; }
-  #site-svg {
+  /* over something draggable, the paper stops offering to pan */
+  #site-panel.over-object, #site-panel.over-object:active { cursor: move; }
+  body[data-mode="plan"] #site-panel { display: block; }
+  #site-stage {
     position: absolute;
     top: 0; left: 0;
     transform-origin: 0 0;
     will-change: transform;
   }
-  #site-svg svg { display: block; }
+  #site-svg, #site-chrome { position: absolute; top: 0; left: 0; }
+  #site-chrome { pointer-events: none; }
+  #site-svg svg, #site-chrome svg { display: block; }
+  /* mid-drag the sheet's settled marks would be stale, so the live
+     chrome overlay speaks for them until the unit lands */
+  body.plan-dragging #site-svg #sep-layer,
+  body.plan-dragging #site-svg #dim-layer { display: none; }
 
   /* ---- parts list modal ---- */
   #parts-modal {
@@ -469,7 +477,7 @@
   }
   body.sheet-open #info { transform: translateY(0); }
 
-  /* ---- unified selection bar (compose mode) ---- */
+  /* ---- unified selection bar (plan mode) ---- */
   #toolstrip {
     position: fixed;
     left: 50%;
@@ -486,7 +494,7 @@
     background: var(--panel);
     box-shadow: var(--shadow);
   }
-  body.has-selection[data-mode="compose"] #toolstrip { display: flex; }
+  body.has-selection[data-mode="plan"] #toolstrip { display: flex; }
   #toolstrip button {
     flex: none;
     width: 2.6rem; height: 2.6rem;
@@ -675,13 +683,15 @@
 </div>
 
 <div id="tabbar">
-  <button data-mode="compose" class="active">Compose</button>
-  <button data-mode="dollhouse">Dollhouse</button>
-  <button data-mode="site">Site plan</button>
+  <button data-mode="plan" class="active">Plan</button>
+  <button data-mode="view">3D</button>
 </div>
 
 <div id="site-panel">
-  <div id="site-svg"><!-- populated by main.js --></div>
+  <div id="site-stage">
+    <div id="site-svg"><!-- the drawing; this is what exports --></div>
+    <div id="site-chrome"><!-- selection, guides, redlines; never exported --></div>
+  </div>
 </div>
 
 <div id="parts-modal">
@@ -707,6 +717,7 @@
 </div>
 
 <div id="view-tools">
+  <button id="btn-doll" aria-label="Dollhouse view" title="Dollhouse: roofs on">⌂</button>
   <button id="btn-sun" aria-label="Cycle sun" title="Midday">☀</button>
   <div id="compass" title="North"><span id="needle">↑</span><span class="n">N</span></div>
   <button id="btn-fit" aria-label="Recenter view">⌖</button>
