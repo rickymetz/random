@@ -25,6 +25,12 @@ export interface ImportedContact extends ContactDraft {
   existing?: Person
   /** `existing` matched by name only while the e-mail or phone disagree: probably a namesake. */
   conflict?: boolean
+  /**
+   * An earlier card in the same file carries this name, and the two
+   * disagree on e-mail/phone — one person synced from two accounts, or
+   * two namesakes. Same ambiguity as `conflict`, just inside the file.
+   */
+  sameName?: boolean
 }
 
 // ---------- vCard ----------
@@ -418,6 +424,9 @@ export function matchContacts(drafts: ContactDraft[], people: Person[]): Importe
     const sameContactSeen = keys.some((k) => seenContact.has(k))
     const contactUnderThisName = keys.some((k) => seenContact.get(k) === name)
     if ((sameNameSeen && (keys.length === 0 || sameContactSeen)) || contactUnderThisName) return
+    // Not an exact repeat, but the name is taken: say so rather than
+    // quietly making a second person out of one synced contact.
+    const sameName = sameNameSeen
     seenNames.add(name)
     for (const k of keys) if (!seenContact.has(k)) seenContact.set(k, name)
 
@@ -431,7 +440,13 @@ export function matchContacts(drafts: ContactDraft[], people: Person[]): Importe
       conflict = Boolean((email && theirEmail && email !== theirEmail) || (phone && theirPhone && phone !== theirPhone))
     }
     if (!existing) existing = undefined
-    out.push({ ...d, key: `${i}`, existing, ...(conflict ? { conflict: true } : {}) })
+    out.push({
+      ...d,
+      key: `${i}`,
+      existing,
+      ...(conflict ? { conflict: true } : {}),
+      ...(sameName ? { sameName: true } : {}),
+    })
   })
   return out
 }

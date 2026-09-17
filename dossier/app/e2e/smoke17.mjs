@@ -115,7 +115,11 @@ await page.click('.import-panel button:has-text("Select all")')
 await page.click('.import-panel button.primary')
 await page.waitForFunction(() => /Imported 2 people/.test(document.querySelector('.import-panel .status-slot')?.textContent ?? ''))
 await page.click('.import-panel button:has-text("Done")')
-await page.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Import contacts…', null, { timeout: 2000 }).catch(() => fail('focus should return to the toggle: ' + document.activeElement?.tagName))
+// A short list still puts you back on the toggle you came from: it never
+// left the screen. (A long one lands on the list heading — `smoke26`.)
+await page
+  .waitForFunction(() => document.activeElement?.textContent?.trim() === 'Import contacts…', null, { timeout: 2000 })
+  .catch(async () => fail('focus should return to the toggle: ' + (await page.evaluate(() => document.activeElement?.outerHTML?.slice(0, 120)))))
 console.log('picker: 2 imported, focus back on toggle')
 
 // 5. Filter on a bigger list

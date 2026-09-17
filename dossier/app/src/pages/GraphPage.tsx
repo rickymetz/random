@@ -348,11 +348,25 @@ export default function GraphPage() {
   const peopleCount = useMemo(() => selectPeople(records).length, [records])
   const bigGraph = peopleCount > LABEL_MAX_NODES
   const showAll = params.get('all') === '1'
+  // …but only when your own neighbourhood holds anybody. Straight after
+  // a contacts import nobody is joined to anybody, so focusing "me"
+  // would draw one lone disc under "Tap someone to see who they know"
+  // with no one to tap — and, by making `bare` false, hide the "no
+  // connections yet" message written for exactly this moment. Circles
+  // don't count: an ego view walks edges, and membership isn't one.
+  const selfHasTies = useMemo(() => {
+    const id = self?.id
+    if (!id) return false
+    for (const r of records.values()) {
+      if (r.kind === 'relationship' && (r.fromId === id || r.toId === id)) return true
+    }
+    return false
+  }, [records, self])
   // Applied synchronously (not only via the URL) so the first layout is
   // the small ego graph, never a 300-node simulation that then gets
   // thrown away — and so the ego view fits itself like any cold start.
   const autoFocusId =
-    bigGraph && !showAll && !focusParam && !circleFocusId && !pathTargetId
+    bigGraph && selfHasTies && !showAll && !focusParam && !circleFocusId && !pathTargetId
       ? (self?.id ?? null)
       : null
   const focusId = focusParam ?? autoFocusId
@@ -1007,8 +1021,17 @@ export default function GraphPage() {
           </p>
         ) : bare ? (
           <p className="empty">
-            No relationships yet. Add one from a person’s page, or load the sample people
-            in <Link to="/settings">Settings</Link>.
+            {peopleCount > 1 ? (
+              <>
+                No connections yet — all {peopleCount} people are here, but nothing joins
+                them up. Open someone and add how you know them.
+              </>
+            ) : (
+              <>
+                No relationships yet. Add one from a person’s page, or load the sample
+                people in <Link to="/settings">Settings</Link>.
+              </>
+            )}
           </p>
         ) : nodes.length === 0 && hiddenCount > 0 ? (
           // Isolating an empty circle leaves a blank canvas; say so, and

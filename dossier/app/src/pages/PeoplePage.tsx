@@ -58,13 +58,36 @@ export default function PeoplePage() {
   const batchToggleRef = useRef<HTMLButtonElement>(null)
   const [importOpen, setImportOpen] = useState(false)
   const importToggleRef = useRef<HTMLButtonElement>(null)
-  const closeImport = () => {
-    setImportOpen(false)
-    requestAnimationFrame(() => importToggleRef.current?.focus())
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  /**
+   * Closing puts you back on the toggle you came from — except when the
+   * sitting added people and the list is now long enough to have a
+   * heading. Both toggles sit at the *tail* of the list, so after an
+   * import of a few hundred, restoring focus there scrolls the newcomer
+   * thousands of pixels down, to the bottom of a list whose top they
+   * have never seen. Then land on the heading instead: it says how many
+   * there now are, and reads as "All people, 376" to a screen reader.
+   */
+  const landAfter = (added: boolean, toggle: React.RefObject<HTMLButtonElement | null>) => {
+    // After the re-render, not before: the toggle is unmounted while its
+    // panel is up, so the ref only holds it again once the panel is gone.
+    requestAnimationFrame(() => {
+      const heading = added ? headingRef.current : null
+      if (!heading) {
+        toggle.current?.focus()
+        return
+      }
+      window.scrollTo({ top: 0 })
+      heading.focus({ preventScroll: true })
+    })
   }
-  const closeBatch = () => {
+  const closeImport = (added = false) => {
+    setImportOpen(false)
+    landAfter(added, importToggleRef)
+  }
+  const closeBatch = (added = false) => {
     setBatchOpen(false)
-    requestAnimationFrame(() => batchToggleRef.current?.focus())
+    landAfter(added, batchToggleRef)
   }
   const searchRef = useRef<HTMLInputElement>(null)
   // Ctrl/Cmd+K reaches the search from any page (App.tsx): here it only
@@ -359,7 +382,7 @@ export default function PeoplePage() {
       <PinFailureNotice />
       {showRecent && <Recent people={sorted} withRail={showRail} />}
       {!trimmed && !circle && !quietView && <Upcoming />}
-      {!trimmed && !circle && !quietView && <FormSetup />}
+      {!trimmed && !circle && !quietView && <FormSetup people={sorted.length} />}
       {!trimmed && !circle && !quietView && <QuietLine />}
       {!trimmed && !circle && !quietView && <BackupNag />}
       {circleHits.length > 0 && (
@@ -388,7 +411,7 @@ export default function PeoplePage() {
         </button>
       )}
       {browsing && (
-        <h2 className="list-heading">
+        <h2 className="list-heading" ref={headingRef} tabIndex={-1}>
           All people <span className="hint">{people.length}</span>
         </h2>
       )}
@@ -662,7 +685,10 @@ function LetterRail({
  * of people, who you touched this week is what you scroll for. Kept in
  * the encrypted, device-local Settings record. A fresh device (or a
  * restore) has no visits yet, so the row pads out with the most
- * recently updated people — always six, always "Recent".
+ * recently updated people — but only ones that have actually been
+ * worked on. Straight after a contacts import everybody is untouched and
+ * equally new, and padding would head the screen with six strangers the
+ * user has never opened; better to show nothing until they do.
  */
 function Recent({ people, withRail }: { people: Person[]; withRail: boolean }) {
   const records = useVaultStore((s) => s.records)
@@ -674,7 +700,7 @@ function Recent({ people, withRail }: { people: Person[]; withRail: boolean }) {
       .filter((p): p is Person => p !== undefined && !p.isSelf)
     const seen = new Set(fromVisits.map((p) => p.id))
     const fill = people
-      .filter((p) => !p.isSelf && !seen.has(p.id))
+      .filter((p) => !p.isSelf && !seen.has(p.id) && p.updatedAt > p.createdAt)
       .sort((a, b) => b.updatedAt - a.updatedAt)
     return [...fromVisits, ...fill].slice(0, RECENT_SHOWN)
   }, [people, recentIds])
@@ -797,7 +823,7 @@ const PersonRow = memo(function PersonRow({
  * think to look for. Picking a set or waving it off both answer it, and
  * it never comes back.
  */
-function FormSetup() {
+function FormSetup({ people }: { people: number }) {
   const records = useVaultStore((s) => s.records)
   const applyFieldPacks = useVaultStore((s) => s.applyFieldPacks)
   const updateSecurity = useVaultStore((s) => s.updateSecurity)
@@ -805,6 +831,11 @@ function FormSetup() {
   const hasRows = useMemo(() => fieldDefsIn(records).length > 0, [records])
   const [busy, setBusy] = useState(false)
   if (answered || hasRows) return null
+  // The full card is a first-run offer, and it is a screenful. Someone
+  // who has just imported their address book is here for the list, not
+  // the offer: shrink to one line above it rather than standing in
+  // front of everyone they added.
+  const brief = people > RECENT_MIN_PEOPLE
   const pick = async (packId?: string) => {
     if (busy) return
     setBusy(true)
@@ -815,6 +846,18 @@ function FormSetup() {
       setBusy(false)
     }
   }
+  if (brief)
+    return (
+      <p className="form-setup-line">
+        <span>
+          Choose what to remember about people —{' '}
+          <Link to="/settings">set up the form</Link>.
+        </span>
+        <button className="quiet" disabled={busy} onClick={() => void pick()}>
+          Not now
+        </button>
+      </p>
+    )
   return (
     <section className="form-setup">
       <h2>What do you want to remember about people?</h2>

@@ -29,6 +29,8 @@ const PAGE = 100
 const MAX_CONTACTS_FILE_BYTES = 32 * 1024 * 1024
 /** Above this many contacts a file starts unselected: pick, don't dump. */
 const PRESELECT_MAX = 25
+/** Same name as someone already here, or as an earlier card in the file. */
+const ambiguous = (c: ImportedContact) => Boolean(c.conflict || c.sameName)
 
 function pickerAvailable(): ContactsManager | null {
   const nav = navigator as Navigator & { contacts?: ContactsManager }
@@ -60,7 +62,18 @@ function detailOf(c: ContactDraft): string {
 
 type View = 'pick' | 'list' | 'done'
 
-export default function ContactImportPanel({ onClose, id }: { onClose: () => void; id?: string }) {
+export default function ContactImportPanel({
+  onClose,
+  id,
+}: {
+  /**
+   * `added` is true when the import stuck (it is false again after
+   * Undo): the parent then lands you on the list rather than on the
+   * toggle, which now sits below every person you just imported.
+   */
+  onClose: (added?: boolean) => void
+  id?: string
+}) {
   const importPeople = useVaultStore((s) => s.importPeople)
   const removePeople = useVaultStore((s) => s.removePeople)
   const [contacts, setContacts] = useState<ImportedContact[] | null>(null)
@@ -102,7 +115,13 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
     const fresh = matched.filter((c) => !c.existing || c.conflict)
     setContacts(matched)
     setSource(label)
-    setChecked(new Set(preselect || fresh.length <= PRESELECT_MAX ? fresh.filter((c) => !c.conflict).map((c) => c.key) : []))
+    setChecked(
+      new Set(
+        preselect || fresh.length <= PRESELECT_MAX
+          ? fresh.filter((c) => !ambiguous(c)).map((c) => c.key)
+          : [],
+      ),
+    )
     setWithNotes(false)
     setFilter('')
     setShown(PAGE)
@@ -176,6 +195,7 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
   const selectable = (c: ImportedContact) => !c.existing || Boolean(c.conflict)
   const selectedCount = contacts ? contacts.filter((c) => checked.has(c.key)).length : 0
   const knownCount = contacts ? contacts.filter((c) => c.existing && !c.conflict).length : 0
+  const sameNameCount = contacts ? contacts.filter((c) => ambiguous(c)).length : 0
   const notesCount = contacts ? contacts.filter((c) => c.note && checked.has(c.key)).length : 0
   const filtering = filter.trim() !== ''
 
@@ -193,6 +213,9 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
       const next = new Set(prev)
       for (const c of visible) {
         if (!selectable(c)) continue
+        // A namesake is a decision, not a sweep: ticking it has to be
+        // deliberate, the same reason it starts unticked.
+        if (on && ambiguous(c)) continue
         if (on) next.add(c.key)
         else next.delete(c.key)
       }
@@ -231,14 +254,16 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
   }
 
   const rowTag = (c: ImportedContact) => {
-    if (!c.existing) return null
+    if (!c.existing)
+      return c.sameName ? <span className="tag known">same name, earlier in this file</span> : null
     const same = c.existing.displayName.toLowerCase() === c.displayName.toLowerCase()
     const who = same ? '' : ` as ${c.existing.displayName}`
     return <span className="tag known">{c.conflict ? `same name as ${c.existing.displayName}` : `already here${who}`}</span>
   }
 
+  const added = (done?.ids.length ?? 0) > 0
   const requestClose = () => {
-    if (!busy) onClose()
+    if (!busy) onClose(added)
   }
   return (
     <Sheet id={id} labelledBy={titleId} onDismiss={requestClose}>
@@ -256,7 +281,7 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
           setShown(PAGE)
           return
         }
-        onClose()
+        onClose(added)
       }}
     >
       <h2 className="panel-title" id={titleId}>
@@ -292,7 +317,7 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
                 {picking ? '…' : 'Pick from contacts…'}
               </button>
             )}
-            <button type="button" className="quiet" onClick={onClose}>
+            <button type="button" className="quiet" onClick={() => onClose(added)}>
               Cancel
             </button>
           </div>
@@ -308,6 +333,7 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
           <p className="hint import-summary">
             {contacts.length} in {source}
             {knownCount > 0 && ` · ${knownCount} already here`}
+            {sameNameCount > 0 && ` · ${sameNameCount} sharing a name`}
             {` · ${selectedCount} selected`}
           </p>
           {contacts.length > PRESELECT_MAX && selectedCount === 0 && (
@@ -383,7 +409,7 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
             <button type="button" className="quiet" onClick={() => setContacts(null)} disabled={busy}>
               Other file
             </button>
-            <button type="button" className="quiet" onClick={onClose} disabled={busy}>
+            <button type="button" className="quiet" onClick={() => onClose(added)} disabled={busy}>
               Cancel
             </button>
           </div>
@@ -396,7 +422,7 @@ export default function ContactImportPanel({ onClose, id }: { onClose: () => voi
               Undo
             </button>
           )}
-          <button ref={doneButton} type="button" className="primary" onClick={onClose} disabled={busy}>
+          <button ref={doneButton} type="button" className="primary" onClick={() => onClose(added)} disabled={busy}>
             Done
           </button>
         </div>

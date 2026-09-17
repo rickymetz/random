@@ -20,10 +20,11 @@ await page.selectOption('.stress-size select', '300')
 await page.click('button:has-text("Add crowd")')
 await page.waitForFunction(() => /Added 300/.test(document.querySelector('section.stress p[role="status"]')?.textContent ?? ''), null, { timeout: 60000 })
 await blur(); await page.click('nav.tabbar a:has-text("People")'); await page.waitForSelector('.person-row')
-const h2 = (await page.locator('.recent h2').textContent()).trim()
-if (h2 !== 'Recent') fail('heading: ' + h2)
-if ((await page.locator('.recent li').count()) !== 6) fail('recent should pad to six')
-console.log('padded row before any visit:', h2, (await page.locator('.recent li').count()), 'items')
+// Nobody has been opened and nobody has been worked on, so there is no
+// Recent row yet: a crowd that arrived all at once (a contacts import,
+// say) would otherwise head the screen with six untouched strangers.
+if (await page.locator('.recent').count()) fail('no visits and no edits: there is nothing recent')
+console.log('no Recent row before any visit')
 // Visit two dossiers
 const names = []
 for (const i of [3, 7]) {
@@ -33,7 +34,7 @@ for (const i of [3, 7]) {
 }
 await page.waitForFunction(() => document.querySelector('.recent h2')?.textContent === 'Recent')
 const recent = await page.locator('.recent-name').allTextContents()
-if ((await page.locator('.recent li').count()) !== 6) fail('recent should stay six after visits')
+if ((await page.locator('.recent li').count()) !== 2) fail(`the two visits are all there is: ${recent}`)
 const short = (n) => { const p = n.split(' '); return `${p[0]} ${p[p.length - 1][0]}.` }
 if (recent[0] !== short(names[1]) || recent[1] !== short(names[0])) fail(`recent order: ${recent} vs ${names}`)
 console.log('Recent row newest first:', recent.slice(0, 2).join(', '))
