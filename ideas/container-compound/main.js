@@ -18,6 +18,11 @@ const TRENCH_PER_FT = 40; // ballpark $/ft for a utility trench with supply + dr
 // x along the container length, z across the 8' width. y is the base height.
 const TYPE_BY_ID = Object.fromEntries(TYPES.map((t) => [t.id, t]));
 
+// Materials reused across every unit. They are tagged so removeItem leaves
+// them alone: disposing them with the unit threw away the shader program
+// cache, so one undo used to recreate five programs.
+const shared = (m) => { m.userData.shared = true; return m; };
+
 // ------------------------------------------------------------------- scene
 
 const scene = new THREE.Scene();
@@ -29,9 +34,12 @@ const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 1, 1200
 if (innerHeight > innerWidth) camera.position.set(115, 95, 170);
 else camera.position.set(85, 70, 125);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// A phone at DSF 3 does not need a 2x buffer for a read-only viewer; the fill
+// rate costs more than the extra sharpness is worth on a 390 px screen.
+const PHONE_VIEW = innerWidth < 700;
+const renderer = new THREE.WebGLRenderer({ antialias: !PHONE_VIEW });
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, PHONE_VIEW ? 1.5 : 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.prepend(renderer.domElement);
@@ -54,16 +62,22 @@ const SUNS = [
 let sunIdx = 1;
 const sun = new THREE.DirectionalLight(0xfff3e0, 2.0);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(PHONE_VIEW ? 1024 : 2048, PHONE_VIEW ? 1024 : 2048);
 sun.shadow.camera.left = -160;
 sun.shadow.camera.right = 160;
 sun.shadow.camera.top = 160;
 sun.shadow.camera.bottom = -160;
 sun.shadow.camera.far = 420;
 sun.shadow.bias = -0.0004;
+// Nothing in this scene moves on its own, so the shadow map is redrawn only
+// when the layout, the sun or a peek actually changes.
+sun.shadow.autoUpdate = false;
 scene.add(sun);
+let shadowDirty = true;
+const markShadowDirty = () => { shadowDirty = true; };
 
 function applySun() {
+  markShadowDirty();
   const s = SUNS[sunIdx];
   sun.position.set(...s.pos);
   sun.color.set(s.color);
@@ -125,7 +139,7 @@ function padCenter(d = drive) {
 const sceneryRoot = new THREE.Group();
 scene.add(sceneryRoot);
 
-const gravelMat = new THREE.MeshLambertMaterial({ color: 0xb6ae9f });
+const gravelMat = shared(new THREE.MeshLambertMaterial({ color: 0xb6ae9f }));
 
 function buildTree(t) {
   const g = new THREE.Group();
@@ -152,10 +166,12 @@ function buildTree(t) {
 }
 
 function rebuildScenery() {
+  markShadowDirty();
   for (const child of [...sceneryRoot.children]) {
     child.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
-      if (o.material && !Array.isArray(o.material)) o.material.dispose();
+      if (o.material && !Array.isArray(o.material) && !o.material.userData.shared)
+        o.material.dispose();
     });
     sceneryRoot.remove(child);
   }
@@ -180,14 +196,14 @@ function rebuildScenery() {
 
 // ------------------------------------------------------------ unit meshes
 
-const roofMat = new THREE.MeshLambertMaterial({ color: 0xf5f3ee });
-const floorMat = new THREE.MeshLambertMaterial({ color: 0xd8cdbb });
-const doorMat = new THREE.MeshLambertMaterial({ color: 0x4f4a42 });
-const glassWallMat = new THREE.MeshLambertMaterial({
+const roofMat = shared(new THREE.MeshLambertMaterial({ color: 0xf5f3ee }));
+const floorMat = shared(new THREE.MeshLambertMaterial({ color: 0xd8cdbb }));
+const doorMat = shared(new THREE.MeshLambertMaterial({ color: 0x4f4a42 }));
+const glassWallMat = shared(new THREE.MeshLambertMaterial({
   color: 0xbcd6e2, transparent: true, opacity: 0.55,
-});
-const condMat = new THREE.MeshLambertMaterial({ color: 0xd9d9d4 });
-const deckMat = new THREE.MeshLambertMaterial({ color: 0xb78e5f });
+}));
+const condMat = shared(new THREE.MeshLambertMaterial({ color: 0xd9d9d4 }));
+const deckMat = shared(new THREE.MeshLambertMaterial({ color: 0xb78e5f }));
 
 function buildUnit(type) {
   const g = new THREE.Group();
@@ -370,12 +386,12 @@ function buildUnit(type) {
 }
 
 // selection ring
-const ringMat = new THREE.MeshBasicMaterial({
+const ringMat = shared(new THREE.MeshBasicMaterial({
   color: 0xb3542e, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
-});
-const sepRingMat = new THREE.MeshBasicMaterial({
+}));
+const sepRingMat = shared(new THREE.MeshBasicMaterial({
   color: 0xc0574a, transparent: true, opacity: 0.3, side: THREE.DoubleSide,
-});
+}));
 const sepLineMat = new THREE.LineBasicMaterial({ color: 0xc0574a });
 const trenchMat = new THREE.LineDashedMaterial({
   color: 0x5f7a8a, dashSize: 1.6, gapSize: 1.1,
@@ -420,6 +436,7 @@ function addItem(typeId, x, z, rot, opts = {}) {
 }
 
 function applyTransform(item) {
+  markShadowDirty();
   item.group.position.set(item.x, 0, item.z);
   item.group.rotation.y = (item.rot * Math.PI) / 2;
 }
@@ -428,7 +445,8 @@ function removeItem(item) {
   unitRoot.remove(item.group);
   item.group.traverse((o) => {
     if (o.geometry) o.geometry.dispose();
-    if (o.material && !Array.isArray(o.material)) o.material.dispose();
+    if (o.material && !Array.isArray(o.material) && !o.material.userData.shared)
+      o.material.dispose();
   });
   items = items.filter((i) => i !== item);
   if (selected === item) select(null);
@@ -443,6 +461,8 @@ function select(item) {
   const info = document.getElementById("info");
   if (!item) {
     document.body.classList.remove("sheet-open");
+    document.getElementById("sel-name").textContent = "";
+    setPlacing(false);
     updateSelDims();
     return;
   }
@@ -521,7 +541,10 @@ function findSpot(type, ox = 0, oz = 0) {
   return { x: Math.round(ox), z: Math.round(oz) };
 }
 function isFree(x, z, type) {
-  const hw = type.len / 2 + 1, hd = type.wid / 2 + 1;
+  // clear the rated-wall band, not just a courtesy foot, so an auto-placed
+  // unit is not already redlined the moment it lands
+  const pad = type.deck ? 1 : SEP_CLEAR;
+  const hw = type.len / 2 + pad, hd = type.wid / 2 + pad;
   for (const it of items) {
     const t = TYPE_BY_ID[it.typeId];
     const ihw = (it.rot % 2 ? t.wid : t.len) / 2;
@@ -620,14 +643,18 @@ function setMode(m) {
   if (mode === m) return;
   mode = m;
   document.body.dataset.mode = m;
-  for (const b of document.querySelectorAll("#tabbar button"))
-    b.classList.toggle("active", b.dataset.mode === m);
+  for (const b of document.querySelectorAll("#tabbar button")) {
+    const on = b.dataset.mode === m;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", String(on));
+  }
+  setPlacing(false);
   closeAdd();
   clearDragLabels();
   document.body.classList.remove("sheet-open");
   // selection survives the switch, so you land on the same unit
-  if (m === "plan") renderSitePlan();
-  else { updateSelDims(); renderChrome(); }
+  if (m === "plan") { stopLoop(); renderSitePlan(); }
+  else { markShadowDirty(); startLoop(); updateSelDims(); renderChrome(); }
 }
 for (const b of document.querySelectorAll("#tabbar button"))
   b.addEventListener("click", () => setMode(b.dataset.mode));
@@ -635,7 +662,10 @@ for (const b of document.querySelectorAll("#tabbar button"))
 const btnDoll = document.getElementById("btn-doll");
 btnDoll.addEventListener("click", () => {
   dollhouseOn = !dollhouseOn;
+  markShadowDirty();
   btnDoll.classList.toggle("on", dollhouseOn);
+  btnDoll.setAttribute("aria-pressed", String(dollhouseOn));
+  btnDoll.textContent = dollhouseOn ? "⊔" : "⌂"; // open box vs roofed
   btnDoll.title = dollhouseOn ? "Dollhouse: roofs lifted" : "Dollhouse: roofs on";
   toast(dollhouseOn ? "Dollhouse — every roof lifted" : "Roofs back on");
 });
@@ -676,7 +706,11 @@ for (const group of ADD_GROUPS) {
       </span>`;
     // drag it onto the sheet to choose where it lands; a plain click still
     // drops it on the nearest free ground under the middle of the view
+    // Only a mouse drags out of the drawer. On touch the list is scrollable,
+    // so the browser claims the gesture and cancels the pointer — the drag
+    // never completed, and the armed placement leaked onto the next tap.
     row.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "mouse") return;
       pendingAdd = { type: t, from: { x: e.clientX, y: e.clientY }, armed: false };
     });
     row.addEventListener("click", () => {
@@ -704,6 +738,7 @@ for (const group of ADD_GROUPS) {
     </span>`;
   const TREE_TYPE = { id: "__tree", name: "Tree", deck: true, len: 12, wid: 12 };
   row.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "mouse") return;
     pendingAdd = { type: TREE_TYPE, from: { x: e.clientX, y: e.clientY }, armed: false };
   });
   row.addEventListener("click", () => {
@@ -756,12 +791,31 @@ document.getElementById("btn-sun").addEventListener("click", () => {
   toast(`${SUNS[sunIdx].name} light`);
 });
 
-// recenter the 3D camera
-document.getElementById("btn-fit").addEventListener("click", () => {
-  const p = innerHeight > innerWidth ? [115, 95, 170] : [85, 70, 125];
-  camera.position.set(...p);
-  controls.target.set(0, 4, 0);
-});
+// Recentre on what you built. It used to restore a hard-coded pose aimed at
+// the middle of the parcel, so a compound in a corner came back as three toys
+// in the top-left — while the same glyph on the Plan tab fits correctly.
+function fit3D() {
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const it of items) {
+    const [hw, hd] = halfDims(it);
+    x0 = Math.min(x0, it.x - hw); x1 = Math.max(x1, it.x + hw);
+    z0 = Math.min(z0, it.z - hd); z1 = Math.max(z1, it.z + hd);
+  }
+  if (!items.length) { x0 = z0 = -30; x1 = z1 = 30; }
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  const span = Math.max(x1 - x0, z1 - z0, 26);
+  const fov = (camera.fov * Math.PI) / 180;
+  const aspect = innerWidth / innerHeight;
+  // a portrait phone is the narrow axis, so frame against it
+  const need = (span / 2) / Math.tan(fov / 2) / Math.min(1, aspect) * 1.45;
+  const dist = Math.max(controls.minDistance + 5,
+    Math.min(need, controls.maxDistance - 20));
+  controls.target.set(cx, 4, cz);
+  camera.position.set(cx + dist * 0.52, dist * 0.55, cz + dist * 0.66);
+  controls.update();
+  markShadowDirty();
+}
+document.getElementById("btn-fit").addEventListener("click", fit3D);
 
 // overflow menu
 document.getElementById("btn-menu").addEventListener("click", (e) => {
@@ -800,9 +854,9 @@ document.getElementById("btn-close").addEventListener("click", () => {
 document.getElementById("stats-pill").addEventListener("click", () =>
   document.getElementById("stats-pop").classList.toggle("open"));
 document.getElementById("btn-va").addEventListener("click", () =>
-  document.getElementById("va-modal").classList.add("open"));
+  openDialog(document.getElementById("va-modal")));
 document.getElementById("btn-va-close").addEventListener("click", () =>
-  document.getElementById("va-modal").classList.remove("open"));
+  closeDialog(document.getElementById("va-modal")));
 document.getElementById("btn-reset").addEventListener("click", () => {
   if (confirm("Reset to the example compound?")) {
     pushUndo();
@@ -852,7 +906,25 @@ addEventListener("keydown", (e) => {
     removeItem(selected);
     renderSitePlan();
     toast("Deleted — ↩ to undo");
-  } else if (e.key === "Escape") { closeAdd(); select(null); }
+  } else if (e.key.startsWith("Arrow") && selected && mode === "plan") {
+    e.preventDefault();
+    const step = e.shiftKey ? 5 : 1;
+    if (e.key === "ArrowLeft") nudgeSelected(-step, 0);
+    else if (e.key === "ArrowRight") nudgeSelected(step, 0);
+    else if (e.key === "ArrowUp") nudgeSelected(0, -step);
+    else if (e.key === "ArrowDown") nudgeSelected(0, step);
+  } else if (e.key === "Escape") {
+    const dlg = anyOpenDialog();
+    if (dlg) { closeDialog(dlg); return; }
+    if (document.body.classList.contains("menu-open")) {
+      document.body.classList.remove("menu-open");
+      document.getElementById("btn-menu").focus();
+      return;
+    }
+    if (placing) { setPlacing(false); return; }
+    closeAdd();
+    select(null);
+  }
 });
 
 function toast(msg) {
@@ -983,7 +1055,29 @@ function updateCompliance() {
   }
   trenchFt = Math.round(trenchFt);
   trenchCost = trenchFt * TRENCH_PER_FT;
+
+  // Every class of finding the drawing redlines, not just the separations —
+  // the badge used to say 2 on a layout showing 5 problems.
+  let over = 0;
+  const counted = new Set();
+  for (const u of units) {
+    const j = joined.get(u.id);
+    if (!j || j.sqft <= 256) continue;
+    const key = clusterOf(u).map((m) => m.id).sort().join(",");
+    if (counted.has(key)) continue;
+    counted.add(key);
+    over++;
+  }
+  let stranded = 0;
+  for (const w of units.filter((u) => TYPE_BY_ID[u.typeId].wet)) {
+    const near = cores.length
+      ? Math.min(...cores.map((c) => Math.hypot(c.x - w.x, c.z - w.z))) : Infinity;
+    if (near > WET_RADIUS) stranded++;
+  }
+  findings = { sep: sepPairs.length, over, stranded,
+               total: sepPairs.length + over + stranded };
 }
+let findings = { sep: 0, over: 0, stranded: 0, total: 0 };
 
 function updateStats() {
   updateCompliance();
@@ -1003,9 +1097,24 @@ function updateStats() {
   document.getElementById("st-trench").textContent = trenchFt
     ? `${trenchFt} ft · $${trenchCost.toLocaleString()}` : "—";
   document.getElementById("st-cost").textContent = `$${cost.toLocaleString()}`;
-  document.getElementById("stats-pill").textContent =
+  const fRow = document.getElementById("st-findings");
+  if (fRow) {
+    fRow.textContent = findings.total
+      ? [findings.sep && `${findings.sep} separation`,
+         findings.over && `${findings.over} over 256 sq ft`,
+         findings.stranded && `${findings.stranded} stranded`]
+        .filter(Boolean).join(" · ")
+      : "None";
+    fRow.parentElement.classList.toggle("warn", findings.total > 0);
+  }
+  const pill = document.getElementById("stats-pill");
+  pill.textContent =
     `${hc20 + hc10} units · ${(sqft + deckSqft).toLocaleString()} ft² · ~$${Math.round(cost / 1000)}k` +
-    (sepPairs.length ? ` · △${sepPairs.length}` : "");
+    (findings.total ? ` · ⚠${findings.total}` : "");
+  pill.setAttribute("aria-label",
+    `${hc20 + hc10} units, ${(sqft + deckSqft).toLocaleString()} square feet, about $${cost.toLocaleString()}, ` +
+    (findings.total ? `${findings.total} code finding${findings.total > 1 ? "s" : ""}` : "no code findings") +
+    ". Opens the summary.");
 }
 
 // ------------------------------------------------- CAD-style dimension labels
@@ -1162,10 +1271,10 @@ function renderParts() {
 document.getElementById("btn-parts").addEventListener("click", () => {
   renderParts();
   document.getElementById("stats-pop").classList.remove("open");
-  document.getElementById("parts-modal").classList.add("open");
+  openDialog(document.getElementById("parts-modal"));
 });
 document.getElementById("parts-close").addEventListener("click", () =>
-  document.getElementById("parts-modal").classList.remove("open"));
+  closeDialog(document.getElementById("parts-modal")));
 
 // ------------------------------------------------------------- site plan
 
@@ -1193,8 +1302,24 @@ const FONT = "ui-sans-serif, system-ui";
 // Above this zoom the sheet stops drawing units as coarse footprints and
 // starts drawing them at floor-plan fidelity, so zooming from the whole
 // parcel down to one unit is continuous.
-const DETAIL_K = 2.0;
 let detailOn = false;
+
+// Annotation is authored in sheet units but read in screen pixels. At the
+// phone's fitted zoom (~0.38) a 10 px label lands at 4 px, so every label,
+// rule weight and dash on the drawing is emitted through `ss()`, which asks
+// for a size in SCREEN px and converts. The footprints still scale with zoom;
+// the writing on them does not.
+let AK = 1; // sheet units per screen px
+const ss = (screenPx) => +(screenPx / AK).toFixed(3);
+const dash = (a, b) => `${ss(a)} ${ss(b)}`;
+let exportScale = false; // exports render at 1:1 so they never carry the zoom
+
+// The detail tier is relative to the fit, not absolute: on a desktop the fit
+// lands near 1.5 and on a phone near 0.38, so one fixed threshold is either
+// one pinch away or five. Hysteresis keeps a wobbling pinch from thrashing it.
+let fitK = 1;
+const detailIn = () => Math.max(1.6, fitK * 2.2);
+const detailOut = () => detailIn() * 0.85;
 
 // one unit (or deck) drawn architecturally in local coords, rotated into place.
 // `detail` is the zoomed-in reading: furniture labels, the finished-interior
@@ -1226,7 +1351,7 @@ function unitPlanGroup(it, detail) {
     t.furniture.forEach((f, i) => {
       g += `<rect x="${(f.x - f.w / 2) * S}" y="${(f.z - f.d / 2) * S}" width="${f.w * S}" height="${f.d * S}" rx="1.5" fill="#f2efe9" stroke="#55524c" stroke-width="0.9"/>`;
       if (detail && labels[i] && f.w * S > 30) {
-        g += `<text x="${f.x * S}" y="${f.z * S + 2.5}" text-anchor="middle" font-size="5.5" fill="#55524c" font-family="${FONT}">${labels[i]}</text>`;
+        g += `<text x="${f.x * S}" y="${f.z * S + ss(2.8)}" text-anchor="middle" font-size="${ss(8)}" fill="#55524c" font-family="${FONT}">${labels[i]}</text>`;
       }
     });
 
@@ -1247,11 +1372,11 @@ function unitPlanGroup(it, detail) {
       for (const e of ends) {
         g += `<line x1="${e * (hw - 3.4 * S)}" y1="${-1.6 * S}" x2="${e * (hw + 1.2 * S)}" y2="${-1.6 * S}" stroke="#c0574a" stroke-width="1.3" marker-end="url(#sp-arr)"/>`;
       }
-      const dy = hd + 13;
-      g += `<line x1="${-hw}" y1="${dy}" x2="${hw}" y2="${dy}" stroke="#77746c" stroke-width="0.8"/>`;
-      g += `<line x1="${-hw}" y1="${dy - 3}" x2="${-hw}" y2="${dy + 3}" stroke="#77746c" stroke-width="0.8"/>`;
-      g += `<line x1="${hw}" y1="${dy - 3}" x2="${hw}" y2="${dy + 3}" stroke="#77746c" stroke-width="0.8"/>`;
-      g += `<text x="0" y="${dy - 3}" text-anchor="middle" font-size="6.5" fill="#55524c" font-family="${FONT}">${t.len}′-0″</text>`;
+      const dy = hd + ss(14);
+      g += `<line x1="${-hw}" y1="${dy}" x2="${hw}" y2="${dy}" stroke="#6b6861" stroke-width="${ss(0.9)}"/>`;
+      g += `<line x1="${-hw}" y1="${dy - ss(3)}" x2="${-hw}" y2="${dy + ss(3)}" stroke="#6b6861" stroke-width="${ss(0.9)}"/>`;
+      g += `<line x1="${hw}" y1="${dy - ss(3)}" x2="${hw}" y2="${dy + ss(3)}" stroke="#6b6861" stroke-width="${ss(0.9)}"/>`;
+      g += `<text x="0" y="${dy - ss(3)}" text-anchor="middle" font-size="${ss(9)}" fill="#55524c" font-family="${FONT}">${t.len}′-0″</text>`;
     }
   }
   return g;
@@ -1263,8 +1388,24 @@ function renderSitePlan(opts = {}) {
   const minX = SP_MINX, maxX = SP_MAXX, minZ = SP_MINZ, maxZ = SP_MAXZ;
   const X = spX, Y = spY;
   const width = SP_W, height = SP_H;
-  detailOn = sview.k >= DETAIL_K;
   rendering = true;
+
+  // The fit has to settle before anything is emitted: annotation is sized in
+  // screen pixels, so building the markup first and zooming afterwards writes
+  // every label at the wrong scale.
+  let uMinX = Infinity, uMaxX = -Infinity, uMinZ = Infinity, uMaxZ = -Infinity;
+  for (const it of items) {
+    const [hw, hd] = halfDims(it);
+    uMinX = Math.min(uMinX, it.x - hw); uMaxX = Math.max(uMaxX, it.x + hw);
+    uMinZ = Math.min(uMinZ, it.z - hd); uMaxZ = Math.max(uMaxZ, it.z + hd);
+  }
+  siteFitBox = items.length
+    ? { x0: X(uMinX) - 30, x1: X(uMaxX) + 40, y0: Y(uMinZ) - 30, y1: Y(uMaxZ) + 45 }
+    : { x0: 0, x1: SP_W, y0: 0, y1: SP_H };
+  if (!exportScale && (opts.fit || !siteFitted)) { siteFitted = true; siteFitView(); }
+
+  detailOn = exportScale ? true : (detailOn ? sview.k >= detailOut() : sview.k >= detailIn());
+  AK = exportScale ? 1 : sview.k;
   let s = "";
 
   // paper sheet with a soft shadow, sitting on the workspace
@@ -1285,16 +1426,17 @@ function renderSitePlan(opts = {}) {
   s += `<rect x="${X(-HALF)}" y="${Y(-HALF)}" width="${HALF * 2 * S}" height="${HALF * 2 * S}" fill="none" stroke="#8a867c" stroke-width="1.6" stroke-dasharray="16 6 3 6"/>`;
 
   // gravel drive (editable: the strip and its turnaround move together)
-  const pc = padCenter();
-  s += `<g id="drive-layer"><circle cx="${X(pc.x)}" cy="${Y(pc.z)}" r="${PAD_R * S}" fill="#e7e2d6" stroke="#cfc9ba" stroke-width="1"/>`;
-  s += `<g transform="translate(${X(drive.x)} ${Y(drive.z)}) rotate(${-drive.rot * 90})">`;
-  s += `<rect x="${-DRIVE_WID / 2 * S}" y="${-DRIVE_LEN / 2 * S}" width="${DRIVE_WID * S}" height="${DRIVE_LEN * S}" fill="#e7e2d6" stroke="#cfc9ba" stroke-width="1"/>`;
-  s += `</g></g>`;
+  // one translated group so a drag is a transform, not a re-render
+  s += `<g id="drive-layer" transform="${driveTransform()}">`
+    + `<circle cx="0" cy="${PAD_OFF * S}" r="${PAD_R * S}" fill="#e7e2d6" stroke="#b9b1a0" stroke-width="1"/>`
+    + `<rect x="${-DRIVE_WID / 2 * S}" y="${-DRIVE_LEN / 2 * S}" width="${DRIVE_WID * S}" height="${DRIVE_LEN * S}" fill="#e7e2d6" stroke="#b9b1a0" stroke-width="1"/>`
+    + `</g>`;
 
   // tree canopies
-  for (const { x: tx, z: tz, s: ts } of trees) {
-    s += `<circle cx="${X(tx)}" cy="${Y(tz)}" r="${6 * ts * S}" fill="#7c9464" fill-opacity="0.14" stroke="#7c9464" stroke-width="1"/>`;
-    s += `<circle cx="${X(tx)}" cy="${Y(tz)}" r="2" fill="#5f7350"/>`;
+  for (const t of trees) {
+    s += `<g id="tree${t.id}" transform="translate(${X(t.x)} ${Y(t.z)})">`
+      + `<circle cx="0" cy="0" r="${6 * t.s * S}" fill="#7c9464" fill-opacity="0.14" stroke="#7c9464" stroke-width="1"/>`
+      + `<circle cx="0" cy="0" r="2" fill="#5f7350"/></g>`;
   }
 
   // utility core rings + trench runs
@@ -1330,44 +1472,48 @@ function renderSitePlan(opts = {}) {
     let inner;
     if (detailOn) {
       const [, hd] = halfDims(it);
-      inner = `<text x="0" y="${-hd * S - 7}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="1.1" fill="#23231f" font-family="${FONT}">${label.toUpperCase()} · ${t.len * t.wid} SF</text>`;
+      inner = `<text x="0" y="${-hd * S - ss(7)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(1.1)}" fill="#23231f" font-family="${FONT}">${label.toUpperCase()} · ${t.len * t.wid} SF</text>`;
     } else {
-      inner = `<text x="0" y="-2" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="1.1" fill="#23231f" font-family="${FONT}">${label.toUpperCase()}</text>`
-        + `<text x="0" y="10" text-anchor="middle" font-size="8.5" fill="#77746c" font-family="${FONT}">${t.len * t.wid} SF</text>`;
+      inner = `<text x="0" y="${-ss(2)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" letter-spacing="${ss(1.1)}" fill="#23231f" font-family="${FONT}">${label.toUpperCase()}</text>`
+        + `<text x="0" y="${ss(10)}" text-anchor="middle" font-size="${ss(9)}" fill="#6b6861" font-family="${FONT}">${t.len * t.wid} SF</text>`;
     }
     s += `<g id="ul${it.id}" transform="translate(${X(it.x)} ${Y(it.z)})">${inner}</g>`;
   }
 
   // fire-separation conflicts
+  // Drawn along the gap itself rather than centre-to-centre, which used to
+  // strike the line and its label straight through the units it annotates.
   s += `<g id="sep-layer">`;
   for (const p of sepPairs) {
-    const mx = (X(p.a.x) + X(p.b.x)) / 2, my = (Y(p.a.z) + Y(p.b.z)) / 2;
-    s += `<line x1="${X(p.a.x)}" y1="${Y(p.a.z)}" x2="${X(p.b.x)}" y2="${Y(p.b.z)}" stroke="#c0574a" stroke-width="1.5"/>`;
-    s += `<text x="${mx}" y="${my - 5}" text-anchor="middle" font-size="11" font-weight="700" fill="#c0574a" font-family="${FONT}">${Math.max(1, Math.round(p.gap))}′ △</text>`;
+    const b = gapBand(p.a, p.b);
+    const mx = b.axis === "x" ? (X(b.x0) + X(b.x1)) / 2 : X((b.x0 + b.x1) / 2);
+    const my = b.axis === "x" ? Y((b.z0 + b.z1) / 2) : (Y(b.z0) + Y(b.z1)) / 2;
+    if (b.axis === "x") {
+      s += `<line x1="${X(b.x0)}" y1="${my}" x2="${X(b.x1)}" y2="${my}" stroke="#c0574a" stroke-width="${ss(1.6)}"/>`;
+    } else {
+      s += `<line x1="${mx}" y1="${Y(b.z0)}" x2="${mx}" y2="${Y(b.z1)}" stroke="#c0574a" stroke-width="${ss(1.6)}"/>`;
+    }
+    s += `<text x="${mx}" y="${my - ss(6)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">⚠ ${Math.max(1, Math.round(p.gap))}′ RATED</text>`;
   }
 
   s += `</g>`;
+  // the findings ride on the drawing, so they survive export
+  s += `<g id="findings-layer">${findingsMarkup()}</g>`;
 
   // compound extent dimension strings
-  let uMinX = Infinity, uMaxX = -Infinity, uMinZ = Infinity, uMaxZ = -Infinity;
-  for (const it of items) {
-    const [hw, hd] = halfDims(it);
-    uMinX = Math.min(uMinX, it.x - hw); uMaxX = Math.max(uMaxX, it.x + hw);
-    uMinZ = Math.min(uMinZ, it.z - hd); uMaxZ = Math.max(uMaxZ, it.z + hd);
-  }
   if (items.length) {
     s += `<g id="dim-layer">`;
-    const tick = (x, y, dx, dy) => `<line x1="${x - dx}" y1="${y - dy}" x2="${x + dx}" y2="${y + dy}" stroke="#77746c" stroke-width="1.1"/>`;
-    const dy = Y(uMaxZ) + 30;
-    s += `<line x1="${X(uMinX)}" y1="${dy}" x2="${X(uMaxX)}" y2="${dy}" stroke="#77746c" stroke-width="1.1"/>`;
-    s += tick(X(uMinX), dy, 0, 5) + tick(X(uMaxX), dy, 0, 5);
-    s += `<line x1="${X(uMinX)}" y1="${Y(uMaxZ) + 6}" x2="${X(uMinX)}" y2="${dy + 4}" stroke="#b8b2a6" stroke-width="0.8"/>`;
-    s += `<line x1="${X(uMaxX)}" y1="${Y(uMaxZ) + 6}" x2="${X(uMaxX)}" y2="${dy + 4}" stroke="#b8b2a6" stroke-width="0.8"/>`;
-    s += `<text x="${(X(uMinX) + X(uMaxX)) / 2}" y="${dy - 6}" text-anchor="middle" font-size="13" fill="#23231f" font-family="${FONT}">${Math.round(uMaxX - uMinX)}′-0″</text>`;
-    const dx2 = X(uMaxX) + 30;
-    s += `<line x1="${dx2}" y1="${Y(uMinZ)}" x2="${dx2}" y2="${Y(uMaxZ)}" stroke="#77746c" stroke-width="1.1"/>`;
-    s += tick(dx2, Y(uMinZ), 5, 0) + tick(dx2, Y(uMaxZ), 5, 0);
-    s += `<text x="${dx2 + 9}" y="${(Y(uMinZ) + Y(uMaxZ)) / 2}" text-anchor="middle" font-size="13" fill="#23231f" font-family="${FONT}" transform="rotate(90 ${dx2 + 9} ${(Y(uMinZ) + Y(uMaxZ)) / 2})">${Math.round(uMaxZ - uMinZ)}′-0″</text>`;
+    const tick = (x, y, dx, dy) => `<line x1="${x - dx}" y1="${y - dy}" x2="${x + dx}" y2="${y + dy}" stroke="#6b6861" stroke-width="${ss(1.1)}"/>`;
+    const dy = Y(uMaxZ) + ss(30);
+    s += `<line x1="${X(uMinX)}" y1="${dy}" x2="${X(uMaxX)}" y2="${dy}" stroke="#6b6861" stroke-width="${ss(1.1)}"/>`;
+    s += tick(X(uMinX), dy, 0, ss(5)) + tick(X(uMaxX), dy, 0, ss(5));
+    s += `<line x1="${X(uMinX)}" y1="${Y(uMaxZ) + ss(6)}" x2="${X(uMinX)}" y2="${dy + ss(4)}" stroke="#a9a397" stroke-width="${ss(0.9)}"/>`;
+    s += `<line x1="${X(uMaxX)}" y1="${Y(uMaxZ) + ss(6)}" x2="${X(uMaxX)}" y2="${dy + ss(4)}" stroke="#a9a397" stroke-width="${ss(0.9)}"/>`;
+    s += `<text x="${(X(uMinX) + X(uMaxX)) / 2}" y="${dy - ss(6)}" text-anchor="middle" font-size="${ss(10)}" fill="#23231f" font-family="${FONT}">${Math.round(uMaxX - uMinX)}′-0″</text>`;
+    const dx2 = X(uMaxX) + ss(30);
+    s += `<line x1="${dx2}" y1="${Y(uMinZ)}" x2="${dx2}" y2="${Y(uMaxZ)}" stroke="#6b6861" stroke-width="${ss(1.1)}"/>`;
+    s += tick(dx2, Y(uMinZ), ss(5), 0) + tick(dx2, Y(uMaxZ), ss(5), 0);
+    s += `<text x="${dx2 + ss(9)}" y="${(Y(uMinZ) + Y(uMaxZ)) / 2}" text-anchor="middle" font-size="${ss(10)}" fill="#23231f" font-family="${FONT}" transform="rotate(90 ${dx2 + ss(9)} ${(Y(uMinZ) + Y(uMaxZ)) / 2})">${Math.round(uMaxZ - uMinZ)}′-0″</text>`;
     s += `</g>`;
   }
 
@@ -1385,30 +1531,26 @@ function renderSitePlan(opts = {}) {
     if (t.len === 20) hc20++; else hc10++;
     sqft += t.len * t.wid;
   }
-  const tbw = 300, tbh = 118;
+  const tbw = 340, tbh = 132;
   const tbx = width - tbw - 40, tby = height - tbh - 42;
   s += `<rect x="${tbx}" y="${tby}" width="${tbw}" height="${tbh}" fill="#ffffff" stroke="#23231f" stroke-width="1.6"/>`;
   s += `<line x1="${tbx}" y1="${tby + 36}" x2="${tbx + tbw}" y2="${tby + 36}" stroke="#23231f" stroke-width="1"/>`;
   s += `<text x="${tbx + 14}" y="${tby + 24}" font-size="14" font-weight="700" letter-spacing="2" fill="#23231f" font-family="${FONT}">CONTAINER COMPOUND</text>`;
   s += `<text x="${tbx + 14}" y="${tby + 54}" font-size="10" letter-spacing="1" fill="#55524c" font-family="${FONT}">SITE PLAN · VIRGINIA · 1.0 AC PARCEL</text>`;
-  s += `<text x="${tbx + 14}" y="${tby + 70}" font-size="10" fill="#55524c" font-family="${FONT}">${hc20 + hc10} UNITS (${hc20}× 20′ HC, ${hc10}× 10′ MINI) · ${sqft.toLocaleString()} SF ENCLOSED · ${deckSf} SF DECK</text>`;
-  s += `<text x="${tbx + 14}" y="${tby + 86}" font-size="8.5" fill="#8a867c" font-family="${FONT}">BLUE = GLAZED APERTURE · DASHED = UTILITY RUN / CORE RING · RED = R302.1 CONFLICT</text>`;
-  s += `<line x1="${tbx + 14}" y1="${tby + 103}" x2="${tbx + 14 + 20 * S}" y2="${tby + 103}" stroke="#23231f" stroke-width="3"/>`;
-  s += `<line x1="${tbx + 14 + 10 * S}" y1="${tby + 99}" x2="${tbx + 14 + 10 * S}" y2="${tby + 107}" stroke="#23231f" stroke-width="1.2"/>`;
-  s += `<text x="${tbx + 22 + 20 * S}" y="${tby + 107}" font-size="9" fill="#55524c" font-family="${FONT}">20 FT</text>`;
+  s += `<text x="${tbx + 14}" y="${tby + 70}" font-size="8.5" fill="#55524c" font-family="${FONT}">${hc20 + hc10} UNITS (${hc20}× 20′ HC, ${hc10}× 10′ MINI) · ${sqft.toLocaleString()} SF ENCLOSED · ${deckSf} SF DECK</text>`;
+  // split across two lines: as one line this ran 68 px off the sheet's own
+  // viewBox, so every export lost the key to its colour language
+  s += `<text x="${tbx + 14}" y="${tby + 85}" font-size="7.5" fill="#6b6861" font-family="${FONT}">BLUE = GLAZED APERTURE · DASHED = UTILITY RUN / CORE RING</text>`;
+  s += `<text x="${tbx + 14}" y="${tby + 97}" font-size="7.5" fill="#6b6861" font-family="${FONT}">RED = CODE FINDING (R302.1 GAP · &gt;256 SF CLUSTER · STRANDED WET UNIT)</text>`;
+  s += `<line x1="${tbx + 14}" y1="${tby + 117}" x2="${tbx + 14 + 20 * S}" y2="${tby + 117}" stroke="#23231f" stroke-width="3"/>`;
+  s += `<line x1="${tbx + 14 + 10 * S}" y1="${tby + 113}" x2="${tbx + 14 + 10 * S}" y2="${tby + 121}" stroke="#23231f" stroke-width="1.2"/>`;
+  s += `<text x="${tbx + 22 + 20 * S}" y="${tby + 121}" font-size="9" fill="#55524c" font-family="${FONT}">20 FT</text>`;
 
   const svgW = Math.round(width), svgH = Math.round(height);
-  const defs = `<defs><marker id="sp-arr" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 z" fill="#c0574a"/></marker></defs>`;
+  const defs = `<defs><marker id="sp-arr" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 z" fill="#c0574a"/></marker>${HATCH_DEF}</defs>`;
   document.getElementById("site-svg").innerHTML =
     `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">${defs}${s}</svg>`;
   siteApply();
-
-  // fit the compound (fall back to the whole sheet) under the chrome
-  siteFitBox = items.length
-    ? { x0: X(uMinX) - 60, x1: X(uMaxX) + 70, y0: Y(uMinZ) - 60, y1: Y(uMaxZ) + 70 }
-    : { x0: 0, x1: svgW, y0: 0, y1: svgH };
-  // an edit must not yank the sheet back to a fitted view under your finger
-  if (opts.fit || !siteFitted) { siteFitted = true; siteFitView(); }
   renderChrome();
   rendering = false;
 }
@@ -1416,15 +1558,50 @@ let siteFitted = false;
 let rendering = false;
 
 let siteFitBox = null;
+
+// The floating chrome used to be two magic numbers (118 top, 34 bottom) tuned
+// on a desktop, so on a phone the fit ran the drawing under the export pills
+// and the add button, where it could not be pressed. Measure what is actually
+// on screen instead.
+function chromeBand() {
+  const box = (id) => {
+    const el = document.getElementById(id);
+    if (!el || getComputedStyle(el).display === "none") return null;
+    const r = el.getBoundingClientRect();
+    return r.width && r.height ? r : null;
+  };
+  let top = 12;
+  for (const id of ["topbar", "tabbar"]) {
+    const r = box(id);
+    if (r) top = Math.max(top, r.bottom + 12);
+  }
+  let bottom = 12;
+  for (const id of ["site-actions", "fab", "stats-pill", "toolstrip", "edge-tools"]) {
+    const r = box(id);
+    if (r) bottom = Math.max(bottom, innerHeight - r.top + 12);
+  }
+  return { top, bottom };
+}
+
+// Below this the units stop being touchable — an 8 ft side has to stay near a
+// finger's width — so the compound is allowed to overflow and be panned
+// rather than shrunk until the drawing is a row of grey slabs.
+const MIN_FIT_K = 0.5;
+
 function siteFitView() {
   if (!siteFitBox) return;
   const { x0, x1, y0, y1 } = siteFitBox;
   const vw = innerWidth, vh = innerHeight;
-  const topPad = 118, pad = 34;
-  const k = Math.min((vw - pad * 2) / (x1 - x0), (vh - topPad - pad) / (y1 - y0), 2.5);
+  const { top, bottom } = chromeBand();
+  const pad = 20;
+  const band = Math.max(120, vh - top - bottom);
+  const k = Math.min(
+    Math.max(MIN_FIT_K, Math.min((vw - pad * 2) / (x1 - x0), band / (y1 - y0))),
+    2.5);
   sview.k = k;
+  fitK = k;
   sview.x = (vw - k * (x0 + x1)) / 2;
-  sview.y = topPad + ((vh - topPad - pad) - k * (y1 - y0)) / 2 - k * y0;
+  sview.y = top + (band - k * (y1 - y0)) / 2 - k * y0;
   afterZoom();
 }
 document.getElementById("site-fit").addEventListener("click", siteFitView);
@@ -1439,11 +1616,20 @@ function downloadBlob(name, blob) {
 // the exported drawing is the sheet at its own scale, with no editing chrome
 // (that lives in a separate overlay) and no trace of the current zoom
 function sheetForExport() {
+  // Re-emit at 1:1 rather than cloning whatever the screen is showing:
+  // annotation is sized in screen pixels now, so a clone would bake in the
+  // current zoom and export a different drawing depending on how far you
+  // happened to be pinched in.
+  exportScale = true;
+  renderSitePlan();
   const svg = document.querySelector("#site-svg svg");
-  if (!svg) return null;
-  const clone = svg.cloneNode(true);
-  clone.setAttribute("width", SP_W);
-  clone.setAttribute("height", SP_H);
+  const clone = svg ? svg.cloneNode(true) : null;
+  exportScale = false;
+  renderSitePlan();
+  if (clone) {
+    clone.setAttribute("width", SP_W);
+    clone.setAttribute("height", SP_H);
+  }
   return clone;
 }
 document.getElementById("site-svg-dl").addEventListener("click", () => {
@@ -1499,8 +1685,16 @@ function siteApply() {
 // crossing the detail threshold redraws the sheet at the other fidelity
 function afterZoom() {
   siteApply();
-  if (!rendering && (sview.k >= DETAIL_K) !== detailOn) renderSitePlan();
+  if (rendering) return;
+  // Every zoom step changes the annotation scale, so the sheet is re-emitted —
+  // coalesced into one frame so a two-finger pinch does not rebuild it twice
+  // per frame, once per moving pointer.
+  if (!zoomPending) {
+    zoomPending = true;
+    requestAnimationFrame(() => { zoomPending = false; if (mode === "plan") renderSitePlan(); });
+  }
 }
+let zoomPending = false;
 function siteZoomAt(px, py, f) {
   const k2 = Math.min(6, Math.max(0.1, sview.k * f));
   f = k2 / sview.k;
@@ -1642,17 +1836,18 @@ function gapBand(a, b) {
 let planDrag = null;
 let ghost = null; // { type, x, z, rot } while adding by drag
 
-function renderChrome() {
-  if (mode !== "plan") { siteChromeEl.innerHTML = ""; return; }
+// The code findings — hatched rated-wall gaps, an over-exemption cluster, a
+// wet unit stranded from its core. These are NOT editing chrome: they are the
+// answer to the permit question, so they live on the drawing and they export.
+// Only the live editing marks (halo, guides, ghost, drag dimensions) are
+// chrome, and only those are stripped.
+function findingsMarkup() {
   const X = spX, Y = spY, S = SP_S;
   let s = "";
-
-  // code redlines: draw the problem where it happens
   for (const p of sepPairs) {
     const b = gapBand(p.a, p.b);
-    if (b.overlap > 0) {
-      s += `<rect x="${X(b.x0)}" y="${Y(b.z0)}" width="${Math.max(1, (b.x1 - b.x0) * S)}" height="${Math.max(1, (b.z1 - b.z0) * S)}" fill="url(#ch-hatch)" stroke="#c0574a" stroke-width="1" stroke-dasharray="4 3"/>`;
-    }
+    if (b.overlap <= 0) continue;
+    s += `<rect x="${X(b.x0)}" y="${Y(b.z0)}" width="${Math.max(1, (b.x1 - b.x0) * S)}" height="${Math.max(1, (b.z1 - b.z0) * S)}" fill="url(#ch-hatch)" stroke="#c0574a" stroke-width="${ss(1)}" stroke-dasharray="${dash(4, 3)}"/>`;
   }
   const seen = new Set();
   for (const it of items) {
@@ -1668,8 +1863,8 @@ function renderChrome() {
       x0 = Math.min(x0, m.x - hw); x1 = Math.max(x1, m.x + hw);
       z0 = Math.min(z0, m.z - hd); z1 = Math.max(z1, m.z + hd);
     }
-    s += `<rect x="${X(x0) - 6}" y="${Y(z0) - 6}" width="${(x1 - x0) * S + 12}" height="${(z1 - z0) * S + 12}" fill="none" stroke="#c0574a" stroke-width="1.8" stroke-dasharray="10 5"/>`;
-    s += `<text x="${X((x0 + x1) / 2)}" y="${Y(z0) - 12}" text-anchor="middle" font-size="11" font-weight="700" fill="#c0574a" font-family="${FONT}">${j.count} JOINED · ${j.sqft} SF &gt; 256 SF EXEMPTION</text>`;
+    s += `<rect x="${X(x0) - ss(6)}" y="${Y(z0) - ss(6)}" width="${(x1 - x0) * S + ss(12)}" height="${(z1 - z0) * S + ss(12)}" fill="none" stroke="#c0574a" stroke-width="${ss(1.8)}" stroke-dasharray="${dash(10, 5)}"/>`;
+    s += `<text x="${X((x0 + x1) / 2)}" y="${Y(z0) - ss(13)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">⚠ ${j.sqft} SF &gt; 256 SF EXEMPTION</text>`;
   }
   const cores = items.filter((i) => TYPE_BY_ID[i.typeId].core);
   for (const w of items.filter((i) => TYPE_BY_ID[i.typeId].wet)) {
@@ -1677,22 +1872,49 @@ function renderChrome() {
       ? Math.min(...cores.map((c) => Math.hypot(c.x - w.x, c.z - w.z))) : Infinity;
     if (near <= WET_RADIUS) continue;
     const [, hd] = halfDims(w);
-    s += `<text x="${X(w.x)}" y="${Y(w.z + hd) + 16}" text-anchor="middle" font-size="10" font-weight="700" fill="#c0574a" font-family="${FONT}">△ ${cores.length ? `${Math.round(near)}′ TO CORE` : "NO UTILITY CORE"}</text>`;
+    s += `<text x="${X(w.x)}" y="${Y(w.z + hd) + ss(16)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">⚠ ${cores.length ? `${Math.round(near)}′ TO CORE` : "NO UTILITY CORE"}</text>`;
+  }
+  return s;
+}
+
+const HATCH_DEF = `<pattern id="ch-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+  <line x1="0" y1="0" x2="0" y2="7" stroke="#c0574a" stroke-width="2" opacity="0.38"/></pattern>`;
+
+function renderChrome() {
+  if (mode !== "plan") { siteChromeEl.innerHTML = ""; return; }
+  AK = sview.k;
+  const X = spX, Y = spY, S = SP_S;
+  let s = "";
+
+  // mid-drag the sheet's settled findings are stale, so redraw them live here
+  if (planDrag && planDrag.moved) s += findingsMarkup();
+
+  // Butted units move as one, so say so while one of them is selected —
+  // previously the only cluster outline was a >256 SF violation marker, and
+  // a legal cluster moved as a group with nothing on screen to predict it.
+  if (selected && !TYPE_BY_ID[selected.typeId].deck) {
+    const members = clusterOf(selected);
+    if (members.length > 1) {
+      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+      for (const m of members) {
+        const [hw, hd] = halfDims(m);
+        x0 = Math.min(x0, m.x - hw); x1 = Math.max(x1, m.x + hw);
+        z0 = Math.min(z0, m.z - hd); z1 = Math.max(z1, m.z + hd);
+      }
+      s += `<rect x="${X(x0) - ss(3)}" y="${Y(z0) - ss(3)}" width="${(x1 - x0) * S + ss(6)}" height="${(z1 - z0) * S + ss(6)}" rx="${ss(2)}" fill="none" stroke="#b3542e" stroke-width="${ss(1.4)}" stroke-dasharray="${dash(3, 3)}" opacity="0.75"/>`;
+      s += `<text x="${X((x0 + x1) / 2)}" y="${Y(z0) - ss(9)}" text-anchor="middle" font-size="${ss(9)}" font-weight="700" fill="#b3542e" font-family="${FONT}">${document.body.classList.contains("breaking-out") ? "MOVING ALONE" : `${members.length} JOINED · MOVE TOGETHER`}</text>`;
+    }
   }
 
   // selection halo
   if (selected) {
     const [hw, hd] = halfDims(selected);
-    s += `<rect x="${X(selected.x - hw) - 5}" y="${Y(selected.z - hd) - 5}" width="${hw * 2 * S + 10}" height="${hd * 2 * S + 10}" rx="3" fill="none" stroke="#b3542e" stroke-width="2.2"/>`;
+    s += `<rect x="${X(selected.x - hw) - ss(5)}" y="${Y(selected.z - hd) - ss(5)}" width="${hw * 2 * S + ss(10)}" height="${hd * 2 * S + ss(10)}" rx="${ss(3)}" fill="none" stroke="#b3542e" stroke-width="${ss(2.4)}"/>`;
   }
 
   // in-flight: snap guides, then the gaps this move is creating
   if (planDrag && planDrag.moved && planDrag.kind === "unit") {
-    for (const g of snapGuides) {
-      s += g.axis === "x"
-        ? `<line x1="${X(g.at)}" y1="0" x2="${X(g.at)}" y2="${SP_H}" stroke="#b3542e" stroke-width="1" stroke-dasharray="7 5" opacity="0.8"/>`
-        : `<line x1="0" y1="${Y(g.at)}" x2="${SP_W}" y2="${Y(g.at)}" stroke="#b3542e" stroke-width="1" stroke-dasharray="7 5" opacity="0.8"/>`;
-    }
+    s += guidesSVG();
     s += dragDimsSVG(planDrag.primary, new Set(planDrag.members));
   }
 
@@ -1700,23 +1922,30 @@ function renderChrome() {
   if (ghost) {
     const hw = (ghost.rot % 2 ? ghost.type.wid : ghost.type.len) / 2;
     const hd = (ghost.rot % 2 ? ghost.type.len : ghost.type.wid) / 2;
-    s += `<rect x="${X(ghost.x - hw)}" y="${Y(ghost.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="#b3542e" fill-opacity="0.13" stroke="#b3542e" stroke-width="2" stroke-dasharray="6 4"/>`;
-    s += `<text x="${X(ghost.x)}" y="${Y(ghost.z) + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="#b3542e" font-family="${FONT}">${(SHORT_NAME[ghost.type.id] || ghost.type.name).toUpperCase()}</text>`;
-    for (const g of snapGuides) {
-      s += g.axis === "x"
-        ? `<line x1="${X(g.at)}" y1="0" x2="${X(g.at)}" y2="${SP_H}" stroke="#b3542e" stroke-width="1" stroke-dasharray="7 5" opacity="0.8"/>`
-        : `<line x1="0" y1="${Y(g.at)}" x2="${SP_W}" y2="${Y(g.at)}" stroke="#b3542e" stroke-width="1" stroke-dasharray="7 5" opacity="0.8"/>`;
-    }
+    s += `<rect x="${X(ghost.x - hw)}" y="${Y(ghost.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="#2f6f9e" fill-opacity="0.13" stroke="#2f6f9e" stroke-width="${ss(2)}" stroke-dasharray="${dash(6, 4)}"/>`;
+    s += `<text x="${X(ghost.x)}" y="${Y(ghost.z) + ss(4)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="#2f6f9e" font-family="${FONT}">${(SHORT_NAME[ghost.type.id] || ghost.type.name).toUpperCase()}</text>`;
+    s += guidesSVG();
   }
 
-  const defs = `<defs><pattern id="ch-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-    <line x1="0" y1="0" x2="0" y2="7" stroke="#c0574a" stroke-width="2" opacity="0.38"/></pattern></defs>`;
   siteChromeEl.innerHTML =
-    `<svg width="${SP_W}" height="${SP_H}" viewBox="0 0 ${SP_W} ${SP_H}" xmlns="http://www.w3.org/2000/svg">${defs}${s}</svg>`;
+    `<svg width="${SP_W}" height="${SP_H}" viewBox="0 0 ${SP_W} ${SP_H}" xmlns="http://www.w3.org/2000/svg"><defs>${HATCH_DEF}</defs>${s}</svg>`;
   siteApply();
 }
 
-// live gap dimensions from the moving unit to its nearest neighbours
+// snap guides, weighted so they read at any zoom
+function guidesSVG() {
+  let s = "";
+  for (const g of snapGuides) {
+    s += g.axis === "x"
+      ? `<line x1="${spX(g.at)}" y1="0" x2="${spX(g.at)}" y2="${SP_H}" stroke="#b3542e" stroke-width="${ss(1.6)}" stroke-dasharray="${dash(9, 6)}" opacity="0.85"/>`
+      : `<line x1="0" y1="${spY(g.at)}" x2="${SP_W}" y2="${spY(g.at)}" stroke="#b3542e" stroke-width="${ss(1.6)}" stroke-dasharray="${dash(9, 6)}" opacity="0.85"/>`;
+  }
+  return s;
+}
+
+// Live gap dimensions. The label carries the meaning: a gap in the 1-9 ft
+// rated-wall band reads "RATED", because the previous cue was a shift from
+// #b3542e to #c0574a — two reds 1.11:1 apart, which nobody can tell apart.
 function dragDimsSVG(it, moving) {
   const X = spX, Y = spY;
   let s = "";
@@ -1729,23 +1958,35 @@ function dragDimsSVG(it, moving) {
   for (const { o, gap } of near) {
     const b = gapBand(it, o);
     const danger = gap > JOIN_EPS && gap < SEP_CLEAR;
-    const col = gap <= JOIN_EPS ? "#2f7a4f" : danger ? "#c0574a" : "#b3542e";
+    const butt = gap <= JOIN_EPS;
+    const col = butt ? "#2f7a4f" : danger ? "#8c3b2e" : "#55524c";
+    const label = butt ? "BUTT" : danger ? `⚠ ${Math.round(gap)}′ RATED` : `${Math.round(gap)}′`;
+    const w = ss(label.length * 7 + 16), h = ss(17);
     const mx = b.axis === "x" ? (X(b.x0) + X(b.x1)) / 2 : X((b.x0 + b.x1) / 2);
     const my = b.axis === "x" ? Y((b.z0 + b.z1) / 2) : (Y(b.z0) + Y(b.z1)) / 2;
+    const wt = ss(danger ? 2.4 : 1.4);
     if (b.axis === "x") {
-      s += `<line x1="${X(b.x0)}" y1="${my}" x2="${X(b.x1)}" y2="${my}" stroke="${col}" stroke-width="1.4"/>`;
-      s += `<line x1="${X(b.x0)}" y1="${my - 5}" x2="${X(b.x0)}" y2="${my + 5}" stroke="${col}" stroke-width="1.4"/>`;
-      s += `<line x1="${X(b.x1)}" y1="${my - 5}" x2="${X(b.x1)}" y2="${my + 5}" stroke="${col}" stroke-width="1.4"/>`;
+      s += `<line x1="${X(b.x0)}" y1="${my}" x2="${X(b.x1)}" y2="${my}" stroke="${col}" stroke-width="${wt}"/>`;
+      s += `<line x1="${X(b.x0)}" y1="${my - ss(5)}" x2="${X(b.x0)}" y2="${my + ss(5)}" stroke="${col}" stroke-width="${wt}"/>`;
+      s += `<line x1="${X(b.x1)}" y1="${my - ss(5)}" x2="${X(b.x1)}" y2="${my + ss(5)}" stroke="${col}" stroke-width="${wt}"/>`;
     } else {
-      s += `<line x1="${mx}" y1="${Y(b.z0)}" x2="${mx}" y2="${Y(b.z1)}" stroke="${col}" stroke-width="1.4"/>`;
-      s += `<line x1="${mx - 5}" y1="${Y(b.z0)}" x2="${mx + 5}" y2="${Y(b.z0)}" stroke="${col}" stroke-width="1.4"/>`;
-      s += `<line x1="${mx - 5}" y1="${Y(b.z1)}" x2="${mx + 5}" y2="${Y(b.z1)}" stroke="${col}" stroke-width="1.4"/>`;
+      s += `<line x1="${mx}" y1="${Y(b.z0)}" x2="${mx}" y2="${Y(b.z1)}" stroke="${col}" stroke-width="${wt}"/>`;
+      s += `<line x1="${mx - ss(5)}" y1="${Y(b.z0)}" x2="${mx + ss(5)}" y2="${Y(b.z0)}" stroke="${col}" stroke-width="${wt}"/>`;
+      s += `<line x1="${mx - ss(5)}" y1="${Y(b.z1)}" x2="${mx + ss(5)}" y2="${Y(b.z1)}" stroke="${col}" stroke-width="${wt}"/>`;
     }
-    const label = gap <= JOIN_EPS ? "BUTT" : `${Math.round(gap)}′`;
-    s += `<rect x="${mx - 20}" y="${my - 20}" width="40" height="15" rx="3" fill="#fbfaf6" stroke="${col}" stroke-width="1"/>`;
-    s += `<text x="${mx}" y="${my - 9}" text-anchor="middle" font-size="10" font-weight="700" fill="${col}" font-family="${FONT}">${label}</text>`;
+    // sit the chip clear of the band, and of the finger holding the unit
+    const oy = my - ss(26);
+    s += `<rect x="${mx - w / 2}" y="${oy - h}" width="${w}" height="${h}" rx="${ss(4)}" fill="#fbfaf6" stroke="${col}" stroke-width="${ss(1.2)}"/>`;
+    s += `<text x="${mx}" y="${oy - h / 2 + ss(4)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="${col}" font-family="${FONT}">${label}</text>`;
   }
   return s;
+}
+
+const driveTransform = () =>
+  `translate(${spX(drive.x)} ${spY(drive.z)}) rotate(${-drive.rot * 90})`;
+function moveSceneryGroup(id, x, z) {
+  const g = document.getElementById(id);
+  if (g) g.setAttribute("transform", `translate(${spX(x)} ${spY(z)})`);
 }
 
 // move one unit's group on the sheet without redrawing the whole thing
@@ -1760,10 +2001,15 @@ function moveUnitGroup(it) {
 // ---- pointer handling ----
 
 let sitePanning = false;
+let pinching = false;
 let lastTap = { t: 0, key: "" };
 let breakoutTimer = null;
 
-function beginUnitDrag(it, p, solo) {
+// A fingertip always jitters, so the threshold is measured from where the
+// press began, not from the previous move event, and it is generous on touch.
+const SLOP = (e) => (e.pointerType === "touch" ? 10 : 3);
+
+function beginUnitDrag(it, p, solo, e) {
   const members = solo ? [it] : clusterOf(it);
   planDrag = {
     kind: "unit", primary: it, members, solo,
@@ -1772,25 +2018,30 @@ function beginUnitDrag(it, p, solo) {
     snapshot: JSON.stringify(serialize()),
     preBlocked: blockedPairs().length,
     moved: false,
+    startX: e.clientX, startY: e.clientY, slop: SLOP(e),
   };
 }
 
 sitePanelEl.addEventListener("pointerdown", (e) => {
+  if (placing && selected) { e.preventDefault(); return; } // handled on release
   sitePanelEl.setPointerCapture(e.pointerId);
   sitePtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (sitePtrs.size > 1) { // a second finger turns the gesture into a pinch
     cancelPlanDrag();
     sitePanning = false;
+    pinching = true;
     return;
   }
   const p = clientToWorld(e.clientX, e.clientY);
+  pinching = false;
   const it = unitAtWorld(p);
   if (it) {
-    beginUnitDrag(it, p, e.altKey || e.shiftKey);
+    beginUnitDrag(it, p, e.altKey || e.shiftKey, e);
     // held still, a press breaks one unit out of its cluster
     breakoutTimer = setTimeout(() => {
       if (planDrag && planDrag.kind === "unit" && !planDrag.moved && !planDrag.solo
           && planDrag.members.length > 1) {
+        document.body.classList.add("breaking-out");
         planDrag.members = [planDrag.primary];
         planDrag.offs = [{ m: planDrag.primary, dx: 0, dz: 0 }];
         planDrag.solo = true;
@@ -1802,12 +2053,14 @@ sitePanelEl.addEventListener("pointerdown", (e) => {
   const tr = treeAtWorld(p);
   if (tr) {
     planDrag = { kind: "tree", tree: tr, grabX: tr.x - p.x, grabZ: tr.z - p.z,
-                 snapshot: JSON.stringify(serialize()), moved: false };
+                 snapshot: JSON.stringify(serialize()), moved: false,
+                 startX: e.clientX, startY: e.clientY, slop: SLOP(e) };
     return;
   }
   if (driveAtWorld(p)) {
     planDrag = { kind: "drive", grabX: drive.x - p.x, grabZ: drive.z - p.z,
-                 snapshot: JSON.stringify(serialize()), moved: false };
+                 snapshot: JSON.stringify(serialize()), moved: false,
+                 startX: e.clientX, startY: e.clientY, slop: SLOP(e) };
     return;
   }
   sitePanning = true;
@@ -1834,9 +2087,10 @@ sitePanelEl.addEventListener("pointermove", (e) => {
 
   if (planDrag) {
     if (!planDrag.moved) {
-      if (Math.hypot(cur.x - prev.x, cur.y - prev.y) < 1) return;
+      const travel = Math.hypot(cur.x - planDrag.startX, cur.y - planDrag.startY);
+      if (travel > planDrag.slop) clearTimeout(breakoutTimer); // committed to a drag
+      if (travel <= planDrag.slop) return;
       planDrag.moved = true;
-      clearTimeout(breakoutTimer);
       undoStack.push(planDrag.snapshot); // one undo step per drag
       if (undoStack.length > 60) undoStack.shift();
       redoStack.length = 0;
@@ -1854,15 +2108,19 @@ sitePanelEl.addEventListener("pointermove", (e) => {
         moveUnitGroup(m);
       }
       updateCompliance(); // live separation + trench feedback
-    } else if (planDrag.kind === "tree") {
+    }
+ else if (planDrag.kind === "tree") {
       planDrag.tree.x = Math.round(p.x + planDrag.grabX);
       planDrag.tree.z = Math.round(p.z + planDrag.grabZ);
-      renderSitePlan();
+      moveSceneryGroup(`tree${planDrag.tree.id}`, planDrag.tree.x, planDrag.tree.z);
     } else if (planDrag.kind === "drive") {
       drive.x = Math.round(p.x + planDrag.grabX);
       drive.z = Math.round(p.z + planDrag.grabZ);
-      renderSitePlan();
+      const g = document.getElementById("drive-layer");
+      if (g) g.setAttribute("transform", driveTransform());
     }
+    // scenery has no bearing on the code checks, which only read unit
+    // footprints, so a tree move does not need the compliance pass at all
     renderChrome();
     return;
   }
@@ -1883,25 +2141,46 @@ function hoverCursor(e) {
 function cancelPlanDrag() {
   clearTimeout(breakoutTimer);
   if (planDrag && planDrag.moved) {
+    // loadFrom rebuilds every item, so hold the selection by id across it
+    const keep = selected && selected.id;
     loadFrom(JSON.parse(planDrag.snapshot));
     undoStack.pop();
     updateHistoryButtons();
+    if (keep) { const again = items.find((i) => i.id === keep); if (again) select(again); }
   }
   planDrag = null;
   snapGuides = [];
-  document.body.classList.remove("plan-dragging");
+  document.body.classList.remove("plan-dragging", "breaking-out");
 }
 
 sitePanelEl.addEventListener("pointerup", (e) => {
+  if (placing && selected) {
+    const p = clientToWorld(e.clientX, e.clientY);
+    setPlacing(false);
+    placeSelectedAt(p.x, p.z);
+    return;
+  }
   sitePtrs.delete(e.pointerId);
   clearTimeout(breakoutTimer);
   const d = planDrag;
   planDrag = null;
+  document.body.classList.remove("plan-dragging", "breaking-out");
+
+  // lifting one finger of a pinch hands the gesture back to the other one
+  if (sitePtrs.size === 1) { sitePanning = true; return; }
   sitePanning = false;
-  document.body.classList.remove("plan-dragging");
+  const wasPinch = pinching;
+  pinching = false;
 
   if (d && d.moved) {
     snapGuides = [];
+    // a drag that travelled but changed nothing is a tap, not an edit
+    if (JSON.stringify(serialize()) === d.snapshot) {
+      undoStack.pop();
+      updateHistoryButtons();
+      if (d.kind === "unit") { select(selected === d.primary ? null : d.primary); renderChrome(); }
+      return;
+    }
     if (d.kind === "unit" && blockedPairs().length > d.preBlocked) {
       undoStack.pop();
       updateHistoryButtons();
@@ -1919,7 +2198,8 @@ sitePanelEl.addEventListener("pointerup", (e) => {
     return;
   }
 
-  if (!d) { // a press on empty paper clears the selection
+  if (!d) { // a press on empty paper clears the selection — but the tail of a
+    if (wasPinch) return; // pinch is not a press, and must not deselect
     const p = clientToWorld(e.clientX, e.clientY);
     if (!unitAtWorld(p)) { select(null); renderChrome(); }
     return;
@@ -1983,6 +2263,16 @@ addEventListener("pointermove", (e) => {
     ? { x: Math.round(p.x), z: Math.round(p.z) }
     : snapMove(probe, p.x, p.z, new Set());
   ghost = { type: pendingAdd.type, x: snapped.x, z: snapped.z, rot: 0 };
+  renderChrome();
+});
+
+// A cancelled pointer is an abort, never "nothing happened" — without this
+// the ghost stayed painted and the placement fired on a later, unrelated touch.
+addEventListener("pointercancel", () => {
+  if (!pendingAdd && !ghost) return;
+  pendingAdd = null;
+  ghost = null;
+  snapGuides = [];
   renderChrome();
 });
 
@@ -2073,20 +2363,142 @@ function openPlan(t) {
   document.getElementById("plan-sub").textContent =
     `${t.len}' ${t.len === 10 ? "mini " : ""}high cube · glazed apertures in blue · egress in red · dashed line is the finished interior`;
   document.getElementById("plan-svg").innerHTML = planSVG(t);
-  document.getElementById("plan-modal").classList.add("open");
+  openDialog(document.getElementById("plan-modal"));
 }
 document.getElementById("btn-plan").addEventListener("click", () => {
   if (selected) openPlan(TYPE_BY_ID[selected.typeId]);
 });
 document.getElementById("plan-close").addEventListener("click", () =>
-  document.getElementById("plan-modal").classList.remove("open"));
+  closeDialog(document.getElementById("plan-modal")));
+
+// ---- zoom buttons: pinch was the only way in, and it is undiscoverable ----
+
+const zoomBy = (f) => siteZoomAt(innerWidth / 2, innerHeight / 2, f);
+document.getElementById("site-zoom-in").addEventListener("click", () => zoomBy(1.6));
+document.getElementById("site-zoom-out").addEventListener("click", () => zoomBy(1 / 1.6));
+
+// ---- moving a unit without a drag ----------------------------------------
+//
+// Dragging was the only way to reposition anything, which locks out keyboard,
+// switch and voice control (WCAG 2.2 SC 2.5.7). Arrow keys nudge, and the
+// Move button — which until now was a permanently-highlighted control with no
+// listener at all — arms a tap-to-place.
+
+let placing = false;
+const toolMove = document.getElementById("tool-move");
+function setPlacing(on) {
+  placing = on && !!selected;
+  toolMove.classList.toggle("active", placing);
+  toolMove.setAttribute("aria-pressed", String(placing));
+  document.body.classList.toggle("placing", placing);
+}
+toolMove.addEventListener("click", () => {
+  if (!selected) return;
+  setPlacing(!placing);
+  toast(placing ? "Tap the plan to place this unit" : "Tap-to-place off");
+});
+
+// move the selected unit (and anything butted to it) so its centre lands at x,z
+function placeSelectedAt(x, z) {
+  if (!selected) return;
+  const members = clusterOf(selected);
+  const moving = new Set(members);
+  const offs = members.map((m) => ({ m, dx: m.x - selected.x, dz: m.z - selected.z }));
+  const before = JSON.stringify(serialize());
+  const preBlocked = blockedPairs().length;
+  const snapped = snapMove(selected, x, z, moving);
+  for (const { m, dx, dz } of offs) { m.x = snapped.x + dx; m.z = snapped.z + dz; applyTransform(m); }
+  snapGuides = [];
+  if (blockedPairs().length > preBlocked) {
+    loadFrom(JSON.parse(before));
+    toast("That blocks a door wall — butt against solid sides only");
+    return;
+  }
+  pushUndo.replace(before);
+  save();
+  updateStats();
+  select(selected);
+  renderSitePlan();
+}
+// a variant of pushUndo that records a state captured before the change
+pushUndo.replace = (snapshot) => {
+  undoStack.push(snapshot);
+  if (undoStack.length > 60) undoStack.shift();
+  redoStack.length = 0;
+  updateHistoryButtons();
+};
+
+function nudgeSelected(dx, dz) {
+  if (!selected || mode !== "plan") return;
+  const before = JSON.stringify(serialize());
+  const preBlocked = blockedPairs().length;
+  for (const m of clusterOf(selected)) { m.x += dx; m.z += dz; applyTransform(m); }
+  if (blockedPairs().length > preBlocked) { loadFrom(JSON.parse(before)); toast("That blocks a door wall"); return; }
+  pushUndo.replace(before);
+  save();
+  updateStats();
+  select(selected);
+  renderSitePlan();
+}
+
+// ---- dialogs -------------------------------------------------------------
+//
+// None of the three was a dialog: focus never moved into them, Escape did not
+// close them, a backdrop tap did not either, and the whole page stayed
+// tabbable behind.
+
+let dialogReturn = null;
+function openDialog(el) {
+  dialogReturn = document.activeElement;
+  el.classList.add("open");
+  const first = el.querySelector("button, [href], input");
+  if (first) first.focus();
+}
+function closeDialog(el) {
+  el.classList.remove("open");
+  if (dialogReturn && dialogReturn.focus) dialogReturn.focus();
+  dialogReturn = null;
+}
+function anyOpenDialog() {
+  return ["parts-modal", "plan-modal", "va-modal"]
+    .map((id) => document.getElementById(id))
+    .find((el) => el.classList.contains("open"));
+}
+for (const id of ["parts-modal", "plan-modal", "va-modal"]) {
+  const el = document.getElementById(id);
+  el.addEventListener("pointerdown", (e) => { if (e.target === el) closeDialog(el); });
+  el.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab") return;
+    const f = [...el.querySelectorAll('button, [href], input, [tabindex]:not([tabindex="-1"])')]
+      .filter((n) => n.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+}
+
+// ---- clearing the acre ---------------------------------------------------
+
+document.getElementById("btn-clear").addEventListener("click", () => {
+  document.body.classList.remove("menu-open");
+  if (!confirm("Clear every unit from the acre?")) return;
+  pushUndo();
+  history.replaceState(null, "", location.pathname);
+  loadFrom({ v: 2, items: [], trees: trees.map((t) => [t.x, t.z, t.s]),
+             drive: [drive.x, drive.z, drive.rot] });
+  toast("Acre cleared — ↩ to undo");
+});
 
 // ------------------------------------------------------------------- boot
 
 const hashData = location.hash.startsWith("#d=") ? decodeShare(location.hash.slice(3)) : null;
 let stored = null;
 try { stored = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch {}
-loadFrom(hashData || (stored && stored.items?.length ? stored : EXAMPLE));
+// A saved-but-empty acre is not the same as a first visit. Keying off
+// items.length silently threw away a cleared layout on every reload.
+const seeded = stored && typeof stored.v === "number" && Array.isArray(stored.items);
+loadFrom(hashData || (seeded ? stored : EXAMPLE));
 
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
@@ -2094,12 +2506,30 @@ addEventListener("resize", () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-setTimeout(() => toast("Drag units on the plan to compose · 3D to look around"), 700);
+// The one teaching moment: spend it on what is not already obvious. Things
+// drawn on a plan already look draggable; pinch and the add button do not.
+setTimeout(() => toast("Drag to move · pinch to zoom · + to add"), 700);
 
 const clock = new THREE.Clock();
 const needle = document.getElementById("needle");
 let lastAzimuth = null;
+
+// The plan sheet covers the canvas completely, so rendering behind it is pure
+// battery and heat — and it costs enough main thread to starve the editor in
+// front of it, which is what made double-tap on the sheet unreachable.
+let looping = false;
+function startLoop() {
+  if (looping || mode !== "view" || document.hidden) return;
+  looping = true;
+  clock.getDelta(); // drop the time spent stopped
+  requestAnimationFrame(animate);
+}
+function stopLoop() { looping = false; }
+document.addEventListener("visibilitychange", () =>
+  document.hidden ? stopLoop() : startLoop());
+
 function animate() {
+  if (!looping) return;
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
   const az = controls.getAzimuthalAngle();
@@ -2113,6 +2543,7 @@ function animate() {
     const target = dollhouseOn || it === selected ? 1 : 0;
     if (Math.abs(it.peek - target) > 0.001) {
       it.peek += (target - it.peek) * Math.min(1, dt * 7);
+      shadowDirty = true;
       const ud = it.group.userData;
       if (ud.roof) {
         ud.roof.position.y = it.peek * 7;
@@ -2122,7 +2553,8 @@ function animate() {
       if (ud.wallMats) for (const m of ud.wallMats) m.opacity = 1 - it.peek * 0.72;
     }
   }
+  if (shadowDirty) { sun.shadow.needsUpdate = true; shadowDirty = false; }
   controls.update();
   renderer.render(scene, camera);
 }
-animate();
+startLoop();

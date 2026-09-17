@@ -76,10 +76,15 @@ unit it was copied from.
 the 1–9 ft gaps that need rated walls, outline a butted cluster that exceeds
 the 256 sq ft permit exemption, mark a wet unit stranded outside the
 utility-core radius. The existing text in the info sheet stays as the
-explanation of what the redline means. This new redlining is chrome and is
-export-stripped; the conflict line and gap label the sheet has always drawn
-between two too-close units stay in the drawing, because the title block's
-legend refers to them and they have always exported.
+explanation of what the redline means.
+
+These findings are **not** editing chrome, and they export. That reverses what
+this spec originally said. A mobile review put the case plainly: the redlines
+are the answer to the permit question, and the exported sheet is how they get
+read — so an export that carried a bare red line, a `5′ △`, and a legend
+promising an explanation whose siblings had been stripped was worse than
+useless. Only the live editing marks — selection halo, snap guides, in-flight
+ghosts, drag dimensions — are chrome, and only those are stripped.
 
 **Zoom reveals detail.** Past 2× the sheet starts drawing each unit at
 floor-plan fidelity — the furniture labels, finished-interior line, dimension
@@ -130,6 +135,39 @@ source and into state:
 - The 3D drive and trees get rebuilt from state rather than constructed once
   at startup.
 - Scenery edits join the undo stack and the share link.
+
+## What the mobile review changed
+
+The rework above was designed and validated on a desktop viewport. A six-way
+review on a 390×844 phone found nine blockers, most of which existed only at
+phone width. The ones that reshaped the design:
+
+- **Annotation is sized in screen pixels, not sheet units.** The sheet is
+  drawn at 8 px/ft and its type was authored so the fitted view lands near 1:1
+  — which it does at a desktop fit of about 1.5, and does not at a phone fit of
+  0.379, where every label rendered between 3.2 and 5.3 px. Labels, rules and
+  dashes now divide by the current zoom, so footprints scale and the writing on
+  them does not. Exports re-emit at 1:1 rather than cloning the screen, so the
+  drawing no longer depends on how far you happened to be pinched in.
+- **The fit has a floor and measures the real chrome.** It reserved two magic
+  numbers (118 top, 34 bottom) against 116 px of actual bottom chrome, running
+  the drawing under buttons where it could not be pressed. It now measures what
+  is on screen and never shrinks below 0.5, letting the compound overflow and
+  be panned instead of shrinking it to fit an acre of empty grass.
+- **The detail tier is relative to the fit**, with hysteresis. As an absolute
+  2.0 it was one pinch away on a desktop and five on a phone.
+- **The 3D scene only renders on the 3D tab.** Its loop was unconditional, so
+  the tab the app opens on was running 501 draw calls and 27 ms of main-thread
+  work per frame behind an opaque sheet. That was not only battery: it starved
+  the main thread badly enough that the 380 ms double-tap window — the only
+  route to clearing a tree or rotating the drive — became unreachable.
+- **Findings export; chrome does not** (above).
+- **Moving a unit no longer requires a drag.** Arrow keys nudge, and the Move
+  button — which until the review was a permanently-highlighted control with no
+  event listener at all — arms a tap-to-place.
+- **Clusters announce themselves.** The only cluster outline was a >256 sq ft
+  violation marker, so a legal butted pair moved as a group with nothing on
+  screen to predict it.
 
 ## Assumptions
 
