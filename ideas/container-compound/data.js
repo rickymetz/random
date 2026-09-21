@@ -2,6 +2,12 @@
 // unit plan studio (plans/). Edit plans in the studio, export, and bake
 // the settled layouts back into this file.
 //
+// `accessory: true` marks the only units the 256 sq ft permit exemption can
+// apply to. VCC 108.2(1) / VRC R105.2 exempt detached accessory structures
+// "used as tool and storage sheds, playhouses and similar uses" — habitable
+// space and anything forming part of a dwelling gets no size exemption at any
+// area, so sleeping, kitchen, bath and living units are never exempt.
+//
 // Layout rules (from the VRC + ergonomics review):
 // - Finished interior after spray foam: 7'2" wide -> walls at z = ±3.55.
 // - 20' units: usable x in [-9.3, +8.8] (tunnels: ±8.8). Minis: [-4.3, +3.7].
@@ -133,7 +139,7 @@ export const TYPES = [
   },
   {
     id: "hobby", name: "Hobby / storage unit", len: 10, wid: 8, color: 0x8d919c,
-    cost: 12000, variant: "standard", hvac: "none",
+    cost: 12000, variant: "standard", hvac: "none", accessory: true,
     desc: "Workbench, deep shelving and gear storage in a mini — deliberately non-habitable, so the small interior is fine by code.",
     va: "Not habitable space, so VRC R304's 70 sq ft / 7 ft minimums don't apply.",
     furniture: [
@@ -144,9 +150,9 @@ export const TYPES = [
   },
   {
     id: "deck", name: "Deck section", len: 8, wid: 8, color: 0xb78e5f,
-    cost: 1200, deck: true,
+    cost: 1200, deck: true, accessory: true,
     desc: "8×8 ground-level wood platform. Chain them to link units into one compound.",
-    va: "Decks under 30\" above grade are exempt from permits (VRC R105.2).",
+    va: "Decks under 30\" above grade are exempt only if they are also under 256 sq ft, not attached to a dwelling, and not serving a required exit door (VRC R105.2). A deck at an egress door is part of the means of egress (R311.3), so most of these will need a permit.",
     furniture: [],
   },
 ];

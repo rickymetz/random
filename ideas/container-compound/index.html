@@ -105,7 +105,7 @@
      under them could not be pressed at all. */
   #site-actions {
     position: fixed;
-    right: 0.9rem;
+    right: 1rem;
     bottom: calc(5.4rem + var(--sab));
     z-index: 5;
     display: none;
@@ -123,7 +123,8 @@
     font-size: 1.05rem;
     padding: 0;
   }
-  body.has-selection[data-mode="plan"] #site-actions { bottom: calc(10rem + var(--sab)); }
+  /* clears the add button, which now steps up rather than disappearing */
+  body.has-selection[data-mode="plan"] #site-actions { bottom: calc(13.6rem + var(--sab)); }
   #site-actions button:active { border-color: var(--accent); color: var(--accent); }
 
   /* ---- add-unit FAB + bottom sheet ---- */
@@ -144,10 +145,11 @@
     box-shadow: 0 4px 18px rgba(30, 30, 25, 0.3);
   }
   #fab:active { filter: brightness(1.1); }
-  /* the tool strip owns the bottom band while a unit is selected; ✕ at its
-     left end is the one tap back to the add button */
-  body.has-selection #fab { display: none; }
-  body.sheet-open #fab, body.add-open #fab { display: none; }
+  /* Composing a compound IS adding units in a run, and the app used to
+     interrupt its own primary loop after every one. The button now steps up
+     out of the tool strip's band instead of vanishing. */
+  body.has-selection #fab { bottom: calc(8.2rem + var(--sab)); }
+  body.add-open #fab { display: none; }
   #add-backdrop {
     position: fixed;
     inset: 0;
@@ -420,7 +422,7 @@
      drawing, where they swallowed taps on any unit beneath them. They now sit
      in the bottom-left stack with the other chrome, in reading order. */
   #edge-tools {
-    left: 0.9rem;
+    left: 1rem;
     top: auto;
     transform: none;
     bottom: calc(5.4rem + var(--sab));
@@ -526,10 +528,14 @@
     box-shadow: var(--shadow);
   }
   body.has-selection[data-mode="plan"] #toolstrip { display: flex; }
-  /* The sheet and the strip are both "the selected unit". They used to
-     coexist, and the strip won every tap over the sheet's Floor plan button —
-     so tapping Floor plan silently rotated the unit instead. */
-  body.sheet-open #toolstrip { display: none !important; }
+  /* The sheet and the strip are both "the selected unit". On a phone they
+     coexisted and the strip won every tap over the sheet's Floor plan button,
+     so tapping Floor plan silently rotated the unit. On a desktop the panel is
+     a right-hand card and the strip is centred — they never overlap, so hiding
+     it there only cost you rotate, duplicate and delete for no reason. */
+  @media (max-width: 899px) {
+    body.sheet-open #toolstrip { display: none !important; }
+  }
   #toolstrip button {
     flex: none;
     /* fixed px, not rem: at 2x system text these grew until Delete, Duplicate
@@ -663,6 +669,45 @@
     background: #fff;
   }
 
+  /* A link-loaded layout is shown but not adopted until you edit or save it,
+     so receiving a link no longer overwrites your own compound. */
+  #visit-bar {
+    position: fixed;
+    top: calc(7.6rem + var(--sat));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 7;
+    display: none;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.35rem 0.4rem 0.35rem 0.9rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+  body.visiting #visit-bar { display: flex; }
+  #visit-keep {
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.76rem;
+    min-height: 34px;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    #edge-tools button:not(:disabled):hover,
+    #view-tools button:hover,
+    #site-actions button:hover,
+    #toolstrip button:hover,
+    #btn-menu:hover,
+    #stats-pill:hover { border-color: var(--accent); color: var(--accent); }
+    #menu button:hover, #menu a:hover { background: rgba(179, 84, 46, 0.08); }
+    .add-row:hover { background: rgba(179, 84, 46, 0.06); }
+    #fab:hover { filter: brightness(1.06); }
+  }
+
   /* ---- mobile review fixes ---- */
 
   /* A closed bottom sheet was hidden by transform alone, so it kept 14 live
@@ -682,6 +727,14 @@
   }
 
   /* Dismissing a sheet was a 25 px target in the hardest corner to reach. */
+  /* `user-select: none` protects a touch drag on the plan; it was punishing
+     the two surfaces people actually copy from — a cost breakdown bound for a
+     spreadsheet, and code citations bound for a county building department. */
+  #parts-modal .box, #va-modal .box, #plan-modal .box, #info {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
   .x { width: 44px !important; height: 44px !important; }
   .back { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
   #btn-menu { width: 44px; height: 44px; }
@@ -719,7 +772,7 @@
   /* ---- toast ---- */
   #toast {
     position: fixed;
-    top: calc(6.4rem + var(--sat));
+    top: calc(7.6rem + var(--sat));
     left: 50%;
     transform: translateX(-50%);
     background: var(--ink);
@@ -754,6 +807,25 @@
       transition: opacity 160ms ease;
     }
     body.sheet-open #info { visibility: visible; opacity: 1; }
+
+    /* The details card and the zoom column both docked to the right edge, and
+       the card is z-index 6 against the column's 5 — so opening details made
+       zoom out, zoom in and fit all unreachable. One gutter token, and the
+       zoom column steps aside to the left of the card while it is open. */
+    #edge-tools, #site-actions { left: auto; }
+    #edge-tools { left: 1rem; }
+    #site-actions { right: 1rem; flex-direction: row; }
+    body.has-selection[data-mode="plan"] #site-actions,
+    body[data-mode="plan"] #site-actions { bottom: 1rem; right: 5.2rem; }
+    body.sheet-open[data-mode="plan"] #site-actions { right: 21.5rem; }
+    /* above the stats pill, which also lives in this corner */
+    #edge-tools, body.has-selection[data-mode="plan"] #edge-tools {
+      bottom: calc(4.2rem + var(--sab));
+    }
+    /* the strip is centred here, so nothing needs to climb over it */
+    #toolstrip { bottom: calc(1rem + var(--sab)); }
+    body.has-selection #fab { bottom: 1rem; }
+
     #va-modal { place-items: center; }
     #va-modal .box { border-radius: 0.9rem; width: calc(100vw - 3rem); padding-bottom: 1.3rem; }
   }
@@ -764,7 +836,7 @@
 <header id="topbar" class="panel">
   <a class="back" href="../../" aria-label="Back to all ideas">←</a>
   <h1>Container Compound</h1>
-  <button id="btn-menu" aria-label="Menu">⋯</button>
+  <button id="btn-menu" aria-label="Menu" title="Menu">⋯</button>
 </header>
 
 <div id="menu" class="panel">
@@ -772,7 +844,6 @@
   <button id="site-png">Download PNG</button>
   <button id="site-svg-dl">Download SVG</button>
   <button id="btn-va">VA notes</button>
-  <a id="menu-studio" href="plans/">Unit plan studio</a>
   <button id="btn-clear">Clear the acre</button>
   <button id="btn-reset">Reset to the example</button>
 </div>
@@ -807,8 +878,8 @@
 </div>
 
 <div id="edge-tools">
-  <button id="btn-undo" aria-label="Undo" disabled>↩</button>
-  <button id="btn-redo" aria-label="Redo" disabled>↪</button>
+  <button id="btn-undo" aria-label="Undo" title="Undo (Ctrl+Z)" disabled>↩</button>
+  <button id="btn-redo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled>↪</button>
 </div>
 
 <div id="view-tools">
@@ -819,9 +890,9 @@
 </div>
 
 <div id="site-actions">
-  <button id="site-zoom-out" aria-label="Zoom out">−</button>
-  <button id="site-zoom-in" aria-label="Zoom in">+</button>
-  <button id="site-fit" aria-label="Fit the compound on screen">⌖</button>
+  <button id="site-zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
+  <button id="site-zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
+  <button id="site-fit" aria-label="Fit the compound on screen" title="Fit the compound on screen">⌖</button>
 </div>
 
 <button id="stats-pill" class="panel">0 units</button>
@@ -833,6 +904,7 @@
     <tr><td>Enclosed area</td><td id="st-sqft">0 sq ft</td></tr>
     <tr><td>Deck area</td><td id="st-deck">0 sq ft</td></tr>
     <tr><td>Utility trenches</td><td id="st-trench">—</td></tr>
+    <tr><td>Permit</td><td id="st-permit">—</td></tr>
     <tr class="findings"><td>Code findings</td><td id="st-findings">None</td></tr>
     <tr class="total"><td>Rough cost</td><td id="st-cost">$0</td></tr>
   </table>
@@ -840,7 +912,7 @@
   <button class="parts-btn" id="btn-parts">Full parts list →</button>
 </div>
 
-<button id="fab" aria-label="Add a unit">+</button>
+<button id="fab" aria-label="Add a unit" title="Add a unit">+</button>
 
 <div id="add-backdrop"></div>
 <div id="add-sheet" class="panel">
@@ -850,7 +922,6 @@
     <button id="add-close" class="x" aria-label="Close">✕</button>
   </div>
   <div id="add-list"><!-- populated by main.js --></div>
-  <a href="plans/" style="display:block;text-align:center;padding:0.8rem 0 0.2rem;font-size:0.78rem;color:var(--accent);text-decoration:none;">✎ Unit plan studio</a>
 </div>
 
 <div id="info" class="panel">
@@ -863,32 +934,36 @@
   <p id="info-desc"></p>
   <div class="build" id="info-build"></div>
   <div class="va" id="info-va"></div>
+  <div class="va" id="info-permit"></div>
   <div class="wet" id="info-wet"></div>
   <div class="sep" id="info-sep"></div>
   <button id="btn-plan" class="wide">Floor plan</button>
 </div>
 
 <div id="toolstrip" class="panel">
-  <button id="btn-desel" aria-label="Deselect">✕</button>
+  <button id="btn-desel" aria-label="Deselect" title="Deselect (Esc)">✕</button>
   <span id="sel-name"></span>
   <span class="div"></span>
-  <button id="tool-move" aria-pressed="false" aria-label="Move: tap the plan to place this unit">
+  <button id="tool-move" aria-pressed="false" aria-label="Move: place this unit with the next click" title="Move — then click where it should go">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>
   </button>
-  <button id="btn-rotate" aria-label="Rotate 90°">⟳</button>
-  <button id="btn-dup" aria-label="Duplicate">⧉</button>
-  <button id="btn-delete" aria-label="Delete">
+  <button id="btn-rotate" aria-label="Rotate 90°" title="Rotate 90° (R)">⟳</button>
+  <button id="btn-dup" aria-label="Duplicate" title="Duplicate">⧉</button>
+  <button id="btn-delete" aria-label="Delete" title="Delete (Del)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v7M14 10v7"/></svg>
   </button>
   <span class="div"></span>
-  <button id="btn-info" aria-label="Details">ⓘ</button>
+  <button id="btn-info" aria-label="Details" title="Details">ⓘ</button>
 </div>
 
 <div id="va-modal" role="dialog" aria-modal="true" aria-label="Virginia code notes">
   <div class="box">
     <h2>Designed within Virginia limits</h2>
     <ul>
-      <li>Every unit is a <strong>one-story detached structure of 160 sq ft or less</strong> — under Virginia's 256 sq ft accessory-structure threshold (VCC 108.2 / VRC R105.2), below which a building permit is generally not required.</li>
+      <li><strong>The 256 sq ft exemption is about use, not size.</strong> VCC 108.2 / VRC R105.2 exempt detached accessory structures "used as tool and storage sheds, playhouses and similar uses". A sleeping, kitchen, bath, dining, living or office unit is none of those, so <strong>no size gets it out of a building permit</strong> — this tool only applies the 256 sq ft test to storage units and decks. Exemption from a permit is also never exemption from the code (USBC 108.2), and an accessory structure assumes a principal dwelling already on the parcel.</li>
+      <li><strong>Butting units together sums their area into one structure.</strong> That is why the drawing outlines a joined storage cluster once it passes 256 sq ft — the exemption is read per structure, not per box.</li>
+      <li><strong>&#8220;Rated&#8221; on the drawing means a fire-resistance-rated wall.</strong> Two buildings on one lot that sit 1–9 ft apart each need a rated wall on the facing side and are limited in glazing (VRC R302.1); at 10 ft or more, neither does. Butting them together avoids it entirely, which is why the drawing suggests either. Note the same rule is measured to the <em>property line</em> as well, which this tool does not model — a glazed door wall close to a boundary may be allowed no openings at all.</li>
+      <li><strong>A &#8220;wet unit&#8221;</strong> is any unit with plumbing — the kitchen, the bathhouse, the baths and the laundry. The <strong>utility core</strong> is the laundry / utility unit that carries the water supply and drain; the drawing rings it at 30 ft and flags any wet unit outside that ring, because longer runs mean more trench, more fall to hold and more to freeze.</li>
       <li>Plumbed and electrified units (kitchen, baths, laundry) still need <strong>trade permits and inspections</strong>, and any unit used for sleeping or dwelling can trigger full residential code compliance — talk to your county building department early.</li>
       <li><strong>High cube (9&#8242;6&#8243;) containers</strong> leave roughly an 8&#8242; finished ceiling after closed-cell spray foam — comfortably above the 7&#8242;0&#8243; habitable-space minimum (VRC R305).</li>
       <li><strong>Habitable rooms need 70 sq ft and a 7&#8242; minimum dimension</strong> (VRC R304). So every habitable unit — sleeping, kitchen, dining, living, office — rides a 20&#8242; box (~131 sq ft interior), and wall build-up is capped at 3&#189;&#8243; per side to land interior width near 7&#8242;2&#8243;, clear of the minimum. The 10&#8242; minis are reserved for non-habitable roles: bath, laundry, hobby/storage.</li>
@@ -910,6 +985,11 @@
     <div class="fine">This is a visualization for exploring ideas — not construction documents or code advice.</div>
     <button id="btn-va-close">Close</button>
   </div>
+</div>
+
+<div id="visit-bar" class="panel">
+  <span>Viewing a shared layout</span>
+  <button id="visit-keep">Save a copy</button>
 </div>
 
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>

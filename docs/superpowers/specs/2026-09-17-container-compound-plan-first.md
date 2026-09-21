@@ -169,6 +169,83 @@ phone width. The ones that reshaped the design:
   violation marker, so a legal butted pair moved as a group with nothing on
   screen to predict it.
 
+## What the second review changed
+
+A six-way review of the finished thing — an architect who permits container
+builds in Virginia, a desktop creative-tools designer, a typographer, a product
+designer, a senior engineer and an adversarial QA pass — found six blockers.
+The substantive changes:
+
+**The compliance model was confidently wrong in three places.** `gapBetween`
+returned 0 both for two units touching and for one sitting inside another, so
+two containers could occupy the same ground and be priced, counted and
+labelled "2 JOINED · MOVE TOGETHER" with no finding — and snapping pulled you
+into it. There is now a signed overlap test, the editor refuses the move, and a
+loaded layout that contains one is redlined. The 256 sq ft permit exemption was
+applied by area alone, but Virginia exempts detached accessory structures
+"used as tool and storage sheds, playhouses and similar uses" — habitable space
+gets no size exemption at any area, so a bedroom butted to its bath read as
+exempt at 240 sq ft. The exemption is now a function of `accessory` use in
+`data.js`, and the app states the permit position per unit and per compound.
+And the property line, drawn in surveyor's dash-dot, was checked nowhere; a
+unit crossing it is now a finding. The aperture-blocking rule was enforced on
+every edit path but not on `loadFrom`, so a shared link could carry an illegal
+butt silently — it is now drawn and counted like any other finding.
+
+**The state model could not survive being interrupted.** `loadFrom` minted
+fresh ids, so any mid-gesture restore orphaned the drag and left a selection
+whose Delete deleted nothing while popping an unrelated undo entry — and the
+"hold the selection by id" fix written in the mobile round could never have
+worked. Ids now restart from 1 with each load, gestures are aborted before the
+model is replaced, and one `tryEdit` runs every rejectable change: legality is
+tested *before* the history stacks are touched, because pushing undo clears the
+redo branch and every rejected action was silently destroying a redo the user
+could still see.
+
+**A malformed payload bricked the app permanently.** Rows were destructured
+blind and the type guard was a plain-object lookup, so `toString` passed it;
+because the boot was a bare statement, a throw meant the resize listener and
+the render loop never attached, and the blank result reloaded blank forever.
+There is now a `normalize()` at the untrusted boundary — coordinates coerced
+and clamped to the sheet, rotations wrapped, unknown types dropped, counts
+capped — and the boot catches, clears the bad payload and falls back.
+
+**Receiving a share link destroyed the visitor's own compound**, because
+`loadFrom` wrote to the single save slot unconditionally. A hash-loaded layout
+is now visitor state: shown, not adopted, until you edit it or press Save a
+copy. The hash is re-encoded on save so the address bar stops advertising the
+sender's original, and a `hashchange` listener makes pasting a link into an
+open tab work.
+
+**The mobile hardening had cost desktop.** At >=900px the details card and the
+zoom column both docked right, and the card won, so opening details made zoom,
+fit — and, through a phone-only rule, rotate, duplicate and delete —
+unreachable. The tool-strip hide is now scoped to phones and the columns share
+one gutter. The plan also ignored window resizing entirely, the one event that
+only happens on a desktop.
+
+Smaller, from the same pass: the add button steps aside instead of vanishing
+after every add; the shipped example no longer lands in violation with a
+driveway through a building; `clusterOf` reuses the union-find the compliance
+pass already ran, instead of flood-filling once per member; the export no
+longer leaves the screen in a different detail tier; findings read as sentences
+and units are pluralised; labels too wide for their unit set along it rather
+than across it; and the copy branches on pointer type instead of telling a
+desktop user to pinch.
+
+### Known and deferred
+
+Worth recording rather than discovering again: the sheet still does not rotate
+for portrait; there is no numeric coordinate entry, no multi-select and no
+snap-suppress modifier; the type scale is still ad hoc and the unit tints
+composite to near-identical off-whites; the code redline and the utility trench
+are within half a luminance point in greyscale; the title block remains
+export-only, so the colour legend is not readable on screen; the 3D view's roof
+pops rather than fades, the dollhouse cutaway drops every unit shadow, and the
+three sun states do not change the sky; there is still one anonymous save slot;
+and `main.js` is one ~2600-line module whose render path is steered by several
+coupled flags.
+
 ## Assumptions
 
 Stated here rather than asked, and cheap to reverse:

@@ -23,6 +23,10 @@ const TYPE_BY_ID = Object.fromEntries(TYPES.map((t) => [t.id, t]));
 // cache, so one undo used to recreate five programs.
 const shared = (m) => { m.userData.shared = true; return m; };
 
+// Copy branches on this: "pinch to zoom" and "double-tap" are wrong on a
+// machine with no touchscreen.
+const FINE_POINTER = matchMedia("(hover: hover) and (pointer: fine)").matches;
+
 // ------------------------------------------------------------------- scene
 
 const scene = new THREE.Scene();
@@ -118,7 +122,8 @@ scene.add(grid);
 // share link and sit on the undo stack. The parcel itself stays a fixed acre.
 
 const DRIVE_LEN = 96, DRIVE_WID = 14, PAD_R = 16, PAD_OFF = -46;
-const DEFAULT_DRIVE = { x: 52, z: 56, rot: 0 };
+// pulled east so the turnaround pad no longer sits on the bath + laundry unit
+const DEFAULT_DRIVE = { x: 66, z: 56, rot: 0 };
 const DEFAULT_TREES = [
   [-88, -78, 1.5], [-70, -92, 1.1], [-95, -30, 1.2], [-84, 30, 1.6], [-92, 72, 1.0],
   [-60, 88, 1.3], [-10, 94, 1.1], [24, 90, 1.5], [88, 84, 1.2], [94, 40, 1.0],
@@ -441,7 +446,10 @@ function applyTransform(item) {
   item.group.rotation.y = (item.rot * Math.PI) / 2;
 }
 
-function removeItem(item) {
+function removeItem(item, opts = {}) {
+  // a drag or a pending placement holding this item must not outlive it
+  if (planDrag && (planDrag.primary === item || planDrag.members?.includes(item)))
+    abortGestures();
   unitRoot.remove(item.group);
   item.group.traverse((o) => {
     if (o.geometry) o.geometry.dispose();
@@ -450,6 +458,7 @@ function removeItem(item) {
   });
   items = items.filter((i) => i !== item);
   if (selected === item) select(null);
+  if (opts.silent) return; // a bulk teardown should not write 11 times
   save();
   updateStats();
 }
@@ -486,6 +495,10 @@ function select(item) {
         : "panel heater + exhaust"
       } · no wall or roof cuts`;
   document.getElementById("info-va").textContent = t.va;
+  const permitEl = document.getElementById("info-permit");
+  permitEl.textContent = t.accessory
+    ? "Accessory use — the 256 sq ft permit exemption can apply to this one (VCC 108.2 / VRC R105.2), and butting it to others sums the area."
+    : "Habitable / dwelling use — the 256 sq ft accessory exemption does not apply at any size. Expect a building permit and full residential code review.";
   const wetEl = document.getElementById("info-wet");
   if (t.wet) {
     const cores = items.filter((i) => i.typeId === "laundry");
@@ -529,12 +542,13 @@ document.getElementById("btn-desel").addEventListener("click", () => select(null
 
 // find an open spot near the center for a newly added unit
 function findSpot(type, ox = 0, oz = 0) {
+  ox = clampX(ox); oz = clampZ(oz);
   const step = 4;
   for (let r = 0; r < 26; r++) {
     for (let a = 0; a < Math.max(1, r * 8); a++) {
       const ang = (a / Math.max(1, r * 8)) * Math.PI * 2;
-      const x = Math.round(ox + Math.cos(ang) * r * step);
-      const z = Math.round(oz + Math.sin(ang) * r * step);
+      const x = clampX(ox + Math.cos(ang) * r * step);
+      const z = clampZ(oz + Math.sin(ang) * r * step);
       if (isFree(x, z, type)) return { x, z };
     }
   }
@@ -568,35 +582,89 @@ function serialize() {
 }
 function save() {
   try { localStorage.setItem(LS_KEY, JSON.stringify(serialize())); } catch {}
+  // An edited layout that arrived by link used to leave the sender's original
+  // payload in the address bar, so copying the URL re-shared the wrong thing.
+  if (location.hash.startsWith("#d=")) {
+    history.replaceState(null, "", `#d=${encodeShare()}`);
+  }
+  if (visiting) { visiting = false; document.body.classList.remove("visiting"); }
 }
-function loadFrom(data) {
-  for (const it of [...items]) removeItem(it);
+// True while showing a layout that arrived by link and has not been adopted:
+// receiving a link used to overwrite the visitor's own saved compound on
+// arrival, with no route back.
+let visiting = false;
+// Everything arriving from a share link or from localStorage is untrusted:
+// a single malformed row used to throw out of the boot and leave a blank app
+// that reloaded blank forever. Coerce what can be coerced, drop what cannot,
+// and never let a payload reach the model unchecked.
+const MAX_ITEMS = 400, MAX_TREES = 200;
+const num = (v, fallback = 0) => {
+  const n = typeof v === "number" ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+const onSheet = (v) => Math.max(SP_MINX, Math.min(SP_MAXX, v));
+// Placement and movement were unclamped, so a unit could be created hundreds
+// of feet off the parcel, outside the sheet's viewBox — where it is clipped
+// away, leaving a blank screen that Fit could not recover.
+const clampX = (v) => Math.max(SP_MINX + 4, Math.min(SP_MAXX - 4, Math.round(v)));
+const clampZ = (v) => Math.max(SP_MINZ + 4, Math.min(SP_MAXZ - 4, Math.round(v)));
+const rot4 = (v) => (((v | 0) % 4) + 4) % 4;
+
+function normalize(data) {
+  const out = { v: 2, items: [], trees: null, drive: null };
+  if (!data || typeof data !== "object") return out;
+  if (Array.isArray(data.items)) {
+    for (const row of data.items.slice(0, MAX_ITEMS)) {
+      if (!Array.isArray(row) || row.length < 4) continue;
+      const [typeId, x, z, rot] = row;
+      // a plain object inherits toString/constructor/__proto__, all of which
+      // used to pass `if (TYPE_BY_ID[typeId])` and reach buildUnit
+      if (typeof typeId !== "string" || !Object.hasOwn(TYPE_BY_ID, typeId)) continue;
+      out.items.push([typeId, onSheet(num(x)), onSheet(num(z)), rot4(num(rot))]);
+    }
+  }
+  if (Array.isArray(data.trees)) {
+    out.trees = data.trees.slice(0, MAX_TREES)
+      .filter((r) => Array.isArray(r) && r.length >= 2)
+      .map((r) => [onSheet(num(r[0])), onSheet(num(r[1])),
+                   Math.max(0.3, Math.min(3, num(r[2], 1.2)))]);
+  }
+  if (Array.isArray(data.drive) && data.drive.length >= 3) {
+    out.drive = [onSheet(num(data.drive[0], DEFAULT_DRIVE.x)),
+                 onSheet(num(data.drive[1], DEFAULT_DRIVE.z)),
+                 rot4(num(data.drive[2]))];
+  }
+  return out;
+}
+
+function loadFrom(raw, opts = {}) {
+  const data = normalize(raw);
+  // A gesture in flight refers to objects this is about to destroy. Letting it
+  // finish against them produced a phantom selection whose Delete deleted
+  // nothing and whose drop popped an unrelated undo entry.
+  abortGestures();
+  for (const it of [...items]) removeItem(it, { silent: true });
   items = [];
   select(null);
-  if (data && Array.isArray(data.items)) {
-    for (const [typeId, x, z, rot] of data.items) {
-      if (TYPE_BY_ID[typeId]) addItem(typeId, x, z, rot | 0, { silent: true });
-    }
+  // ids restart with each load so a snapshot round-trips to the same ids,
+  // which is what lets a selection survive an undo
+  nextId = 1;
+  for (const [typeId, x, z, rot] of data.items) {
+    addItem(typeId, x, z, rot, { silent: true });
   }
   // v1 payloads carry no scenery — every share link already in the wild, and
   // every browser still holding a v1 layout, falls back to the default acre.
-  if (Array.isArray(data?.trees)) {
-    trees = data.trees.map(([x, z, s], i) => ({ id: i + 1, x, z, s: s || 1.2 }));
-    nextTreeId = trees.length + 1;
-  } else {
-    trees = DEFAULT_TREES.map(([x, z, s], i) => ({ id: i + 1, x, z, s }));
-    nextTreeId = trees.length + 1;
-  }
-  if (Array.isArray(data?.drive)) {
-    const [x, z, rot] = data.drive;
-    drive = { x, z, rot: (rot | 0) % 4 };
-  } else {
-    drive = { ...DEFAULT_DRIVE };
-  }
+  const treeRows = data.trees || DEFAULT_TREES;
+  trees = treeRows.map(([x, z, s], i) => ({ id: i + 1, x, z, s: s || 1.2 }));
+  nextTreeId = trees.length + 1;
+  drive = data.drive
+    ? { x: data.drive[0], z: data.drive[1], rot: data.drive[2] }
+    : { ...DEFAULT_DRIVE };
   rebuildScenery();
-  save();
+  if (!opts.noSave) save();
   updateStats();
-  if (mode === "plan") renderSitePlan();
+  // a whole-layout change has no relationship to the old viewport
+  if (mode === "plan") renderSitePlan(opts.refit ? { fit: true } : {});
 }
 
 function encodeShare() {
@@ -619,14 +687,14 @@ const EXAMPLE = {
   v: 1,
   items: [
     ["dining", -16, 14, 0],
-    ["kitchen", 16, 14, 0],
+    ["kitchen", 16, 4, 0],
     ["deck", 0, 14, 0],
     ["sleeping", -16, -16, 0],
     ["bathhouse", 16, -16, 0],
     ["deck", -4, -1, 0],
     ["deck", 4, -1, 0],
     ["office", -41, -1, 1],
-    ["bath-laundry", 41, -1, 3],
+    ["bath-laundry", 41, -13, 3],
     ["laundry", 16, -24, 0],
   ],
 };
@@ -760,8 +828,11 @@ function updateHistoryButtons() {
   document.getElementById("btn-undo").disabled = !undoStack.length;
   document.getElementById("btn-redo").disabled = !redoStack.length;
 }
-function pushUndo() {
-  undoStack.push(JSON.stringify(serialize()));
+// Takes the state to record, so the call sites that must snapshot BEFORE
+// mutating no longer need a second entry point. (There used to be three
+// copies of this, one of them hung off the function as `pushUndo.replace`.)
+function pushUndo(snapshot = JSON.stringify(serialize())) {
+  undoStack.push(snapshot);
   if (undoStack.length > 60) undoStack.shift();
   redoStack.length = 0; // a new action invalidates the redo branch
   updateHistoryButtons();
@@ -770,7 +841,7 @@ function undo() {
   const prev = undoStack.pop();
   if (!prev) { toast("Nothing to undo"); return; }
   redoStack.push(JSON.stringify(serialize()));
-  loadFrom(JSON.parse(prev));
+  restoreSnapshot(prev, selected && selected.id);
   updateHistoryButtons();
   toast("Undone");
 }
@@ -778,7 +849,7 @@ function redo() {
   const next = redoStack.pop();
   if (!next) { toast("Nothing to redo"); return; }
   undoStack.push(JSON.stringify(serialize()));
-  loadFrom(JSON.parse(next));
+  restoreSnapshot(next, selected && selected.id);
   updateHistoryButtons();
   toast("Redone");
 }
@@ -840,13 +911,18 @@ document.getElementById("btn-dup").addEventListener("click", () => {
 });
 
 document.getElementById("btn-rotate").addEventListener("click", rotateSelected);
-document.getElementById("btn-delete").addEventListener("click", () => {
+function deleteSelected() {
   if (!selected || mode !== "plan") return;
-  pushUndo();
+  // A drag still holding this unit would re-select it on release and put its
+  // uncommitted mid-drag position on the stack as a second entry.
+  const snapshot = planDrag && planDrag.moved ? planDrag.snapshot : undefined;
+  if (planDrag) { abortGestures(); if (snapshot) undoStack.pop(); }
+  pushUndo(snapshot);
   removeItem(selected);
   renderSitePlan();
   toast("Deleted — ↩ to undo");
-});
+}
+document.getElementById("btn-delete").addEventListener("click", deleteSelected);
 document.getElementById("btn-close").addEventListener("click", () => {
   document.body.classList.remove("sheet-open");
   if (mode === "view") select(null);
@@ -861,7 +937,7 @@ document.getElementById("btn-reset").addEventListener("click", () => {
   if (confirm("Reset to the example compound?")) {
     pushUndo();
     history.replaceState(null, "", location.pathname);
-    loadFrom(EXAMPLE);
+    loadFrom(EXAMPLE, { refit: true });
   }
 });
 document.getElementById("btn-share").addEventListener("click", async () => {
@@ -875,37 +951,55 @@ document.getElementById("btn-share").addEventListener("click", async () => {
   }
 });
 
-function rotateSelected() {
-  if (!selected || mode !== "plan") return;
+// Run a change and keep it only if it is legal. Legality is tested BEFORE
+// the history stacks are touched: the old shape pushed undo first, and since
+// pushing clears the redo branch, every rejected action silently destroyed a
+// redo the user could still see. Restoring also holds the selection, which a
+// rejected nudge used to drop mid-keypress.
+function tryEdit(mutate, rejectMsg) {
+  const before = JSON.stringify(serialize());
+  const keep = selected && selected.id;
   const preBlocked = blockedPairs().length;
-  pushUndo();
-  selected.rot = (selected.rot + 1) % 4;
-  applyTransform(selected);
+  const preOverlap = overlappingPairs().length;
+  mutate();
   if (blockedPairs().length > preBlocked) {
-    const snap = undoStack.pop();
-    loadFrom(JSON.parse(snap));
-    updateHistoryButtons();
-    toast("That blocks a door wall — keep apertures clear");
-    return;
+    restoreSnapshot(before, keep);
+    toast(rejectMsg || "That blocks a door wall — butt against solid sides only");
+    return false;
   }
+  if (overlappingPairs().length > preOverlap) {
+    restoreSnapshot(before, keep);
+    toast("Units cannot overlap — butt them edge to edge instead");
+    return false;
+  }
+  pushUndo(before);
   save();
   updateStats();
-  select(selected); // refresh separation/plumbing hints
+  if (selected) select(selected);
   if (mode === "plan") renderSitePlan();
+  return true;
+}
+
+function rotateSelected() {
+  if (!selected || mode !== "plan" || anyOpenDialog()) return;
+  const it = selected;
+  tryEdit(() => { it.rot = (it.rot + 1) % 4; applyTransform(it); },
+    "That blocks a door wall — keep apertures clear");
 }
 
 addEventListener("keydown", (e) => {
-  if (e.target instanceof HTMLInputElement) return;
+  if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")) return;
+  // A dialog that traps Tab but lets a bare keypress rotate or DELETE the
+  // object it is describing is worse than one that does neither — Backspace
+  // is the key people press meaning "go back".
+  if (anyOpenDialog() && e.key !== "Escape") return;
   if ((e.metaKey || e.ctrlKey) && (e.key === "y" || (e.shiftKey && (e.key === "z" || e.key === "Z")))) {
     e.preventDefault(); redo();
   } else if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
   else if (e.key === "r" || e.key === "R") rotateSelected();
   else if ((e.key === "Delete" || e.key === "Backspace") && selected && mode === "plan") {
     e.preventDefault();
-    pushUndo();
-    removeItem(selected);
-    renderSitePlan();
-    toast("Deleted — ↩ to undo");
+    deleteSelected();
   } else if (e.key.startsWith("Arrow") && selected && mode === "plan") {
     e.preventDefault();
     const step = e.shiftKey ? 5 : 1;
@@ -956,6 +1050,28 @@ function gapBetween(a, b) {
   if (gx <= 0) return gz;
   if (gz <= 0) return gx;
   return Math.hypot(gx, gz);
+}
+
+// `gapBetween` returns 0 both for two units touching and for one sitting
+// entirely inside another, so it can never tell a legal butt-join from a
+// physically impossible stack. This measures penetration instead: positive on
+// both axes means the footprints genuinely intersect.
+const OVERLAP_EPS = 0.5;
+function overlapDepth(a, b) {
+  const [aw, ad] = halfDims(a), [bw, bd] = halfDims(b);
+  return Math.min((aw + bw) - Math.abs(a.x - b.x), (ad + bd) - Math.abs(a.z - b.z));
+}
+function overlappingPairs() {
+  const out = [];
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      const a = items[i], b = items[j];
+      // a deck is meant to tuck against a container; two of either is not
+      if (TYPE_BY_ID[a.typeId].deck !== TYPE_BY_ID[b.typeId].deck) continue;
+      if (overlapDepth(a, b) > OVERLAP_EPS) out.push([a, b]);
+    }
+  }
+  return out;
 }
 
 // local +x rotated into world by rot steps (rotation.y = rot * PI/2)
@@ -1033,6 +1149,10 @@ function updateCompliance() {
     if (!clusters.has(root)) clusters.set(root, []);
     clusters.get(root).push(u);
   }
+  clusterIndex = new Map();
+  for (const members of clusters.values()) {
+    for (const m of members) clusterIndex.set(m.id, members);
+  }
   for (const members of clusters.values()) {
     if (members.length < 2) continue;
     const sqft = members.reduce((s, m) => s + TYPE_BY_ID[m.typeId].len * TYPE_BY_ID[m.typeId].wid, 0);
@@ -1058,12 +1178,18 @@ function updateCompliance() {
 
   // Every class of finding the drawing redlines, not just the separations —
   // the badge used to say 2 on a layout showing 5 problems.
-  let over = 0;
+  // The exemption is a function of USE, not area: it covers sheds and
+  // playhouses, not habitable space. Applying it by size alone told people a
+  // bedroom plus its bath was permit-exempt because it came to 240 sq ft.
+  let over = 0, dwelling = 0;
   const counted = new Set();
   for (const u of units) {
+    if (!TYPE_BY_ID[u.typeId].accessory) dwelling++;
     const j = joined.get(u.id);
     if (!j || j.sqft <= 256) continue;
-    const key = clusterOf(u).map((m) => m.id).sort().join(",");
+    const members = clusterOf(u);
+    if (!members.every((m) => TYPE_BY_ID[m.typeId].accessory)) continue;
+    const key = members.map((m) => m.id).sort().join(",");
     if (counted.has(key)) continue;
     counted.add(key);
     over++;
@@ -1074,10 +1200,24 @@ function updateCompliance() {
       ? Math.min(...cores.map((c) => Math.hypot(c.x - w.x, c.z - w.z))) : Infinity;
     if (near > WET_RADIUS) stranded++;
   }
-  findings = { sep: sepPairs.length, over, stranded,
-               total: sepPairs.length + over + stranded };
+  // A unit whose footprint crosses the property line. The parcel was drawn in
+  // surveyor's dash-dot — which promises it means something — and checked
+  // nowhere, so a unit could sit wholly outside it with no complaint.
+  let offsite = 0;
+  for (const u of units) {
+    const [hw, hd] = halfDims(u);
+    if (Math.abs(u.x) + hw > SP_HALF || Math.abs(u.z) + hd > SP_HALF) offsite++;
+  }
+  const blocked = blockedPairs().length;
+  const overlap = overlappingPairs().length;
+  dwellingUnits = dwelling;
+  findings = {
+    sep: sepPairs.length, over, stranded, offsite, blocked, overlap,
+    total: sepPairs.length + over + stranded + offsite + blocked + overlap,
+  };
 }
-let findings = { sep: 0, over: 0, stranded: 0, total: 0 };
+let findings = { sep: 0, over: 0, stranded: 0, offsite: 0, blocked: 0, overlap: 0, total: 0 };
+let dwellingUnits = 0;
 
 function updateStats() {
   updateCompliance();
@@ -1097,23 +1237,36 @@ function updateStats() {
   document.getElementById("st-trench").textContent = trenchFt
     ? `${trenchFt} ft · $${trenchCost.toLocaleString()}` : "—";
   document.getElementById("st-cost").textContent = `$${cost.toLocaleString()}`;
+  const n = hc20 + hc10;
+  const plural = (k, one, many = one + "s") => `${k} ${k === 1 ? one : many}`;
   const fRow = document.getElementById("st-findings");
   if (fRow) {
+    // sentences, not fragments: this row used to read "2 separation"
     fRow.textContent = findings.total
-      ? [findings.sep && `${findings.sep} separation`,
-         findings.over && `${findings.over} over 256 sq ft`,
-         findings.stranded && `${findings.stranded} stranded`]
+      ? [findings.overlap && `${plural(findings.overlap, "pair")} of units overlap`,
+         findings.blocked && `${plural(findings.blocked, "unit")} butted against a door wall`,
+         findings.offsite && `${plural(findings.offsite, "unit")} across the property line`,
+         findings.sep && `${plural(findings.sep, "pair")} 1–9 ft apart, needing rated walls`,
+         findings.over && `${plural(findings.over, "storage cluster")} over the 256 sq ft exemption`,
+         findings.stranded && `${plural(findings.stranded, "wet unit")} too far from a utility core`]
         .filter(Boolean).join(" · ")
       : "None";
     fRow.parentElement.classList.toggle("warn", findings.total > 0);
   }
+  const pRow = document.getElementById("st-permit");
+  if (pRow) {
+    pRow.textContent = dwellingUnits
+      ? `${plural(dwellingUnits, "habitable unit")} — permit required`
+      : "Storage and decks only";
+  }
+  const money = cost >= 1000 ? `≈$${Math.round(cost / 1000)}k` : `$${cost.toLocaleString()}`;
   const pill = document.getElementById("stats-pill");
   pill.textContent =
-    `${hc20 + hc10} units · ${(sqft + deckSqft).toLocaleString()} ft² · ~$${Math.round(cost / 1000)}k` +
-    (findings.total ? ` · ⚠${findings.total}` : "");
+    `${plural(n, "unit")} · ${(sqft + deckSqft).toLocaleString()} ft² · ${money}` +
+    (findings.total ? ` · ⚠ ${findings.total}` : "");
   pill.setAttribute("aria-label",
-    `${hc20 + hc10} units, ${(sqft + deckSqft).toLocaleString()} square feet, about $${cost.toLocaleString()}, ` +
-    (findings.total ? `${findings.total} code finding${findings.total > 1 ? "s" : ""}` : "no code findings") +
+    `${plural(n, "unit")}, ${(sqft + deckSqft).toLocaleString()} square feet, about $${cost.toLocaleString()}, ` +
+    (findings.total ? plural(findings.total, "code finding") : "no code findings") +
     ". Opens the summary.");
 }
 
@@ -1350,7 +1503,7 @@ function unitPlanGroup(it, detail) {
     const labels = PLAN_LABELS[t.id] || [];
     t.furniture.forEach((f, i) => {
       g += `<rect x="${(f.x - f.w / 2) * S}" y="${(f.z - f.d / 2) * S}" width="${f.w * S}" height="${f.d * S}" rx="1.5" fill="#f2efe9" stroke="#55524c" stroke-width="0.9"/>`;
-      if (detail && labels[i] && f.w * S > 30) {
+      if (detail && labels[i] && f.w * S * AK > 30) {
         g += `<text x="${f.x * S}" y="${f.z * S + ss(2.8)}" text-anchor="middle" font-size="${ss(8)}" fill="#55524c" font-family="${FONT}">${labels[i]}</text>`;
       }
     });
@@ -1468,11 +1621,21 @@ function renderSitePlan(opts = {}) {
     const t = TYPE_BY_ID[it.typeId];
     if (t.deck) continue;
     const label = SHORT_NAME[it.typeId] || t.name;
-    // the label rides in its own group so a drag carries it with the unit
+    // The label holds a constant screen size while the footprint scales, so on
+    // a narrow unit — or zoomed out — it outgrew the box it names. Take the
+    // drafting answer in order: set it across the room, then along the room,
+    // and only put it outside when neither fits.
+    const [lhw, lhd] = halfDims(it);
+    const nameW = label.length * ss(11) * 0.72; // caps plus tracking
+    const acrossW = lhw * 2 * S * 0.95, alongW = lhd * 2 * S * 0.95;
+    const fitsInside = nameW < acrossW;
+    const fitsAlong = !fitsInside && lhd > lhw && nameW < alongW;
     let inner;
-    if (detailOn) {
-      const [, hd] = halfDims(it);
-      inner = `<text x="0" y="${-hd * S - ss(7)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(1.1)}" fill="#23231f" font-family="${FONT}">${label.toUpperCase()} · ${t.len * t.wid} SF</text>`;
+    if (fitsAlong) {
+      inner = `<g transform="rotate(-90)"><text x="0" y="${-ss(2)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" letter-spacing="${ss(1.1)}" fill="#23231f" font-family="${FONT}">${label.toUpperCase()}</text>`
+        + `<text x="0" y="${ss(10)}" text-anchor="middle" font-size="${ss(9)}" fill="#6b6861" font-family="${FONT}">${t.len * t.wid} SF</text></g>`;
+    } else if (detailOn || !fitsInside) {
+      inner = `<text x="0" y="${-lhd * S - ss(7)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(1.1)}" fill="#23231f" font-family="${FONT}">${label.toUpperCase()} · ${t.len * t.wid} SF</text>`;
     } else {
       inner = `<text x="0" y="${-ss(2)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" letter-spacing="${ss(1.1)}" fill="#23231f" font-family="${FONT}">${label.toUpperCase()}</text>`
         + `<text x="0" y="${ss(10)}" text-anchor="middle" font-size="${ss(9)}" fill="#6b6861" font-family="${FONT}">${t.len * t.wid} SF</text>`;
@@ -1493,7 +1656,10 @@ function renderSitePlan(opts = {}) {
     } else {
       s += `<line x1="${mx}" y1="${Y(b.z0)}" x2="${mx}" y2="${Y(b.z1)}" stroke="#c0574a" stroke-width="${ss(1.6)}"/>`;
     }
-    s += `<text x="${mx}" y="${my - ss(6)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">⚠ ${Math.max(1, Math.round(p.gap))}′ RATED</text>`;
+    // floor, never round: a diagonal pair at 9.899 ft used to print "10′
+    // RATED" beside a remedy telling you to open it to 10 ft
+    const shown = Math.max(1, Math.floor(p.gap));
+    s += `<text x="${mx}" y="${my - ss(6)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">⚠ ${shown}′ RATED</text>`;
   }
 
   s += `</g>`;
@@ -1513,7 +1679,7 @@ function renderSitePlan(opts = {}) {
     const dx2 = X(uMaxX) + ss(30);
     s += `<line x1="${dx2}" y1="${Y(uMinZ)}" x2="${dx2}" y2="${Y(uMaxZ)}" stroke="#6b6861" stroke-width="${ss(1.1)}"/>`;
     s += tick(dx2, Y(uMinZ), ss(5), 0) + tick(dx2, Y(uMaxZ), ss(5), 0);
-    s += `<text x="${dx2 + ss(9)}" y="${(Y(uMinZ) + Y(uMaxZ)) / 2}" text-anchor="middle" font-size="${ss(10)}" fill="#23231f" font-family="${FONT}" transform="rotate(90 ${dx2 + ss(9)} ${(Y(uMinZ) + Y(uMaxZ)) / 2})">${Math.round(uMaxZ - uMinZ)}′-0″</text>`;
+    s += `<text x="${dx2 + ss(9)}" y="${(Y(uMinZ) + Y(uMaxZ)) / 2}" text-anchor="middle" font-size="${ss(10)}" fill="#23231f" font-family="${FONT}" transform="rotate(-90 ${dx2 + ss(9)} ${(Y(uMinZ) + Y(uMaxZ)) / 2})">${Math.round(uMaxZ - uMinZ)}′-0″</text>`;
     s += `</g>`;
   }
 
@@ -1620,11 +1786,13 @@ function sheetForExport() {
   // annotation is sized in screen pixels now, so a clone would bake in the
   // current zoom and export a different drawing depending on how far you
   // happened to be pinched in.
-  exportScale = true;
+  const wasDetail = detailOn; // the export forces detail; restoring from that
+  exportScale = true;          // forced value flipped the screen's own tier
   renderSitePlan();
   const svg = document.querySelector("#site-svg svg");
   const clone = svg ? svg.cloneNode(true) : null;
   exportScale = false;
+  detailOn = wasDetail;
   renderSitePlan();
   if (clone) {
     clone.setAttribute("width", SP_W);
@@ -1745,8 +1913,13 @@ function driveAtWorld(p) {
 
 // Butted units are one structure — the 256 sq ft rule already treats them
 // that way — so dragging any member takes the whole cluster with it.
+let clusterIndex = new Map();
 function clusterOf(root) {
   if (TYPE_BY_ID[root.typeId].deck) return [root];
+  // updateCompliance already resolved every cluster with union-find; the
+  // flood fill below is the fallback for the rare call before that has run.
+  const known = clusterIndex.get(root.id);
+  if (known && known.includes(root)) return known;
   const units = items.filter((i) => !TYPE_BY_ID[i.typeId].deck);
   const set = new Set([root]);
   for (let grew = true; grew; ) {
@@ -1873,6 +2046,33 @@ function findingsMarkup() {
     if (near <= WET_RADIUS) continue;
     const [, hd] = halfDims(w);
     s += `<text x="${X(w.x)}" y="${Y(w.z + hd) + ss(16)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">⚠ ${cores.length ? `${Math.round(near)}′ TO CORE` : "NO UTILITY CORE"}</text>`;
+  }
+
+  // Overlapping footprints. A saved or shared layout can hold these even
+  // though the editor now refuses to create them.
+  for (const [a, b] of overlappingPairs()) {
+    for (const u of [a, b]) {
+      const [hw, hd] = halfDims(u);
+      s += `<rect x="${X(u.x - hw)}" y="${Y(u.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="url(#ch-hatch)" stroke="#8c3b2e" stroke-width="${ss(2)}"/>`;
+    }
+    s += `<text x="${X((a.x + b.x) / 2)}" y="${Y((a.z + b.z) / 2) - ss(4)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(0.9)}" fill="#8c3b2e" font-family="${FONT}">⚠ UNITS OVERLAP</text>`;
+  }
+
+  // Butted against a door wall. The editor rejects the move, but loadFrom
+  // never did, so a shared link could carry one with nothing drawn.
+  for (const [a, b] of blockedPairs()) {
+    const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+    s += `<circle cx="${X(mx)}" cy="${Y(mz)}" r="${ss(11)}" fill="#fbfaf6" stroke="#8c3b2e" stroke-width="${ss(1.8)}"/>`;
+    s += `<text x="${X(mx)}" y="${Y(mz) + ss(4)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">⚠</text>`;
+    s += `<text x="${X(mx)}" y="${Y(mz) - ss(15)}" text-anchor="middle" font-size="${ss(9.5)}" font-weight="700" letter-spacing="${ss(0.9)}" fill="#8c3b2e" font-family="${FONT}">DOOR WALL BLOCKED</text>`;
+  }
+
+  // Across the property line.
+  for (const u of items.filter((i) => !TYPE_BY_ID[i.typeId].deck)) {
+    const [hw, hd] = halfDims(u);
+    if (Math.abs(u.x) + hw <= SP_HALF && Math.abs(u.z) + hd <= SP_HALF) continue;
+    s += `<rect x="${X(u.x - hw)}" y="${Y(u.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="none" stroke="#8c3b2e" stroke-width="${ss(2.2)}" stroke-dasharray="${dash(9, 4)}"/>`;
+    s += `<text x="${X(u.x)}" y="${Y(u.z - hd) - ss(6)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(0.9)}" fill="#8c3b2e" font-family="${FONT}">⚠ CROSSES PROPERTY LINE</text>`;
   }
   return s;
 }
@@ -2017,6 +2217,7 @@ function beginUnitDrag(it, p, solo, e) {
     grabX: it.x - p.x, grabZ: it.z - p.z,
     snapshot: JSON.stringify(serialize()),
     preBlocked: blockedPairs().length,
+    preOverlap: overlappingPairs().length,
     moved: false,
     startX: e.clientX, startY: e.clientY, slop: SLOP(e),
   };
@@ -2091,10 +2292,7 @@ sitePanelEl.addEventListener("pointermove", (e) => {
       if (travel > planDrag.slop) clearTimeout(breakoutTimer); // committed to a drag
       if (travel <= planDrag.slop) return;
       planDrag.moved = true;
-      undoStack.push(planDrag.snapshot); // one undo step per drag
-      if (undoStack.length > 60) undoStack.shift();
-      redoStack.length = 0;
-      updateHistoryButtons();
+      pushUndo(planDrag.snapshot); // one undo step per drag
       document.body.classList.add("plan-dragging");
     }
     const p = clientToWorld(cur.x, cur.y);
@@ -2102,8 +2300,8 @@ sitePanelEl.addEventListener("pointermove", (e) => {
       const moving = new Set(planDrag.members);
       const snapped = snapMove(planDrag.primary, p.x + planDrag.grabX, p.z + planDrag.grabZ, moving);
       for (const { m, dx, dz } of planDrag.offs) {
-        m.x = snapped.x + dx;
-        m.z = snapped.z + dz;
+        m.x = clampX(snapped.x + dx);
+        m.z = clampZ(snapped.z + dz);
         applyTransform(m);
         moveUnitGroup(m);
       }
@@ -2138,19 +2336,41 @@ function hoverCursor(e) {
   sitePanelEl.classList.toggle("over-object", over);
 }
 
-function cancelPlanDrag() {
+// Drop every in-flight gesture without restoring anything. Used when the
+// whole model is about to be replaced, where "restore" is meaningless and
+// letting the gesture finish means it finishes against destroyed objects.
+function abortGestures() {
   clearTimeout(breakoutTimer);
-  if (planDrag && planDrag.moved) {
-    // loadFrom rebuilds every item, so hold the selection by id across it
-    const keep = selected && selected.id;
-    loadFrom(JSON.parse(planDrag.snapshot));
+  planDrag = null;
+  sitePanning = false;
+  pinching = false;
+  ghost = null;
+  pendingAdd = null;
+  snapGuides = [];
+  if (typeof setPlacing === "function") setPlacing(false);
+  document.body.classList.remove("plan-dragging", "breaking-out");
+}
+
+// Restore the pre-drag state. Selection survives by id, which only works now
+// that loadFrom restarts ids from 1 — before, every restore minted fresh ids
+// and the lookup could never match.
+function restoreSnapshot(snapshot, keepId) {
+  loadFrom(JSON.parse(snapshot));
+  if (keepId != null) {
+    const again = items.find((i) => i.id === keepId);
+    if (again) select(again);
+  }
+}
+
+function cancelPlanDrag() {
+  const d = planDrag;
+  const keep = selected && selected.id;
+  abortGestures();
+  if (d && d.moved) {
+    restoreSnapshot(d.snapshot, keep);
     undoStack.pop();
     updateHistoryButtons();
-    if (keep) { const again = items.find((i) => i.id === keep); if (again) select(again); }
   }
-  planDrag = null;
-  snapGuides = [];
-  document.body.classList.remove("plan-dragging", "breaking-out");
 }
 
 sitePanelEl.addEventListener("pointerup", (e) => {
@@ -2181,11 +2401,16 @@ sitePanelEl.addEventListener("pointerup", (e) => {
       if (d.kind === "unit") { select(selected === d.primary ? null : d.primary); renderChrome(); }
       return;
     }
-    if (d.kind === "unit" && blockedPairs().length > d.preBlocked) {
+    if (d.kind === "unit" &&
+        (blockedPairs().length > d.preBlocked ||
+         overlappingPairs().length > d.preOverlap)) {
+      const why = blockedPairs().length > d.preBlocked
+        ? "That blocks a door wall — butt against solid sides only"
+        : "Units cannot overlap — butt them edge to edge instead";
       undoStack.pop();
       updateHistoryButtons();
-      loadFrom(JSON.parse(d.snapshot));
-      toast("That blocks a door wall — butt against solid sides only");
+      restoreSnapshot(d.snapshot, d.primary && d.primary.id);
+      toast(why);
       return;
     }
     if (d.kind !== "unit") rebuildScenery();
@@ -2230,9 +2455,9 @@ sitePanelEl.addEventListener("pointerup", (e) => {
     renderSitePlan();
     toast("Drive rotated 90°");
   } else if (d.kind === "tree") {
-    toast("Drag to move · double-tap to remove");
+    toast(FINE_POINTER ? "Drag to move · double-click to remove" : "Drag to move · double-tap to remove");
   } else {
-    toast("Drag to re-route · double-tap to rotate");
+    toast(FINE_POINTER ? "Drag to re-route · double-click to rotate" : "Drag to re-route · double-tap to rotate");
   }
 });
 
@@ -2293,12 +2518,20 @@ addEventListener("pointerup", () => {
     renderSitePlan();
     return;
   }
-  const item = addItem(pa.type.id, g.x, g.z, 0);
-  if (blockedPairs().length) {
-    removeItem(item);
+  // Relative, like every other path. As an absolute test, one pre-existing
+  // illegal butt — reachable from any shared layout — rejected every
+  // subsequent drag-add, blaming a unit dropped on empty grass 100 ft away.
+  const preBlocked = blockedPairs().length;
+  const preOverlap = overlappingPairs().length;
+  const item = addItem(pa.type.id, clampX(g.x), clampZ(g.z), 0);
+  if (blockedPairs().length > preBlocked || overlappingPairs().length > preOverlap) {
+    const why = blockedPairs().length > preBlocked
+      ? "That blocks a door wall — butt against solid sides only"
+      : "Units cannot overlap — butt them edge to edge instead";
+    removeItem(item, { silent: true });
     undoStack.pop();
     updateHistoryButtons();
-    toast("That blocks a door wall — butt against solid sides only");
+    toast(why);
   } else select(item);
   renderSitePlan();
 });
@@ -2395,50 +2628,41 @@ function setPlacing(on) {
 toolMove.addEventListener("click", () => {
   if (!selected) return;
   setPlacing(!placing);
-  toast(placing ? "Tap the plan to place this unit" : "Tap-to-place off");
+  toast(placing ? (FINE_POINTER ? "Click the plan to place this unit" : "Tap the plan to place this unit") : "Place mode off");
 });
 
 // move the selected unit (and anything butted to it) so its centre lands at x,z
 function placeSelectedAt(x, z) {
   if (!selected) return;
-  const members = clusterOf(selected);
+  const anchor = selected;
+  const members = clusterOf(anchor);
   const moving = new Set(members);
-  const offs = members.map((m) => ({ m, dx: m.x - selected.x, dz: m.z - selected.z }));
+  const offs = members.map((m) => ({ m, dx: m.x - anchor.x, dz: m.z - anchor.z }));
   const before = JSON.stringify(serialize());
-  const preBlocked = blockedPairs().length;
-  const snapped = snapMove(selected, x, z, moving);
-  for (const { m, dx, dz } of offs) { m.x = snapped.x + dx; m.z = snapped.z + dz; applyTransform(m); }
-  snapGuides = [];
-  if (blockedPairs().length > preBlocked) {
-    loadFrom(JSON.parse(before));
-    toast("That blocks a door wall — butt against solid sides only");
-    return;
+  tryEdit(() => {
+    const snapped = snapMove(anchor, x, z, moving);
+    for (const { m, dx, dz } of offs) {
+      m.x = clampX(snapped.x + dx); m.z = clampZ(snapped.z + dz);
+      applyTransform(m);
+    }
+    snapGuides = [];
+  });
+  // a tap that lands the unit exactly where it already was is not an edit
+  if (JSON.stringify(serialize()) === before && undoStack[undoStack.length - 1] === before) {
+    undoStack.pop();
+    updateHistoryButtons();
   }
-  pushUndo.replace(before);
-  save();
-  updateStats();
-  select(selected);
-  renderSitePlan();
 }
-// a variant of pushUndo that records a state captured before the change
-pushUndo.replace = (snapshot) => {
-  undoStack.push(snapshot);
-  if (undoStack.length > 60) undoStack.shift();
-  redoStack.length = 0;
-  updateHistoryButtons();
-};
 
 function nudgeSelected(dx, dz) {
-  if (!selected || mode !== "plan") return;
-  const before = JSON.stringify(serialize());
-  const preBlocked = blockedPairs().length;
-  for (const m of clusterOf(selected)) { m.x += dx; m.z += dz; applyTransform(m); }
-  if (blockedPairs().length > preBlocked) { loadFrom(JSON.parse(before)); toast("That blocks a door wall"); return; }
-  pushUndo.replace(before);
-  save();
-  updateStats();
-  select(selected);
-  renderSitePlan();
+  if (!selected || mode !== "plan" || anyOpenDialog()) return;
+  const members = clusterOf(selected);
+  tryEdit(() => {
+    for (const m of members) {
+      m.x = clampX(m.x + dx); m.z = clampZ(m.z + dz);
+      applyTransform(m);
+    }
+  });
 }
 
 // ---- dialogs -------------------------------------------------------------
@@ -2449,7 +2673,9 @@ function nudgeSelected(dx, dz) {
 
 let dialogReturn = null;
 function openDialog(el) {
-  dialogReturn = document.activeElement;
+  const already = anyOpenDialog();
+  if (already && already !== el) already.classList.remove("open");
+  else dialogReturn = document.activeElement;
   el.classList.add("open");
   const first = el.querySelector("button, [href], input");
   if (first) first.focus();
@@ -2486,29 +2712,76 @@ document.getElementById("btn-clear").addEventListener("click", () => {
   pushUndo();
   history.replaceState(null, "", location.pathname);
   loadFrom({ v: 2, items: [], trees: trees.map((t) => [t.x, t.z, t.s]),
-             drive: [drive.x, drive.z, drive.rot] });
+             drive: [drive.x, drive.z, drive.rot] }, { refit: true });
   toast("Acre cleared — ↩ to undo");
 });
 
 // ------------------------------------------------------------------- boot
 
-const hashData = location.hash.startsWith("#d=") ? decodeShare(location.hash.slice(3)) : null;
-let stored = null;
-try { stored = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch {}
-// A saved-but-empty acre is not the same as a first visit. Keying off
-// items.length silently threw away a cleared layout on every reload.
-const seeded = stored && typeof stored.v === "number" && Array.isArray(stored.items);
-loadFrom(hashData || (seeded ? stored : EXAMPLE));
+function hashLayout() {
+  return location.hash.startsWith("#d=") ? decodeShare(location.hash.slice(3)) : null;
+}
 
+function showShared(data) {
+  visiting = true;
+  document.body.classList.add("visiting");
+  loadFrom(data, { noSave: true, refit: true });
+}
+
+function init() {
+  const hashData = hashLayout();
+  let stored = null;
+  try { stored = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch {}
+  // A saved-but-empty acre is not the same as a first visit. Keying off
+  // items.length silently threw away a cleared layout on every reload.
+  const seeded = stored && typeof stored.v === "number" && Array.isArray(stored.items);
+  if (hashData) showShared(hashData);
+  else loadFrom(seeded ? stored : EXAMPLE, { refit: true });
+}
+
+// A throw in here used to decapitate the module — the boot was a bare
+// statement, so everything below it, including the resize listener and the
+// render loop, never ran, and the blank result reloaded blank forever.
+try {
+  init();
+} catch (err) {
+  console.error("Could not read the saved layout", err);
+  try { localStorage.removeItem(LS_KEY); } catch {}
+  history.replaceState(null, "", location.pathname);
+  loadFrom(EXAMPLE, { refit: true });
+  setTimeout(() => toast("That layout could not be read — showing the example"), 900);
+}
+
+// Pasting a link into an already-open tab did nothing: the hash was read once.
+addEventListener("hashchange", () => {
+  const data = hashLayout();
+  if (data) showShared(data);
+});
+
+document.getElementById("visit-keep").addEventListener("click", () => {
+  save();
+  toast("Saved to this browser");
+});
+
+let resizeTimer = null;
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  // The plan used to ignore resizing entirely — the one event that only
+  // happens on a desktop. Snap a window or plug in a monitor and the drawing
+  // kept a transform framed for the old viewport.
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (mode === "plan") renderSitePlan({ fit: true });
+  }, 120);
 });
 
 // The one teaching moment: spend it on what is not already obvious. Things
 // drawn on a plan already look draggable; pinch and the add button do not.
-setTimeout(() => toast("Drag to move · pinch to zoom · + to add"), 700);
+setTimeout(() => toast(FINE_POINTER
+  ? "Drag to move · scroll to zoom · + to add"
+  : "Drag to move · pinch to zoom · + to add"), 700);
 
 const clock = new THREE.Clock();
 const needle = document.getElementById("needle");
