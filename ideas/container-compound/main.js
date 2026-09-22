@@ -641,12 +641,62 @@ function select(item) {
   sepEl.textContent = msgs.join(" ");
   sepEl.style.display = msgs.length ? "block" : "none";
   document.getElementById("btn-plan").style.display = t.deck ? "none" : "block";
+  syncCoordFields(item);
   document.getElementById("sel-name").textContent = t.name;
   // plan: selection shows the tool strip; the sheet opens via the name chip.
   // 3D: a tap goes straight to the (read-only) sheet.
-  if (mode === "view") document.body.classList.add("sheet-open");
+  // On a phone the details sheet covers the drawing, so it stays on demand.
+  // On a wide screen it is a docked inspector beside the drawing, and having
+  // to ask for it hid the position fields — the only precise way to place
+  // anything — behind a second click.
+  if (mode === "view" || matchMedia("(min-width: 900px)").matches)
+    document.body.classList.add("sheet-open");
   updateSelDims();
 }
+// ---- typing a position ----------------------------------------------------
+//
+// Dragging and the 1 ft arrow nudge were the only ways to place anything, so
+// "put it 18 ft east" meant eighteen keypresses and "line these two up" meant
+// counting pixels. The fields are east/south of the middle of the lot, which
+// is the origin every dimension on the sheet is measured from.
+let syncingCoords = false;
+function syncCoordFields(item) {
+  const x = document.getElementById("pos-x"), z = document.getElementById("pos-z");
+  if (!x || !z || !item) return;
+  syncingCoords = true;
+  x.value = Math.round(item.x);
+  z.value = Math.round(item.z);
+  syncingCoords = false;
+}
+const posX = document.getElementById("pos-x");
+const posZ = document.getElementById("pos-z");
+function commitCoords() {
+  if (syncingCoords || !selected || mode !== "plan") return;
+  const target = selected;
+  const x = clampX(num(posX.value, target.x));
+  const z = clampZ(num(posZ.value, target.z));
+  if (x === target.x && z === target.z) return;
+  const ox = target.x, oz = target.z;
+  const ok = tryEdit(() => {
+    // a butted cluster moves as one, exactly as a drag of it would
+    const members = clusterOf(target);
+    const dx = x - ox, dz = z - oz;
+    for (const m of members) {
+      m.x = clampX(m.x + dx);
+      m.z = clampZ(m.z + dz);
+      applyTransform(m);
+    }
+  }, "That position blocks a door wall — try another");
+  if (!ok) syncCoordFields(selected || target);
+}
+for (const el of [posX, posZ]) {
+  el.addEventListener("change", commitCoords);
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); commitCoords(); el.blur(); }
+    else if (e.key === "Escape") { e.preventDefault(); if (selected) syncCoordFields(selected); el.blur(); }
+  });
+}
+
 document.getElementById("btn-info").addEventListener("click", () =>
   document.body.classList.add("sheet-open"));
 document.getElementById("btn-desel").addEventListener("click", () => select(null));
@@ -721,8 +771,11 @@ const onSheet = (v) => Math.max(SP_MINX, Math.min(SP_MAXX, v));
 // Placement and movement were unclamped, so a unit could be created hundreds
 // of feet off the parcel, outside the sheet's viewBox — where it is clipped
 // away, leaving a blank screen that Fit could not recover.
-const clampX = (v) => Math.max(SP_MINX + 4, Math.min(SP_MAXX - 4, Math.round(v)));
-const clampZ = (v) => Math.max(SP_MINZ + 4, Math.min(SP_MAXZ - 4, Math.round(v)));
+// Round last: the sheet's own edge is a half foot, so clamping after rounding
+// put a unit driven into the margin at x = 108.5 and the position field then
+// disagreed with the model by half a foot.
+const clampX = (v) => Math.round(Math.max(SP_MINX + 4, Math.min(SP_MAXX - 4, v)));
+const clampZ = (v) => Math.round(Math.max(SP_MINZ + 4, Math.min(SP_MAXZ - 4, v)));
 const rot4 = (v) => (((v | 0) % 4) + 4) % 4;
 
 function normalize(data) {
@@ -1058,7 +1111,7 @@ for (const id of ["btn-share", "btn-va", "btn-reset"])
   document.getElementById(id).addEventListener("click", () =>
     document.body.classList.remove("menu-open"));
 
-document.getElementById("btn-dup").addEventListener("click", () => {
+function duplicateSelected() {
   if (!selected || mode !== "plan") return;
   pushUndo();
   const t = TYPE_BY_ID[selected.typeId];
@@ -1066,7 +1119,8 @@ document.getElementById("btn-dup").addEventListener("click", () => {
   const item = addItem(selected.typeId, spot.x, spot.z, selected.rot);
   select(item);
   renderSitePlan();
-});
+}
+document.getElementById("btn-dup").addEventListener("click", duplicateSelected);
 
 document.getElementById("btn-rotate").addEventListener("click", rotateSelected);
 function deleteSelected() {
@@ -1149,20 +1203,78 @@ function rotateSelected() {
     "That blocks a door wall — keep apertures clear");
 }
 
+// A control with focus owns its own keys. Arrow keys move between the tabs of
+// a tablist and between radio buttons, and space presses a button — nudging a
+// unit or panning the paper out from under a focused control is not what
+// either keypress meant.
+const FOCUS_OWNS_KEYS = "button, a[href], input, textarea, select, [contenteditable], [role='tab'], [role='menuitem']";
+const focusOwnsKeys = () => {
+  const el = document.activeElement;
+  return !!(el && el !== document.body && el.closest && el.closest(FOCUS_OWNS_KEYS));
+};
+
+// Tab cycles the selection while the sheet itself has focus, which is the only
+// route to a unit that does not need a pointer. Escape hands focus back out,
+// so the sheet is a stop on the tab order rather than a trap in it.
+function cycleSelection(dir) {
+  if (!items.length) return;
+  const order = [...items].sort((a, b) => a.z - b.z || a.x - b.x || a.id - b.id);
+  const at = selected ? order.indexOf(selected) : -1;
+  const next = order[(at + dir + order.length * 2) % order.length];
+  select(next);
+  renderChrome();
+  // keep whatever you just picked on screen
+  const c = viewCenterWorld();
+  if (Math.abs(next.x - c.x) * SP_S * sview.k > innerWidth * 0.45
+      || Math.abs(next.z - c.z) * SP_S * sview.k > innerHeight * 0.4) {
+    sview.x += (c.x - next.x) * SP_S * sview.k;
+    sview.y += (c.z - next.z) * SP_S * sview.k;
+    siteApply();
+  }
+}
+
+addEventListener("keyup", (e) => { if (e.code === "Space") setSpaceHeld(false); });
+
 addEventListener("keydown", (e) => {
   if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")) return;
   // A dialog that traps Tab but lets a bare keypress rotate or DELETE the
   // object it is describing is worse than one that does neither — Backspace
   // is the key people press meaning "go back".
   if (anyOpenDialog() && e.key !== "Escape") return;
-  if ((e.metaKey || e.ctrlKey) && (e.key === "y" || (e.shiftKey && (e.key === "z" || e.key === "Z")))) {
+  const mod = e.metaKey || e.ctrlKey;
+  const sheet = mode === "plan";
+  const stageFocused = document.activeElement === sitePanelEl;
+
+  if (e.code === "Space" && sheet && !focusOwnsKeys()) {
+    e.preventDefault();
+    setSpaceHeld(true);
+    return;
+  }
+  if (e.key === "Tab" && sheet && stageFocused && items.length) {
+    e.preventDefault();
+    cycleSelection(e.shiftKey ? -1 : 1);
+    return;
+  }
+
+  if (mod && (e.key === "y" || (e.shiftKey && (e.key === "z" || e.key === "Z")))) {
     e.preventDefault(); redo();
-  } else if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); }
+  } else if (mod && e.key === "z") { e.preventDefault(); undo(); }
+  else if (mod && (e.key === "d" || e.key === "D") && selected && sheet) {
+    e.preventDefault(); duplicateSelected();
+  } else if (mod) {
+    return; // every other accelerator belongs to the browser
+  }
   else if (e.key === "r" || e.key === "R") rotateSelected();
-  else if ((e.key === "Delete" || e.key === "Backspace") && selected && mode === "plan") {
+  else if ((e.key === "Delete" || e.key === "Backspace") && selected && sheet) {
     e.preventDefault();
     deleteSelected();
-  } else if (e.key.startsWith("Arrow") && selected && mode === "plan") {
+  } else if (sheet && !focusOwnsKeys() && (e.key === "+" || e.key === "=")) {
+    e.preventDefault(); zoomBy(1.25);
+  } else if (sheet && !focusOwnsKeys() && (e.key === "-" || e.key === "_")) {
+    e.preventDefault(); zoomBy(1 / 1.25);
+  } else if (sheet && !focusOwnsKeys() && (e.key === "0" || e.key === "f" || e.key === "F")) {
+    e.preventDefault(); siteFitView();
+  } else if (e.key.startsWith("Arrow") && selected && sheet && !focusOwnsKeys()) {
     e.preventDefault();
     const step = e.shiftKey ? 5 : 1;
     if (e.key === "ArrowLeft") nudgeSelected(-step, 0);
@@ -1170,6 +1282,7 @@ addEventListener("keydown", (e) => {
     else if (e.key === "ArrowUp") nudgeSelected(0, -step);
     else if (e.key === "ArrowDown") nudgeSelected(0, step);
   } else if (e.key === "Escape") {
+    setSpaceHeld(false);
     const dlg = anyOpenDialog();
     if (dlg) { closeDialog(dlg); return; }
     if (document.body.classList.contains("menu-open")) {
@@ -1177,7 +1290,16 @@ addEventListener("keydown", (e) => {
       document.getElementById("btn-menu").focus();
       return;
     }
+    // A drag in flight is the most urgent thing Escape can be about: it puts
+    // the unit back where it started rather than leaving you to undo a move
+    // you never meant to finish.
+    if (planDrag && planDrag.moved) { cancelPlanDrag(); toast("Move cancelled"); return; }
+    if (pendingAdd || ghost) {
+      pendingAdd = null; ghost = null; snapGuides = []; renderChrome();
+      return;
+    }
     if (placing) { setPlacing(false); return; }
+    if (stageFocused && selected) { sitePanelEl.blur(); }
     closeAdd();
     select(null);
   }
@@ -2050,45 +2172,87 @@ let siteFitBox = null;
 // on a desktop, so on a phone the fit ran the drawing under the export pills
 // and the add button, where it could not be pressed. Measure what is actually
 // on screen instead.
+// Chrome that only occupies a corner used to cost the drawing a full-width
+// band: on a desktop the bottom-left stats pill and the bottom-right add
+// button between them reserved a strip the whole width of the window, and the
+// docked info panel was not measured at all. A piece of chrome now gives up
+// whichever edge it is actually hugging, so the fit gets a rectangle.
 function chromeBand() {
   const box = (id) => {
     const el = document.getElementById(id);
-    if (!el || getComputedStyle(el).display === "none") return null;
+    if (!el) return null;
+    // Chrome that is only faded out still has a box. The details card on a
+    // desktop is hidden that way until something is selected, and measuring it
+    // anyway cost the drawing the right-hand fifth of the window at all times.
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden" || +cs.opacity === 0) return null;
     const r = el.getBoundingClientRect();
     return r.width && r.height ? r : null;
   };
-  let top = 12;
+  const g = 12;
+  const band = { top: g, bottom: g, left: g, right: g };
   for (const id of ["topbar", "tabbar"]) {
     const r = box(id);
-    if (r) top = Math.max(top, r.bottom + 12);
+    if (r) band.top = Math.max(band.top, r.bottom + g);
   }
-  let bottom = 12;
-  for (const id of ["site-actions", "fab", "stats-pill", "toolstrip", "edge-tools"]) {
+  const side = (r) => {
+    if (r.left > innerWidth - r.right) band.right = Math.max(band.right, innerWidth - r.left + g);
+    else band.left = Math.max(band.left, r.right + g);
+  };
+  for (const id of ["site-actions", "fab", "stats-pill", "toolstrip", "edge-tools", "info"]) {
     const r = box(id);
-    if (r) bottom = Math.max(bottom, innerHeight - r.top + 12);
+    if (!r) continue;
+    // Anything that runs a good part of the window's height can only be
+    // stepped around sideways — giving up rows to it would leave none.
+    if (r.height > innerHeight * 0.3) { side(r); continue; }
+    // Otherwise take whichever bite is smaller in area: a corner pill costs
+    // far less as a narrow side inset than as a strip the whole width of the
+    // window, which is what every piece of chrome used to cost.
+    const vCost = Math.max(0, innerHeight - r.top + g - band.bottom);
+    const nearLeft = r.left < innerWidth - r.right;
+    const hCost = Math.max(0, nearLeft ? r.right + g - band.left
+                                       : innerWidth - r.left + g - band.right);
+    const cornerish = r.width < innerWidth * 0.4
+      && (r.right < innerWidth * 0.6 || r.left > innerWidth * 0.4);
+    if (cornerish && hCost * innerHeight < vCost * innerWidth) side(r);
+    else band.bottom = Math.max(band.bottom, innerHeight - r.top + g);
   }
-  return { top, bottom };
+  return band;
 }
 
 // Below this the units stop being touchable — an 8 ft side has to stay near a
 // finger's width — so the compound is allowed to overflow and be panned
-// rather than shrunk until the drawing is a row of grey slabs.
-const MIN_FIT_K = 0.5;
+// rather than shrunk until the drawing is a row of grey slabs. A mouse hits a
+// 2 mm target happily, so on a fine pointer the floor is much lower and the
+// whole acre can actually fit on screen.
+const MIN_FIT_K = FINE_POINTER ? 0.2 : 0.5;
+// the zoom-out floor and the fit floor were 0.1 and 0.5, so a fit could not
+// reach what the wheel could
+const MIN_ZOOM_K = MIN_FIT_K;
+
+// the free rectangle the drawing gets to live in, after the chrome
+function sheetViewport() {
+  const { top, bottom, left, right } = chromeBand();
+  const pad = 8;
+  return {
+    x: left + pad,
+    y: top,
+    w: Math.max(160, innerWidth - left - right - pad * 2),
+    h: Math.max(120, innerHeight - top - bottom),
+  };
+}
 
 function siteFitView() {
   if (!siteFitBox) return;
   const { x0, x1, y0, y1 } = siteFitBox;
-  const vw = innerWidth, vh = innerHeight;
-  const { top, bottom } = chromeBand();
-  const pad = 20;
-  const band = Math.max(120, vh - top - bottom);
+  const vp = sheetViewport();
   const k = Math.min(
-    Math.max(MIN_FIT_K, Math.min((vw - pad * 2) / (x1 - x0), band / (y1 - y0))),
+    Math.max(MIN_FIT_K, Math.min(vp.w / (x1 - x0), vp.h / (y1 - y0))),
     2.5);
   sview.k = k;
   fitK = k;
-  sview.x = (vw - k * (x0 + x1)) / 2;
-  sview.y = top + (band - k * (y1 - y0)) / 2 - k * y0;
+  sview.x = vp.x + (vp.w - k * (x1 - x0)) / 2 - k * x0;
+  sview.y = vp.y + (vp.h - k * (y1 - y0)) / 2 - k * y0;
   afterZoom();
 }
 document.getElementById("site-fit").addEventListener("click", siteFitView);
@@ -2193,7 +2357,7 @@ function afterZoom() {
 }
 let zoomPending = false;
 function siteZoomAt(px, py, f) {
-  const k2 = Math.min(6, Math.max(0.1, sview.k * f));
+  const k2 = Math.min(6, Math.max(MIN_ZOOM_K, sview.k * f));
   f = k2 / sview.k;
   sview.x = px - f * (px - sview.x);
   sview.y = py - f * (py - sview.y);
@@ -2651,6 +2815,17 @@ let breakoutTimer = null;
 // press began, not from the previous move event, and it is generous on touch.
 const SLOP = (e) => (e.pointerType === "touch" ? 10 : 3);
 
+// Held space is the pan modifier every drawing tool has. It used to fall
+// through to whatever button had focus, so the key that means "get out of the
+// way" instead rotated or deleted something.
+let spaceHeld = false;
+function setSpaceHeld(on) {
+  if (spaceHeld === on) return;
+  spaceHeld = on;
+  document.body.classList.toggle("space-pan", on);
+}
+addEventListener("blur", () => setSpaceHeld(false));
+
 function beginUnitDrag(it, p, solo, e) {
   const members = solo ? [it] : clusterOf(it);
   planDrag = {
@@ -2667,6 +2842,17 @@ function beginUnitDrag(it, p, solo, e) {
 
 sitePanelEl.addEventListener("pointerdown", (e) => {
   if (placing && selected) { e.preventDefault(); return; } // handled on release
+  // Right and middle button drag the paper, and the right button keeps its
+  // context menu. Before this, a right-drag moved whatever was under it and
+  // the menu never appeared, so the mouse had no non-destructive drag at all.
+  if (e.button === 1 || e.button === 2 || spaceHeld) {
+    sitePanelEl.setPointerCapture(e.pointerId);
+    sitePtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    cancelPlanDrag();
+    sitePanning = true;
+    return;
+  }
+  if (e.button !== 0 && e.pointerType === "mouse") return;
   sitePanelEl.setPointerCapture(e.pointerId);
   sitePtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (sitePtrs.size > 1) { // a second finger turns the gesture into a pinch
@@ -2679,7 +2865,7 @@ sitePanelEl.addEventListener("pointerdown", (e) => {
   pinching = false;
   const it = unitAtWorld(p);
   if (it) {
-    beginUnitDrag(it, p, e.altKey || e.shiftKey, e);
+    beginUnitDrag(it, p, e.altKey, e);
     // held still, a press breaks one unit out of its cluster
     breakoutTimer = setTimeout(() => {
       if (planDrag && planDrag.kind === "unit" && !planDrag.moved && !planDrag.solo
@@ -2747,6 +2933,9 @@ sitePanelEl.addEventListener("pointermove", (e) => {
     }
     const p = clientToWorld(cur.x, cur.y);
     if (planDrag.kind === "unit") {
+      // read live, so Alt can be taken or released mid-drag rather than only
+      // being sampled once when the press landed
+      planDrag.free = e.altKey;
       const moving = new Set(planDrag.members);
       const snapped = snapMove(planDrag.primary, p.x + planDrag.grabX, p.z + planDrag.grabZ, moving);
       for (const { m, dx, dz } of planDrag.offs) {
@@ -2850,7 +3039,7 @@ sitePanelEl.addEventListener("pointerup", (e) => {
     if (JSON.stringify(serialize()) === d.snapshot) {
       undoStack.pop();
       updateHistoryButtons();
-      if (d.kind === "unit") { select(selected === d.primary ? null : d.primary); renderChrome(); }
+      if (d.kind === "unit") { select(d.primary); renderChrome(); }
       return;
     }
     if (d.kind === "unit" &&
@@ -2891,8 +3080,15 @@ sitePanelEl.addEventListener("pointerup", (e) => {
   lastTap = { t: now, key };
 
   if (d.kind === "unit") {
-    select(selected === d.primary ? null : d.primary);
+    // Clicking the unit you already have selected used to deselect it, so the
+    // second click of a double-click threw away what the first had chosen.
+    // Selecting stays selecting; Esc, the deselect button and empty paper are
+    // the ways out. A double-click opens the floor plan, which is the thing
+    // you would want a second look at.
+    select(d.primary);
     renderChrome();
+    // a deck has no interior to draw, so there is nothing to open
+    if (isDouble && !TYPE_BY_ID[d.primary.typeId].deck) openPlan(TYPE_BY_ID[d.primary.typeId]);
   } else if (d.kind === "site" && isDouble) {
     pushUndo();
     if (d.objKind === "well") wells = wells.filter((w) => w !== d.obj);
@@ -2933,9 +3129,14 @@ const sitePtrEnd = (e) => {
 };
 sitePanelEl.addEventListener("pointercancel", sitePtrEnd);
 
+// Firefox reports wheel deltas in lines (deltaMode 1) and page-ups in pages
+// (2), where every other browser reports pixels, so the same flick zoomed
+// about 35x less there. Convert to pixels first.
+const WHEEL_PX = [1, 16, 100];
 sitePanelEl.addEventListener("wheel", (e) => {
   e.preventDefault();
-  siteZoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0018));
+  const dy = e.deltaY * (WHEEL_PX[e.deltaMode] || 1);
+  siteZoomAt(e.clientX, e.clientY, Math.exp(-dy * 0.0018));
 }, { passive: false });
 
 // ---- adding by dragging out of the drawer ----
@@ -3072,9 +3273,15 @@ document.getElementById("plan-close").addEventListener("click", () =>
 
 // ---- zoom buttons: pinch was the only way in, and it is undiscoverable ----
 
-const zoomBy = (f) => siteZoomAt(innerWidth / 2, innerHeight / 2, f);
-document.getElementById("site-zoom-in").addEventListener("click", () => zoomBy(1.6));
-document.getElementById("site-zoom-out").addEventListener("click", () => zoomBy(1 / 1.6));
+// A 1.6x step overshot what you were looking at, and it was taken about the
+// centre of the window — which on a desktop is not the centre of the paper,
+// because the docked panel and the chrome sit on top of it.
+const zoomBy = (f) => {
+  const vp = sheetViewport();
+  siteZoomAt(vp.x + vp.w / 2, vp.y + vp.h / 2, f);
+};
+document.getElementById("site-zoom-in").addEventListener("click", () => zoomBy(1.25));
+document.getElementById("site-zoom-out").addEventListener("click", () => zoomBy(1 / 1.25));
 
 // ---- moving a unit without a drag ----------------------------------------
 //

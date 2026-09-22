@@ -226,6 +226,34 @@
     border: 1px solid #55524c;
   }
   .add-chip.mini { width: 1.6rem; }
+  /* typing a distance is the only way to place something exactly, and the
+     only way at all without a pointer that can drag */
+  #info .coords {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin: 0.7rem 0 0.2rem;
+    font-size: var(--t-sm);
+  }
+  #info .coords .lab { color: var(--muted); }
+  #info .coords label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--muted);
+  }
+  #info .coords input {
+    width: 4.2rem;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    padding: 0.25rem 0.35rem;
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    background: #fff;
+  }
+  #info .coords .unit { color: var(--muted); font-size: var(--t-xs); }
   .add-name { font-weight: 600; font-size: var(--t-base); }
   .add-name .badge {
     font-weight: 500;
@@ -305,6 +333,14 @@
   #site-panel:active { cursor: grabbing; }
   /* over something draggable, the paper stops offering to pan */
   #site-panel.over-object, #site-panel.over-object:active { cursor: move; }
+  /* held space means pan, whatever is underneath */
+  body.space-pan #site-panel, body.space-pan #site-panel.over-object { cursor: grab; }
+  body.space-pan #site-panel:active { cursor: grabbing; }
+  /* the sheet is a stop on the tab order: from here Tab walks the units */
+  #site-panel:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
   body[data-mode="plan"] #site-panel { display: block; }
   #site-stage {
     position: absolute;
@@ -857,6 +893,8 @@
     #info {
       left: auto; right: 1rem; bottom: 5.6rem;
       max-width: 19rem;
+      max-height: calc(100vh - 12rem);
+      overflow-y: auto;
       border-radius: var(--r-panel);
       border-width: 1px;
       transform: none;
@@ -911,7 +949,8 @@
   <button data-mode="view" role="tab" aria-selected="false">3D</button>
 </div>
 
-<div id="site-panel">
+<div id="site-panel" tabindex="0" role="application"
+     aria-label="Site plan. Tab moves between units, arrow keys nudge the selected one, R rotates, hold space to pan, Escape leaves the drawing.">
   <div id="site-stage">
     <div id="site-svg"><!-- the drawing; this is what exports --></div>
     <div id="site-chrome"><!-- selection, guides, redlines; never exported --></div>
@@ -995,6 +1034,12 @@
   <div class="va" id="info-permit"></div>
   <div class="wet" id="info-wet"></div>
   <div class="sep" id="info-sep"></div>
+  <div class="coords" id="info-coords">
+    <span class="lab">Position</span>
+    <label>E<input id="pos-x" type="number" step="1" inputmode="numeric" aria-label="Distance east of the middle of the lot, in feet"></label>
+    <label>S<input id="pos-z" type="number" step="1" inputmode="numeric" aria-label="Distance south of the middle of the lot, in feet"></label>
+    <span class="unit">ft from centre</span>
+  </div>
   <button id="btn-plan" class="wide">Floor plan</button>
 </div>
 
