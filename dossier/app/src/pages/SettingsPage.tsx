@@ -4,7 +4,14 @@ import InlineField from '../components/InlineField'
 import TypeEditor from '../components/TypeEditor'
 import LabelText from '../components/LabelText'
 import { Link, useSearchParams } from 'react-router-dom'
-import { buildLabel, checkForUpdate, type UpdateCheck } from '../lib/appUpdate'
+import {
+  applyUpdate,
+  buildLabel,
+  checkForUpdate,
+  isUpdateReady,
+  onUpdateReady,
+  type UpdateCheck,
+} from '../lib/appUpdate'
 import { destroyAllData } from '../lib/db'
 import {
   MAX_IMPORT_FILE_BYTES,
@@ -805,13 +812,24 @@ function StressSection() {
 
 /**
  * Which build this is, and a way to fetch a newer one now. An installed
- * copy already updates on its own (hourly while open, reopening onto the
- * new build); this is for "a fix just shipped — do I have it?", which
- * used to mean deleting the app from the Home Screen and adding it back.
- * The app's name stays out of it: a disguised copy must not say "Ledger".
+ * copy finds new builds on its own (hourly while open) and takes them the
+ * next time it locks; this is for "a fix just shipped — do I have it?",
+ * which used to mean deleting the app from the Home Screen and adding it
+ * back. The app's name stays out of it: a disguised copy must not say
+ * "Ledger".
  */
 function UpdateSection() {
-  const [state, setState] = useState<UpdateCheck | 'checking' | 'stuck' | null>(null)
+  const [state, setState] = useState<UpdateCheck | 'checking' | 'stuck' | 'waiting' | null>(() =>
+    isUpdateReady() ? 'waiting' : null,
+  )
+  // The hourly check may find one while this page is open.
+  useEffect(
+    () =>
+      onUpdateReady(() =>
+        setState((s) => (s === null || s === 'current' || s === 'offline' ? 'waiting' : s)),
+      ),
+    [],
+  )
   const [hasWorker, setHasWorker] = useState<boolean | null>(null)
   useEffect(() => {
     let live = true
@@ -836,11 +854,21 @@ function UpdateSection() {
 
   const check = async () => {
     if (state === 'checking' || state === 'updating') return
+    if (state === 'waiting') {
+      setState('updating')
+      void applyUpdate()
+      return
+    }
     setState('checking')
-    setState(await checkForUpdate())
+    const result = await checkForUpdate()
+    setState(result)
+    // Asked for, so taken now — as soon as it has installed. Nothing is
+    // being written on this page; notes in progress are on disk anyway.
+    if (result === 'updating') void applyUpdate()
   }
   const message: Record<Exclude<typeof state, null>, string> = {
     checking: 'Checking…',
+    waiting: 'A new version is ready. It installs the next time the app locks — or now.',
     current: 'You have the latest version.',
     updating: 'Found a new version — installing. The app will reopen on it, locked.',
     stuck: 'The new version is ready. Reopen the app to start using it.',
@@ -852,7 +880,7 @@ function UpdateSection() {
       <h2>Updates</h2>
       <p className="hint">
         Version {buildLabel(__APP_VERSION__, __BUILD_ID__, __BUILD_TIME__)}. New versions
-        install on their own while the app is open; check to get one straight away.
+        arrive on their own and install when the app locks; check to get one straight away.
       </p>
       {hasWorker !== false && (
         <div className="row wrap">
@@ -861,7 +889,7 @@ function UpdateSection() {
             onClick={() => void check()}
             disabled={state === 'checking' || state === 'updating'}
           >
-            Check for updates
+            {state === 'waiting' ? 'Install now' : 'Check for updates'}
           </button>
           {state === 'stuck' && (
             <button type="button" className="primary" onClick={() => location.reload()}>

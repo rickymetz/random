@@ -1106,6 +1106,46 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [person.id, registerDraft, unregisterDraft])
+  // …and it is kept on disk as it's typed, so a reload can't take it: an
+  // update applying itself, iOS closing the app from the switcher, a
+  // crash. A reload runs no lock and flushes nothing, so without this the
+  // half-written note was simply gone. It waits in this box on unlock.
+  const persistDraft = useVaultStore((s) => s.persistDraft)
+  const persistTimer = useRef<number | undefined>(undefined)
+  const flushPersist = useCallback(() => {
+    if (persistTimer.current === undefined) return
+    window.clearTimeout(persistTimer.current)
+    persistTimer.current = undefined
+    void persistDraft(person.id, draftRef.current)
+  }, [persistDraft, person.id])
+  useEffect(() => {
+    if (persistTimer.current !== undefined) window.clearTimeout(persistTimer.current)
+    persistTimer.current = undefined
+    // Emptied — saved, or cleared by hand — is forgotten at once: a reload
+    // in the next breath must not bring back a note that was just saved.
+    if (!draft.trim()) {
+      void persistDraft(person.id, '')
+      return
+    }
+    persistTimer.current = window.setTimeout(() => {
+      persistTimer.current = undefined
+      void persistDraft(person.id, draftRef.current)
+    }, 600)
+  }, [draft, person.id, persistDraft])
+  useEffect(() => {
+    // Going away is when the last keystrokes matter most: write now,
+    // don't wait for the pause.
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flushPersist()
+    }
+    window.addEventListener('pagehide', flushPersist)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', flushPersist)
+      document.removeEventListener('visibilitychange', onVisibility)
+      flushPersist()
+    }
+  }, [flushPersist])
   const others = useMemo(
     () => selectPeople(records).filter((p) => p.id !== person.id),
     [records, person.id],

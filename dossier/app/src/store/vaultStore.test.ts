@@ -245,6 +245,47 @@ describe('vault store', () => {
     expect(selectNotes(store().records, ada.id)).toHaveLength(1)
   })
 
+  it('a note being written survives the page going away, and comes back on unlock', async () => {
+    const ada = await store().addPerson('Ada')
+    await store().persistDraft(ada.id, 'half a thought about the regatta')
+    // A reload runs no lock and flushes nothing: only what is on disk is left.
+    store().lock()
+    expect(await store().unlock('open sesame')).toBe(true)
+    expect(store().drafts.get(ada.id)).toBe('half a thought about the regatta')
+    // Encrypted at rest like everything else.
+    const rows = await db.records.toArray()
+    expect(JSON.stringify(rows)).not.toContain('regatta')
+    // Emptying the box forgets it.
+    await store().persistDraft(ada.id, '')
+    store().lock()
+    await store().unlock('open sesame')
+    expect(store().drafts.has(ada.id)).toBe(false)
+  })
+
+  it('a draft that became a note on lock does not come back as a draft too', async () => {
+    const ada = await store().addPerson('Ada')
+    const text = 'met at the harbour'
+    await store().persistDraft(ada.id, text)
+    store().registerDraft(ada.id, () => text)
+    await store().flushDrafts()
+    store().lock()
+    await store().unlock('open sesame')
+    expect(selectNotes(store().records, ada.id).map((n) => n.body)).toEqual([text])
+    expect(store().drafts.has(ada.id)).toBe(false)
+  })
+
+  it('deleting a person takes their unfinished note with them', async () => {
+    const ada = await store().addPerson('Ada')
+    const bo = await store().addPerson('Bo')
+    await store().persistDraft(ada.id, 'about Ada')
+    await store().persistDraft(bo.id, 'about Bo')
+    await store().removePerson(ada.id)
+    expect(selectSettings(store().records)?.drafts).toEqual({ [bo.id]: 'about Bo' })
+    // …and a late write for someone gone is refused.
+    await store().persistDraft(ada.id, 'again')
+    expect(selectSettings(store().records)?.drafts).toEqual({ [bo.id]: 'about Bo' })
+  })
+
   it('updateNote re-derives mention edges from the new text', async () => {
     const ada = await store().addPerson('Ada')
     const bob = await store().addPerson('Bob')

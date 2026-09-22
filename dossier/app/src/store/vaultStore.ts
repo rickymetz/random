@@ -13,7 +13,7 @@ import { create } from 'zustand'
 import { extractMentions, renameMentionsOf, stripMentionsOf } from '../lib/mentions'
 import { linkPhrase } from '../lib/nameDetect'
 import type { ContactDraft } from '../lib/contacts'
-import { CIRCLE_COLORS, RECENT_LIMIT, type Circle } from '../lib/models'
+import { CIRCLE_COLORS, DRAFT_LIMIT, RECENT_LIMIT, type Circle } from '../lib/models'
 import { assignTypeFamilies, migrateExToFormer, pairKey } from '../lib/relationships'
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
@@ -160,6 +160,11 @@ interface VaultState {
    * for the dossier to come back (a timer lock saves it as a note). */
   drafts: Map<string, string>
   stashDraft: (personId: string, text: string) => void
+  /**
+   * Keep a note being written on disk (encrypted, in Settings) so a
+   * reload can't take it; '' forgets it. Restored into `drafts` on unlock.
+   */
+  persistDraft: (personId: string, text: string) => Promise<void>
   setHomeQuery: (query: string) => void
   setHomePage: (page: { key: string; limit: number }) => void
 
@@ -418,10 +423,19 @@ export const useVaultStore = create<VaultState>((set, get) => {
     if (get().epoch !== startEpoch || get().status === 'unlocked') return false
     searchIndex = createIndex()
     rebuildIndex(searchIndex, records)
+    // Notes that were being written when the page last went away (an
+    // update's reload, iOS closing the app) wait in their note boxes.
+    const saved = records.get(SETTINGS_ID)
+    const restored = new Map(
+      Object.entries(saved?.kind === 'settings' ? (saved.drafts ?? {}) : {}).filter(([id]) =>
+        records.has(id),
+      ),
+    )
     set({
       status: 'unlocked',
       vault,
       records,
+      drafts: restored,
       corrupted,
       kdfLegacy: vault.kdfLegacy ?? false,
       pinArmed: pinArmed(),
@@ -488,8 +502,16 @@ export const useVaultStore = create<VaultState>((set, get) => {
         const memberIds = r.memberIds.filter((m) => !gone.has(m))
         if (dropEmptiedCircles && memberIds.length === 0) deletes.push(r.id)
         else puts.push({ ...r, memberIds })
-      } else if (r.kind === 'settings' && r.recentIds?.some((id) => gone.has(id))) {
-        puts.push({ ...r, recentIds: r.recentIds.filter((id) => !gone.has(id)) })
+      } else if (
+        r.kind === 'settings' &&
+        (r.recentIds?.some((id) => gone.has(id)) || Object.keys(r.drafts ?? {}).some((id) => gone.has(id)))
+      ) {
+        const drafts = Object.fromEntries(Object.entries(r.drafts ?? {}).filter(([id]) => !gone.has(id)))
+        puts.push({
+          ...r,
+          recentIds: r.recentIds?.filter((id) => !gone.has(id)),
+          drafts: Object.keys(drafts).length > 0 ? drafts : undefined,
+        })
       } else if (r.kind === 'note' && r.mentions.some((m) => gone.has(m))) {
         // Rewrite dangling mention tokens in other people's notes to the
         // plain name, so no dead @links survive the delete.
@@ -731,6 +753,8 @@ export const useVaultStore = create<VaultState>((set, get) => {
         const body = read().trim()
         if (body && get().records.has(personId)) {
           await get().saveNote(personId, body)
+          // Now a note: it must not come back as a draft as well.
+          await get().persistDraft(personId, '')
         }
         draftRegistry.delete(personId)
       }
@@ -739,9 +763,32 @@ export const useVaultStore = create<VaultState>((set, get) => {
       const stashed = [...get().drafts.entries()]
       if (stashed.length) set({ drafts: new Map() })
       for (const [personId, body] of stashed) {
-        if (body.trim() && get().records.has(personId)) await get().saveNote(personId, body.trim())
+        if (body.trim() && get().records.has(personId)) {
+          await get().saveNote(personId, body.trim())
+          await get().persistDraft(personId, '')
+        }
       }
     },
+
+    persistDraft: (personId, text) =>
+      enqueue(async () => {
+        const existing = get().records.get(SETTINGS_ID)
+        const current = existing?.kind === 'settings' ? (existing.drafts ?? {}) : {}
+        const body = text.trim() ? text : ''
+        if ((current[personId] ?? '') === body) return
+        if (body && !get().records.has(personId)) return
+        const drafts = { ...current }
+        if (body) drafts[personId] = body
+        else delete drafts[personId]
+        const kept = Object.keys(drafts).slice(-DRAFT_LIMIT)
+        const settings: Settings = {
+          ...(existing?.kind === 'settings' ? existing : {}),
+          kind: 'settings',
+          id: SETTINGS_ID,
+          drafts: kept.length > 0 ? Object.fromEntries(kept.map((id) => [id, drafts[id]])) : undefined,
+        }
+        await apply([settings])
+      }),
 
     updateSecurity: (patch) =>
       enqueue(async () => {

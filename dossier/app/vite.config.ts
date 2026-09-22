@@ -30,7 +30,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // A new build waits to be taken at a quiet moment — never a reload
+      // mid-sentence (lib/appUpdate.ts, App.tsx).
+      registerType: 'prompt',
       includeAssets: ['*.png', '*.webmanifest'],
       // The disguise choice (REQUIREMENTS.md §6.5) will eventually select
       // among a small set of neutral names/icons; this is the default.
@@ -49,6 +51,10 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
         importScripts: ['sw-notify.js'],
+        // The first install still takes charge of the page it came from
+        // (as autoUpdate did). Updates still wait: taking over later is
+        // skipWaiting's call, which only the app makes (lib/appUpdate.ts).
+        clientsClaim: true,
       },
     }),
   ],
