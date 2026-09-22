@@ -104,7 +104,12 @@ sun.shadow.bias = -0.0004;
 sun.shadow.autoUpdate = false;
 scene.add(sun);
 let shadowDirty = true;
-const markShadowDirty = () => { shadowDirty = true; };
+// Nothing in this scene moves on its own, but the loop rendered anyway: 58
+// draws a second, forever, at 329 draw calls each, on a phone in someone's
+// hand. It now draws when something has actually changed — the camera is still
+// settling, a roof is mid-lift, or the layout moved.
+let sceneDirty = true;
+const markShadowDirty = () => { shadowDirty = true; sceneDirty = true; };
 
 function applySun() {
   markShadowDirty();
@@ -719,7 +724,20 @@ function select(item, opts = {}) {
     for (const p of sepPairs) {
       if (p.a !== item && p.b !== item) continue;
       const other = p.a === item ? p.b : p.a;
-      msgs.push(`${Math.max(1, Math.round(p.gap))} ft to the ${TYPE_BY_ID[other.typeId].name.toLowerCase()} — 1–9 ft gaps need rated walls and limit glazing (VRC R302.1). Butt them together or open to 10 ft.`);
+      const ft = Math.max(1, Math.floor(p.gap));
+      const other2 = other;
+      // is the wall facing the neighbour one of this unit's openings?
+      const toward = Math.abs(item.x - other2.x) >= Math.abs(item.z - other2.z)
+        ? [Math.sign(other2.x - item.x) || 1, 0]
+        : [0, Math.sign(other2.z - item.z) || 1];
+      const glazed = apertureFaces(item).some((d) => d[0] === toward[0] && d[1] === toward[1]);
+      const noOpenings = p.gap < 6; // FSD under 3 ft
+      msgs.push(
+        `${ft} ft to the ${TYPE_BY_ID[other2.typeId].name.toLowerCase()} — `
+        + (noOpenings
+            ? `under 6 ft apart, so the facing wall needs a fire-resistance rating and is allowed NO openings (VRC R302.1). ${glazed ? "This unit's door end faces it, and that is an opening." : ""}`
+            : "6–10 ft apart, so the facing wall needs a rating and its openings are limited (VRC R302.1).")
+        + " Butt them together, or open the gap to 10 ft.");
     }
     const j = joined.get(item.id);
     if (j && j.sqft > 256) {
@@ -752,10 +770,16 @@ function select(item, opts = {}) {
 let syncingCoords = false;
 function syncCoordFields(item) {
   const x = document.getElementById("pos-x"), z = document.getElementById("pos-z");
-  if (!x || !z || !item) return;
+  const xd = document.getElementById("pos-x-dir"), zd = document.getElementById("pos-z-dir");
+  if (!x || !z || !xd || !zd || !item) return;
   syncingCoords = true;
-  x.value = Math.round(item.x);
-  z.value = Math.round(item.z);
+  // A signed field labelled "E" said -16 where the app's own prose says
+  // "16 ft west", and inputmode="numeric" gives a keypad with no minus key,
+  // so half the acre could not be typed at all. Direction is its own control.
+  x.value = Math.abs(Math.round(item.x));
+  z.value = Math.abs(Math.round(item.z));
+  xd.value = Math.round(item.x) < 0 ? "-1" : "1";
+  zd.value = Math.round(item.z) < 0 ? "-1" : "1";
   syncingCoords = false;
 }
 const posX = document.getElementById("pos-x");
@@ -763,8 +787,10 @@ const posZ = document.getElementById("pos-z");
 function commitCoords() {
   if (syncingCoords || !selected || mode !== "plan") return;
   const target = selected;
-  const x = clampX(num(posX.value, target.x));
-  const z = clampZ(num(posZ.value, target.z));
+  const xs = +document.getElementById("pos-x-dir").value || 1;
+  const zs = +document.getElementById("pos-z-dir").value || 1;
+  const x = clampX(Math.abs(num(posX.value, target.x)) * xs);
+  const z = clampZ(Math.abs(num(posZ.value, target.z)) * zs);
   if (x === target.x && z === target.z) return;
   const ox = target.x, oz = target.z;
   const ok = tryEdit(() => {
@@ -779,8 +805,13 @@ function commitCoords() {
   }, "That position blocks a door end — try another");
   if (!ok) syncCoordFields(selected || target);
 }
-for (const el of [posX, posZ]) {
+for (const el of [posX, posZ,
+                  document.getElementById("pos-x-dir"),
+                  document.getElementById("pos-z-dir")]) {
   el.addEventListener("change", commitCoords);
+  // A number typed and then abandoned for the drawing never fired `change`,
+  // so the field and the model disagreed with nothing to say so.
+  el.addEventListener("blur", commitCoords);
   el.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); commitCoords(); el.blur(); }
     else if (e.key === "Escape") { e.preventDefault(); if (selected) syncCoordFields(selected); el.blur(); }
@@ -1512,6 +1543,8 @@ function cycleSelection(dir) {
   const next = order[(at + dir + order.length * 2) % order.length];
   select(next);
   renderChrome();
+  const t = TYPE_BY_ID[next.typeId];
+  announce(`${t.name}, ${saySpot(next.x, next.z)}. ${selection().length} selected.`);
   // keep whatever you just picked on screen
   const c = viewCenterWorld();
   if (Math.abs(next.x - c.x) * SP_S * sview.k > innerWidth * 0.45
@@ -1747,16 +1780,20 @@ function updateCompliance() {
   // bedroom plus its bath was permit-exempt because it came to 240 sq ft.
   let over = 0, dwelling = 0;
   const counted = new Set();
+  let notExempt = 0;
   for (const u of units) {
     if (!TYPE_BY_ID[u.typeId].accessory) dwelling++;
     const j = joined.get(u.id);
     if (!j || j.sqft <= 256) continue;
     const members = clusterOf(u);
-    if (!members.every((m) => TYPE_BY_ID[m.typeId].accessory)) continue;
     const key = members.map((m) => m.id).sort().join(",");
     if (counted.has(key)) continue;
     counted.add(key);
-    over++;
+    // A cluster over 256 sq ft is a finding either way. If every member is
+    // accessory use it is "over the exemption"; if one is not, the exemption
+    // was never available — which is worse, and used to report nothing at all.
+    if (members.every((m) => TYPE_BY_ID[m.typeId].accessory)) over++;
+    else notExempt++;
   }
   let stranded = 0;
   for (const w of units.filter((u) => TYPE_BY_ID[u.typeId].wet)) {
@@ -1811,17 +1848,62 @@ function updateCompliance() {
       }
     }
   }
+  // One dwelling per lot. A dwelling unit is one building containing living,
+  // sleeping, cooking and sanitation. The shipped example is seven detached
+  // buildings that between them hold all four, which is either no dwelling at
+  // all (so the accessory structures have nothing to be accessory to) or
+  // several — the single thing most likely to stop this project, and it was
+  // not among the checks. Butted units are one building, so only separate
+  // clusters count.
+  let scattered = 0;
+  const clusterKey = new Map();
+  for (const u of units) {
+    const members = clusterOf(u);
+    const key = Math.min(...members.map((m) => m.id));
+    clusterKey.set(u.id, key);
+  }
+  const roleOf = (u) => {
+    const t = TYPE_BY_ID[u.typeId];
+    if (t.id === "sleeping") return "sleeping";
+    if (t.id === "kitchen") return "cooking";
+    if (t.wet && t.id !== "laundry") return "sanitation";
+    return null;
+  };
+  const buildings = new Map();
+  for (const u of units) {
+    const role = roleOf(u);
+    if (!role) continue;
+    const k = clusterKey.get(u.id);
+    if (!buildings.has(k)) buildings.set(k, new Set());
+    buildings.get(k).add(role);
+  }
+  const withAny = [...buildings.values()];
+  const haveAll = new Set();
+  for (const set of withAny) for (const r of set) haveAll.add(r);
+  // the three that make a dwelling are present on the lot, but spread across
+  // more than one building and none of them has all three
+  if (haveAll.size === 3 && withAny.length > 1 && !withAny.some((set) => set.size === 3)) {
+    scattered = withAny.length;
+  }
+
   dwellingUnits = dwelling;
   findings = {
-    sep: sepPairs.length, over, stranded, offsite, blocked, overlap,
-    tooClose, onDrive, farFromDrive, wellTooClose, overDrain, deckOver,
+    sep: sepPairs.length,
+    sepTight: sepPairs.filter((p) => p.gap < 6).length,
+    sepWide: sepPairs.filter((p) => p.gap >= 6).length,
+    over, stranded, offsite, blocked, overlap,
+    tooClose, onDrive, farFromDrive, wellTooClose, overDrain, deckOver, scattered,
+    notExempt,
     total: sepPairs.length + over + stranded + offsite + blocked + overlap
-      + tooClose + onDrive + farFromDrive + wellTooClose + overDrain + deckOver,
+      + tooClose + onDrive + farFromDrive + wellTooClose + overDrain + deckOver
+      + notExempt + (scattered ? 1 : 0),
   };
 }
-let findings = { sep: 0, over: 0, stranded: 0, offsite: 0, blocked: 0, overlap: 0,
+let findings = { sep: 0, sepTight: 0, sepWide: 0, over: 0, stranded: 0, offsite: 0, blocked: 0, overlap: 0,
                  tooClose: 0, onDrive: 0, farFromDrive: 0, wellTooClose: 0,
-                 overDrain: 0, deckOver: 0, total: 0 };
+                 overDrain: 0, deckOver: 0, scattered: 0, notExempt: 0, total: 0 };
+// How many things the tool actually looks at, so "none" can say what it means.
+const CHECK_COUNT = 14;
 let dwellingUnits = 0;
 
 // What the summary shows, recomputed on every edit and read when the summary
@@ -1856,26 +1938,43 @@ function updateStats() {
          findings.onDrive && `${plural(findings.onDrive, "unit")} sitting on the drive`,
          findings.farFromDrive && `${plural(findings.farFromDrive, "unit")} over ${FIRE_ACCESS} ft from the drive`,
          findings.wellTooClose && `${plural(findings.wellTooClose, "well")} within 100 ft of a drainfield`,
-         findings.sep && `${plural(findings.sep, "pair")} 1–9 ft apart, needing rated walls`,
+         findings.sepTight && `${plural(findings.sepTight, "pair")} under 6 ft apart — rated walls, no openings on the facing side`,
+         findings.sepWide && `${plural(findings.sepWide, "pair")} 6–10 ft apart — rated walls, limited openings`,
          findings.over && `${plural(findings.over, "storage cluster")} over the 256 sq ft exemption`,
+         findings.notExempt && `${plural(findings.notExempt, "cluster")} over 256 sq ft that the accessory exemption never covered — one of its units is habitable use`,
          findings.deckOver && `${plural(findings.deckOver, "deck run")} over the 256 sq ft exemption`,
-         findings.stranded && `${plural(findings.stranded, "wet unit")} too far from a utility core`]
+         findings.stranded && `${plural(findings.stranded, "wet unit")} too far from a utility core`,
+         findings.scattered && `sleeping, cooking and sanitation are in ${findings.scattered} separate buildings — a lot is allowed one dwelling, and a dwelling is one building with all three`]
         .filter(Boolean).join(" · ")
-      : "None";
+      // "None" read as "this is fine". It never meant that: it meant none of a
+      // specific, short list of things, on a drawing that does not know the
+      // county, the zoning district, the topography or where the road is.
+      : `None of the ${CHECK_COUNT} things this tool checks`;
     permitLine = dwellingUnits
       ? `${plural(dwellingUnits, "habitable unit")} — permit required`
       : "Storage and decks only";
   }
-  const money = cost >= 1000 ? `≈$${Math.round(cost / 1000)}k` : `$${cost.toLocaleString()}`;
+  // The pill showed boxes + fit-out + trench and called it the price, while
+  // the summary's own last line said the all-in was 24-59% higher. The one
+  // number on screen the whole time has to be the honest one, so it is the
+  // range, and the summary shows what makes it up.
+  const al = allowances();
+  const lo = cost + al.reduce((n2, a) => n2 + a.lo, 0);
+  const hi = cost + al.reduce((n2, a) => n2 + a.hi, 0);
+  const money = n
+    ? `$${Math.round(lo / 1000)}–${Math.round(hi / 1000)}k`
+    : "$0";
   const pill = document.getElementById("stats-pill");
   const warn = `<svg class="warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4" stroke-linecap="round"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>`;
   pill.innerHTML =
     `${plural(n, "unit")} · ${(sqft + deckSqft).toLocaleString()} ft² · ${esc(money)}` +
     (findings.total ? ` · <span class="pill-warn">${warn}${findings.total}</span>` : "");
   pill.classList.toggle("has-findings", findings.total > 0);
+  // axe flagged this as a label/content mismatch: the visible text must be a
+  // prefix of the accessible name, or speech control cannot target it.
   pill.setAttribute("aria-label",
-    `${plural(n, "unit")}, ${(sqft + deckSqft).toLocaleString()} square feet, about $${cost.toLocaleString()}, ` +
-    (findings.total ? plural(findings.total, "code finding") : "no code findings") +
+    `${plural(n, "unit")}, ${(sqft + deckSqft).toLocaleString()} square feet, ${money} all in, ` +
+    (findings.total ? plural(findings.total, "code finding") : `none of the ${CHECK_COUNT} checks failing`) +
     ". Opens the summary.");
 }
 
@@ -1983,17 +2082,31 @@ renderer.domElement.addEventListener("pointerup", (e) => {
 // The parts list priced the boxes and called everything else "extra", which
 // on a raw acre is most of the money. These are the line items the tool does
 // not model, with the range a rural Virginia site tends to land in.
-const ALLOWANCES = [
-  { what: "Well, drilled and pumped", lo: 9000, hi: 20000 },
-  { what: "Septic tank and drainfield", lo: 12000, hi: 30000 },
-  { what: "Power service and trenching to the meter", lo: 6000, hi: 18000 },
-  { what: "Clearing, grading and the gravel drive", lo: 8000, hi: 20000 },
-  { what: "Pier or ground-screw foundations", lo: 6000, hi: 14000 },
-  { what: "Delivery, crane set and tie-downs", lo: 6000, hi: 12000 },
-  { what: "Permits, drawings and engineering", lo: 4000, hi: 10000 },
-];
-const ALLOW_LO = ALLOWANCES.reduce((n, a) => n + a.lo, 0);
-const ALLOW_HI = ALLOWANCES.reduce((n, a) => n + a.hi, 0);
+// These scale with the drawing rather than sitting still. A compound is not
+// one building: every structure needs its own feeder, disconnect and grounding
+// electrode (NEC 225.30/225.31/250.32) and its own set of piers, and VDH sizes
+// a drainfield by bedroom count. The old list stopped at the word "meter",
+// so distribution to each building — $20-35k on a seven-building compound —
+// was in neither the box prices, nor the $40/ft trench, nor the allowance.
+function allowances() {
+  const units = items.filter((i) => !TYPE_BY_ID[i.typeId].deck);
+  const n = Math.max(1, units.length);
+  const beds = Math.max(1, items.filter((i) => i.typeId === "sleeping").length);
+  return [
+    { what: "Well, drilled and pumped", lo: 9000, hi: 20000 },
+    { what: `Septic tank and drainfield (${beds} bedroom${beds === 1 ? "" : "s"}, plus a reserve area)`,
+      lo: 12000 + (beds - 1) * 3500, hi: 30000 + (beds - 1) * 7000 },
+    { what: "Power service and trenching to the meter", lo: 6000, hi: 18000 },
+    { what: `Feeders, disconnects and grounding to ${n} separate structure${n === 1 ? "" : "s"}`,
+      lo: 2500 * n, hi: 5000 * n },
+    { what: "Clearing, grading and the gravel drive", lo: 8000, hi: 20000 },
+    { what: `Pier or ground-screw foundations (${n} structure${n === 1 ? "" : "s"})`,
+      lo: 2200 * n, hi: 4200 * n },
+    { what: "Delivery, crane set and tie-downs", lo: 1200 * n, hi: 2400 * n },
+    { what: `Permits, drawings and engineering (${n} structural set${n === 1 ? "" : "s"})`,
+      lo: 4000 + 1200 * n, hi: 10000 + 2600 * n },
+  ];
+}
 
 function renderParts() {
   const qty = new Map();
@@ -2030,6 +2143,9 @@ function renderParts() {
   const st = statsNow;
   const money = (v) => `$${Math.round(v).toLocaleString()}`;
   const k = (v) => `$${Math.round(v / 1000)}k`;
+  const allow = allowances();
+  const allowLo = allow.reduce((n2, a) => n2 + a.lo, 0);
+  const allowHi = allow.reduce((n2, a) => n2 + a.hi, 0);
 
   document.getElementById("parts-list").innerHTML = `
     <h4>Summary</h4>
@@ -2055,10 +2171,10 @@ function renderParts() {
     <table class="grand"><tr><td>Boxes, fit-out and trench</td><td>${money(total)}</td></tr></table>
     <h4>Not in that number</h4>
     <table class="allow">
-      ${ALLOWANCES.map((a) => `<tr><td>${esc(a.what)}</td><td>${k(a.lo)}–${k(a.hi)}</td></tr>`).join("")}
-      <tr class="sub"><td>Allowance</td><td>${k(ALLOW_LO)}–${k(ALLOW_HI)}</td></tr>
+      ${allow.map((a) => `<tr><td>${esc(a.what)}</td><td>${k(a.lo)}–${k(a.hi)}</td></tr>`).join("")}
+      <tr class="sub"><td>Allowance</td><td>${k(allowLo)}–${k(allowHi)}</td></tr>
     </table>
-    <table class="grand"><tr><td>All in, rough</td><td>${k(total + ALLOW_LO)}–${k(total + ALLOW_HI)}</td></tr></table>
+    <table class="grand"><tr><td>All in, rough</td><td>${k(total + allowLo)}–${k(total + allowHi)}</td></tr></table>
     <div class="fine">Box prices are fully fitted-out. The allowance is a Virginia rural-acre
       ballpark for the work this tool does not model — it is a planning figure, not a quote.</div>`;
 }
@@ -2229,7 +2345,7 @@ function titleBlockMarkup() {
     if (t.len === 20) hc20++; else hc10++;
     sqft += t.len * t.wid;
   }
-  const tbw = 340, tbh = 150;
+  const tbw = 340, tbh = 158;
   // bottom-right of whatever is being drawn, which is the crop on an export
   // of the compound alone and the whole sheet otherwise
   const box = exportBox || { x: 0, y: 0, w: SP_W, h: SP_H };
@@ -2242,8 +2358,8 @@ function titleBlockMarkup() {
   s += L(54, 10, "#55524c", "SITE PLAN · VIRGINIA · 1.0 AC PARCEL", "400", 1);
   s += L(70, 8.5, "#55524c", `${hc20 + hc10} UNITS (${hc20}× 20′ HC, ${hc10}× 10′ MINI) · ${sqft.toLocaleString()} SF ENCLOSED · ${deckSf} SF DECK`);
   s += L(84, 8.5, "#55524c", `DRAWN ${new Date().toISOString().slice(0, 10)} · SHEET A1 · NOT FOR CONSTRUCTION`);
-  s += L(101, 7.5, "#6b6861", "BLUE = GLAZED APERTURE · DASHED = UTILITY RUN / CORE RING");
-  s += L(113, 7.5, "#6b6861", "RED, HEAVY DASH = CODE FINDING · NOMINAL CONTAINER LENGTHS SHOWN");
+  s += L(100, 9, "#8c3b2e", "NOT A SURVEY — PROPERTY LINES AND SETBACKS ARE ASSUMED", "700");
+  s += L(113, 7.5, "#6b6861", "BLUE = GLAZED APERTURE · DASHED = UTILITY RUN · RED = CODE FINDING");
   s += `<line x1="${tbx + 14}" y1="${tby + 135}" x2="${tbx + 14 + 20 * S}" y2="${tby + 135}" stroke="#23231f" stroke-width="3"/>`;
   s += `<line x1="${tbx + 14 + 10 * S}" y1="${tby + 131}" x2="${tbx + 14 + 10 * S}" y2="${tby + 139}" stroke="#23231f" stroke-width="1.2"/>`;
   s += `<text x="${tbx + 22 + 20 * S}" y="${tby + 139}" font-size="9" fill="#55524c" font-family="${FONT}">20 FT</text>`;
@@ -2382,6 +2498,14 @@ function separationMarkup() {
 
 // Setback dimensions to each property line, which is what a plan reviewer
 // looks for, plus the compound's overall extent.
+// Feet and inches from a float, rather than rounding to the foot and then
+// printing -0" as though the inches had been measured.
+function ftIn(v) {
+  const whole = Math.floor(v + 1e-6);
+  const inches = Math.round((v - whole) * 12);
+  return inches === 12 ? `${whole + 1}′-0″` : `${whole}′-${inches}″`;
+}
+
 function dimensionMarkup() {
   if (!items.length) return "";
   const X = spX, Y = spY;
@@ -2393,11 +2517,11 @@ function dimensionMarkup() {
   const dy = Y(z1) + ss(30);
   s += `<line x1="${X(x0)}" y1="${dy}" x2="${X(x1)}" y2="${dy}" stroke="#6b6861" stroke-width="${ss(1.1)}"/>`;
   s += tick(X(x0), dy, 0, ss(5)) + tick(X(x1), dy, 0, ss(5));
-  s += label((X(x0) + X(x1)) / 2, dy - ss(6), `${Math.round(x1 - x0)}′-0″`);
+  s += label((X(x0) + X(x1)) / 2, dy - ss(6), ftIn(x1 - x0));
   const dx2 = X(x1) + ss(30);
   s += `<line x1="${dx2}" y1="${Y(z0)}" x2="${dx2}" y2="${Y(z1)}" stroke="#6b6861" stroke-width="${ss(1.1)}"/>`;
   s += tick(dx2, Y(z0), ss(5), 0) + tick(dx2, Y(z1), ss(5), 0);
-  s += label(dx2 + ss(9), (Y(z0) + Y(z1)) / 2, `${Math.round(z1 - z0)}′-0″`, true);
+  s += label(dx2 + ss(9), (Y(z0) + Y(z1)) / 2, ftIn(z1 - z0), true);
 
   // distance from the compound to each property line
   const edges = [
@@ -2445,7 +2569,8 @@ function planSummary() {
 
 // The drawing carries the whole state of the layout and says none of it to a
 // screen reader. This is the same drawing as a list, kept in step with it.
-function renderPlanText() {
+let lastPlanText = "";
+function renderPlanText(opts = {}) {
   const el = document.getElementById("plan-text");
   if (!el) return;
   const rows = items
@@ -2463,12 +2588,26 @@ function renderPlanText() {
     drainfields.length && `${drainfields.length} septic drainfield${drainfields.length === 1 ? "" : "s"}.`,
     `Gravel drive ${saySpot(drive.x, drive.z)}.`,
   ].filter(Boolean);
-  el.innerHTML =
+  const html =
     `<p>${esc(planSummary())}</p>`
     + `<p>North is ${sheetRot ? "to the right" : "up"} on the drawing. Setback ${setback} ft.</p>`
     + `<ul>${rows.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`
     + `<p>${esc(extras.join(" "))}</p>`
     + `<p>Code findings: ${esc(findingsLine)}</p>`;
+  // innerHTML = rewrites all 900-odd characters, and a polite live region
+  // treats that as 900 characters of new content. A pinch re-emits the sheet
+  // per frame, so one gesture queued thirty readings of the whole site. Only
+  // write when the words actually changed.
+  if (html === lastPlanText) return;
+  lastPlanText = html;
+  el.innerHTML = html;
+}
+
+// What a screen reader should hear: the thing you just did. The region above
+// carries the whole drawing for browsing; this says what changed.
+const announcer = document.getElementById("plan-announce");
+function announce(msg) {
+  if (announcer) announcer.textContent = msg;
 }
 
 function renderSitePlan(opts = {}) {
@@ -2521,6 +2660,12 @@ function scheduleDerived() {
   if (derivedPending) return;
   derivedPending = true;
   requestAnimationFrame(() => { derivedPending = false; renderDerived(); });
+}
+let chromePending = false;
+function scheduleChrome() {
+  if (chromePending) return;
+  chromePending = true;
+  requestAnimationFrame(() => { chromePending = false; renderChrome(); });
 }
 
 let siteFitted = false;
@@ -2661,16 +2806,24 @@ try { exportCrop = localStorage.getItem(LS_KEY + ":crop") || "acre"; } catch {}
 function cropBox() {
   if (exportCrop !== "compound" || !items.length) return null;
   const e = unitExtents();
+  // A crop that drops the property line is not a site plan, whatever it looks
+  // like. Keep whichever boundary edges are within reach of the compound, so
+  // the reader can still see what the setbacks are measured from.
+  const near = 70; // ft
   // room for the dimension strings, the setback callouts and the labels that
   // sit outside a footprint
   const pad = 110;
   // a band below the drawing for the title block, so it does not sit on top
   // of the compound the way it did when the crop stopped at the content
   const TB_BAND = 210;
-  let x = Math.max(0, spX(e.x0) - pad);
-  let y = Math.max(0, spY(e.z0) - pad);
-  let w = Math.min(SP_W - x, spX(e.x1) + pad - x);
-  let h = Math.min(SP_H - y, spY(e.z1) + pad + TB_BAND - y);
+  const bx0 = e.x0 + SP_HALF < near ? spX(-SP_HALF) - 40 : spX(e.x0) - pad;
+  const bx1 = SP_HALF - e.x1 < near ? spX(SP_HALF) + 40 : spX(e.x1) + pad;
+  const bz0 = e.z0 + SP_HALF < near ? spY(-SP_HALF) - 40 : spY(e.z0) - pad;
+  const bz1 = SP_HALF - e.z1 < near ? spY(SP_HALF) + 40 : spY(e.z1) + pad;
+  let x = Math.max(0, bx0);
+  let y = Math.max(0, bz0);
+  let w = Math.min(SP_W - x, bx1 - x);
+  let h = Math.min(SP_H - y, bz1 + TB_BAND - y);
   // the title block has to fit inside the crop, or it lands off the page
   w = Math.max(w, 460);
   h = Math.max(h, 300);
@@ -2796,18 +2949,26 @@ function siteApply() {
   updateCartouche();
 }
 // crossing the detail threshold redraws the sheet at the other fidelity
+// Annotation is sized in screen pixels, so the sheet has to be re-emitted when
+// the zoom changes. It does not have to be re-emitted *during* the gesture:
+// the pair-derived layers are 64% of a 170 KB string at forty units and a
+// pinch was rebuilding all of it every frame — 16.9 fps and 410 ms frames.
+// The transform is applied per frame, which is what the eye follows; the
+// re-emission waits for the gesture to settle, which is when the annotation
+// scale starts mattering.
+let zoomPending = false;
+let zoomSettle = 0;
 function afterZoom() {
   siteApply();
   if (rendering) return;
-  // Every zoom step changes the annotation scale, so the sheet is re-emitted —
-  // coalesced into one frame so a two-finger pinch does not rebuild it twice
-  // per frame, once per moving pointer.
-  if (!zoomPending) {
-    zoomPending = true;
-    requestAnimationFrame(() => { zoomPending = false; if (mode === "plan") renderSitePlan(); });
-  }
+  clearTimeout(zoomSettle);
+  zoomSettle = setTimeout(() => {
+    if (!zoomPending) {
+      zoomPending = true;
+      requestAnimationFrame(() => { zoomPending = false; if (mode === "plan") renderSitePlan(); });
+    }
+  }, 90);
 }
-let zoomPending = false;
 function siteZoomAt(px, py, f) {
   const k2 = Math.min(6, Math.max(MIN_ZOOM_K, sview.k * f));
   f = k2 / sview.k;
@@ -3490,7 +3651,7 @@ sitePanelEl.addEventListener("pointermove", (e) => {
     }
     // scenery has no bearing on the code checks, which only read unit
     // footprints, so a tree move does not need the compliance pass at all
-    renderChrome();
+    scheduleChrome();
     return;
   }
 
@@ -3586,6 +3747,10 @@ sitePanelEl.addEventListener("pointerup", (e) => {
     const t = tape;
     tape = null;
     tapeKept = Math.hypot(t.x1 - t.x0, t.z1 - t.z0) >= 0.5 ? t : null;
+    if (tapeKept) {
+      const d = Math.hypot(t.x1 - t.x0, t.z1 - t.z0);
+      announce(`Measured ${Math.floor(d)} feet ${Math.round((d % 1) * 12)} inches.`);
+    }
     renderChrome();
     return;
   }
@@ -4268,6 +4433,7 @@ let looping = false;
 function startLoop() {
   if (looping || (mode !== "view" && !split) || document.hidden) return;
   looping = true;
+  sceneDirty = true;
   clock.getDelta(); // drop the time spent stopped
   requestAnimationFrame(animate);
 }
@@ -4283,6 +4449,7 @@ function animate() {
   if (az !== lastAzimuth) {
     needle.style.transform = `rotate(${az}rad)`;
     lastAzimuth = az;
+    sceneDirty = true;
   }
   // peek: lift the roof and fade the walls, per unit or across the compound
   for (const it of items) {
@@ -4291,6 +4458,7 @@ function animate() {
     if (Math.abs(it.peek - target) > 0.001) {
       it.peek += (target - it.peek) * Math.min(1, dt * 7);
       shadowDirty = true;
+      sceneDirty = true;
       const ud = it.group.userData;
       if (ud.roof) {
         ud.roof.position.y = it.peek * 8;
@@ -4302,8 +4470,11 @@ function animate() {
       }
     }
   }
-  if (shadowDirty) { sun.shadow.needsUpdate = true; shadowDirty = false; }
-  controls.update();
+  if (shadowDirty) { sun.shadow.needsUpdate = true; shadowDirty = false; sceneDirty = true; }
+  // controls.update() returns true while damping is still moving the camera
+  if (controls.update(dt)) sceneDirty = true;
+  if (!sceneDirty) return;
+  sceneDirty = false;
   renderer.render(scene, camera);
 }
 startLoop();
