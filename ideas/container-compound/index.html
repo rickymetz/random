@@ -736,12 +736,12 @@
   #edge-tools button:disabled { opacity: 0.68; }
   #edge-tools button:not(:disabled):active,
   #view-tools button:active { border-color: var(--accent); color: var(--accent); }
-  #compass { position: relative; }
+  #compass { position: relative; --az: 0rad; }
   /* The needle is rotated by JS about its box centre, and a glyph's ink is
      not at its box centre — an arrow character in a box as wide as its advance
      and as tall as its line wobbled off-axis through the turn. A square box
      with the needle drawn centred in it spins true. */
-  #needle { display: block; width: 1.6rem; height: 1.6rem; }
+  #needle { display: block; width: 1.35rem; height: 1.35rem; transform: rotate(var(--az)); }
   #needle svg { display: block; width: 100%; height: 100%; }
   /* A magnetised needle: red to north, pale to south. Both lobes carry an ink
      hairline, because the pale one has to read against whatever the 3D view
@@ -749,12 +749,24 @@
   #needle .lobe { stroke: var(--ink); stroke-width: 0.9; stroke-linejoin: round; }
   #needle .north { fill: #bf3b30; }
   #needle .south, #needle .pivot { fill: #fbfaf7; }
+  /* The N rides the red tip. North is not up here — it is wherever the needle
+     is pointing — so an N parked in a corner labelled the widget rather than a
+     direction, and sat there looking wrong in the one case it should have
+     looked right, with north straight up. Out along the needle it reaches
+     twelve o'clock exactly when north does.
+     The last rotate turns the letter back upright, so it orbits without ever
+     standing on its head. */
   #compass .n {
     position: absolute;
-    bottom: 0.18rem;
-    right: 0.42rem;
+    top: 50%;
+    left: 50%;
     font-size: var(--t-fine);
     color: var(--muted);
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--az))
+      translateY(-0.86rem)
+      rotate(calc(-1 * var(--az)));
   }
 
   /* ---- stats pill + popover ---- */
@@ -1036,6 +1048,7 @@
      it did before. */
   #cart-north b,
   #cart-scale em,
+  #compass .n,
   #cart-key .lbl,
   #add-sheet .head h3,
   #info .head h3 { text-box: trim-both cap alphabetic; }

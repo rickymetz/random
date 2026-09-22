@@ -4483,7 +4483,9 @@ setTimeout(() => toast(FINE_POINTER
   : "Drag to move · pinch to zoom · + to add", { queue: true }), 700);
 
 const clock = new THREE.Clock();
-const needle = document.getElementById("needle");
+// one angle drives both the needle and the N that rides its tip, so they
+// cannot disagree
+const compass = document.getElementById("compass");
 let lastAzimuth = null;
 
 // The plan sheet covers the canvas completely, so rendering behind it is pure
@@ -4507,7 +4509,7 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const az = controls.getAzimuthalAngle();
   if (az !== lastAzimuth) {
-    needle.style.transform = `rotate(${az}rad)`;
+    compass.style.setProperty("--az", `${az}rad`);
     lastAzimuth = az;
     sceneDirty = true;
   }
