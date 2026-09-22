@@ -2,14 +2,26 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Container Compound</title>
 <meta name="description" content="Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.">
 <style>
   :root {
     --panel: rgba(252, 251, 248, 0.94);
     --ink: #2b2b28;
-    --muted: #77746c;
+    --muted: #6b6861;
+    /* one type scale: five steps and a fine print, so near-identical sizes
+       stop pretending to be hierarchy */
+    --t-xl: 1.6rem;
+    --t-lg: 1.15rem;
+    --t-md: 1rem;
+    --t-base: 0.875rem;
+    --t-sm: 0.78rem;
+    --t-xs: 0.7rem;
+    --t-fine: 0.63rem;
+    /* two radii: a pill for controls, one corner for panels */
+    --r-pill: 999px;
+    --r-panel: 0.75rem;
     --line: #e2ded6;
     --accent: #b3542e;
     --shadow: 0 2px 16px rgba(30, 30, 25, 0.14);
@@ -49,11 +61,11 @@
   #topbar .back {
     color: var(--muted);
     text-decoration: none;
-    font-size: 0.95rem;
+    font-size: var(--t-md);
     padding: 0.3rem 0.35rem;
   }
   #topbar h1 {
-    font-size: 0.95rem;
+    font-size: var(--t-md);
     letter-spacing: -0.01em;
     white-space: nowrap;
     overflow: hidden;
@@ -64,7 +76,7 @@
   #topbar button {
     flex: none;
     width: 2.3rem; height: 2.3rem;
-    font-size: 1.15rem;
+    font-size: var(--t-lg);
     line-height: 1;
     border-radius: 50%;
     border: 1px solid var(--line);
@@ -82,7 +94,7 @@
     display: none;
     flex-direction: column;
     min-width: 11rem;
-    border-radius: 0.7rem;
+    border-radius: var(--r-panel);
     padding: 0.3rem;
   }
   body.menu-open #menu { display: flex; }
@@ -93,31 +105,42 @@
     color: inherit;
     border: 0;
     background: transparent;
-    border-radius: 0.45rem;
+    border-radius: var(--r-panel);
     padding: 0.6rem 0.8rem;
-    font-size: 0.85rem;
+    font-size: var(--t-base);
   }
   #menu button:active, #menu a:active { background: rgba(179, 84, 46, 0.1); color: var(--accent); }
 
   /* site plan actions: fit + export */
+  /* Zoom and fit, right of the stats pill. PNG and SVG moved into the ⋯ menu:
+     three always-on pills were spanning 200 px of drawing, and units and trees
+     under them could not be pressed at all. */
   #site-actions {
     position: fixed;
-    right: 0.75rem;
-    bottom: calc(0.75rem + var(--sab));
+    right: 1rem;
+    bottom: calc(5.4rem + var(--sab));
     z-index: 5;
     display: none;
-    gap: 0.4rem;
+    flex-direction: column;
+    gap: 0.35rem;
   }
-  body[data-mode="site"] #site-actions { display: flex; }
+  body[data-mode="plan"] #site-actions { display: flex; }
   #site-actions button {
     border: 1px solid var(--line);
     background: var(--panel);
     box-shadow: var(--shadow);
-    border-radius: 999px;
-    padding: 0.45rem 0.8rem;
-    font-size: 0.78rem;
+    border-radius: var(--r-pill);
+    width: 44px; height: 44px;
+    display: grid; place-items: center;
+    font-size: var(--t-md);
+    padding: 0;
   }
+  /* clears the add button, which now steps up rather than disappearing */
+  body.has-selection[data-mode="plan"] #site-actions { bottom: calc(var(--strip-top, 8.2rem) + 4.4rem + var(--sab)); }
   #site-actions button:active { border-color: var(--accent); color: var(--accent); }
+  #site-actions button.active {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
 
   /* ---- add-unit FAB + bottom sheet ---- */
   #fab {
@@ -125,19 +148,23 @@
     right: 0.9rem;
     bottom: calc(0.9rem + var(--sab));
     z-index: 5;
-    width: 3.5rem; height: 3.5rem;
+    width: 56px; height: 56px;
     border-radius: 50%;
     border: 0;
     background: var(--accent);
     color: #fff;
-    font-size: 1.7rem;
+    font-size: var(--t-xl);
     line-height: 1;
     display: grid;
     place-items: center;
     box-shadow: 0 4px 18px rgba(30, 30, 25, 0.3);
   }
   #fab:active { filter: brightness(1.1); }
-  body.has-selection #fab { display: none; }
+  /* Composing a compound IS adding units in a run, and the app used to
+     interrupt its own primary loop after every one. The button now steps up
+     out of the tool strip's band instead of vanishing. */
+  body.has-selection #fab { bottom: calc(var(--strip-top, 8.2rem) + var(--sab)); }
+  body.add-open #fab { display: none; }
   #add-backdrop {
     position: fixed;
     inset: 0;
@@ -161,23 +188,30 @@
     transition: transform 240ms ease;
   }
   body.add-open #add-sheet { transform: translateY(0); }
+  /* Two columns of cards where the window allows it, so the list is a
+     comparison rather than a scroll. */
+  @media (min-width: 900px) {
+    #add-sheet { max-width: 46rem; }
+    #add-sheet #add-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.6rem; }
+    #add-sheet #add-list .add-sec { grid-column: 1 / -1; }
+  }
   #add-sheet .handle {
     width: 2.4rem; height: 0.28rem;
     background: var(--line);
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     margin: 0 auto 0.6rem;
   }
-  #add-sheet .head { display: flex; align-items: baseline; gap: 0.6rem; }
-  #add-sheet h3 { font-size: 1.05rem; flex: 1; }
+  #add-sheet .head { display: flex; align-items: center; gap: 0.6rem; }
+  #add-sheet h3 { font-size: var(--t-md); flex: 1; }
   #add-sheet .x {
     border: 0; background: transparent;
     color: var(--muted);
-    font-size: 1.15rem;
+    font-size: var(--t-lg);
     padding: 0.1rem 0.3rem;
   }
   .add-sec {
     margin: 0.9rem 0 0.25rem;
-    font-size: 0.68rem;
+    font-size: var(--t-xs);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--muted);
@@ -189,7 +223,7 @@
     width: 100%;
     border: 0;
     background: transparent;
-    border-radius: 0.6rem;
+    border-radius: var(--r-panel);
     padding: 0.55rem 0.45rem;
     text-align: left;
   }
@@ -199,30 +233,301 @@
     width: 2.7rem; height: 1.55rem;
     margin-top: 0.15rem;
     border-radius: 0.3rem;
-    border: 1px solid rgba(0,0,0,0.15);
+    border: 1px solid #55524c;
   }
   .add-chip.mini { width: 1.6rem; }
-  .add-name { font-weight: 600; font-size: 0.88rem; }
+  /* the align row only means anything with two or more units picked */
+  #toolstrip .align-only { display: none; }
+  body.multi-selection #toolstrip .align-only { display: flex; }
+  #align-tools { align-items: center; gap: 0.1rem; }
+  /* The glyphs are drawn in screen terms — a bar down the left edge for
+     "align west" — while the operation is in world terms. Turn the sheet and
+     west is down the screen, so the picture stops matching what happens.
+     Turning the glyphs with the sheet keeps them honest; the labels already
+     say west and north, which stay true either way. */
+  body.sheet-turned #align-tools button svg { transform: rotate(90deg); }
+  /* On a phone the align row took the tool strip to four rows and 193 px —
+     30% of a 360x640. It acts on the selection, and the details card is what
+     describes the selection, so below 600 px it lives there instead. */
+  #info-align { display: none; margin: 0.7rem 0 0.2rem; }
+  body.multi-selection #info-align { display: block; }
+  #info-align .lab { display: block; color: var(--muted); font-size: var(--t-xs); margin-bottom: 0.3rem; }
+  #info-align #align-tools { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+  #info-align #align-tools button {
+    width: 44px; height: 44px;
+    display: grid; place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    background: #fff;
+    color: var(--ink);
+  }
+  #info-align #align-tools button svg { width: 1.15rem; height: 1.15rem; }
+  /* ---- split: the sheet on the left, the model on the right ----
+     Only offered where there is room for two drawings; below that the two
+     halves are each narrower than a phone. */
+  #tab-split { display: none; }
+  @media (min-width: 1200px) { #tab-split { display: block; } }
+  body.split canvas { position: fixed; top: 0; right: 0; left: auto; }
+  body.split #site-panel { display: block; right: 50%; }
+  /* the 3D chrome belongs to the right pane, the plan chrome to the left */
+  body.split[data-mode="plan"] #view-tools { display: flex; }
+  /* The plan's own controls belong to the plan's pane. The wide-screen block
+     below moves them for the details card, so these have to out-specify it
+     rather than merely follow it. */
+  body.split #site-actions,
+  body.split[data-mode="plan"] #site-actions,
+  body.split.has-selection[data-mode="plan"] #site-actions,
+  body.split.sheet-open[data-mode="plan"] #site-actions { right: calc(50% + 1rem); }
+  body.split.has-selection[data-mode="plan"] #site-actions { bottom: 1rem; }
+  body.split #info { right: calc(50% + 1rem); max-width: 17rem; }
+  body.split #fab { right: calc(50% + 1rem); }
+  body.split #toolstrip { left: 0; right: 50%; }
+  /* a hairline between the panes, so they read as two drawings not one */
+  body.split #site-panel { border-right: 1px solid var(--line); }
+
+  /* the download covers the parcel or just what is built on it */
+  #export-crop {
+    display: flex;
+    gap: 0.15rem;
+    margin: 0.2rem 0.35rem 0.35rem;
+    padding: 0.15rem;
+    border-radius: var(--r-pill);
+    background: rgba(0, 0, 0, 0.045);
+  }
+  #menu #export-crop button {
+    flex: 1;
+    padding: 0.3rem 0.4rem;
+    font-size: var(--t-xs);
+    text-align: center;
+    border-radius: var(--r-pill);
+    color: var(--muted);
+  }
+  #menu #export-crop button.active { background: var(--panel); color: var(--ink); font-weight: 600; }
+
+  /* the layout's name is the title: it is what the title block prints and
+     what the export is called, so it is edited where you read it */
+  /* the way back to the editor from the read-only view, on the card that is
+     describing the thing you want to move */
+  .sr-only, #plan-text {
+    position: absolute;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* the north arrow turns with the sheet, so it keeps telling the truth */
+  #cart-north svg { transition: transform 200ms ease; }
+  body.sheet-turned #cart-north svg { transform: rotate(90deg); }
+  #btn-edit-here { display: none; }
+  body[data-mode="view"] #btn-edit-here { display: block; }
+  #topbar h1 { min-width: 0; flex: 1; }
+  #layout-name {
+    font: inherit;
+    color: inherit;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid transparent;
+    border-radius: 0.4rem;
+    background: transparent;
+    padding: 0.1rem 0.3rem;
+    margin: -0.1rem -0.3rem;
+    text-overflow: ellipsis;
+  }
+  #layout-name:hover { border-color: var(--line); }
+  #layout-name:focus { border-color: var(--accent); outline: none; background: #fff; }
+
+  #layouts-modal .box {
+    background: var(--panel);
+    border-radius: var(--r-panel);
+    width: calc(100vw - 2rem);
+    max-width: 26rem;
+    max-height: 84vh;
+    overflow-y: auto;
+    padding: 1.1rem 1.2rem;
+    box-shadow: var(--shadow);
+  }
+  #layouts-modal h2 { font-size: var(--t-md); margin-bottom: 0.3rem; }
+  #layouts-modal .lede { color: var(--muted); font-size: var(--t-xs); margin-bottom: 0.7rem; }
+  #layouts-modal .wide-accent {
+    width: 100%;
+    font: inherit;
+    font-size: var(--t-sm);
+    padding: 0.5rem;
+    border-radius: var(--r-panel);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    background: transparent;
+    margin-bottom: 0.4rem;
+  }
+  #layouts-modal .empty { color: var(--muted); font-size: var(--t-sm); padding: 0.8rem 0; }
+  .lay-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--line);
+  }
+  .lay-row .lay-open {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    font: inherit;
+    border: 0;
+    background: transparent;
+    padding: 0;
+  }
+  .lay-row .lay-name { font-size: var(--t-sm); font-weight: 600; display: block; }
+  .lay-row .lay-meta { font-size: var(--t-xs); color: var(--muted); }
+  .lay-row .lay-del {
+    flex: none;
+    width: 2rem; height: 2rem;
+    display: grid; place-items: center;
+    border: 1px solid var(--line);
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--muted);
+  }
+  .lay-row.current .lay-name::after {
+    content: " · open";
+    font-weight: 400;
+    color: var(--accent);
+  }
+  #layouts-close {
+    margin-top: 0.9rem;
+    width: 100%;
+    font: inherit;
+    font-size: var(--t-sm);
+    padding: 0.55rem;
+    border-radius: var(--r-panel);
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+
+  /* ---- a phone on its side ----
+     The plan controls are a 242 px vertical column. In a 390 px-tall window
+     with a selection that is taller than the space above the tool strip, so
+     the turn button went to y = -30 and the zoom column landed on top of the
+     ⋯ menu — every export, the crop choice, Saved layouts, Clear and Reset
+     were unreachable. Short windows get a horizontal row instead. */
+  @media (max-height: 520px) {
+    #site-actions {
+      flex-direction: row;
+      top: auto;
+      bottom: calc(var(--strip-top, 4.75rem) + var(--sab));
+      right: 0.75rem;
+      left: auto;
+      transform: none;
+    }
+    body.has-selection[data-mode="plan"] #site-actions {
+      bottom: calc(var(--strip-top, 4.75rem) + var(--sab));
+    }
+    /* the history pair and the stats pill share that band, so stack the
+       add button above it rather than beside it */
+    /* one formula for both states: the add button sits above the row, which
+       sits above the tool strip, whatever height that happens to be */
+    #fab, body.has-selection #fab {
+      bottom: calc(var(--strip-top, 4.75rem) + 3.6rem + var(--sab));
+    }
+  }
+
+  /* The column is 242 px tall. Landscape is not the only way to run out of
+     room for it — so does 200% text on a short phone, where it climbed into
+     the cartouche. Measured in JS, since CSS cannot ask how tall the column
+     ended up against how much room is left above the tool strip. */
+  /* has-selection[data-mode="plan"] out-specifies a bare .tools-row, so the
+     row kept the column's offset and rose into the add button. */
+  body.tools-row #site-actions,
+  body.tools-row.has-selection[data-mode="plan"] #site-actions {
+    flex-direction: row;
+    top: auto;
+    bottom: calc(var(--strip-top, 4.75rem) + var(--sab));
+    right: 0.75rem;
+  }
+  body.tools-row #fab,
+  body.tools-row.has-selection #fab {
+    bottom: calc(var(--strip-top, 4.75rem) + 3.6rem + var(--sab));
+  }
+
+  body.tools-min #site-zoom-out, body.tools-min #site-zoom-in { display: none; }
+
+  /* the measuring cursor: crosshairs, because the drag is not a move */
+  body.measuring #site-panel,
+  body.measuring #site-panel.over-object { cursor: crosshair; }
+  /* With the align row in it the strip needs three rows on a phone, which is
+     a third of the screen. Drop the dividers and tighten the gaps there: the
+     groups still read, because the align glyphs are plainly one family. */
+  @media (max-width: 599px) {
+    #toolstrip { gap: 0.1rem; padding: 0.25rem; }
+    body.multi-selection #toolstrip .div { display: none; }
+  }
+  /* There is no shift key on a phone, so additive picking needs a button.
+     A mouse has the chord and does not need one. */
+  #toolstrip .touch-only { display: none; }
+  @media (hover: none), (pointer: coarse) {
+    #toolstrip .touch-only { display: inline-flex; }
+  }
+  /* typing a distance is the only way to place something exactly, and the
+     only way at all without a pointer that can drag */
+  #info .coords {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin: 0.7rem 0 0.2rem;
+    font-size: var(--t-sm);
+  }
+  #info .coords .lab { color: var(--muted); }
+  #info .coords label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--muted);
+  }
+  #info .coords select {
+    font: inherit;
+    font-size: var(--t-sm);
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    padding: 0.25rem 0.1rem;
+    min-height: 44px;
+  }
+  #info .coords input {
+    min-height: 44px;
+    width: 4.2rem;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    padding: 0.25rem 0.35rem;
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    background: #fff;
+  }
+  #info .coords .unit { color: var(--muted); font-size: var(--t-xs); }
+  .add-name { font-weight: 600; font-size: var(--t-base); }
   .add-name .badge {
     font-weight: 500;
-    font-size: 0.66rem;
+    font-size: var(--t-fine);
     color: var(--accent);
     border: 1px solid currentColor;
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     padding: 0.05rem 0.4rem;
     margin-left: 0.35rem;
     vertical-align: 0.1rem;
     white-space: nowrap;
   }
-  .add-meta { color: var(--muted); font-size: 0.74rem; margin-top: 0.05rem; }
+  .add-meta { color: var(--muted); font-size: var(--t-xs); margin-top: 0.05rem; }
+  /* Two lines cut most of these descriptions mid-sentence, and the sentence
+     is what tells you which of three bathing units you want. The drawer
+     scrolls; there is no reason to ration it. */
   .add-desc {
     color: var(--muted);
-    font-size: 0.73rem;
+    font-size: var(--t-xs);
     margin-top: 0.15rem;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
   }
 
   /* ---- mode tab bar: gutter-to-gutter segmented control ---- */
@@ -235,7 +540,7 @@
     display: flex;
     gap: 0.15rem;
     padding: 0.22rem;
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     border: 1px solid var(--line);
     background: var(--panel);
     box-shadow: var(--shadow);
@@ -244,9 +549,9 @@
     flex: 1;
     border: 0;
     background: transparent;
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     padding: 0.38rem 0.5rem;
-    font-size: 0.8rem;
+    font-size: var(--t-sm);
     color: var(--muted);
     white-space: nowrap;
   }
@@ -258,15 +563,13 @@
     #tabbar { left: 50%; right: auto; transform: translateX(-50%); min-width: 22rem; }
   }
 
-  /* mode visibility */
-  body[data-mode="dollhouse"] #fab,
-  body[data-mode="dollhouse"] #edge-tools,
-  body[data-mode="site"] #fab,
-  body[data-mode="site"] #edge-tools,
-  body[data-mode="site"] #stats-pill,
-  body[data-mode="site"] #stats-pop,
-  body[data-mode="site"] #view-tools { display: none; }
-  body[data-mode="dollhouse"] #info .row { display: none; }
+  /* mode visibility: the plan edits, the 3D view looks */
+  body[data-mode="view"] #fab,
+  body[data-mode="view"] #edge-tools { display: none; }
+  body[data-mode="plan"] #view-tools { display: none; }
+  /* 3D is read-only, so the sheet there carries no edit affordances */
+  /* the dollhouse toggle reads as pressed while it is on */
+  #btn-doll.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
   /* ---- site plan: full-bleed pan/zoom workspace, swaps in for the 3D scene ---- */
   #site-panel {
@@ -280,28 +583,33 @@
     cursor: grab;
   }
   #site-panel:active { cursor: grabbing; }
-  body[data-mode="site"] #site-panel { display: block; }
-  #site-svg {
+  /* over something draggable, the paper stops offering to pan */
+  #site-panel.over-object, #site-panel.over-object:active { cursor: move; }
+  /* held space means pan, whatever is underneath */
+  body.space-pan #site-panel, body.space-pan #site-panel.over-object { cursor: grab; }
+  body.space-pan #site-panel:active { cursor: grabbing; }
+  /* the sheet is a stop on the tab order: from here Tab walks the units */
+  #site-panel:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  body[data-mode="plan"] #site-panel { display: block; }
+  #site-stage {
     position: absolute;
     top: 0; left: 0;
     transform-origin: 0 0;
     will-change: transform;
   }
-  #site-svg svg { display: block; }
+  #site-svg, #site-chrome { position: absolute; top: 0; left: 0; }
+  #site-chrome { pointer-events: none; }
+  #site-svg svg, #site-chrome svg { display: block; }
+  /* the derived layer is re-emitted whole on every drag frame, so nothing on
+     the sheet is ever stale and nothing needs hiding */
 
   /* ---- parts list modal ---- */
-  #parts-modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(30, 28, 24, 0.45);
-    display: none;
-    place-items: center;
-    z-index: 11;
-  }
-  #parts-modal.open { display: grid; }
   #parts-modal .box {
     background: var(--panel);
-    border-radius: 0.9rem;
+    border-radius: var(--r-panel);
     width: calc(100vw - 2rem);
     max-width: 30rem;
     max-height: 84vh;
@@ -309,15 +617,15 @@
     padding: 1.1rem 1.2rem;
     box-shadow: var(--shadow);
   }
-  #parts-modal h2 { font-size: 1.05rem; margin-bottom: 0.2rem; }
+  #parts-modal h2 { font-size: var(--t-md); margin-bottom: 0.2rem; }
   #parts-modal h4 {
-    font-size: 0.68rem;
+    font-size: var(--t-xs);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--muted);
     margin: 0.9rem 0 0.3rem;
   }
-  #parts-modal table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  #parts-modal table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
   #parts-modal td { padding: 0.18rem 0; vertical-align: top; }
   #parts-modal td:nth-child(2) { color: var(--muted); white-space: nowrap; padding-left: 0.5rem; }
   #parts-modal td:nth-child(3), #parts-modal td:nth-child(4) {
@@ -332,7 +640,25 @@
     font-weight: 600;
   }
   #parts-modal table.grand td:last-child { text-align: right; }
-  #parts-modal .fine { color: var(--muted); font-size: 0.68rem; margin-top: 0.6rem; }
+  /* two-column tables (summary, allowances) right-align their value column,
+     which the 4-column rules above only do for columns 3 and 4 */
+  #parts-modal table.summary td:nth-child(2),
+  #parts-modal table.allow td:nth-child(2) {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: normal;
+    color: var(--ink);
+  }
+  #parts-modal table.summary tr.findings td:nth-child(2) { color: var(--muted); }
+  #parts-modal table.summary tr.findings.warn td { color: #8c3b2e; font-weight: 600; }
+  #parts-modal table.allow td { color: var(--muted); }
+  #parts-modal table.allow tr.sub td {
+    border-top: 1px solid var(--line);
+    padding-top: 0.35rem;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  #parts-modal .fine { color: var(--muted); font-size: var(--t-xs); margin-top: 0.6rem; }
   #parts-modal button {
     margin-top: 0.9rem;
     width: 100%;
@@ -343,31 +669,11 @@
     background: #fff;
     cursor: pointer;
   }
-  #stats-pop .parts-btn {
-    width: 100%;
-    margin-top: 0.55rem;
-    font: inherit;
-    font-size: 0.78rem;
-    padding: 0.42rem 0.5rem;
-    border-radius: 0.5rem;
-    border: 1px solid var(--line);
-    background: #fff;
-    cursor: pointer;
-  }
 
   /* ---- floor plan modal ---- */
-  #plan-modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(30, 28, 24, 0.45);
-    display: none;
-    place-items: center;
-    z-index: 11;
-  }
-  #plan-modal.open { display: grid; }
   #plan-modal .box {
     background: var(--panel);
-    border-radius: 0.9rem;
+    border-radius: var(--r-panel);
     width: calc(100vw - 2rem);
     max-width: 34rem;
     max-height: 86vh;
@@ -375,8 +681,8 @@
     padding: 1.1rem 1.2rem;
     box-shadow: var(--shadow);
   }
-  #plan-modal h2 { font-size: 1rem; }
-  #plan-modal .sub { color: var(--muted); font-size: 0.75rem; margin: 0.15rem 0 0.7rem; }
+  #plan-modal h2 { font-size: var(--t-md); }
+  #plan-modal .sub { color: var(--muted); font-size: var(--t-sm); margin: 0.15rem 0 0.7rem; }
   #plan-svg svg { width: 100%; height: auto; display: block; }
   #plan-modal button {
     margin-top: 0.9rem;
@@ -399,29 +705,68 @@
     flex-direction: column;
     gap: 0.65rem;
   }
-  #edge-tools { left: 0.75rem; }
+  /* Undo and redo used to float halfway down the left edge, on top of the
+     drawing, where they swallowed taps on any unit beneath them. They now sit
+     in the bottom-left stack with the other chrome, in reading order. */
+  #edge-tools {
+    left: 1rem;
+    top: auto;
+    transform: none;
+    bottom: calc(5.4rem + var(--sab));
+    z-index: 5;
+    flex-direction: row;
+    gap: 0.4rem;
+  }
   #view-tools { right: 0.75rem; }
   #edge-tools button, #view-tools button, #compass {
-    width: 2.8rem; height: 2.8rem;
+    width: 44px; height: 44px;
     border-radius: 50%;
     border: 1px solid var(--line);
     background: var(--panel);
     box-shadow: var(--shadow);
-    font-size: 1.15rem;
+    font-size: var(--t-lg);
     display: grid;
     place-items: center;
   }
-  #edge-tools button:disabled { opacity: 0.35; }
+  /* the tool strip lands in this band while something is selected */
+  body.has-selection[data-mode="plan"] #edge-tools { bottom: calc(var(--strip-top, 9.2rem) + 1rem + var(--sab)); }
+  /* 0.55 measured 3.2:1 — WCAG exempts an inactive control, but outdoors it
+     read as a button that was missing rather than one that was not yet
+     available. 0.68 is 5.6:1 and still plainly dimmer than the live one. */
+  #edge-tools button:disabled { opacity: 0.68; }
   #edge-tools button:not(:disabled):active,
   #view-tools button:active { border-color: var(--accent); color: var(--accent); }
-  #compass { position: relative; }
-  #needle { display: inline-block; line-height: 1; font-size: 1.05rem; }
+  #compass { position: relative; --az: 0rad; }
+  /* The needle is rotated by JS about its box centre, and a glyph's ink is
+     not at its box centre — an arrow character in a box as wide as its advance
+     and as tall as its line wobbled off-axis through the turn. A square box
+     with the needle drawn centred in it spins true. */
+  #needle { display: block; width: 1.35rem; height: 1.35rem; transform: rotate(var(--az)); }
+  #needle svg { display: block; width: 100%; height: 100%; }
+  /* A magnetised needle: red to north, pale to south. Both lobes carry an ink
+     hairline, because the pale one has to read against whatever the 3D view
+     happens to put behind it — grass, a roof, a shadow. */
+  #needle .lobe { stroke: var(--ink); stroke-width: 0.9; stroke-linejoin: round; }
+  #needle .north { fill: #bf3b30; }
+  #needle .south, #needle .pivot { fill: #fbfaf7; }
+  /* The N rides the red tip. North is not up here — it is wherever the needle
+     is pointing — so an N parked in a corner labelled the widget rather than a
+     direction, and sat there looking wrong in the one case it should have
+     looked right, with north straight up. Out along the needle it reaches
+     twelve o'clock exactly when north does.
+     The last rotate turns the letter back upright, so it orbits without ever
+     standing on its head. */
   #compass .n {
     position: absolute;
-    bottom: 0.18rem;
-    right: 0.42rem;
-    font-size: 0.55rem;
+    top: 50%;
+    left: 50%;
+    font-size: var(--t-fine);
     color: var(--muted);
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--az))
+      translateY(-0.86rem)
+      rotate(calc(-1 * var(--az)));
   }
 
   /* ---- stats pill + popover ---- */
@@ -430,27 +775,11 @@
     left: 0.75rem;
     bottom: calc(0.9rem + var(--sab));
     z-index: 4;
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     padding: 0.38rem 0.8rem;
-    font-size: 0.75rem;
+    font-size: var(--t-sm);
     font-variant-numeric: tabular-nums;
   }
-  #stats-pop {
-    position: fixed;
-    left: 0.75rem;
-    bottom: calc(3.4rem + var(--sab));
-    z-index: 4;
-    width: 14rem;
-    border-radius: 0.7rem;
-    padding: 0.7rem 0.8rem;
-    display: none;
-  }
-  #stats-pop.open { display: block; }
-  #stats-pop table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-  #stats-pop td { padding: 0.14rem 0; }
-  #stats-pop td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
-  #stats-pop .total td { border-top: 1px solid var(--line); padding-top: 0.3rem; font-weight: 600; }
-  #stats-pop .fine { color: var(--muted); font-size: 0.66rem; margin-top: 0.45rem; }
 
   /* ---- selection bottom sheet ---- */
   #info {
@@ -469,31 +798,56 @@
   }
   body.sheet-open #info { transform: translateY(0); }
 
-  /* ---- unified selection bar (compose mode) ---- */
+  /* ---- unified selection bar (plan mode) ---- */
   #toolstrip {
     position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: calc(0.75rem + var(--sab));
-    max-width: calc(100vw - 1.5rem);
+    /* Centred by auto margins rather than left:50% + translateX. With
+       left:50% the shrink-to-fit width is only the half-viewport to the right
+       of the midpoint, so the strip could never lay out wider than 195px on a
+       390px phone — it wrapped, and at 2x text it pushed Delete off-screen. */
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    width: fit-content;
+    /* clears the stats pill, which it used to bury for the whole of an edit */
+    bottom: calc(4rem + var(--sab));
+    max-width: calc(100vw - 1rem);
     z-index: 6;
     display: none;
     align-items: center;
-    gap: 0.1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.25rem;
     padding: 0.3rem 0.4rem;
-    border-radius: 999px;
+    border-radius: var(--r-panel);
     border: 1px solid var(--line);
     background: var(--panel);
     box-shadow: var(--shadow);
   }
-  body.has-selection[data-mode="compose"] #toolstrip { display: flex; }
+  body.has-selection[data-mode="plan"] #toolstrip { display: flex; }
+  /* The sheet and the strip are both "the selected unit". On a phone they
+     coexisted and the strip won every tap over the sheet's Floor plan button,
+     so tapping Floor plan silently rotated the unit. On a desktop the panel is
+     a right-hand card and the strip is centred — they never overlap, so hiding
+     it there only cost you rotate, duplicate and delete for no reason. */
+  @media (max-width: 899px) {
+    body.sheet-open #toolstrip { display: none !important; }
+  }
+  #toolstrip button svg,
+  #view-tools button svg,
+  #site-actions button svg,
+  #edge-tools button svg,
+  #btn-menu svg,
+  .x svg { width: 1.15rem; height: 1.15rem; }
   #toolstrip button {
     flex: none;
-    width: 2.6rem; height: 2.6rem;
+    /* fixed px, not rem: at 2x system text these grew until Delete, Duplicate
+       and Details were pushed off the right edge of the screen */
+    width: 44px; height: 44px;
     border: 0;
     border-radius: 50%;
     background: transparent;
-    font-size: 1.2rem;
+    font-size: var(--t-lg);
     line-height: 1;
     display: grid;
     place-items: center;
@@ -502,9 +856,9 @@
   #toolstrip button svg { width: 1.15rem; height: 1.15rem; }
   #toolstrip button.active { background: rgba(179, 84, 46, 0.15); color: var(--accent); }
   #toolstrip button:not(.active):active { color: var(--accent); }
-  #toolstrip #btn-desel { color: var(--muted); font-size: 1rem; }
+  #toolstrip #btn-desel { color: var(--muted); font-size: var(--t-md); }
   #toolstrip #sel-name {
-    font-size: 0.78rem;
+    font-size: var(--t-sm);
     font-weight: 600;
     padding: 0 0.3rem;
     max-width: 6rem;
@@ -521,21 +875,21 @@
   #info .handle {
     width: 2.4rem; height: 0.28rem;
     background: var(--line);
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     margin: 0 auto 0.6rem;
   }
-  #info .head { display: flex; align-items: baseline; gap: 0.6rem; }
-  #info h3 { font-size: 1.05rem; flex: 1; }
+  #info .head { display: flex; align-items: center; gap: 0.6rem; }
+  #info h3 { font-size: var(--t-md); flex: 1; }
   #info .x {
     border: 0; background: transparent;
     color: var(--muted);
-    font-size: 1.15rem;
+    font-size: var(--t-lg);
     padding: 0.1rem 0.3rem;
   }
-  #info .sub { color: var(--muted); font-size: 0.76rem; margin: 0.15rem 0 0.55rem; }
-  #info p { font-size: 0.84rem; margin-bottom: 0.55rem; }
+  #info .sub { color: var(--muted); font-size: var(--t-sm); margin: 0.15rem 0 0.55rem; }
+  #info p { font-size: var(--t-base); margin-bottom: 0.55rem; }
   #info .build {
-    font-size: 0.72rem;
+    font-size: var(--t-xs);
     color: var(--muted);
     background: rgba(0, 0, 0, 0.045);
     border-radius: 0.4rem;
@@ -543,7 +897,7 @@
     margin-bottom: 0.55rem;
   }
   #info .va {
-    font-size: 0.75rem;
+    font-size: var(--t-sm);
     color: var(--muted);
     border-left: 3px solid var(--accent);
     padding-left: 0.55rem;
@@ -551,7 +905,7 @@
   }
   #info .wet {
     display: none;
-    font-size: 0.75rem;
+    font-size: var(--t-sm);
     color: var(--muted);
     border-left: 3px solid #7e97a6;
     padding-left: 0.55rem;
@@ -559,7 +913,7 @@
   }
   #info .sep {
     display: none;
-    font-size: 0.75rem;
+    font-size: var(--t-sm);
     color: #8c3b2e;
     border-left: 3px solid #c0574a;
     padding-left: 0.55rem;
@@ -567,7 +921,7 @@
   }
   #info .wide {
     width: 100%;
-    font-size: 0.85rem;
+    font-size: var(--t-base);
     padding: 0.55rem 0.5rem;
     border-radius: 0.55rem;
     border: 1px solid var(--line);
@@ -578,7 +932,7 @@
   #info .row { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
   #info .row button {
     flex: 1;
-    font-size: 0.85rem;
+    font-size: var(--t-base);
     padding: 0.6rem 0.5rem;
     border-radius: 0.55rem;
     border: 1px solid var(--line);
@@ -587,15 +941,6 @@
   #info .row button:active { border-color: var(--accent); color: var(--accent); }
 
   /* ---- VA modal ---- */
-  #va-modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(30, 28, 24, 0.45);
-    display: none;
-    place-items: end center;
-    z-index: 10;
-  }
-  #va-modal.open { display: grid; }
   #va-modal .box {
     background: var(--panel);
     border-radius: 1rem 1rem 0 0;
@@ -606,9 +951,9 @@
     padding: 1.2rem 1.3rem calc(1.3rem + var(--sab));
     box-shadow: var(--shadow);
   }
-  #va-modal h2 { font-size: 1rem; margin-bottom: 0.7rem; }
-  #va-modal li { margin: 0 0 0.55rem 1.1rem; font-size: 0.83rem; }
-  #va-modal .fine { color: var(--muted); font-size: 0.72rem; margin-top: 0.8rem; }
+  #va-modal h2 { font-size: var(--t-md); margin-bottom: 0.7rem; }
+  #va-modal li { margin: 0 0 0.55rem 1.1rem; font-size: var(--t-base); }
+  #va-modal .fine { color: var(--muted); font-size: var(--t-xs); margin-top: 0.8rem; }
   #va-modal button {
     margin-top: 1rem;
     width: 100%;
@@ -618,35 +963,276 @@
     background: #fff;
   }
 
+  /* A link-loaded layout is shown but not adopted until you edit or save it,
+     so receiving a link no longer overwrites your own compound. */
+  #visit-bar {
+    position: fixed;
+    top: calc(7.6rem + var(--sat));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 7;
+    display: none;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.35rem 0.4rem 0.35rem 0.9rem;
+    border-radius: var(--r-pill);
+    font-size: var(--t-sm);
+    white-space: nowrap;
+  }
+  body.visiting #visit-bar { display: flex; }
+  #visit-keep {
+    border: 0;
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: #fff;
+    padding: 0.4rem 0.8rem;
+    font-size: var(--t-sm);
+    min-height: 34px;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    #edge-tools button:not(:disabled):hover,
+    #view-tools button:hover,
+    #site-actions button:hover,
+    #toolstrip button:hover,
+    #btn-menu:hover,
+    #stats-pill:hover { border-color: var(--accent); color: var(--accent); }
+    #menu button:hover, #menu a:hover { background: rgba(179, 84, 46, 0.08); }
+    .add-row:hover { background: rgba(179, 84, 46, 0.06); }
+    #fab:hover { filter: brightness(1.06); }
+  }
+
+  #cartouche {
+    position: fixed;
+    left: 16px;
+    top: calc(106px + var(--sat));
+    z-index: 5;
+    display: none;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.3rem 0.35rem 0.3rem 0.6rem;
+    border-radius: var(--r-pill);
+    font-size: var(--t-xs);
+    color: var(--muted);
+  }
+  body[data-mode="plan"] #cartouche { display: flex; }
+  #cart-north { display: inline-flex; align-items: center; gap: 0.15rem; color: var(--ink); }
+  #cart-north svg { width: 0.9rem; height: 0.9rem; }
+  #cart-north b { font-size: var(--t-fine); }
+  #cart-scale { display: inline-flex; align-items: center; gap: 0.3rem; }
+  #cart-scale i {
+    display: block; height: 0.45rem;
+    border: 1px solid var(--ink); border-top: 0;
+    width: var(--scale-w, 40px);
+  }
+  #cart-key {
+    border: 1px solid var(--line);
+    background: transparent;
+    border-radius: var(--r-pill);
+    padding: 0.25rem 0.6rem;
+    font-size: var(--t-fine);
+    min-height: 30px;
+    display: inline-grid;
+    place-items: center;
+  }
+
+  /* Centring aligns boxes, and a text box is not the letterform: it carries
+     the font's whole ascender and descender, so a label centred against an
+     icon lands a pixel or two high. Measured across the cartouche that came to
+     3.4 px of spread over five items — the N a visible step above the arrow
+     beside it, Key a step above that again. Trimming the box down to
+     cap-height and baseline centres the letters instead of the metrics.
+     A trim needs an element of its own, which is why the Key button carries a
+     span: the anonymous text inside a button cannot be styled. Chrome and
+     Safari honour this; anywhere else it is inert and the line box centres as
+     it did before. */
+  #cart-north b,
+  #cart-scale em,
+  #compass .n,
+  #cart-key .lbl,
+  #add-sheet .head h3,
+  #info .head h3 { text-box: trim-both cap alphabetic; }
+
+  /* ---- mobile review fixes ---- */
+
+  /* A closed bottom sheet was hidden by transform alone, so it kept 14 live
+     tab stops scrolling around off-screen. */
+  #info, #add-sheet {
+    visibility: hidden;
+    transition: transform 220ms, visibility 0s 220ms;
+  }
+  body.sheet-open #info,
+  body.add-open #add-sheet { visibility: visible; transition-delay: 0s; }
+
+  /* There were no author focus styles at all. */
+  :where(button, a, [tabindex]):focus-visible {
+    outline: 3px solid #8c3b2e;
+    outline-offset: 2px;
+    border-radius: var(--r-panel);
+  }
+
+  /* Dismissing a sheet was a 25 px target in the hardest corner to reach. */
+  /* `user-select: none` protects a touch drag on the plan; it was punishing
+     the two surfaces people actually copy from — a cost breakdown bound for a
+     spreadsheet, and code citations bound for a county building department. */
+  #parts-modal .box, #va-modal .box, #plan-modal .box, #info {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  /* grid, not the button default: an inline-block sits its svg on a text
+     baseline, which in a 44 px box drops the glyph most of the way down. */
+  .x { width: 44px !important; height: 44px !important; display: grid; place-items: center; }
+  .back { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
+  /* #topbar button already sets 2.3rem, and an id plus a tag outranks an id
+     alone, so the menu button has been 36.8 px ever since — the one control in
+     the bar that never got the 44 px the rest of this block hands out. */
+  #topbar #btn-menu { width: 44px; height: 44px; }
+  #tabbar button { min-height: 44px; }
+  #stats-pill { min-height: 44px; }
+  .pill-warn { display: inline-flex; align-items: center; gap: 0.2em; color: #8c3b2e; font-weight: 700; }
+  .pill-warn .warn { width: 1em; height: 1em; }
+  #stats-pill.has-findings { border-color: #cc9a8e; }
+
+  /* Delete sat 1.6 px from Duplicate, against a ~45 px contact patch. */
+  #btn-delete { margin-left: 0.5rem; }
+
+  /* The drawer list has to scroll; only a mouse drags a row out of it. */
+  .add-row { touch-action: pan-y; }
+
+  /* Six 44 px buttons plus the unit name do not fit one phone row, and the
+     strip wrapped into a two-row slab over the drawing. The name is already
+     on the info sheet, so it steps aside first; wrapping stays as the
+     fallback at very large text rather than pushing Delete off-screen. */
+  @media (max-width: 460px) {
+    #toolstrip .div, #sel-name { display: none; }
+    /* ...except the count, which is the only place a set says how big it is:
+       the details card describes one unit, not the selection. */
+    body.multi-selection #toolstrip #sel-name {
+      display: block;
+      width: 100%;
+      text-align: center;
+      padding-bottom: 0.15rem;
+    }
+    #toolstrip { gap: 0.15rem; padding: 0.25rem 0.3rem; }
+    #btn-delete { margin-left: 0.3rem; }
+  }
+
+  /* The compass is a readout, not a control, and was styled as a button. The
+     face went back to paper when the needle did — a white south lobe over a
+     transparent dial is a white lobe over grass — but the dashed bezel and the
+     missing shadow still keep it out of the row of buttons it sits in. */
+  #compass.readout {
+    background: var(--panel);
+    box-shadow: none;
+    border: 1px solid var(--line);
+    border-style: dashed;
+    color: var(--muted);
+  }
+
+
+  /* Every dialog is this overlay. #key-modal was added with only its content
+     styles, so it laid out statically below the fold on a page that cannot
+     scroll: the chip did nothing, focus jumped off-screen, and because
+     anyOpenDialog() counts a .open dialog, every keypress died until Escape.
+     One rule for all five, so a sixth cannot be added half-dressed. */
+  #parts-modal, #plan-modal, #va-modal, #key-modal, #layouts-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 11;
+    display: none;
+    place-items: center;
+    background: rgba(30, 28, 24, 0.42);
+  }
+  #parts-modal.open, #plan-modal.open, #va-modal.open,
+  #key-modal.open, #layouts-modal.open { display: grid; }
+  /* the VA notes are a bottom sheet on a phone; everything else is a card */
+  #va-modal { place-items: end center; }
+
+  #key-modal .box {
+    background: var(--panel);
+    border-radius: var(--r-panel);
+    width: calc(100vw - 2rem);
+    max-width: 30rem;
+    max-height: 84vh;
+    overflow-y: auto;
+    padding: 1.1rem 1.2rem;
+    box-shadow: var(--shadow);
+  }
+  #key-modal h2 { font-size: var(--t-md); margin-bottom: 0.5rem; }
+  #key-modal .key-list { list-style: none; padding: 0; margin: 0 0 1rem; }
+  /* Each row is a swatch and a sentence, and the sentence opens with a <b>.
+     As a flex row that <b> was a flex item of its own, so every label was
+     squeezed into its own narrow column and wrapped — "Long dash, red" broke
+     over three lines while its description started somewhere else again. The
+     row is text with a hanging indent: the swatch sits in the indent, and the
+     whole sentence flows and wraps against one left edge. */
+  #key-modal .key-list li {
+    margin: 0.7rem 0;
+    font-size: var(--t-sm);
+    line-height: 1.5;
+    padding-left: 2.2rem;
+    text-indent: -2.2rem;
+  }
+  /* middle, not baseline: it centres the chip on the middle of the x-height,
+     which is where the eye puts it, and it does the same for the rule
+     swatches, whose box is zero-high and whose ink is the bottom border. */
+  #key-modal .sw {
+    display: inline-block;
+    width: 1.6rem; height: 0.7rem;
+    margin-right: 0.6rem;
+    border-radius: 2px;
+    vertical-align: middle;
+    text-indent: 0;
+  }
+  #key-modal .sw.dash { border-bottom: 2px dashed; height: 0; }
+  #key-modal .sw.dash.long { border-bottom-width: 3px; }
+  #key-modal .sw.hatch { background: repeating-linear-gradient(45deg, #c0574a 0 2px, transparent 2px 5px); }
+  #key-modal .sw.dashdot { border-bottom: 2px dashed #8a867c; height: 0; }
+
+
+  @media (prefers-reduced-motion: reduce) {
+    #info, #add-sheet { transition-duration: 1ms; }
+  }
+
   /* ---- toast ---- */
   #toast {
     position: fixed;
-    top: calc(6.4rem + var(--sat));
+    top: calc(11.2rem + var(--sat));
     left: 50%;
     transform: translateX(-50%);
     background: var(--ink);
     color: #fff;
     padding: 0.45rem 0.9rem;
-    border-radius: 999px;
-    font-size: 0.76rem;
-    white-space: nowrap;
+    /* a pill radius on text that has wrapped to four lines is a circle */
+    border-radius: 1rem;
+    font-size: var(--t-sm);
+    white-space: normal;
     opacity: 0;
     transition: opacity 200ms;
     pointer-events: none;
-    z-index: 11;
+    z-index: 30;
+    max-width: min(30rem, calc(100vw - 2.5rem));
+    text-align: center;
   }
   #toast.show { opacity: 1; }
+  /* This block sits after every rule it overrides. The earlier reduce block
+     was written before #toast and #cart-north existed, so it silently lost. */
+  @media (prefers-reduced-motion: reduce) {
+    #toast, #cart-north svg { transition-duration: 1ms; }
+  }
 
   /* ---- larger screens: same layout, roomier ---- */
   @media (min-width: 900px) {
     #stats-pill { left: 1rem; bottom: 1rem; }
-    #stats-pop { left: 1rem; bottom: 3.5rem; }
     #fab { right: 1rem; bottom: 1rem; }
     #add-sheet { border-radius: 1rem 1rem 0 0; }
     #info {
       left: auto; right: 1rem; bottom: 5.6rem;
       max-width: 19rem;
-      border-radius: 0.8rem;
+      max-height: calc(100vh - 12rem);
+      overflow-y: auto;
+      border-radius: var(--r-panel);
       border-width: 1px;
       transform: none;
       visibility: hidden;
@@ -654,45 +1240,100 @@
       transition: opacity 160ms ease;
     }
     body.sheet-open #info { visibility: visible; opacity: 1; }
+
+    /* The details card and the zoom column both docked to the right edge, and
+       the card is z-index 6 against the column's 5 — so opening details made
+       zoom out, zoom in and fit all unreachable. One gutter token, and the
+       zoom column steps aside to the left of the card while it is open. */
+    #edge-tools, #site-actions { left: auto; }
+    #edge-tools { left: 1rem; }
+    #site-actions { right: 1rem; flex-direction: row; }
+    body.has-selection[data-mode="plan"] #site-actions,
+    body[data-mode="plan"] #site-actions { bottom: 1rem; right: 5.2rem; }
+    body.sheet-open[data-mode="plan"] #site-actions { right: 21.5rem; }
+    /* ...and the strip has to give up the same ground, or it centres itself
+       on the whole window and lands under the column that just stepped left.
+       With the card opening on every selection, that was every selection. */
+    body.sheet-open[data-mode="plan"] #toolstrip { right: 21.5rem; }
+    /* above the stats pill, which also lives in this corner */
+    #edge-tools, body.has-selection[data-mode="plan"] #edge-tools {
+      bottom: calc(4.2rem + var(--sab));
+    }
+    /* the strip is centred here, so nothing needs to climb over it */
+    #toolstrip { bottom: calc(1rem + var(--sab)); }
+    body.has-selection #fab { bottom: 1rem; }
+
     #va-modal { place-items: center; }
-    #va-modal .box { border-radius: 0.9rem; width: calc(100vw - 3rem); padding-bottom: 1.3rem; }
+    #va-modal .box { border-radius: var(--r-panel); width: calc(100vw - 3rem); padding-bottom: 1.3rem; }
   }
 </style>
 </head>
 <body>
 
 <header id="topbar" class="panel">
-  <a class="back" href="../../">←</a>
-  <h1>Container Compound</h1>
-  <button id="btn-menu" aria-label="Menu">⋯</button>
+  <a class="back" href="../../" aria-label="Back to all ideas">←</a>
+  <h1><input id="layout-name" value="Container Compound" aria-label="Layout name" spellcheck="false" maxlength="60"></h1>
+  <button id="btn-menu" aria-label="Menu" title="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
 </header>
 
 <div id="menu" class="panel">
+  <button id="btn-layouts">Saved layouts…</button>
   <button id="btn-share">Share layout</button>
+  <div id="export-crop" role="group" aria-label="What the download covers">
+    <button data-crop="acre" class="active">Whole acre</button>
+    <button data-crop="compound">Just the compound</button>
+  </div>
+  <button id="site-png">Download PNG</button>
+  <button id="site-svg-dl">Download SVG</button>
   <button id="btn-va">VA notes</button>
-  <a id="menu-studio" href="plans/">Unit plan studio</a>
-  <button id="btn-reset">Reset compound</button>
+  <button id="btn-clear">Clear the acre</button>
+  <button id="btn-reset">Reset to the example</button>
 </div>
 
-<div id="tabbar">
-  <button data-mode="compose" class="active">Compose</button>
-  <button data-mode="dollhouse">Dollhouse</button>
-  <button data-mode="site">Site plan</button>
+<div id="tabbar" role="tablist" aria-label="View">
+  <button data-mode="plan" class="active" role="tab" aria-selected="true">Plan</button>
+  <button data-mode="view" role="tab" aria-selected="false">3D</button>
+  <button data-mode="split" id="tab-split" role="tab" aria-selected="false">Both</button>
 </div>
 
-<div id="site-panel">
-  <div id="site-svg"><!-- populated by main.js --></div>
+<div id="site-panel" tabindex="0" role="img"
+     aria-label="Site plan"
+     aria-describedby="site-panel-help">
+  <div id="site-stage">
+    <div id="site-svg"><!-- the drawing; this is what exports --></div>
+    <div id="site-chrome"><!-- selection, guides, redlines; never exported --></div>
+  </div>
 </div>
+<p id="site-panel-help" class="sr-only">Tab moves between units and then leaves the drawing. Arrow keys nudge the selected unit, R rotates it, M measures, T turns the sheet, and holding space pans.</p>
+<!-- The drawing carries the whole state of the layout and says none of it to a
+     screen reader. This is the same information in words, kept in step with
+     every edit — a static region to browse, not a live one, because it used to
+     announce all 900 characters thirty times for a single pinch. -->
+<div id="plan-text" role="region" aria-label="The site plan in words"></div>
+<!-- and this is what changed, which is what a live region is for -->
+<div id="plan-announce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
-<div id="parts-modal">
+<div id="parts-modal" role="dialog" aria-modal="true" aria-label="Summary and parts list">
   <div class="box">
-    <h2>Parts list</h2>
+    <h2>What this compound is</h2>
     <div id="parts-list"><!-- populated by main.js --></div>
     <button id="parts-close">Close</button>
   </div>
 </div>
 
-<div id="plan-modal">
+<div id="layouts-modal" role="dialog" aria-modal="true" aria-label="Saved layouts">
+  <div class="box">
+    <h2>Saved layouts</h2>
+    <p class="lede">The acre you are working on saves itself. Keep a copy here
+      when you want to come back to it, or try something without losing it.</p>
+    <button id="btn-save-layout" class="wide-accent">Save this one</button>
+    <button id="btn-save-copy" class="wide-accent">Save as a new copy</button>
+    <div id="layouts-list"><!-- populated by main.js --></div>
+    <button id="layouts-close">Close</button>
+  </div>
+</div>
+
+<div id="plan-modal" role="dialog" aria-modal="true" aria-label="Unit floor plan">
   <div class="box">
     <h2 id="plan-title"></h2>
     <div class="sub" id="plan-sub"></div>
@@ -702,89 +1343,126 @@
 </div>
 
 <div id="edge-tools">
-  <button id="btn-redo" aria-label="Redo" disabled>↪</button>
-  <button id="btn-undo" aria-label="Undo" disabled>↩</button>
+  <button id="btn-undo" aria-label="Undo" title="Undo (Ctrl+Z)" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h10a5.5 5.5 0 0 1 0 11H8"/><path d="M7.5 5.5 4 9l3.5 3.5"/></svg>
+  </button>
+  <button id="btn-redo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 9H10a5.5 5.5 0 0 0 0 11h6"/><path d="M16.5 5.5 20 9l-3.5 3.5"/></svg>
+  </button>
 </div>
 
 <div id="view-tools">
-  <button id="btn-sun" aria-label="Cycle sun" title="Midday">☀</button>
-  <div id="compass" title="North"><span id="needle">↑</span><span class="n">N</span></div>
-  <button id="btn-fit" aria-label="Recenter view">⌖</button>
+  <button id="btn-doll" aria-label="Dollhouse view: lift every roof" aria-pressed="false" title="Dollhouse: roofs on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 11v9h14v-9"/></svg></button>
+  <button id="btn-sun" aria-label="Cycle sun" title="Midday"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.4v2.2M12 19.4v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.4 12h2.2M19.4 12h2.2M5.8 18.2l-1.6 1.6M19.8 4.2l-1.6 1.6"/></svg></button>
+  <div id="compass" class="readout" aria-hidden="true"><span id="needle"><svg viewBox="0 0 24 24"><path class="lobe south" d="M12 22 14.9 12 9.1 12Z"/><path class="lobe north" d="M12 2 14.9 12 9.1 12Z"/><circle class="lobe pivot" cx="12" cy="12" r="1.5"/></svg></span><span class="n">N</span></div>
+  <button id="btn-fit" aria-label="Recenter view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 1.6v3.2M12 19.2v3.2M1.6 12h3.2M19.2 12h3.2"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg></button>
 </div>
 
 <div id="site-actions">
-  <button id="site-fit">⌖ Fit</button>
-  <button id="site-png">↓ PNG</button>
-  <button id="site-svg-dl">↓ SVG</button>
+  <button id="btn-turn" aria-label="Turn the sheet a quarter turn" aria-pressed="false" title="Turn the sheet (T)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="9.6" width="11.8" height="11.8" rx="1.5"/><path d="M17.9 13.2A6.5 6.5 0 0 0 11.4 6.7"/><path d="M14.9 3.1 11.1 6.8l3.7 3.5"/></svg>
+  </button>
+  <button id="btn-measure" aria-label="Measure a distance" aria-pressed="false" title="Measure — drag between two points (M)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.4" y="7.6" width="19.2" height="8.8" rx="1.5"/><path d="M7.2 7.6v3.4M12 7.6v3.4M16.8 7.6v3.4"/></svg>
+  </button>
+  <button id="site-zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
+  <button id="site-zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
+  <button id="site-fit" aria-label="Fit the compound on screen" title="Fit the compound on screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 1.6v3.2M12 19.2v3.2M1.6 12h3.2M19.2 12h3.2"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg></button>
 </div>
 
 <button id="stats-pill" class="panel">0 units</button>
-<div id="stats-pop" class="panel">
-  <table>
-    <tr><td>Units</td><td id="st-units">0</td></tr>
-    <tr><td>20&#8242; high cubes</td><td id="st-hc20">0</td></tr>
-    <tr><td>10&#8242; mini high cubes</td><td id="st-hc10">0</td></tr>
-    <tr><td>Enclosed area</td><td id="st-sqft">0 sq ft</td></tr>
-    <tr><td>Deck area</td><td id="st-deck">0 sq ft</td></tr>
-    <tr><td>Utility trenches</td><td id="st-trench">—</td></tr>
-    <tr class="total"><td>Rough cost</td><td id="st-cost">$0</td></tr>
-  </table>
-  <div class="fine">Ballpark, fully fitted-out. Site work, utilities &amp; delivery extra.</div>
-  <button class="parts-btn" id="btn-parts">Full parts list →</button>
-</div>
 
-<button id="fab" aria-label="Add a unit">+</button>
+<button id="fab" aria-label="Add a unit" title="Add a unit">+</button>
 
 <div id="add-backdrop"></div>
 <div id="add-sheet" class="panel">
   <div class="handle"></div>
   <div class="head">
     <h3>Add a unit</h3>
-    <button id="add-close" class="x" aria-label="Close">✕</button>
+    <button id="add-close" class="x" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
   <div id="add-list"><!-- populated by main.js --></div>
-  <a href="plans/" style="display:block;text-align:center;padding:0.8rem 0 0.2rem;font-size:0.78rem;color:var(--accent);text-decoration:none;">✎ Unit plan studio</a>
 </div>
 
 <div id="info" class="panel">
   <div class="handle"></div>
   <div class="head">
     <h3 id="info-name"></h3>
-    <button id="btn-close" class="x" aria-label="Close">✕</button>
+    <button id="btn-close" class="x" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
   <div class="sub" id="info-sub"></div>
   <p id="info-desc"></p>
   <div class="build" id="info-build"></div>
   <div class="va" id="info-va"></div>
+  <div class="va" id="info-permit"></div>
   <div class="wet" id="info-wet"></div>
   <div class="sep" id="info-sep"></div>
+  <div class="coords" id="info-coords">
+    <span class="lab">Position</span>
+    <label><select id="pos-x-dir" aria-label="East or west of the middle of the lot"><option value="1">E</option><option value="-1">W</option></select><input id="pos-x" type="number" step="1" min="0" inputmode="numeric" aria-label="Feet east or west of the middle of the lot"></label>
+    <label><select id="pos-z-dir" aria-label="North or south of the middle of the lot"><option value="1">S</option><option value="-1">N</option></select><input id="pos-z" type="number" step="1" min="0" inputmode="numeric" aria-label="Feet north or south of the middle of the lot"></label>
+    <span class="unit">ft from the middle of the lot</span>
+  </div>
+  <div id="info-align" class="align-only"><span class="lab">Line these up with the last one picked</span></div>
+  <button id="btn-edit-here" class="wide">Edit on the plan</button>
   <button id="btn-plan" class="wide">Floor plan</button>
 </div>
 
 <div id="toolstrip" class="panel">
-  <button id="btn-desel" aria-label="Deselect">✕</button>
+  <button id="btn-desel" aria-label="Deselect" title="Deselect (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   <span id="sel-name"></span>
   <span class="div"></span>
-  <button id="tool-move" class="active" aria-label="Move (drag the unit)">
+  <button id="tool-move" aria-pressed="false" aria-label="Move: place this unit with the next click" title="Move — then click where it should go">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>
   </button>
-  <button id="btn-rotate" aria-label="Rotate 90°">⟳</button>
-  <button id="btn-dup" aria-label="Duplicate">⧉</button>
-  <button id="btn-delete" aria-label="Delete">
+  <button id="btn-rotate" aria-label="Rotate 90°" title="Rotate 90° (R)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg></button>
+  <button id="btn-dup" aria-label="Duplicate" title="Duplicate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M15 5H5.5A1.5 1.5 0 0 0 4 6.5V16"/></svg></button>
+  <button id="btn-delete" aria-label="Delete" title="Delete (Del)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v7M14 10v7"/></svg>
   </button>
+  <button id="btn-multi" class="touch-only" aria-pressed="false" aria-label="Select more units" title="Select more — then tap each unit you want">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="2.6" width="11.4" height="11.4" rx="1.5"/><rect x="10" y="10" width="11.4" height="11.4" rx="1.5" stroke-dasharray="3.4 2.8"/></svg>
+  </button>
+  <span class="div align-only"></span>
+  <span id="align-tools" class="align-only" role="group" aria-label="Align the selected units to the last one picked">
+    <button data-align="left" aria-label="Align west edges" title="Align west edges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 3v18"/><rect x="7" y="5.5" width="12" height="4" rx="1"/><rect x="7" y="14.5" width="7" height="4" rx="1"/></svg></button>
+    <button data-align="cx" aria-label="Align on a north-south centreline" title="Align on a north–south centreline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18"/><rect x="6" y="5.5" width="12" height="4" rx="1"/><rect x="8.5" y="14.5" width="7" height="4" rx="1"/></svg></button>
+    <button data-align="right" aria-label="Align east edges" title="Align east edges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 3v18"/><rect x="5" y="5.5" width="12" height="4" rx="1"/><rect x="10" y="14.5" width="7" height="4" rx="1"/></svg></button>
+    <button data-align="top" aria-label="Align north edges" title="Align north edges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 4h18"/><rect x="5.5" y="7" width="4" height="12" rx="1"/><rect x="14.5" y="7" width="4" height="7" rx="1"/></svg></button>
+    <button data-align="cz" aria-label="Align on an east-west centreline" title="Align on an east–west centreline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18"/><rect x="5.5" y="6" width="4" height="12" rx="1"/><rect x="14.5" y="8.5" width="4" height="7" rx="1"/></svg></button>
+    <button data-align="bottom" aria-label="Align south edges" title="Align south edges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 20h18"/><rect x="5.5" y="5" width="4" height="12" rx="1"/><rect x="14.5" y="10" width="4" height="7" rx="1"/></svg></button>
+    <button id="btn-distribute" aria-label="Space evenly" title="Space evenly (needs three or more)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2.5" y="7" width="4" height="10" rx="1"/><rect x="10" y="7" width="4" height="10" rx="1"/><rect x="17.5" y="7" width="4" height="10" rx="1"/></svg></button>
+  </span>
   <span class="div"></span>
-  <button id="btn-info" aria-label="Details">ⓘ</button>
+  <button id="btn-info" aria-label="Details" title="Details"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.4"/></svg></button>
 </div>
 
-<div id="va-modal">
+<div id="key-modal" role="dialog" aria-modal="true" aria-label="Drawing key">
+  <div class="box">
+    <h2>What the drawing is telling you</h2>
+    <ul class="key-list">
+      <li><span class="sw" style="background:#4a90c2"></span><b>Blue</b> — a glazed aperture: the container's factory door end, where the glass and the entry door go. Nothing is cut into a wall.</li>
+      <li><span class="sw dash" style="border-color:#5f7a8a"></span><b>Even dash, blue-grey</b> — a utility run from a wet unit to the core, and the 30 ft ring around the core itself.</li>
+      <li><span class="sw dash long" style="border-color:#c0574a"></span><b>Long dash, red</b> — a code finding. Every one is also written out under Code findings in the summary.</li>
+      <li><span class="sw hatch"></span><b>Red hatching</b> — the gap between two units that sit 1–9 ft apart, which needs a fire-resistance-rated wall on each facing side (VRC R302.1).</li>
+      <li><span class="sw dashdot"></span><b>Dash-dot</b> — the property line. The lighter dashed square inside it is the setback envelope.</li>
+      <li><span class="sw" style="background:#6f8a5c;opacity:.35"></span><b>Green block</b> — the septic drainfield. Keep units, the drive and the well clear of it.</li>
+    </ul>
+    <button id="key-close">Close</button>
+  </div>
+</div>
+
+<div id="va-modal" role="dialog" aria-modal="true" aria-label="Virginia code notes">
   <div class="box">
     <h2>Designed within Virginia limits</h2>
     <ul>
-      <li>Every unit is a <strong>one-story detached structure of 160 sq ft or less</strong> — under Virginia's 256 sq ft accessory-structure threshold (VCC 108.2 / VRC R105.2), below which a building permit is generally not required.</li>
+      <li><strong>The 256 sq ft exemption is about use, not size.</strong> VCC 108.2 / VRC R105.2 exempt detached accessory structures "used as tool and storage sheds, playhouses and similar uses". A sleeping, kitchen, bath, dining, living or office unit is none of those, so <strong>no size gets it out of a building permit</strong> — this tool only applies the 256 sq ft test to storage units and decks. Exemption from a permit is also never exemption from the code (USBC 108.2), and an accessory structure assumes a principal dwelling already on the parcel.</li>
+      <li><strong>Butting units together sums their area into one structure.</strong> That is why the drawing outlines a joined storage cluster once it passes 256 sq ft — the exemption is read per structure, not per box.</li>
+      <li><strong>&#8220;Rated&#8221; on the drawing means a fire-resistance-rated wall.</strong> Two buildings on one lot that sit 1–9 ft apart each need a rated wall on the facing side and are limited in glazing (VRC R302.1); at 10 ft or more, neither does. Butting them together avoids it entirely, which is why the drawing suggests either. Note the same rule is measured to the <em>property line</em> as well, which this tool does not model — a glazed door end close to a boundary may be allowed no openings at all.</li>
+      <li><strong>A &#8220;wet unit&#8221;</strong> is any unit with plumbing — the kitchen, the bathhouse, the baths and the laundry. The <strong>utility core</strong> is the laundry / utility unit that carries the water supply and drain; the drawing rings it at 30 ft and flags any wet unit outside that ring, because longer runs mean more trench, more fall to hold and more to freeze.</li>
       <li>Plumbed and electrified units (kitchen, baths, laundry) still need <strong>trade permits and inspections</strong>, and any unit used for sleeping or dwelling can trigger full residential code compliance — talk to your county building department early.</li>
       <li><strong>High cube (9&#8242;6&#8243;) containers</strong> leave roughly an 8&#8242; finished ceiling after closed-cell spray foam — comfortably above the 7&#8242;0&#8243; habitable-space minimum (VRC R305).</li>
-      <li><strong>Habitable rooms need 70 sq ft and a 7&#8242; minimum dimension</strong> (VRC R304). So every habitable unit — sleeping, kitchen, dining, living, office — rides a 20&#8242; box (~131 sq ft interior), and wall build-up is capped at 3&#189;&#8243; per side to land interior width near 7&#8242;2&#8243;, clear of the minimum. The 10&#8242; minis are reserved for non-habitable roles: bath, laundry, hobby/storage.</li>
+      <li><strong>Habitable rooms need 70 sq ft and a 7&#8242; minimum dimension</strong> (VRC R304). So every habitable unit — sleeping, kitchen, dining, living, office — rides a 20&#8242; box (~135 sq ft interior), and wall build-up is capped at 3&#189;&#8243; per side to land interior width near 7&#8242;2&#8243;, clear of the minimum. The 10&#8242; minis are reserved for non-habitable roles: bath, laundry, hobby/storage.</li>
       <li>The sleeping unit is a <strong>tunnel container: two independent glazed egress doors</strong> in the factory apertures (VRC R310) — no cut openings.</li>
       <li>Habitable units carry <strong>interconnected smoke + CO alarms</strong> (VRC R314/R315), and every wet room gets <strong>mechanical exhaust</strong> (R303.3) ducted through the floor.</li>
       <li>Containers sit on <strong>pier foundations with footings below frost depth</strong> (18–24&#8243; across most of Virginia).</li>
@@ -796,7 +1474,7 @@
       <li>The original cargo doors stay on their hinges as <strong>operable storm/security shutters</strong>, parked open against the walls; an insulated glazed wall with an outswing entry door sits just inside each aperture.</li>
       <li><strong>Utilities enter through the wood floor</strong> (already non-structural to drill): supply, drains, and electrical all rise from below. The one wall exception is a single ~3&#8243; lineset sleeve per mini-split.</li>
       <li>Every 20&#8242; box is a <strong>tunnel</strong> (sleeping, kitchen, bathhouse, bath + laundry) or an <strong>open-side</strong> (dining, living, office) — no single-door 20-footers. The 10&#8242; minis are the only standard one-door boxes.</li>
-      <li>All door-wall and open-side glazing is <strong>tempered safety glass</strong> (VRC R308), and every aperture gets a <strong>fitted insect-screen panel</strong> for open-wall season.</li>
+      <li>All door end and open-side glazing is <strong>tempered safety glass</strong> (VRC R308), and every aperture gets a <strong>fitted insect-screen panel</strong> for open-wall season.</li>
       <li>Heat is <strong>all-electric</strong> (mini-splits, panel heaters, an electric fireplace in the living unit) — no flues, so the no-cut rule holds for the roof too.</li>
       <li>Wet units want to sit inside the <strong>utility core's 30&#8242; ring</strong> (shown on the ground) to keep plumbing trenches short; the bathhouse carries its own tankless water heater.</li>
     </ul>
@@ -805,11 +1483,44 @@
   </div>
 </div>
 
-<div id="toast"></div>
+<!-- The sheet's own title block sits in a corner of the paper that is
+     off-screen at every working zoom, so north, scale and the colour key get
+     a fixed cartouche of their own. -->
+<div id="cartouche" class="panel">
+  <span id="cart-north" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1.9 15.7 10.3 12 8.4 8.3 10.3Z" fill="currentColor" stroke="none"/><path d="M12 8.9v11.8"/></svg>
+    <b>N</b>
+  </span>
+  <span id="cart-scale"><i></i><em>20 ft</em></span>
+  <button id="cart-key" title="What the colours and dashes mean"><span class="lbl">Key</span></button>
+</div>
 
+<div id="visit-bar" class="panel">
+  <span>Viewing a shared layout — edits here are not saved</span>
+  <button id="visit-keep">Keep it</button>
+</div>
+
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<!-- The import map has to be parsed before anything starts resolving module
+     specifiers, preloads included — a modulepreload of main.js placed above
+     this line begins resolving "three" against nothing and throws. -->
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js" } }
 </script>
+
+<!-- The module graph is a three-hop serial waterfall — index.html discovers
+     main.js, which discovers three.module.js, which discovers
+     three.core.min.js — and the browser cannot start a fetch until it has
+     parsed the importer. Naming them up front overlaps the three round trips:
+     measured 510 ms (21%) off a cold load at 4x CPU on slow 4G. -->
+<link rel="modulepreload" href="main.js">
+<link rel="modulepreload" href="vendor/three.module.js">
+<link rel="modulepreload" href="vendor/three.core.min.js">
+<link rel="modulepreload" href="vendor/OrbitControls.js">
+<link rel="modulepreload" href="data.js">
+<link rel="modulepreload" href="geometry.js">
+<link rel="modulepreload" href="rules.js">
 <script type="module" src="main.js"></script>
 </body>
 </html>
