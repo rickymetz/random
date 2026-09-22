@@ -1453,6 +1453,10 @@ function tryEdit(mutate, rejectMsg) {
     toast("Units cannot overlap — butt them edge to edge instead");
     return false;
   }
+  // An edit that changed nothing is not an edit. placeSelectedAt already
+  // guarded this; align and distribute did not, so a no-op left an entry that
+  // undid to the same drawing and threw away the redo branch on the way.
+  if (JSON.stringify(serialize()) === before) return true;
   pushUndo(before);
   save();
   updateStats();
@@ -3133,10 +3137,19 @@ let ghost = null; // { type, x, z, rot } while adding by drag
 // answer to the permit question, so they live on the drawing and they export.
 // Only the live editing marks (halo, guides, ghost, drag dimensions) are
 // chrome, and only those are stripped.
+// Past this many drawn findings the sheet stops being a drawing, and the
+// summary is where the count lives anyway.
+const MAX_DRAWN_FINDINGS = 60;
+
 function findingsMarkup() {
   const X = spX, Y = spY, S = SP_S;
   const D = () => dash(FINDING_DASH_A, FINDING_DASH_B);
   let s = "";
+  // A hundred and twenty stacked units is 7,140 overlapping pairs, and drawing
+  // a redline for each of them is 50,000 nodes that no one can read. Past the
+  // cap the sheet says how many there are and the summary carries the list.
+  let drawn = 0;
+  const budget = () => drawn++ < MAX_DRAWN_FINDINGS;
 
   // one way of flagging a unit, so every class reads the same
   const flag = (u, text, below = false) => {
@@ -3148,6 +3161,7 @@ function findingsMarkup() {
 
   // rated-wall gaps: hatched band between the two footprints
   for (const p of sepPairs) {
+    if (!budget()) break;
     const b = gapBand(p.a, p.b);
     if (b.overlap <= 0) continue;
     s += `<rect x="${X(b.x0)}" y="${Y(b.z0)}" width="${Math.max(1, (b.x1 - b.x0) * S)}" height="${Math.max(1, (b.z1 - b.z0) * S)}" fill="url(#ch-hatch)" stroke="#c0574a" stroke-width="${ss(1)}" stroke-dasharray="${D()}"/>`;
@@ -3205,6 +3219,7 @@ function findingsMarkup() {
 
   // overlapping footprints — a saved or shared layout can still hold these
   for (const [a, b] of overlappingPairs()) {
+    if (!budget()) break;
     for (const u of [a, b]) {
       const [hw, hd] = halfDims(u);
       s += `<rect x="${X(u.x - hw)}" y="${Y(u.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="url(#ch-hatch)" stroke="#8c3b2e" stroke-width="${ss(2)}"/>`;
@@ -3214,6 +3229,7 @@ function findingsMarkup() {
 
   // butted against a door end
   for (const [a, b] of blockedPairs()) {
+    if (!budget()) break;
     const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
     s += `<circle cx="${X(mx)}" cy="${Y(mz)}" r="${ss(11)}" fill="#fbfaf6" stroke="#8c3b2e" stroke-width="${ss(1.8)}"/>`;
     s += warnMark(X(mx), Y(mz), 12);

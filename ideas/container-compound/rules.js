@@ -68,7 +68,13 @@ export function overlappingPairs(items, types) {
 // brick the app permanently: it was written back to storage on the way past,
 // so every reload replayed the same crash.
 
-export const MAX_ITEMS = 400, MAX_TREES = 200, MAX_POINTS = 20;
+// The pair passes — separation, blocking, overlap, redlines — are O(n^2) and
+// run on every render, and the findings layer emits markup per pair. A 9 KB
+// share link of 400 stacked units, all inside the old cap, froze first paint
+// for forty seconds and made every keypress take seven. One acre is 209 ft
+// square; a hundred and twenty units is already far past anything anyone would
+// draw, and it bounds the pair pass at 7,140 instead of 79,800.
+export const MAX_ITEMS = 120, MAX_TREES = 200, MAX_POINTS = 20;
 
 export const num = (v, fallback = 0) => {
   const n = typeof v === "number" ? v : parseFloat(v);

@@ -140,8 +140,10 @@ test("a name is a short string or the default", () => {
 });
 
 test("an enormous payload is truncated rather than loaded", () => {
+  // the pair passes are O(n^2) and run per render, so the cap is what keeps a
+  // hostile share link from freezing first paint
   const out = norm({ items: Array.from({ length: 5000 }, () => ["hobby", 0, 0, 0]) });
-  assert.equal(out.items.length, 400);
+  assert.equal(out.items.length, 120);
 });
 
 test("a normalized payload round-trips through normalize unchanged", () => {

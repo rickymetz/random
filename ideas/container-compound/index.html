@@ -240,6 +240,12 @@
   #toolstrip .align-only { display: none; }
   body.multi-selection #toolstrip .align-only { display: flex; }
   #align-tools { align-items: center; gap: 0.1rem; }
+  /* The glyphs are drawn in screen terms — a bar down the left edge for
+     "align west" — while the operation is in world terms. Turn the sheet and
+     west is down the screen, so the picture stops matching what happens.
+     Turning the glyphs with the sheet keeps them honest; the labels already
+     say west and north, which stay true either way. */
+  body.sheet-turned #align-tools button svg { transform: rotate(90deg); }
   /* On a phone the align row took the tool strip to four rows and 193 px —
      30% of a 360x640. It acts on the selection, and the details card is what
      describes the selection, so below 600 px it lives there instead. */
