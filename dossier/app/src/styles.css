@@ -84,7 +84,11 @@
   --bevel: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 
   --ctl-h: 2.75rem;      /* 44px */
-  --appbar-h: 3.25rem;
+  /* Derived from what the bar holds — a 44px control, its padding, the
+     hairline — not written down: the literal 3.25rem went stale when the
+     bar gained its 44px buttons, and everything measured from it (the
+     graph's fit, sticky letter headers, sheet heights) was 9px short. */
+  --appbar-h: calc(var(--ctl-h) + var(--s2) * 2 + 1px);
   --tabbar-h: 3.0625rem;  /* 49px, the native tab bar's own height */
   --gutter: 1rem;
   --dur: 0.12s;
@@ -286,6 +290,23 @@ main {
      tab reaches the screen's bottom edge and keeps its label above the
      inset, so a thumb landing low still hits the tab (as it does in a
      native tab bar) instead of a dead strip. */
+  /* The bar owns everything below it. iOS can anchor fixed elements
+     short of the screen's real bottom — seen in the installed app as a
+     ~50pt strip of page background under the tabs, the bar floating
+     above it. Painting downward from the bar turns that strip into more
+     bar instead of a band. When iOS gets the bottom right this is below
+     the screen and never seen; a fixed element's overflow is not
+     scrollable, so the page gains nothing to scroll into. */
+  .tabbar::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    height: 50vh;
+    background: inherit;
+    pointer-events: none;
+  }
   .tabbar a,
   .tabbar button {
     display: flex;

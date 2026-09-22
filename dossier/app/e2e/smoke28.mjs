@@ -1,5 +1,7 @@
 // Visual bugs from a phone review.
 //
+// Also: the tab bar owns the strip beneath it, and the graph fits.
+//
 // Graph: a circle's name hangs off its own bubble — never lines away,
 // where it reads as the label of whoever it lands next to — and every
 // bubble gets one. Settings: "Restore" stays one word (a global
@@ -104,6 +106,34 @@ const glyphs = await page.$$eval('.graph-view-controls button', (bs) =>
   bs.filter((b) => b.offsetParent !== null).map((b) => ({ svg: !!b.querySelector('svg'), text: b.textContent.trim() })))
 if (glyphs.some((g) => !g.svg || g.text)) fail(`view buttons should be icons: ${JSON.stringify(glyphs)}`)
 console.log('view buttons are drawn icons:', glyphs.length)
+
+// The graph page fits the screen exactly: `--appbar-h` said 52px while
+// the bar is 61, so the page scrolled 9px under a canvas that can't be
+// used to scroll it back.
+const extra = await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)
+if (extra > 0) fail(`the graph page should not scroll, but has ${extra}px to`)
+
+// The tab bar owns everything below it: where iOS anchors it short of
+// the screen's bottom, the strip beneath is more bar, not a dark band.
+// Stand in for that by lifting the bar, then read the strip's colour.
+await page.addStyleTag({ content: '.tabbar { bottom: 50px !important }' })
+await page.waitForTimeout(200)
+const shot = await page.screenshot({ clip: { x: 0, y: 844 - 70, width: 390, height: 70 } })
+const [bar, strip] = await page.evaluate(async (b64) => {
+  const img = new Image()
+  img.src = 'data:image/png;base64,' + b64
+  await img.decode()
+  const c = document.createElement('canvas')
+  c.width = img.width
+  c.height = img.height
+  const x = c.getContext('2d')
+  x.drawImage(img, 0, 0)
+  const px = (y) => [...x.getImageData(20, y, 1, 1).data].slice(0, 3)
+  return [px(8), px(img.height - 6)]
+}, shot.toString('base64'))
+if (bar.some((v, i) => Math.abs(v - strip[i]) > 2))
+  fail(`the strip under a lifted tab bar should be bar-coloured: bar ${bar}, strip ${strip}`)
+console.log('the graph fits the screen, and nothing shows under the tab bar')
 
 console.log('ok')
 await browser.close()
