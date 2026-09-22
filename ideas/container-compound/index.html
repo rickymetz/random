@@ -400,6 +400,33 @@
     background: #fff;
   }
 
+  /* ---- a phone on its side ----
+     The plan controls are a 242 px vertical column. In a 390 px-tall window
+     with a selection that is taller than the space above the tool strip, so
+     the turn button went to y = -30 and the zoom column landed on top of the
+     ⋯ menu — every export, the crop choice, Saved layouts, Clear and Reset
+     were unreachable. Short windows get a horizontal row instead. */
+  @media (max-height: 520px) {
+    #site-actions {
+      flex-direction: row;
+      top: auto;
+      bottom: calc(var(--strip-top, 4.75rem) + var(--sab));
+      right: 0.75rem;
+      left: auto;
+      transform: none;
+    }
+    body.has-selection[data-mode="plan"] #site-actions {
+      bottom: calc(var(--strip-top, 4.75rem) + var(--sab));
+    }
+    /* the history pair and the stats pill share that band, so stack the
+       add button above it rather than beside it */
+    /* one formula for both states: the add button sits above the row, which
+       sits above the tool strip, whatever height that happens to be */
+    #fab, body.has-selection #fab {
+      bottom: calc(var(--strip-top, 4.75rem) + 3.6rem + var(--sab));
+    }
+  }
+
   /* the measuring cursor: crosshairs, because the drag is not a move */
   body.measuring #site-panel,
   body.measuring #site-panel.over-object { cursor: crosshair; }
@@ -1177,6 +1204,7 @@
     <p class="lede">The acre you are working on saves itself. Keep a copy here
       when you want to come back to it, or try something without losing it.</p>
     <button id="btn-save-layout" class="wide-accent">Save this one</button>
+    <button id="btn-save-copy" class="wide-accent">Save as a new copy</button>
     <div id="layouts-list"><!-- populated by main.js --></div>
     <button id="layouts-close">Close</button>
   </div>
@@ -1341,8 +1369,8 @@
 </div>
 
 <div id="visit-bar" class="panel">
-  <span>Viewing a shared layout</span>
-  <button id="visit-keep">Save a copy</button>
+  <span>Viewing a shared layout — edits here are not saved</span>
+  <button id="visit-keep">Keep it</button>
 </div>
 
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>

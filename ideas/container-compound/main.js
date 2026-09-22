@@ -655,6 +655,7 @@ function updateSelName() {
 }
 
 function select(item, opts = {}) {
+  if (typeof pendingDeselect !== "undefined") pendingDeselect = false;
   if (!opts.keepMarked) {
     for (const m of marked) if (m.ring) m.ring.visible = false;
     marked.clear();
@@ -811,19 +812,47 @@ function serialize() {
     name: layoutName,
   };
 }
+// A swallowed quota error meant the acre silently stopped being saved: the
+// model had twenty-two units, storage had sixteen, and a reload lost six with
+// nothing having been said. The named-layout writer already toasts on exactly
+// this failure; the autosave, the one nobody asks for, was the one with no
+// signal.
+let storageFailed = false;
 function save() {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(serialize())); } catch {}
+  // Round 2 stopped a link overwriting the visitor's acre on arrival. It still
+  // happened on the first edit: one arrow-key nudge flipped `visiting` and
+  // wrote over it, while the bar was still offering "Save a copy". Editing a
+  // shared layout is fine; keeping it is a decision, and the button is where
+  // that decision is made.
+  if (visiting) {
+    if (location.hash.startsWith("#d=")) {
+      history.replaceState(null, "", `#d=${encodeShare()}`);
+    }
+    return;
+  }
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(serialize()));
+    if (storageFailed) { storageFailed = false; document.body.classList.remove("storage-full"); }
+  } catch {
+    if (!storageFailed) {
+      storageFailed = true;
+      document.body.classList.add("storage-full");
+      toast("Out of browser storage — this acre is no longer being saved");
+    }
+  }
   // An edited layout that arrived by link used to leave the sender's original
   // payload in the address bar, so copying the URL re-shared the wrong thing.
   if (location.hash.startsWith("#d=")) {
     history.replaceState(null, "", `#d=${encodeShare()}`);
   }
-  if (visiting) { visiting = false; document.body.classList.remove("visiting"); }
 }
 // True while showing a layout that arrived by link and has not been adopted:
 // receiving a link used to overwrite the visitor's own saved compound on
 // arrival, with no route back.
 let visiting = false;
+// what the visitor had before a link replaced it on screen, so an edit cannot
+// quietly consume it
+let visitorAcre = null;
 // Everything arriving from a share link or from localStorage is untrusted:
 // a single malformed row used to throw out of the boot and leave a blank app
 // that reloaded blank forever. Coerce what can be coerced, drop what cannot,
@@ -1191,7 +1220,7 @@ function undo() {
   const prev = undoStack.pop();
   if (!prev) { toast("Nothing to undo"); return; }
   redoStack.push(JSON.stringify(serialize()));
-  restoreSnapshot(prev, selected && selected.id);
+  restoreSnapshot(prev, selected && selected.id, selection().map((i) => i.id));
   updateHistoryButtons();
   toast("Undone");
 }
@@ -1199,7 +1228,7 @@ function redo() {
   const next = redoStack.pop();
   if (!next) { toast("Nothing to redo"); return; }
   undoStack.push(JSON.stringify(serialize()));
-  restoreSnapshot(next, selected && selected.id);
+  restoreSnapshot(next, selected && selected.id, selection().map((i) => i.id));
   updateHistoryButtons();
   toast("Redone");
 }
@@ -1449,19 +1478,37 @@ function distributeSelection() {
 // a tablist and between radio buttons, and space presses a button — nudging a
 // unit or panning the paper out from under a focused control is not what
 // either keypress meant.
+// A control with focus owns Space, because Space presses it, and the arrows,
+// because they walk a tablist or a radio group. It does NOT own the letter M.
+// Guarding every shortcut this way meant that after clicking any button — the
+// zoom buttons, Fit, the turn — M, T, F and +/-/0 silently stopped working,
+// and the drag you believed you had armed the tape for moved a building
+// instead. Text fields still swallow everything; that is handled at the top of
+// the handler.
 const FOCUS_OWNS_KEYS = "button, a[href], input, textarea, select, [contenteditable], [role='tab'], [role='menuitem']";
 const focusOwnsKeys = () => {
   const el = document.activeElement;
   return !!(el && el !== document.body && el.closest && el.closest(FOCUS_OWNS_KEYS));
 };
 
+// Set when the walk runs off the last unit, so Tab can leave; cleared the next
+// time the sheet is entered.
+let cycleDone = false;
+
 // Tab cycles the selection while the sheet itself has focus, which is the only
 // route to a unit that does not need a pointer. Escape hands focus back out,
 // so the sheet is a stop on the tab order rather than a trap in it.
+// Returns false once the walk has passed the last unit, which is the caller's
+// cue to let Tab do what Tab does.
 function cycleSelection(dir) {
-  if (!items.length) return;
+  if (!items.length) return false;
   const order = [...items].sort((a, b) => a.z - b.z || a.x - b.x || a.id - b.id);
-  const at = selected ? order.indexOf(selected) : -1;
+  // Coming back into the sheet after the walk ran off the end starts it over,
+  // otherwise the last unit is a dead end and the sheet can never be walked
+  // again without a pointer.
+  const at = cycleDone ? -1 : (selected ? order.indexOf(selected) : -1);
+  cycleDone = false;
+  if (dir > 0 && at === order.length - 1) { cycleDone = true; return false; }
   const next = order[(at + dir + order.length * 2) % order.length];
   select(next);
   renderChrome();
@@ -1475,6 +1522,7 @@ function cycleSelection(dir) {
     sview.y += was.y - here.y;
     siteApply();
   }
+  return true;
 }
 
 addEventListener("keyup", (e) => { if (e.code === "Space") setSpaceHeld(false); });
@@ -1494,10 +1542,16 @@ addEventListener("keydown", (e) => {
     setSpaceHeld(true);
     return;
   }
-  if (e.key === "Tab" && sheet && stageFocused && items.length) {
-    e.preventDefault();
-    cycleSelection(e.shiftKey ? -1 : 1);
-    return;
+  // Tab walks the units; Shift+Tab leaves. Preventing both trapped focus on
+  // the sheet, and the only exit — Escape — also cleared the selection, which
+  // is the thing the tool strip exists for. So the strip, the align row, the
+  // details card and the position fields were unreachable without a pointer.
+  if (e.key === "Tab" && sheet && stageFocused && items.length && !e.shiftKey) {
+    // Tab walks the units and then leaves, so the sheet is a stop on the tab
+    // order rather than a trap in it. Preventing Tab unconditionally meant the
+    // tool strip, the align row, the details card and the position fields had
+    // no keyboard route at all.
+    if (cycleSelection(1)) { e.preventDefault(); return; }
   }
 
   if (mod && (e.key === "y" || (e.shiftKey && (e.key === "z" || e.key === "Z")))) {
@@ -1512,16 +1566,16 @@ addEventListener("keydown", (e) => {
   else if ((e.key === "Delete" || e.key === "Backspace") && selected && sheet) {
     e.preventDefault();
     deleteSelected();
-  } else if (sheet && !focusOwnsKeys() && (e.key === "t" || e.key === "T")) {
+  } else if (sheet && (e.key === "t" || e.key === "T")) {
     setSheetRot(!sheetRot);
-  } else if (sheet && !focusOwnsKeys() && (e.key === "m" || e.key === "M")) {
+  } else if (sheet && (e.key === "m" || e.key === "M")) {
     setMeasuring(!measuring);
     if (measuring) { tapeKept = null; toast("Measure — drag between two points; Shift keeps it square"); }
-  } else if (sheet && !focusOwnsKeys() && (e.key === "+" || e.key === "=")) {
+  } else if (sheet && (e.key === "+" || e.key === "=")) {
     e.preventDefault(); zoomBy(1.25);
-  } else if (sheet && !focusOwnsKeys() && (e.key === "-" || e.key === "_")) {
+  } else if (sheet && (e.key === "-" || e.key === "_")) {
     e.preventDefault(); zoomBy(1 / 1.25);
-  } else if (sheet && !focusOwnsKeys() && (e.key === "0" || e.key === "f" || e.key === "F")) {
+  } else if (sheet && (e.key === "0" || e.key === "f" || e.key === "F")) {
     e.preventDefault(); siteFitView();
   } else if (e.key.startsWith("Arrow") && selected && sheet && !focusOwnsKeys()) {
     e.preventDefault();
@@ -1550,18 +1604,59 @@ addEventListener("keydown", (e) => {
       return;
     }
     if (placing) { setPlacing(false); return; }
-    if (stageFocused && selected) { sitePanelEl.blur(); }
+    // Escape from the sheet hands focus on so Tab can reach the tool strip;
+    // it does not throw away the selection those controls act on. A second
+    // Escape, from outside the sheet, clears it.
+    if (stageFocused && selected) {
+      sitePanelEl.blur();
+      const strip = document.getElementById("toolstrip");
+      const stripOn = strip && getComputedStyle(strip).display !== "none";
+      const first = stripOn ? strip.querySelector("button")
+                            : document.getElementById("btn-menu");
+      if (first) first.focus();
+      return;
+    }
     closeAdd();
     select(null);
   }
 });
 
-function toast(msg) {
+// One element, one timer, and until now anything that arrived while a message
+// was showing simply replaced it: the first-run hint lived 200 ms before the
+// turn offer overwrote it, so on a portrait phone the only teaching a new user
+// got was about sheet rotation. Messages queue instead.
+const toastQueue = [];
+let toastBusy = false;
+function toast(msg, opts = {}) {
   const el = document.getElementById("toast");
-  el.textContent = msg;
+  if (!el) return;
+  // A reaction to something the user just did replaces whatever is showing —
+  // waiting two seconds to be told a move was rejected is worse than useless.
+  // Only unprompted teaching queues.
+  if (!opts.queue) {
+    toastQueue.length = 0;
+    toastBusy = false;
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => { el.classList.remove("show"); pumpToast(); }, 2200);
+    return;
+  }
+  toastQueue.push(msg);
+  if (!toastBusy) pumpToast();
+}
+function pumpToast() {
+  const el = document.getElementById("toast");
+  const next = toastQueue.shift();
+  if (!el || next === undefined) { toastBusy = false; return; }
+  toastBusy = true;
+  el.textContent = next;
   el.classList.add("show");
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => el.classList.remove("show"), 2200);
+  toast._t = setTimeout(() => {
+    el.classList.remove("show");
+    setTimeout(pumpToast, 260);
+  }, 2600);
 }
 
 // ---------------------------------------------------- compliance checks
@@ -3148,6 +3243,9 @@ const SLOP = (e) => (e.pointerType === "touch" ? 10 : 3);
 // way" instead rotated or deleted something.
 // a shift-sweep over empty paper, in world feet
 let marquee = null;
+// armed between the first and second empty tap that would drop a whole set
+let pendingDeselect = false;
+let pendingDeselectTimer = 0;
 
 // ---- the measuring tape ---------------------------------------------------
 //
@@ -3179,7 +3277,10 @@ function setSheetRot(r, opts = {}) {
 
 function setMeasuring(on) {
   measuring = !!on;
-  if (!measuring) tape = null;
+  // Disarming cleared the in-flight drag but left the completed reading on the
+  // drawing, still captioned "drag again to re-measure" — and the next drag
+  // moved a building.
+  if (!measuring) { tape = null; tapeKept = null; }
   document.body.classList.toggle("measuring", measuring);
   const b = document.getElementById("btn-measure");
   if (b) {
@@ -3545,8 +3646,10 @@ sitePanelEl.addEventListener("pointerup", (e) => {
     save();
     updateStats();
     // the unit you just moved is the one you are working on
-    if (d.kind === "unit") select(d.primary);
-    else if (selected) select(selected); // refresh separation/plumbing hints
+    // keepMarked: a drag of a set moved all of it, so dropping it must not
+    // collapse the selection to whichever unit was under the finger
+    if (d.kind === "unit") select(d.primary, { keepMarked: true });
+    else if (selected) select(selected, { keepMarked: true });
     renderSitePlan();
     return;
   }
@@ -3554,7 +3657,20 @@ sitePanelEl.addEventListener("pointerup", (e) => {
   if (!d) { // a press on empty paper clears the selection — but the tail of a
     if (wasPinch) return; // pinch is not a press, and must not deselect
     const p = clientToWorld(e.clientX, e.clientY);
-    if (!unitAtWorld(p)) { select(null); renderChrome(); } // clears the set too
+    if (!unitAtWorld(p)) {
+      // A set costs several deliberate taps to build and a missed one used to
+      // wipe it with nothing on the undo stack. Ask once.
+      if (selection().length > 1 && !pendingDeselect) {
+        toast(`Tap empty ground again to drop all ${selection().length}`);
+        pendingDeselect = true;
+        clearTimeout(pendingDeselectTimer);
+        pendingDeselectTimer = setTimeout(() => { pendingDeselect = false; }, 2600);
+        return;
+      }
+      pendingDeselect = false;
+      select(null);
+      renderChrome();
+    }
     return;
   }
 
@@ -3803,7 +3919,8 @@ toolMove.addEventListener("click", () => {
 function placeSelectedAt(x, z) {
   if (!selected) return;
   const anchor = selected;
-  const members = clusterOf(anchor);
+  // the whole set, not just the anchor's cluster — the chip says "2 units"
+  const members = selection().length > 1 ? selectionMembers() : clusterOf(anchor);
   const moving = new Set(members);
   const offs = members.map((m) => ({ m, dx: m.x - anchor.x, dz: m.z - anchor.z }));
   const before = JSON.stringify(serialize());
@@ -3900,6 +4017,11 @@ function commitName() {
   nameInput.value = v;
   if (v === layoutName) return;
   pushUndo();
+  // A rename is how you say "this is a different scheme now", so the next save
+  // must not overwrite the row you opened. Before this, Save "Plan A" -> edit
+  // -> rename "Plan B" -> Save renamed Plan A out of existence, under a dialog
+  // whose own lede promises "try something without losing it".
+  currentLayoutId = null;
   layoutName = v;
   save();
   // the name prints in the title block, so the sheet is now out of date
@@ -3915,7 +4037,19 @@ nameInput.addEventListener("keydown", (e) => {
 // than leaving two rows with the same name.
 let currentLayoutId = null;
 
+// The single button did two different things depending on hidden state. Now
+// it says which, and there is always a way to branch.
+function updateSaveButtons() {
+  const open = currentLayoutId && readLayouts().some((r) => r.id === currentLayoutId);
+  const up = document.getElementById("btn-save-layout");
+  const copy = document.getElementById("btn-save-copy");
+  if (!up || !copy) return;
+  up.textContent = open ? `Update “${layoutName}”` : "Save this one";
+  copy.style.display = open ? "block" : "none";
+}
+
 function renderLayouts() {
+  updateSaveButtons();
   const rows = readLayouts();
   const list = document.getElementById("layouts-list");
   if (!rows.length) {
@@ -3942,10 +4076,11 @@ function renderLayouts() {
     b.addEventListener("click", () => deleteLayout(b.dataset.del));
 }
 
-function saveLayout() {
+function saveLayout(opts = {}) {
   const rows = readLayouts();
   const data = serialize();
-  const at = currentLayoutId ? rows.findIndex((r) => r.id === currentLayoutId) : -1;
+  const at = opts.asNew || !currentLayoutId
+    ? -1 : rows.findIndex((r) => r.id === currentLayoutId);
   if (at >= 0) {
     rows[at] = { ...rows[at], name: layoutName, data, updated: Date.now() };
     toast(`Updated "${layoutName}"`);
@@ -3959,6 +4094,8 @@ function saveLayout() {
   renderLayouts();
 }
 
+document.getElementById("btn-save-copy").addEventListener("click", () => saveLayout({ asNew: true }));
+
 function openLayout(id) {
   const row = readLayouts().find((r) => r.id === id);
   if (!row) return;
@@ -3966,7 +4103,10 @@ function openLayout(id) {
   // a saved layout replaces the working acre, which is itself saved, so the
   // only thing at risk is unsaved work in the acre you are leaving
   history.replaceState(null, "", location.pathname);
-  loadFrom(row.data, { refit: true });
+  // drop: ids restart at 1 in payload order, so restoring "the selection" by id
+  // across two unrelated layouts hands you whatever sits at the same slot
+  // index — ringed, described in the card, with the bin armed on it.
+  loadFrom(row.data, { refit: true, drop: true });
   undoStack.length = 0;
   redoStack.length = 0;
   updateHistoryButtons();
@@ -4014,6 +4154,8 @@ function hashLayout() {
 function showShared(data) {
   visiting = true;
   document.body.classList.add("visiting");
+  visitorAcre = null;
+  try { visitorAcre = localStorage.getItem(LS_KEY); } catch {}
   loadFrom(data, { noSave: true, refit: true });
 }
 
@@ -4033,17 +4175,28 @@ function init() {
   if (hashData) showShared(hashData);
   else loadFrom(seeded ? stored : EXAMPLE, { refit: true });
 
-  // Offer the turn once, where it is worth taking: a portrait window whose
-  // fit is being held up by the floor rather than by the drawing. Offering,
-  // not doing — which way the sheet faces is the reader's call.
-  if (savedRot == null && innerHeight > innerWidth * 1.2 && items.length) {
+  // Offer the turn once, where it is worth taking. The old test compared the
+  // two ideal fits and wanted a 1.6x gain, which fired on a 390 phone (where
+  // the gain is cosmetic) and not on a 360 one (where turning is the only way
+  // to get the whole compound on screen at all). What matters is whether the
+  // upright fit is being clamped by the touch floor — i.e. whether the drawing
+  // is being clipped — and whether turning stops that.
+  let offered = null;
+  try { offered = localStorage.getItem(LS_KEY + ":turnoffer"); } catch {}
+  if (savedRot == null && !offered && innerHeight > innerWidth * 1.2 && items.length) {
     const vp = sheetViewport();
     const b = siteFitBox;
     if (b) {
       const up = Math.min(vp.w / (b.x1 - b.x0), vp.h / (b.y1 - b.y0));
       const turned = Math.min(vp.w / (b.y1 - b.y0), vp.h / (b.x1 - b.x0));
-      if (turned > up * 1.6) {
-        setTimeout(() => toast("Turn the sheet for a bigger drawing — the ⟳ button, or T"), 900);
+      const clipped = up < MIN_FIT_K;
+      if ((clipped && turned >= up * 1.1) || turned > up * 1.4) {
+        // :rot is only written when you actually turn, so the offer used to
+        // repeat on every load until you took it.
+        try { localStorage.setItem(LS_KEY + ":turnoffer", "1"); } catch {}
+        setTimeout(() => toast(
+          "This drawing runs off the screen — turn the sheet (⟳, or T) to fit it",
+          { queue: true }), 900);
       }
     }
   }
@@ -4069,8 +4222,11 @@ addEventListener("hashchange", () => {
 });
 
 document.getElementById("visit-keep").addEventListener("click", () => {
+  visiting = false;
+  document.body.classList.remove("visiting");
+  visitorAcre = null;
   save();
-  toast("Saved to this browser");
+  toast("Saved to this browser — your previous acre has been replaced");
 });
 
 let resizeTimer = null;
@@ -4099,7 +4255,7 @@ addEventListener("resize", () => {
 // drawn on a plan already look draggable; pinch and the add button do not.
 setTimeout(() => toast(FINE_POINTER
   ? "Drag to move · scroll to zoom · + to add"
-  : "Drag to move · pinch to zoom · + to add"), 700);
+  : "Drag to move · pinch to zoom · + to add", { queue: true }), 700);
 
 const clock = new THREE.Clock();
 const needle = document.getElementById("needle");
