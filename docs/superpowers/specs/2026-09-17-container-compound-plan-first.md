@@ -233,18 +233,86 @@ and units are pluralised; labels too wide for their unit set along it rather
 than across it; and the copy branches on pointer type instead of telling a
 desktop user to pinch.
 
-### Known and deferred
+### Working through the deferred list
 
-Worth recording rather than discovering again: the sheet still does not rotate
-for portrait; there is no numeric coordinate entry, no multi-select and no
-snap-suppress modifier; the type scale is still ad hoc and the unit tints
-composite to near-identical off-whites; the code redline and the utility trench
-are within half a luminance point in greyscale; the title block remains
-export-only, so the colour legend is not readable on screen; the 3D view's roof
-pops rather than fades, the dollhouse cutaway drops every unit shadow, and the
-three sun states do not change the sky; there is still one anonymous save slot;
-and `main.js` is one ~2600-line module whose render path is steered by several
-coupled flags.
+Everything recorded as deferred above has since been done, in dependency order:
+code structure first, then domain correctness, the drawing, the visual system,
+the 3D view, input, product, and finally the module split and tests.
+
+**The drawing and its visual system.** Door swings show the leaf and the arc on
+the hinge the unit actually uses; the bathroom mini turns its WC to the end wall
+so the fixture clearances are real; `PLAN_LABELS` is matched to each furniture
+array, and every unit's two arrays are the same length. A six-step type scale
+and two radius tokens replace the scattered rem literals, the tool-strip glyphs
+are drawn rather than borrowed from a font, and the warning mark is a path for
+the same reason. Footprint tints go to 0.40 and the add-drawer swatch is blended
+to that same wash over paper, so a chip and its footprint read as one colour.
+The title block was export-only, so an on-screen cartouche now carries north, a
+scale bar that tracks the live zoom, and a Key dialog for the whole legend.
+
+**The 3D view.** The roof used to wink out at peek 0.98, 6.9 ft up and fully
+opaque; its material is per unit and transparent now, so it fades over the lift
+and settles at a ghost. An invisible cap at the roof's rest position casts
+always, so a lifted lid no longer un-grounds the building — and with the
+footprint held down the walls stay solid, which is what a dollhouse is. Each sun
+state carries its own sky, fog range and hemisphere pair. The ground runs past
+where the fog closes, so the acre sits in a landscape rather than on a tray.
+Trees vary by a hash of their own position. Deck planks are 2 ft in both
+drawings, and each roof carries its unit's tint.
+
+**Input.** Space pans instead of falling through to the focused button; right
+and middle drag the paper and the context menu works; Escape puts a drag back;
+Alt is read live. Clicking a selected unit keeps it selected and a double-click
+opens the floor plan. `+ - 0 f m t` and Ctrl/Cmd+D, all standing aside when a
+control has focus, and the sheet is focusable so Tab walks the units. Position
+fields in the details card. The zoom step is 1.25x about the drawing rather
+than 1.6x about the window, wheel deltas are converted out of Firefox's line
+mode, and the wheel and fit share one floor. Chrome that hugs a corner gives up
+that edge rather than a full-width band.
+
+**More than one unit at a time.** Shift, the platform accelerator, a
+shift-sweep, or a Select more button on a phone. `selected` stays the anchor —
+the unit the card describes and the one align measures to. Align on six edges
+and centrelines, plus distribute. A rejected edit brings the whole set back by
+id instead of throwing it away.
+
+**A tape and a split.** Measure is a mode: drag between two points, Shift locks
+an axis, the reading stays until the next one, and it never reaches the export.
+At 1200px a third tab puts the sheet and the model side by side; split is a
+tab rather than a mode, so every guard that asks "is this the plan?" keeps its
+answer and only the geometry changes.
+
+**Product.** One summary surface instead of a popover and a modal quoting each
+other, with the seven site and utility items the tool does not model priced as
+an allowance rather than called "extra". One name per thing — Utility, Office,
+Workshop, Bathroom mini, door end, shutter. The download covers the whole acre
+or just the compound, remembers which, and carries the layout name and date.
+The layout has an editable name, and up to thirty saved copies sit beside the
+working acre. Switching tabs keeps the details card, both views move to the
+selection, and the 3D card offers Edit on the plan.
+
+**The turn, and words.** The sheet takes a quarter turn — on a tall phone a
+26% bigger drawing that fits inside the window instead of running past it — and
+the north arrow turns with it. Beside the drawing is the same drawing as a
+list: every unit with its size, position and door end, plus the scenery, the
+setback, which way north points and the findings.
+
+**Underneath.** `loadFrom` reconciles rather than rebuilding every
+`THREE.Group`, taking forty undos from 187 ms to 66 ms. Six places popped the
+undo stack; a drag now pushes its entry when the drop is accepted, and one
+named function does what remains. `geometry.js` and `rules.js` hold the
+footprint geometry and the code checks as pure functions, with 41 assertions
+under `node --test` in a dotfile-prefixed `.tests/` that the build keeps out of
+Pages.
+
+### Still open
+
+The sheet emitters remain in `main.js` rather than moving to a `sheet.js`:
+they are steered by a handful of coupled module flags (`exportScale`,
+`detailOn`, `AK`, `exportBox`), and threading those through a context object
+would be a large mechanical change with no test coverage of the visual output
+to catch a slip. Splitting them is worth doing behind a rendering test, not
+before one.
 
 ## Assumptions
 
