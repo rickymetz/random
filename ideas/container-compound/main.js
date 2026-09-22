@@ -171,9 +171,9 @@ const esc = (v) => String(v).replace(/[&<>"]/g, (c) =>
 // the drawer swatch shows the same 40% wash over paper the sheet draws, so a
 // chip and its footprint are recognisably the same colour
 const SHEET_PAPER = [0xfb, 0xfa, 0xf6];
-const chipTint = (hex) => {
+const chipTint = (hex, a = 0.4) => {
   const n = typeof hex === "number" ? hex : parseInt(String(hex).replace("#", ""), 16);
-  const mix = (c, i) => Math.round(c * 0.4 + SHEET_PAPER[i] * 0.6);
+  const mix = (c, i) => Math.round(c * a + SHEET_PAPER[i] * (1 - a));
   return `rgb(${mix((n >> 16) & 255, 0)}, ${mix((n >> 8) & 255, 1)}, ${mix(n & 255, 2)})`;
 };
 const nf = (v, fallback = 0) => (Number.isFinite(v) ? +v.toFixed(3) : fallback);
@@ -1139,7 +1139,7 @@ for (const group of ADD_GROUPS) {
       ? `8′ × 8′ platform · 64 ft² · ≈$${(t.cost / 1000).toFixed(1)}k`
       : `${t.len}′ ${t.len === 10 ? "mini " : ""}high cube · ${t.len * t.wid} ft² · ≈$${Math.round(t.cost / 1000)}k`;
     const badge = BADGES[t.variant] ? `<span class="badge">${BADGES[t.variant]}</span>` : "";
-    row.innerHTML = `<span class="add-chip${t.len === 10 || t.deck ? " mini" : ""}" style="background:${chipTint(t.color)}"></span>
+    row.innerHTML = `<span class="add-chip${t.len === 10 || t.deck ? " mini" : ""}" style="background:${chipTint(t.planColor ?? t.color, 0.85)}"></span>
       <span>
         <div class="add-name">${t.name}${badge}</div>
         <div class="add-meta">${meta}</div>
@@ -2245,7 +2245,7 @@ function unitPlanGroup(it, detail) {
   } else {
     // wall poché: dark outer line, white interior, faint tint wash
     g += `<rect x="${-hw}" y="${-hd}" width="${hw * 2}" height="${hd * 2}" fill="#ffffff" stroke="#23231f" stroke-width="2.6"/>`;
-    g += `<rect x="${-hw + 3}" y="${-hd + 3}" width="${hw * 2 - 6}" height="${hd * 2 - 6}" fill="#${t.color.toString(16).padStart(6, "0")}" fill-opacity="0.40" stroke="#55524c" stroke-width="${ss(0.8)}"/>`;
+    g += `<rect x="${-hw + 3}" y="${-hd + 3}" width="${hw * 2 - 6}" height="${hd * 2 - 6}" fill="#${(t.planColor ?? t.color).toString(16).padStart(6, "0")}" fill-opacity="0.85" stroke="#55524c" stroke-width="${ss(0.8)}"/>`;
 
     // the finished interior after spray foam, only worth drawing up close
     if (detail) {
@@ -2442,12 +2442,19 @@ function unitLabel(it) {
   const fitsAlong = !fitsInside && lhd > lhw && nameW < alongW;
   const name = (y) => `<text x="0" y="${y}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" letter-spacing="${ss(1.1)}" fill="#23231f" font-family="${FONT}">${esc(label.toUpperCase())}</text>`;
   const area = (y) => `<text x="0" y="${y}" text-anchor="middle" font-size="${ss(9)}" fill="#6b6861" font-family="${FONT}">${t.len * t.wid} SF</text>`;
-  if (fitsAlong) return `<g transform="rotate(-90)">${name(-ss(2))}${area(ss(10))}</g>`;
+  // The name and area sat straight on top of the furniture, with no knockout,
+  // while every dimension string got one — so on most units the area read as
+  // a strike through the name. One plate behind the pair.
+  const pairPlate = (w) => plate(0, ss(3), w, ss(24));
+  if (fitsAlong) {
+    return `<g transform="rotate(-90)">${pairPlate(Math.max(nameW, ss(34)) + ss(10))}`
+      + `${name(-ss(2))}${area(ss(10))}</g>`;
+  }
   if (detailOn || !fitsInside) {
     return plate(0, -lhd * S - ss(13), (label.length + 7) * ss(7), ss(15))
       + `<text x="0" y="${-lhd * S - ss(9)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(1.1)}" fill="#23231f" font-family="${FONT}">${esc(label.toUpperCase())} · ${t.len * t.wid} SF</text>`;
   }
-  return name(-ss(2)) + area(ss(10));
+  return pairPlate(Math.max(nameW, ss(34)) + ss(10)) + name(-ss(2)) + area(ss(10));
 }
 
 // a paper-coloured knockout, so annotation stops overprinting the drawing
