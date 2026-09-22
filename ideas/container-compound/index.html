@@ -201,7 +201,7 @@
     border-radius: var(--r-pill);
     margin: 0 auto 0.6rem;
   }
-  #add-sheet .head { display: flex; align-items: baseline; gap: 0.6rem; }
+  #add-sheet .head { display: flex; align-items: center; gap: 0.6rem; }
   #add-sheet h3 { font-size: var(--t-md); flex: 1; }
   #add-sheet .x {
     border: 0; background: transparent;
@@ -737,7 +737,13 @@
   #edge-tools button:not(:disabled):active,
   #view-tools button:active { border-color: var(--accent); color: var(--accent); }
   #compass { position: relative; }
-  #needle { display: inline-block; line-height: 1; font-size: var(--t-md); }
+  /* The needle is rotated by JS about its box centre, and a glyph's ink is
+     not at its box centre — an arrow character in a box as wide as its advance
+     and as tall as its line wobbled off-axis through the turn. A square box
+     with the arrow drawn centred in it spins true, and matches the two icons
+     above it instead of borrowing the system font's arrow. */
+  #needle { display: block; width: 1.15rem; height: 1.15rem; }
+  #needle svg { display: block; width: 100%; height: 100%; }
   #compass .n {
     position: absolute;
     bottom: 0.18rem;
@@ -813,7 +819,9 @@
   #toolstrip button svg,
   #view-tools button svg,
   #site-actions button svg,
-  #edge-tools button svg { width: 1.15rem; height: 1.15rem; }
+  #edge-tools button svg,
+  #btn-menu svg,
+  .x svg { width: 1.15rem; height: 1.15rem; }
   #toolstrip button {
     flex: none;
     /* fixed px, not rem: at 2x system text these grew until Delete, Duplicate
@@ -853,7 +861,7 @@
     border-radius: var(--r-pill);
     margin: 0 auto 0.6rem;
   }
-  #info .head { display: flex; align-items: baseline; gap: 0.6rem; }
+  #info .head { display: flex; align-items: center; gap: 0.6rem; }
   #info h3 { font-size: var(--t-md); flex: 1; }
   #info .x {
     border: 0; background: transparent;
@@ -1007,7 +1015,25 @@
     padding: 0.25rem 0.6rem;
     font-size: var(--t-fine);
     min-height: 30px;
+    display: inline-grid;
+    place-items: center;
   }
+
+  /* Centring aligns boxes, and a text box is not the letterform: it carries
+     the font's whole ascender and descender, so a label centred against an
+     icon lands a pixel or two high. Measured across the cartouche that came to
+     3.4 px of spread over five items — the N a visible step above the arrow
+     beside it, Key a step above that again. Trimming the box down to
+     cap-height and baseline centres the letters instead of the metrics.
+     A trim needs an element of its own, which is why the Key button carries a
+     span: the anonymous text inside a button cannot be styled. Chrome and
+     Safari honour this; anywhere else it is inert and the line box centres as
+     it did before. */
+  #cart-north b,
+  #cart-scale em,
+  #cart-key .lbl,
+  #add-sheet .head h3,
+  #info .head h3 { text-box: trim-both cap alphabetic; }
 
   /* ---- mobile review fixes ---- */
 
@@ -1036,9 +1062,14 @@
     -webkit-user-select: text;
   }
 
-  .x { width: 44px !important; height: 44px !important; }
+  /* grid, not the button default: an inline-block sits its svg on a text
+     baseline, which in a 44 px box drops the glyph most of the way down. */
+  .x { width: 44px !important; height: 44px !important; display: grid; place-items: center; }
   .back { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
-  #btn-menu { width: 44px; height: 44px; }
+  /* #topbar button already sets 2.3rem, and an id plus a tag outranks an id
+     alone, so the menu button has been 36.8 px ever since — the one control in
+     the bar that never got the 44 px the rest of this block hands out. */
+  #topbar #btn-menu { width: 44px; height: 44px; }
   #tabbar button { min-height: 44px; }
   #stats-pill { min-height: 44px; }
   .pill-warn { display: inline-flex; align-items: center; gap: 0.2em; color: #8c3b2e; font-weight: 700; }
@@ -1109,8 +1140,30 @@
   }
   #key-modal h2 { font-size: var(--t-md); margin-bottom: 0.5rem; }
   #key-modal .key-list { list-style: none; padding: 0; margin: 0 0 1rem; }
-  #key-modal .key-list li { display: flex; gap: 0.6rem; align-items: baseline; margin: 0.7rem 0; font-size: var(--t-sm); line-height: 1.5; }
-  #key-modal .sw { flex: none; width: 1.6rem; height: 0.7rem; border-radius: 2px; margin-top: 0.25rem; }
+  /* Each row is a swatch and a sentence, and the sentence opens with a <b>.
+     As a flex row that <b> was a flex item of its own, so every label was
+     squeezed into its own narrow column and wrapped — "Long dash, red" broke
+     over three lines while its description started somewhere else again. The
+     row is text with a hanging indent: the swatch sits in the indent, and the
+     whole sentence flows and wraps against one left edge. */
+  #key-modal .key-list li {
+    margin: 0.7rem 0;
+    font-size: var(--t-sm);
+    line-height: 1.5;
+    padding-left: 2.2rem;
+    text-indent: -2.2rem;
+  }
+  /* middle, not baseline: it centres the chip on the middle of the x-height,
+     which is where the eye puts it, and it does the same for the rule
+     swatches, whose box is zero-high and whose ink is the bottom border. */
+  #key-modal .sw {
+    display: inline-block;
+    width: 1.6rem; height: 0.7rem;
+    margin-right: 0.6rem;
+    border-radius: 2px;
+    vertical-align: middle;
+    text-indent: 0;
+  }
   #key-modal .sw.dash { border-bottom: 2px dashed; height: 0; }
   #key-modal .sw.dash.long { border-bottom-width: 3px; }
   #key-modal .sw.hatch { background: repeating-linear-gradient(45deg, #c0574a 0 2px, transparent 2px 5px); }
@@ -1199,7 +1252,7 @@
 <header id="topbar" class="panel">
   <a class="back" href="../../" aria-label="Back to all ideas">←</a>
   <h1><input id="layout-name" value="Container Compound" aria-label="Layout name" spellcheck="false" maxlength="60"></h1>
-  <button id="btn-menu" aria-label="Menu" title="Menu">⋯</button>
+  <button id="btn-menu" aria-label="Menu" title="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
 </header>
 
 <div id="menu" class="panel">
@@ -1279,9 +1332,9 @@
 
 <div id="view-tools">
   <button id="btn-doll" aria-label="Dollhouse view: lift every roof" aria-pressed="false" title="Dollhouse: roofs on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 11v9h14v-9"/></svg></button>
-  <button id="btn-sun" aria-label="Cycle sun" title="Midday">☀</button>
-  <div id="compass" class="readout" aria-hidden="true"><span id="needle">↑</span><span class="n">N</span></div>
-  <button id="btn-fit" aria-label="Recenter view">⌖</button>
+  <button id="btn-sun" aria-label="Cycle sun" title="Midday"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.4v2.2M12 19.4v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.4 12h2.2M19.4 12h2.2M5.8 18.2l-1.6 1.6M19.8 4.2l-1.6 1.6"/></svg></button>
+  <div id="compass" class="readout" aria-hidden="true"><span id="needle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1.9 15.7 10.3 12 8.4 8.3 10.3Z" fill="currentColor" stroke="none"/><path d="M12 8.9v11.8"/></svg></span><span class="n">N</span></div>
+  <button id="btn-fit" aria-label="Recenter view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 1.6v3.2M12 19.2v3.2M1.6 12h3.2M19.2 12h3.2"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg></button>
 </div>
 
 <div id="site-actions">
@@ -1293,7 +1346,7 @@
   </button>
   <button id="site-zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
   <button id="site-zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
-  <button id="site-fit" aria-label="Fit the compound on screen" title="Fit the compound on screen">⌖</button>
+  <button id="site-fit" aria-label="Fit the compound on screen" title="Fit the compound on screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 1.6v3.2M12 19.2v3.2M1.6 12h3.2M19.2 12h3.2"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg></button>
 </div>
 
 <button id="stats-pill" class="panel">0 units</button>
@@ -1305,7 +1358,7 @@
   <div class="handle"></div>
   <div class="head">
     <h3>Add a unit</h3>
-    <button id="add-close" class="x" aria-label="Close">✕</button>
+    <button id="add-close" class="x" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
   <div id="add-list"><!-- populated by main.js --></div>
 </div>
@@ -1314,7 +1367,7 @@
   <div class="handle"></div>
   <div class="head">
     <h3 id="info-name"></h3>
-    <button id="btn-close" class="x" aria-label="Close">✕</button>
+    <button id="btn-close" class="x" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
   <div class="sub" id="info-sub"></div>
   <p id="info-desc"></p>
@@ -1367,12 +1420,12 @@
   <div class="box">
     <h2>What the drawing is telling you</h2>
     <ul class="key-list">
-      <li><span class="sw" style="background:#4a90c2"></span> <b>Blue</b> — a glazed aperture: the container's factory door end, where the glass and the entry door go. Nothing is cut into a wall.</li>
-      <li><span class="sw dash" style="border-color:#5f7a8a"></span> <b>Even dash, blue-grey</b> — a utility run from a wet unit to the core, and the 30 ft ring around the core itself.</li>
-      <li><span class="sw dash long" style="border-color:#c0574a"></span> <b>Long dash, red</b> — a code finding. Every one is also written out under Code findings in the summary.</li>
-      <li><span class="sw hatch"></span> <b>Red hatching</b> — the gap between two units that sit 1–9 ft apart, which needs a fire-resistance-rated wall on each facing side (VRC R302.1).</li>
-      <li><span class="sw dashdot"></span> <b>Dash-dot</b> — the property line. The lighter dashed square inside it is the setback envelope.</li>
-      <li><span class="sw" style="background:#6f8a5c;opacity:.35"></span> <b>Green block</b> — the septic drainfield. Keep units, the drive and the well clear of it.</li>
+      <li><span class="sw" style="background:#4a90c2"></span><b>Blue</b> — a glazed aperture: the container's factory door end, where the glass and the entry door go. Nothing is cut into a wall.</li>
+      <li><span class="sw dash" style="border-color:#5f7a8a"></span><b>Even dash, blue-grey</b> — a utility run from a wet unit to the core, and the 30 ft ring around the core itself.</li>
+      <li><span class="sw dash long" style="border-color:#c0574a"></span><b>Long dash, red</b> — a code finding. Every one is also written out under Code findings in the summary.</li>
+      <li><span class="sw hatch"></span><b>Red hatching</b> — the gap between two units that sit 1–9 ft apart, which needs a fire-resistance-rated wall on each facing side (VRC R302.1).</li>
+      <li><span class="sw dashdot"></span><b>Dash-dot</b> — the property line. The lighter dashed square inside it is the setback envelope.</li>
+      <li><span class="sw" style="background:#6f8a5c;opacity:.35"></span><b>Green block</b> — the septic drainfield. Keep units, the drive and the well clear of it.</li>
     </ul>
     <button id="key-close">Close</button>
   </div>
@@ -1414,11 +1467,11 @@
      a fixed cartouche of their own. -->
 <div id="cartouche" class="panel">
   <span id="cart-north" aria-hidden="true">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.6 15.7 11 12 9.1 8.3 11Z" fill="currentColor" stroke="none"/><path d="M12 9.6v11.8"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1.9 15.7 10.3 12 8.4 8.3 10.3Z" fill="currentColor" stroke="none"/><path d="M12 8.9v11.8"/></svg>
     <b>N</b>
   </span>
   <span id="cart-scale"><i></i><em>20 ft</em></span>
-  <button id="cart-key" title="What the colours and dashes mean">Key</button>
+  <button id="cart-key" title="What the colours and dashes mean"><span class="lbl">Key</span></button>
 </div>
 
 <div id="visit-bar" class="panel">
