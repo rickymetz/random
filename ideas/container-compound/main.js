@@ -861,15 +861,42 @@ function loadFrom(raw, opts = {}) {
   // finish against them produced a phantom selection whose Delete deleted
   // nothing and whose drop popped an unrelated undo entry.
   abortGestures();
-  for (const it of [...items]) removeItem(it, { silent: true });
-  items = [];
+  const keepId = selected && selected.id;
+  const keepSet = selection().map((it) => it.id);
   select(null);
+
+  // This runs on every undo, every redo and every rejected edit. Tearing down
+  // and rebuilding every THREE.Group — a hundred-odd meshes and materials per
+  // unit — to move one box a foot was the single most expensive thing the
+  // editor did. Reconcile instead: an item whose slot still holds the same
+  // type keeps its group and is simply moved.
+  //
   // ids restart with each load so a snapshot round-trips to the same ids,
-  // which is what lets a selection survive an undo
+  // which is what lets a selection survive an undo.
+  const old = items;
+  items = [];
   nextId = 1;
+  let reused = 0;
   for (const [typeId, x, z, rot] of data.items) {
-    addItem(typeId, x, z, rot, { silent: true });
+    const at = old.findIndex((o) => o && o.typeId === typeId);
+    if (at >= 0) {
+      const it = old[at];
+      old[at] = null;
+      it.id = nextId++;
+      it.x = x; it.z = z; it.rot = rot;
+      it.ring.visible = false;
+      if (it.sepRing) it.sepRing.visible = false;
+      applyTransform(it);
+      items.push(it);
+      reused++;
+    } else {
+      addItem(typeId, x, z, rot, { silent: true });
+    }
   }
+  for (const it of old) if (it) removeItem(it, { silent: true });
+  // removeItem filters `items`, and the survivors are in it — but it also
+  // rebuilds the array, so re-sort it back into payload order
+  items.sort((a, b) => a.id - b.id);
   // v1 payloads carry no scenery — every share link already in the wild, and
   // every browser still holding a v1 layout, falls back to the default acre.
   const treeRows = data.trees || DEFAULT_TREES;
@@ -886,6 +913,18 @@ function loadFrom(raw, opts = {}) {
   const nameEl = document.getElementById("layout-name");
   if (nameEl && document.activeElement !== nameEl) nameEl.value = layoutName;
   rebuildScenery();
+  // Selection is restored here rather than by each caller, because the
+  // reconciliation above is what decides which objects survived.
+  if (!opts.drop) {
+    for (const id of keepSet) {
+      const it = items.find((i) => i.id === id);
+      if (it && id !== keepId) { marked.add(it); it.ring.visible = true; }
+    }
+    const again = keepId != null && items.find((i) => i.id === keepId);
+    if (again) select(again, { keepMarked: true });
+    updateSelName();
+    document.body.classList.toggle("multi-selection", selection().length > 1);
+  }
   if (!opts.noSave) save();
   updateStats();
   // a whole-layout change has no relationship to the old viewport
@@ -1153,6 +1192,17 @@ function pushUndo(snapshot = JSON.stringify(serialize())) {
   redoStack.length = 0; // a new action invalidates the redo branch
   updateHistoryButtons();
 }
+// Several paths could not know whether an edit would be accepted until after
+// it had been made, so they pushed an undo entry and popped it again on a
+// rejection. Popping the stack in six places is how an undo history goes
+// wrong; this is the one place that does it, and it refuses to pop an entry
+// that is not the one the caller put there.
+function dropUndo(snapshot) {
+  if (snapshot !== undefined && undoStack[undoStack.length - 1] !== snapshot) return;
+  undoStack.pop();
+  updateHistoryButtons();
+}
+
 function undo() {
   const prev = undoStack.pop();
   if (!prev) { toast("Nothing to undo"); return; }
@@ -1254,10 +1304,11 @@ document.getElementById("btn-distribute").addEventListener("click", () => {
 });
 function deleteSelected() {
   if (!selected || mode !== "plan") return;
-  // A drag still holding this unit would re-select it on release and put its
-  // uncommitted mid-drag position on the stack as a second entry.
+  // A drag still holding this unit would re-select it on release. Its
+  // pre-drag snapshot is the right thing to undo back to, since the mid-drag
+  // position was never committed.
   const snapshot = planDrag && planDrag.moved ? planDrag.snapshot : undefined;
-  if (planDrag) { abortGestures(); if (snapshot) undoStack.pop(); }
+  if (planDrag) abortGestures();
   pushUndo(snapshot);
   const picked = selection();
   for (const it of picked) removeItem(it, { silent: true });
@@ -3449,7 +3500,9 @@ sitePanelEl.addEventListener("pointermove", (e) => {
       if (travel > planDrag.slop) clearTimeout(breakoutTimer); // committed to a drag
       if (travel <= planDrag.slop) return;
       planDrag.moved = true;
-      pushUndo(planDrag.snapshot); // one undo step per drag
+      // The entry goes on the stack when the drop is accepted, not here: a
+      // drag that is rejected, cancelled or lands back where it started then
+      // leaves the history untouched instead of having to unpick itself.
       document.body.classList.add("plan-dragging");
     }
     const p = clientToWorld(cur.x, cur.y);
@@ -3561,11 +3614,7 @@ function cancelPlanDrag() {
   const d = planDrag;
   const keep = selected && selected.id;
   abortGestures();
-  if (d && d.moved) {
-    restoreSnapshot(d.snapshot, keep);
-    undoStack.pop();
-    updateHistoryButtons();
-  }
+  if (d && d.moved) restoreSnapshot(d.snapshot, keep);
 }
 
 sitePanelEl.addEventListener("pointerup", (e) => {
@@ -3623,8 +3672,6 @@ sitePanelEl.addEventListener("pointerup", (e) => {
     snapGuides = [];
     // a drag that travelled but changed nothing is a tap, not an edit
     if (JSON.stringify(serialize()) === d.snapshot) {
-      undoStack.pop();
-      updateHistoryButtons();
       if (d.kind === "unit") { select(d.primary); renderChrome(); }
       return;
     }
@@ -3634,12 +3681,11 @@ sitePanelEl.addEventListener("pointerup", (e) => {
       const why = blockedPairs().length > d.preBlocked
         ? "That blocks a door end — butt against solid sides only"
         : "Units cannot overlap — butt them edge to edge instead";
-      undoStack.pop();
-      updateHistoryButtons();
       restoreSnapshot(d.snapshot, d.primary && d.primary.id);
       toast(why);
       return;
     }
+    pushUndo(d.snapshot); // accepted: one entry for the whole drag
     if (d.kind !== "unit") rebuildScenery();
     save();
     updateStats();
@@ -3762,8 +3808,9 @@ addEventListener("pointerup", () => {
   ghost = null;
   snapGuides = [];
   if (!g) { renderChrome(); return; }
-  pushUndo();
+  const before = JSON.stringify(serialize());
   if (pa.type.id.startsWith("__")) {
+    pushUndo(before);
     placeSiteObject(pa.type.id, clampX(g.x), clampZ(g.z));
     save();
     renderSitePlan();
@@ -3780,10 +3827,11 @@ addEventListener("pointerup", () => {
       ? "That blocks a door end — butt against solid sides only"
       : "Units cannot overlap — butt them edge to edge instead";
     removeItem(item, { silent: true });
-    undoStack.pop();
-    updateHistoryButtons();
     toast(why);
-  } else select(item);
+  } else {
+    pushUndo(before);
+    select(item);
+  }
   renderSitePlan();
 });
 
@@ -3913,10 +3961,7 @@ function placeSelectedAt(x, z) {
     snapGuides = [];
   });
   // a tap that lands the unit exactly where it already was is not an edit
-  if (JSON.stringify(serialize()) === before && undoStack[undoStack.length - 1] === before) {
-    undoStack.pop();
-    updateHistoryButtons();
-  }
+  if (JSON.stringify(serialize()) === before) dropUndo(before);
 }
 
 function nudgeSelected(dx, dz) {
@@ -3999,6 +4044,7 @@ function commitName() {
   const v = nameInput.value.trim().slice(0, 60) || "Container Compound";
   nameInput.value = v;
   if (v === layoutName) return;
+  pushUndo();
   layoutName = v;
   save();
   // the name prints in the title block, so the sheet is now out of date
