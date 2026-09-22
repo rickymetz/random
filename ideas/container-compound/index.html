@@ -188,6 +188,13 @@
     transition: transform 240ms ease;
   }
   body.add-open #add-sheet { transform: translateY(0); }
+  /* Two columns of cards where the window allows it, so the list is a
+     comparison rather than a scroll. */
+  @media (min-width: 900px) {
+    #add-sheet { max-width: 46rem; }
+    #add-sheet #add-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.6rem; }
+    #add-sheet #add-list .add-sec { grid-column: 1 / -1; }
+  }
   #add-sheet .handle {
     width: 2.4rem; height: 0.28rem;
     background: var(--line);
@@ -256,6 +263,25 @@
   /* a hairline between the panes, so they read as two drawings not one */
   body.split #site-panel { border-right: 1px solid var(--line); }
 
+  /* the download covers the parcel or just what is built on it */
+  #export-crop {
+    display: flex;
+    gap: 0.15rem;
+    margin: 0.2rem 0.35rem 0.35rem;
+    padding: 0.15rem;
+    border-radius: var(--r-pill);
+    background: rgba(0, 0, 0, 0.045);
+  }
+  #menu #export-crop button {
+    flex: 1;
+    padding: 0.3rem 0.4rem;
+    font-size: var(--t-xs);
+    text-align: center;
+    border-radius: var(--r-pill);
+    color: var(--muted);
+  }
+  #menu #export-crop button.active { background: var(--panel); color: var(--ink); font-weight: 600; }
+
   /* the measuring cursor: crosshairs, because the drag is not a move */
   body.measuring #site-panel,
   body.measuring #site-panel.over-object { cursor: crosshair; }
@@ -314,14 +340,13 @@
     white-space: nowrap;
   }
   .add-meta { color: var(--muted); font-size: var(--t-xs); margin-top: 0.05rem; }
+  /* Two lines cut most of these descriptions mid-sentence, and the sentence
+     is what tells you which of three bathing units you want. The drawer
+     scrolls; there is no reason to ration it. */
   .add-desc {
     color: var(--muted);
     font-size: var(--t-xs);
     margin-top: 0.15rem;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
   }
 
   /* ---- mode tab bar: gutter-to-gutter segmented control ---- */
@@ -362,7 +387,6 @@
   body[data-mode="view"] #edge-tools { display: none; }
   body[data-mode="plan"] #view-tools { display: none; }
   /* 3D is read-only, so the sheet there carries no edit affordances */
-  body[data-mode="view"] #info .row { display: none; }
   /* the dollhouse toggle reads as pressed while it is on */
   #btn-doll.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
@@ -444,6 +468,24 @@
     font-weight: 600;
   }
   #parts-modal table.grand td:last-child { text-align: right; }
+  /* two-column tables (summary, allowances) right-align their value column,
+     which the 4-column rules above only do for columns 3 and 4 */
+  #parts-modal table.summary td:nth-child(2),
+  #parts-modal table.allow td:nth-child(2) {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: normal;
+    color: var(--ink);
+  }
+  #parts-modal table.summary tr.findings td:nth-child(2) { color: var(--muted); }
+  #parts-modal table.summary tr.findings.warn td { color: #8c3b2e; font-weight: 600; }
+  #parts-modal table.allow td { color: var(--muted); }
+  #parts-modal table.allow tr.sub td {
+    border-top: 1px solid var(--line);
+    padding-top: 0.35rem;
+    color: var(--ink);
+    font-weight: 600;
+  }
   #parts-modal .fine { color: var(--muted); font-size: var(--t-xs); margin-top: 0.6rem; }
   #parts-modal button {
     margin-top: 0.9rem;
@@ -451,17 +493,6 @@
     font: inherit;
     padding: 0.55rem 0.9rem;
     border-radius: 0.55rem;
-    border: 1px solid var(--line);
-    background: #fff;
-    cursor: pointer;
-  }
-  #stats-pop .parts-btn {
-    width: 100%;
-    margin-top: 0.55rem;
-    font: inherit;
-    font-size: var(--t-sm);
-    padding: 0.42rem 0.5rem;
-    border-radius: var(--r-panel);
     border: 1px solid var(--line);
     background: #fff;
     cursor: pointer;
@@ -560,22 +591,6 @@
     font-size: var(--t-sm);
     font-variant-numeric: tabular-nums;
   }
-  #stats-pop {
-    position: fixed;
-    left: 0.75rem;
-    bottom: calc(3.4rem + var(--sab));
-    z-index: 4;
-    width: 14rem;
-    border-radius: var(--r-panel);
-    padding: 0.7rem 0.8rem;
-    display: none;
-  }
-  #stats-pop.open { display: block; }
-  #stats-pop table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
-  #stats-pop td { padding: 0.14rem 0; }
-  #stats-pop td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
-  #stats-pop .total td { border-top: 1px solid var(--line); padding-top: 0.3rem; font-weight: 600; }
-  #stats-pop .fine { color: var(--muted); font-size: var(--t-fine); margin-top: 0.45rem; }
 
   /* ---- selection bottom sheet ---- */
   #info {
@@ -912,7 +927,6 @@
   #key-modal .sw.hatch { background: repeating-linear-gradient(45deg, #c0574a 0 2px, transparent 2px 5px); }
   #key-modal .sw.dashdot { border-bottom: 2px dashed #8a867c; height: 0; }
 
-  #stats-pop tr.findings.warn td { color: #8c3b2e; font-weight: 700; }
 
   @media (prefers-reduced-motion: reduce) {
     #info, #add-sheet, #toast { transition-duration: 1ms; }
@@ -942,7 +956,6 @@
   /* ---- larger screens: same layout, roomier ---- */
   @media (min-width: 900px) {
     #stats-pill { left: 1rem; bottom: 1rem; }
-    #stats-pop { left: 1rem; bottom: 3.5rem; }
     #fab { right: 1rem; bottom: 1rem; }
     #add-sheet { border-radius: 1rem 1rem 0 0; }
     #info {
@@ -992,6 +1005,10 @@
 
 <div id="menu" class="panel">
   <button id="btn-share">Share layout</button>
+  <div id="export-crop" role="group" aria-label="What the download covers">
+    <button data-crop="acre" class="active">Whole acre</button>
+    <button data-crop="compound">Just the compound</button>
+  </div>
   <button id="site-png">Download PNG</button>
   <button id="site-svg-dl">Download SVG</button>
   <button id="btn-va">VA notes</button>
@@ -1013,9 +1030,9 @@
   </div>
 </div>
 
-<div id="parts-modal" role="dialog" aria-modal="true" aria-label="Parts list">
+<div id="parts-modal" role="dialog" aria-modal="true" aria-label="Summary and parts list">
   <div class="box">
-    <h2>Parts list</h2>
+    <h2>What this compound is</h2>
     <div id="parts-list"><!-- populated by main.js --></div>
     <button id="parts-close">Close</button>
   </div>
@@ -1052,21 +1069,6 @@
 </div>
 
 <button id="stats-pill" class="panel">0 units</button>
-<div id="stats-pop" class="panel">
-  <table>
-    <tr><td>Units</td><td id="st-units">0</td></tr>
-    <tr><td>20&#8242; high cubes</td><td id="st-hc20">0</td></tr>
-    <tr><td>10&#8242; mini high cubes</td><td id="st-hc10">0</td></tr>
-    <tr><td>Enclosed area</td><td id="st-sqft">0 sq ft</td></tr>
-    <tr><td>Deck area</td><td id="st-deck">0 sq ft</td></tr>
-    <tr><td>Utility trenches</td><td id="st-trench">—</td></tr>
-    <tr><td>Permit</td><td id="st-permit">—</td></tr>
-    <tr class="findings"><td>Code findings</td><td id="st-findings">None</td></tr>
-    <tr class="total"><td>Rough cost</td><td id="st-cost">$0</td></tr>
-  </table>
-  <div class="fine">Ballpark, fully fitted-out. Site work, utilities &amp; delivery extra.</div>
-  <button class="parts-btn" id="btn-parts">Full parts list →</button>
-</div>
 
 <button id="fab" aria-label="Add a unit" title="Add a unit">+</button>
 
@@ -1152,7 +1154,7 @@
     <ul>
       <li><strong>The 256 sq ft exemption is about use, not size.</strong> VCC 108.2 / VRC R105.2 exempt detached accessory structures "used as tool and storage sheds, playhouses and similar uses". A sleeping, kitchen, bath, dining, living or office unit is none of those, so <strong>no size gets it out of a building permit</strong> — this tool only applies the 256 sq ft test to storage units and decks. Exemption from a permit is also never exemption from the code (USBC 108.2), and an accessory structure assumes a principal dwelling already on the parcel.</li>
       <li><strong>Butting units together sums their area into one structure.</strong> That is why the drawing outlines a joined storage cluster once it passes 256 sq ft — the exemption is read per structure, not per box.</li>
-      <li><strong>&#8220;Rated&#8221; on the drawing means a fire-resistance-rated wall.</strong> Two buildings on one lot that sit 1–9 ft apart each need a rated wall on the facing side and are limited in glazing (VRC R302.1); at 10 ft or more, neither does. Butting them together avoids it entirely, which is why the drawing suggests either. Note the same rule is measured to the <em>property line</em> as well, which this tool does not model — a glazed door wall close to a boundary may be allowed no openings at all.</li>
+      <li><strong>&#8220;Rated&#8221; on the drawing means a fire-resistance-rated wall.</strong> Two buildings on one lot that sit 1–9 ft apart each need a rated wall on the facing side and are limited in glazing (VRC R302.1); at 10 ft or more, neither does. Butting them together avoids it entirely, which is why the drawing suggests either. Note the same rule is measured to the <em>property line</em> as well, which this tool does not model — a glazed door end close to a boundary may be allowed no openings at all.</li>
       <li><strong>A &#8220;wet unit&#8221;</strong> is any unit with plumbing — the kitchen, the bathhouse, the baths and the laundry. The <strong>utility core</strong> is the laundry / utility unit that carries the water supply and drain; the drawing rings it at 30 ft and flags any wet unit outside that ring, because longer runs mean more trench, more fall to hold and more to freeze.</li>
       <li>Plumbed and electrified units (kitchen, baths, laundry) still need <strong>trade permits and inspections</strong>, and any unit used for sleeping or dwelling can trigger full residential code compliance — talk to your county building department early.</li>
       <li><strong>High cube (9&#8242;6&#8243;) containers</strong> leave roughly an 8&#8242; finished ceiling after closed-cell spray foam — comfortably above the 7&#8242;0&#8243; habitable-space minimum (VRC R305).</li>
@@ -1168,7 +1170,7 @@
       <li>The original cargo doors stay on their hinges as <strong>operable storm/security shutters</strong>, parked open against the walls; an insulated glazed wall with an outswing entry door sits just inside each aperture.</li>
       <li><strong>Utilities enter through the wood floor</strong> (already non-structural to drill): supply, drains, and electrical all rise from below. The one wall exception is a single ~3&#8243; lineset sleeve per mini-split.</li>
       <li>Every 20&#8242; box is a <strong>tunnel</strong> (sleeping, kitchen, bathhouse, bath + laundry) or an <strong>open-side</strong> (dining, living, office) — no single-door 20-footers. The 10&#8242; minis are the only standard one-door boxes.</li>
-      <li>All door-wall and open-side glazing is <strong>tempered safety glass</strong> (VRC R308), and every aperture gets a <strong>fitted insect-screen panel</strong> for open-wall season.</li>
+      <li>All door end and open-side glazing is <strong>tempered safety glass</strong> (VRC R308), and every aperture gets a <strong>fitted insect-screen panel</strong> for open-wall season.</li>
       <li>Heat is <strong>all-electric</strong> (mini-splits, panel heaters, an electric fireplace in the living unit) — no flues, so the no-cut rule holds for the roof too.</li>
       <li>Wet units want to sit inside the <strong>utility core's 30&#8242; ring</strong> (shown on the ground) to keep plumbing trenches short; the bathhouse carries its own tankless water heater.</li>
     </ul>

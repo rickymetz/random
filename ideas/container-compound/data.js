@@ -25,7 +25,7 @@ export const TYPES = [
   {
     id: "sleeping", name: "Sleeping unit", len: 20, wid: 8, color: 0x96a48e,
     cost: 29000, variant: "tunnel", hvac: "minisplit",
-    desc: "Queen bed, wardrobe and a reading bench. Tunnel container: glazed door-walls at both ends give two exits and cross-ventilation.",
+    desc: "Queen bed, wardrobe and a reading bench. Tunnel container: glazed door ends at both ends give two exits and cross-ventilation.",
     va: "Both egress paths are outswing glazed doors inside factory apertures (VRC R310) — zero cuts.",
     furniture: [
       { x: -2.4, z: 0.95, w: 6.6, d: 5.2, h: 2.0, color: 0xd9cfc0 },     // queen bed, against the north wall
@@ -50,7 +50,7 @@ export const TYPES = [
   {
     id: "bathhouse", name: "Bathhouse unit", len: 20, wid: 8, color: 0x7e97a6,
     cost: 38000, variant: "tunnel", wet: true, hvac: "panel",
-    desc: "Two shower stalls, a soaking tub, a changing bench and a linen tower. On-board tankless water heater — no long hot-water runs from the core.",
+    desc: "The shared bathing block: two shower stalls, a soaking tub, a changing bench and a linen tower. No WC — that is the bathroom mini or the bath + laundry. On-board tankless water heater, so no long hot-water runs from the core.",
     va: "Wet unit: plumbing permits and inspections apply; mechanical exhaust (R303.3) ducted through the floor.",
     furniture: [
       { x: -6.9, z: 1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower 1
@@ -63,11 +63,11 @@ export const TYPES = [
   {
     id: "bath-laundry", name: "Bath + laundry unit", len: 20, wid: 8, color: 0xa092a8,
     cost: 35000, variant: "tunnel", wet: true, hvac: "panel",
-    desc: "Full bath on one end, washer-dryer pair and folding counter on the other. Tunnel container with frosted door-walls at both ends.",
+    desc: "A full bath at one end and the laundry pair with a folding counter at the other — the bathroom mini and the utility core in one 20\u2032 box. Frosted glazing at both door ends.",
     va: "Wet unit: plumbing and electrical permits apply. WC set 15in+ off the wall with 21in+ in front (VRC ch.27); exhaust + dryer duct through the floor.",
     furniture: [
       { x: -7.2, z: 1.95, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower
-      { x: -4.9, z: -2.3, w: 1.6, d: 2.4, h: 1.4, color: 0xf2efe8 },     // WC (15.4in centerline, clear of the door)
+      { x: -4.9, z: -2.3, w: 1.6, d: 2.4, h: 1.4, color: 0xf2efe8 },     // WC (15.4in centerline, clear of the door end)
       { x: -3.9, z: 2.65, w: 3.0, d: 1.8, h: 3.0, color: 0xdad2c4 },     // vanity
       { x: 2.6, z: 2.35, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },      // washer
       { x: 5.2, z: 2.35, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },      // dryer
@@ -103,9 +103,9 @@ export const TYPES = [
     ],
   },
   {
-    id: "bathroom", name: "Bathroom unit", len: 10, wid: 8, color: 0x8fa0ad,
+    id: "bathroom", name: "Bathroom mini", len: 10, wid: 8, color: 0x8fa0ad,
     cost: 17000, variant: "standard", wet: true, hvac: "panel",
-    desc: "Compact three-fixture bath in a mini: shower, toilet, vanity. Drains drop straight through the floor.",
+    desc: "One private three-fixture bath in a mini: shower, WC, vanity. The smallest way to add a WC to the compound; drains drop straight through the floor.",
     va: "Wet unit: plumbing permits apply. WC turned to the end wall so its centreline sits 15.4in off the side wall with 21in clear in front (VRC ch.27 / P2705.1); exhaust fan ducted through the floor.",
     furniture: [
       // WC faces the door end, so the governed dimensions are the centreline
@@ -117,9 +117,9 @@ export const TYPES = [
     ],
   },
   {
-    id: "laundry", name: "Laundry / utility unit", len: 10, wid: 8, color: 0xb0a08d,
+    id: "laundry", name: "Utility unit", len: 10, wid: 8, color: 0xb0a08d,
     cost: 15000, variant: "standard", hvac: "panel", core: true,
-    desc: "Washer, dryer, water heater and the compound's mechanical closet — the utility core. Wet units want to sit inside its ring.",
+    desc: "The utility core: laundry pair, water heater, panel and the compound's mechanical closet. Wet units want to sit inside its ring.",
     va: "Houses water heater + panel; trade permits apply. The panel sits on the solid north wall east of the dryer — never on the glazed door end — keeping its 30\" x 36\" working clearance (NEC 110.26).",
     furniture: [
       { x: -3.1, z: -2.3, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },     // washer
@@ -130,9 +130,9 @@ export const TYPES = [
     ],
   },
   {
-    id: "office", name: "Office / studio unit", len: 20, wid: 8, color: 0x8fa695,
+    id: "office", name: "Office unit", len: 20, wid: 8, color: 0x8fa695,
     cost: 26000, variant: "openside", hvac: "minisplit",
-    desc: "Desk against the open-side glazed wall, a bookshelf wall and a reading corner. Sized up to a 20' box to clear the habitable-room minimum.",
+    desc: "Office or studio. Desk against the open-side glazed wall, a bookshelf wall and a reading corner. Sized up to a 20' box to clear the habitable-room minimum.",
     va: "Habitable space: ~131 sq ft interior clears VRC R304.1's 70 sq ft minimum.",
     furniture: [
       { x: 6.3, z: 1.55, w: 2.5, d: 4.0, h: 2.5, color: 0x9c7c58 },      // desk facing the glazed end
@@ -143,7 +143,7 @@ export const TYPES = [
     ],
   },
   {
-    id: "hobby", name: "Hobby / storage unit", len: 10, wid: 8, color: 0x8d919c,
+    id: "hobby", name: "Workshop unit", len: 10, wid: 8, color: 0x8d919c,
     cost: 12000, variant: "standard", hvac: "none", accessory: true,
     desc: "Workbench, deep shelving and gear storage in a mini — deliberately non-habitable, so the small interior is fine by code.",
     va: "Not habitable space, so VRC R304's 70 sq ft / 7 ft minimums don't apply.",

@@ -395,7 +395,7 @@ function buildUnit(type) {
     mkWall(L, WALL_T, 0, W / 2 - WALL_T / 2);
   }
 
-  // container ends: solid steel, or a factory door aperture with an inset
+  // container ends: solid steel, or a factory door end with an inset
   // glazed wall + entry door, shutter leaves parked against the long walls
   for (const s of [1, -1]) {
     if (!apertureEnds.includes(s)) {
@@ -728,7 +728,7 @@ function commitCoords() {
       m.z = clampZ(m.z + dz);
       applyTransform(m);
     }
-  }, "That position blocks a door wall — try another");
+  }, "That position blocks a door end — try another");
   if (!ok) syncCoordFields(selected || target);
 }
 for (const el of [posX, posZ]) {
@@ -1175,7 +1175,10 @@ document.getElementById("btn-menu").addEventListener("click", (e) => {
 addEventListener("pointerdown", (e) => {
   if (!e.target.closest("#menu, #btn-menu")) document.body.classList.remove("menu-open");
 });
-for (const id of ["btn-share", "btn-va", "btn-reset"])
+// Every item in the menu finishes the errand you opened it for, so every one
+// of them closes it. Downloads and Clear were leaving it hanging over the
+// drawing until you clicked elsewhere.
+for (const id of ["btn-share", "btn-va", "btn-reset", "btn-clear", "site-png", "site-svg-dl"])
   document.getElementById(id).addEventListener("click", () =>
     document.body.classList.remove("menu-open"));
 
@@ -1232,8 +1235,10 @@ document.getElementById("btn-close").addEventListener("click", () => {
   document.body.classList.remove("sheet-open");
   if (mode === "view") select(null);
 });
-document.getElementById("stats-pill").addEventListener("click", () =>
-  document.getElementById("stats-pop").classList.toggle("open"));
+document.getElementById("stats-pill").addEventListener("click", () => {
+  renderParts();
+  openDialog(document.getElementById("parts-modal"));
+});
 document.getElementById("cart-key").addEventListener("click", () =>
   openDialog(document.getElementById("key-modal")));
 document.getElementById("key-close").addEventListener("click", () =>
@@ -1277,7 +1282,7 @@ function tryEdit(mutate, rejectMsg) {
   mutate();
   if (blockedPairs().length > preBlocked) {
     restoreSnapshot(before, keep, keepSet);
-    toast(rejectMsg || "That blocks a door wall — butt against solid sides only");
+    toast(rejectMsg || "That blocks a door end — butt against solid sides only");
     return false;
   }
   if (overlappingPairs().length > preOverlap) {
@@ -1300,7 +1305,7 @@ function rotateSelected() {
   const picked = selection();
   tryEdit(() => {
     for (const it of picked) { it.rot = (it.rot + 1) % 4; applyTransform(it); }
-  }, "That blocks a door wall — keep apertures clear");
+  }, "That blocks a door end — keep apertures clear");
 }
 
 // ---- align and distribute -------------------------------------------------
@@ -1335,7 +1340,7 @@ function alignSelection(how) {
         applyTransform(m);
       }
     }
-  }, "That alignment would block a door wall");
+  }, "That alignment would block a door end");
 }
 
 // Even gaps along whichever axis the units are more spread out on, keeping the
@@ -1364,7 +1369,7 @@ function distributeSelection() {
       }
       edge += half * 2 + gap;
     }
-  }, "Spacing them evenly would block a door wall");
+  }, "Spacing them evenly would block a door end");
 }
 
 // A control with focus owns its own keys. Arrow keys move between the tabs of
@@ -1706,6 +1711,14 @@ let findings = { sep: 0, over: 0, stranded: 0, offsite: 0, blocked: 0, overlap: 
                  overDrain: 0, deckOver: 0, total: 0 };
 let dwellingUnits = 0;
 
+// What the summary shows, recomputed on every edit and read when the summary
+// is opened. It used to be written straight into a popover's cells, which
+// meant the numbers and the parts list were two surfaces quoting the same
+// figures at each other.
+let statsNow = { hc20: 0, hc10: 0, sqft: 0, deckSqft: 0, cost: 0 };
+let findingsLine = "None";
+let permitLine = "Storage and decks only";
+
 function updateStats() {
   updateCompliance();
   let hc20 = 0, hc10 = 0, sqft = 0, deckSqft = 0, cost = trenchCost;
@@ -1716,22 +1729,14 @@ function updateStats() {
     if (t.len === 20) hc20++; else hc10++;
     sqft += t.len * t.wid;
   }
-  document.getElementById("st-units").textContent = hc20 + hc10;
-  document.getElementById("st-hc20").textContent = hc20;
-  document.getElementById("st-hc10").textContent = hc10;
-  document.getElementById("st-sqft").textContent = `${sqft.toLocaleString()} ft²`;
-  document.getElementById("st-deck").textContent = `${deckSqft.toLocaleString()} ft²`;
-  document.getElementById("st-trench").textContent = trenchFt
-    ? `${trenchFt} ft · $${trenchCost.toLocaleString()}` : "—";
-  document.getElementById("st-cost").textContent = `$${cost.toLocaleString()}`;
+  statsNow = { hc20, hc10, sqft, deckSqft, cost };
   const n = hc20 + hc10;
   const plural = (k, one, many = one + "s") => `${k} ${k === 1 ? one : many}`;
-  const fRow = document.getElementById("st-findings");
-  if (fRow) {
+  {
     // sentences, not fragments: this row used to read "2 separation"
-    fRow.textContent = findings.total
+    findingsLine = findings.total
       ? [findings.overlap && `${plural(findings.overlap, "pair")} of units overlap`,
-         findings.blocked && `${plural(findings.blocked, "unit")} butted against a door wall`,
+         findings.blocked && `${plural(findings.blocked, "unit")} butted against a door end`,
          findings.offsite && `${plural(findings.offsite, "unit")} across the property line`,
          findings.tooClose && `${plural(findings.tooClose, "unit")} inside the ${setback} ft setback`,
          findings.overDrain && `${plural(findings.overDrain, "unit")} over the drainfield`,
@@ -1744,11 +1749,7 @@ function updateStats() {
          findings.stranded && `${plural(findings.stranded, "wet unit")} too far from a utility core`]
         .filter(Boolean).join(" · ")
       : "None";
-    fRow.parentElement.classList.toggle("warn", findings.total > 0);
-  }
-  const pRow = document.getElementById("st-permit");
-  if (pRow) {
-    pRow.textContent = dwellingUnits
+    permitLine = dwellingUnits
       ? `${plural(dwellingUnits, "habitable unit")} — permit required`
       : "Storage and decks only";
   }
@@ -1866,6 +1867,21 @@ renderer.domElement.addEventListener("pointerup", (e) => {
 
 // ------------------------------------------------------------- parts list
 
+// The parts list priced the boxes and called everything else "extra", which
+// on a raw acre is most of the money. These are the line items the tool does
+// not model, with the range a rural Virginia site tends to land in.
+const ALLOWANCES = [
+  { what: "Well, drilled and pumped", lo: 9000, hi: 20000 },
+  { what: "Septic tank and drainfield", lo: 12000, hi: 30000 },
+  { what: "Power service and trenching to the meter", lo: 6000, hi: 18000 },
+  { what: "Clearing, grading and the gravel drive", lo: 8000, hi: 20000 },
+  { what: "Pier or ground-screw foundations", lo: 6000, hi: 14000 },
+  { what: "Delivery, crane set and tie-downs", lo: 6000, hi: 12000 },
+  { what: "Permits, drawings and engineering", lo: 4000, hi: 10000 },
+];
+const ALLOW_LO = ALLOWANCES.reduce((n, a) => n + a.lo, 0);
+const ALLOW_HI = ALLOWANCES.reduce((n, a) => n + a.hi, 0);
+
 function renderParts() {
   const qty = new Map();
   for (const it of items) qty.set(it.typeId, (qty.get(it.typeId) || 0) + 1);
@@ -1898,25 +1914,42 @@ function renderParts() {
   const deckCost = decks * TYPE_BY_ID.deck.cost;
   const total = unitsTotal + deckCost + trenchCost;
 
+  const st = statsNow;
+  const money = (v) => `$${Math.round(v).toLocaleString()}`;
+  const k = (v) => `$${Math.round(v / 1000)}k`;
+
   document.getElementById("parts-list").innerHTML = `
+    <h4>Summary</h4>
+    <table class="summary">
+      <tr><td>Units</td><td>${st.hc20 + st.hc10}</td></tr>
+      <tr><td>20′ high cubes</td><td>${st.hc20}</td></tr>
+      <tr><td>10′ mini high cubes</td><td>${st.hc10}</td></tr>
+      <tr><td>Enclosed area</td><td>${st.sqft.toLocaleString()} ft²</td></tr>
+      <tr><td>Deck area</td><td>${st.deckSqft.toLocaleString()} ft²</td></tr>
+      <tr><td>Utility trenches</td><td>${trenchFt ? `${trenchFt} ft · ${money(trenchCost)}` : "—"}</td></tr>
+      <tr><td>Permit</td><td>${esc(permitLine)}</td></tr>
+      <tr class="findings${findings.total ? " warn" : ""}"><td>Code findings</td><td>${esc(findingsLine)}</td></tr>
+    </table>
     <h4>Units</h4>
     <table>${unitsRows || "<tr><td>No units yet</td></tr>"}</table>
     <h4>Container order</h4>
     <table>${orderRows || "<tr><td>—</td></tr>"}</table>
     <h4>Site</h4>
     <table>
-      <tr><td>Deck sections (8′ × 8′)</td><td>×${decks}</td><td></td><td>$${deckCost.toLocaleString()}</td></tr>
-      <tr><td>Utility trench</td><td>${trenchFt} ft</td><td>$${TRENCH_PER_FT}/ft</td><td>$${trenchCost.toLocaleString()}</td></tr>
+      <tr><td>Deck sections (8′ × 8′)</td><td>×${decks}</td><td></td><td>${money(deckCost)}</td></tr>
+      <tr><td>Utility trench</td><td>${trenchFt} ft</td><td>$${TRENCH_PER_FT}/ft</td><td>${money(trenchCost)}</td></tr>
     </table>
-    <table class="grand"><tr><td>Total (rough)</td><td>$${total.toLocaleString()}</td></tr></table>
-    <div class="fine">Ballpark, fully fitted-out. Site work, utility hookups &amp; container delivery extra.</div>`;
+    <table class="grand"><tr><td>Boxes, fit-out and trench</td><td>${money(total)}</td></tr></table>
+    <h4>Not in that number</h4>
+    <table class="allow">
+      ${ALLOWANCES.map((a) => `<tr><td>${esc(a.what)}</td><td>${k(a.lo)}–${k(a.hi)}</td></tr>`).join("")}
+      <tr class="sub"><td>Allowance</td><td>${k(ALLOW_LO)}–${k(ALLOW_HI)}</td></tr>
+    </table>
+    <table class="grand"><tr><td>All in, rough</td><td>${k(total + ALLOW_LO)}–${k(total + ALLOW_HI)}</td></tr></table>
+    <div class="fine">Box prices are fully fitted-out. The allowance is a Virginia rural-acre
+      ballpark for the work this tool does not model — it is a planning figure, not a quote.</div>`;
 }
 
-document.getElementById("btn-parts").addEventListener("click", () => {
-  renderParts();
-  document.getElementById("stats-pop").classList.remove("open");
-  openDialog(document.getElementById("parts-modal"));
-});
 document.getElementById("parts-close").addEventListener("click", () =>
   closeDialog(document.getElementById("parts-modal")));
 
@@ -1925,7 +1958,7 @@ document.getElementById("parts-close").addEventListener("click", () =>
 const SHORT_NAME = {
   sleeping: "Sleeping", kitchen: "Kitchen", bathhouse: "Bathhouse",
   "bath-laundry": "Bath + laundry", dining: "Dining", living: "Living",
-  bathroom: "Bath", laundry: "Utility", office: "Office", hobby: "Hobby",
+  bathroom: "Bathroom", laundry: "Utility", office: "Office", hobby: "Workshop",
   deck: "",
 };
 
@@ -2092,7 +2125,10 @@ function titleBlockMarkup() {
     sqft += t.len * t.wid;
   }
   const tbw = 340, tbh = 150;
-  const tbx = SP_W - tbw - 40, tby = SP_H - tbh - 42;
+  // bottom-right of whatever is being drawn, which is the crop on an export
+  // of the compound alone and the whole sheet otherwise
+  const box = exportBox || { x: 0, y: 0, w: SP_W, h: SP_H };
+  const tbx = box.x + box.w - tbw - 40, tby = box.y + box.h - tbh - 42;
   const L = (y, size, fill, text, weight = "400", ls = 0) =>
     `<text x="${tbx + 14}" y="${tby + y}" font-size="${size}" font-weight="${weight}" letter-spacing="${ls}" fill="${fill}" font-family="${FONT}">${text}</text>`;
   let s = `<rect x="${tbx}" y="${tby}" width="${tbw}" height="${tbh}" fill="#ffffff" stroke="#23231f" stroke-width="1.6"/>`;
@@ -2427,6 +2463,18 @@ function siteFitView() {
 }
 document.getElementById("site-fit").addEventListener("click", siteFitView);
 
+// A layout has a name and a date; a file called container-compound-site-plan
+// has neither, so every export overwrote the last one and two versions of a
+// compound were indistinguishable in a downloads folder.
+function exportName(ext) {
+  const slug = (layoutName || "container compound")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48)
+    || "container-compound";
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${slug}-site-plan-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.${ext}`;
+}
+
 function downloadBlob(name, blob) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -2436,6 +2484,42 @@ function downloadBlob(name, blob) {
 }
 // the exported drawing is the sheet at its own scale, with no editing chrome
 // (that lives in a separate overlay) and no trace of the current zoom
+// The acre is 209 ft square and a compound is more like 90 x 46, so a site
+// plan of the whole parcel is mostly grass. That is the right drawing for a
+// permit set and the wrong one for showing someone the layout, so the export
+// offers both and remembers which you asked for.
+let exportBox = null;
+let exportCrop = "acre";
+try { exportCrop = localStorage.getItem(LS_KEY + ":crop") || "acre"; } catch {}
+
+function cropBox() {
+  if (exportCrop !== "compound" || !items.length) return null;
+  const e = unitExtents();
+  // room for the dimension strings, the setback callouts and the labels that
+  // sit outside a footprint
+  const pad = 110;
+  // a band below the drawing for the title block, so it does not sit on top
+  // of the compound the way it did when the crop stopped at the content
+  const TB_BAND = 210;
+  let x = Math.max(0, spX(e.x0) - pad);
+  let y = Math.max(0, spY(e.z0) - pad);
+  let w = Math.min(SP_W - x, spX(e.x1) + pad - x);
+  let h = Math.min(SP_H - y, spY(e.z1) + pad + TB_BAND - y);
+  // the title block has to fit inside the crop, or it lands off the page
+  w = Math.max(w, 460);
+  h = Math.max(h, 300);
+  if (x + w > SP_W) x = Math.max(0, SP_W - w);
+  if (y + h > SP_H) y = Math.max(0, SP_H - h);
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+}
+
+function setExportCrop(v) {
+  exportCrop = v === "compound" ? "compound" : "acre";
+  try { localStorage.setItem(LS_KEY + ":crop", exportCrop); } catch {}
+  for (const b of document.querySelectorAll("#export-crop button"))
+    b.classList.toggle("active", b.dataset.crop === exportCrop);
+}
+
 function sheetForExport() {
   // Re-emit at 1:1 rather than cloning whatever the screen is showing:
   // annotation is sized in screen pixels now, so a clone would bake in the
@@ -2443,22 +2527,31 @@ function sheetForExport() {
   // happened to be pinched in.
   const wasDetail = detailOn; // the export forces detail; restoring from that
   exportScale = true;          // forced value flipped the screen's own tier
+  exportBox = cropBox();
   renderSitePlan();
   const svg = document.querySelector("#site-svg svg");
   const clone = svg ? svg.cloneNode(true) : null;
+  const box = exportBox;
+  exportBox = null;
   exportScale = false;
   detailOn = wasDetail;
   renderSitePlan();
   if (clone) {
-    clone.setAttribute("width", SP_W);
-    clone.setAttribute("height", SP_H);
+    const b = box || { x: 0, y: 0, w: SP_W, h: SP_H };
+    clone.setAttribute("viewBox", `${b.x} ${b.y} ${b.w} ${b.h}`);
+    clone.setAttribute("width", b.w);
+    clone.setAttribute("height", b.h);
   }
   return clone;
 }
+for (const b of document.querySelectorAll("#export-crop button"))
+  b.addEventListener("click", () => setExportCrop(b.dataset.crop));
+setExportCrop(exportCrop);
+
 document.getElementById("site-svg-dl").addEventListener("click", () => {
   const svg = sheetForExport();
   if (!svg) return;
-  downloadBlob("container-compound-site-plan.svg",
+  downloadBlob(exportName("svg"),
     new Blob([svg.outerHTML], { type: "image/svg+xml" }));
 });
 document.getElementById("site-png").addEventListener("click", () => {
@@ -2476,7 +2569,7 @@ document.getElementById("site-png").addEventListener("click", () => {
     g.fillRect(0, 0, c.width, c.height);
     g.drawImage(img, 0, 0, c.width, c.height);
     URL.revokeObjectURL(url);
-    c.toBlob((b) => b && downloadBlob("container-compound-site-plan.png", b), "image/png");
+    c.toBlob((b) => b && downloadBlob(exportName("png"), b), "image/png");
   };
   img.src = url;
   toast("Rendering PNG…");
@@ -2797,7 +2890,7 @@ function findingsMarkup() {
     s += warnLabel(X((a.x + b.x) / 2), Y((a.z + b.z) / 2) - ss(4), "UNITS OVERLAP");
   }
 
-  // butted against a door wall
+  // butted against a door end
   for (const [a, b] of blockedPairs()) {
     const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
     s += `<circle cx="${X(mx)}" cy="${Y(mz)}" r="${ss(11)}" fill="#fbfaf6" stroke="#8c3b2e" stroke-width="${ss(1.8)}"/>`;
@@ -3402,7 +3495,7 @@ sitePanelEl.addEventListener("pointerup", (e) => {
         (blockedPairs().length > d.preBlocked ||
          overlappingPairs().length > d.preOverlap)) {
       const why = blockedPairs().length > d.preBlocked
-        ? "That blocks a door wall — butt against solid sides only"
+        ? "That blocks a door end — butt against solid sides only"
         : "Units cannot overlap — butt them edge to edge instead";
       undoStack.pop();
       updateHistoryButtons();
@@ -3547,7 +3640,7 @@ addEventListener("pointerup", () => {
   const item = addItem(pa.type.id, clampX(g.x), clampZ(g.z), 0);
   if (blockedPairs().length > preBlocked || overlappingPairs().length > preOverlap) {
     const why = blockedPairs().length > preBlocked
-      ? "That blocks a door wall — butt against solid sides only"
+      ? "That blocks a door end — butt against solid sides only"
       : "Units cannot overlap — butt them edge to edge instead";
     removeItem(item, { silent: true });
     undoStack.pop();
@@ -3706,8 +3799,11 @@ function openDialog(el) {
   if (already && already !== el) already.classList.remove("open");
   else dialogReturn = document.activeElement;
   el.classList.add("open");
+  // A scrollable dialog whose only focusable control is the Close button at
+  // the bottom scrolled itself past its own heading the moment it opened.
+  for (const box of el.querySelectorAll(".box")) box.scrollTop = 0;
   const first = el.querySelector("button, [href], input");
-  if (first) first.focus();
+  if (first) first.focus({ preventScroll: true });
 }
 function closeDialog(el) {
   el.classList.remove("open");
