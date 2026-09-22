@@ -361,6 +361,11 @@ textarea {
   resize: vertical;
   min-height: var(--ctl-h);
 }
+/* A box that takes the height of what you typed (`useGrow`) owns its own
+   size: a drag handle would only be overruled by the next keystroke. */
+textarea.grows {
+  resize: none;
+}
 
 ::placeholder {
   /* Placeholders carry real format hints; keep them ≥4.5:1 on surface-2. */

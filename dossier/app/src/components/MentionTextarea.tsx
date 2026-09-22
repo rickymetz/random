@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useGrow } from './useGrow'
 import { mentionToken } from '../lib/mentions'
 import { rankPeople } from '../lib/names'
 import Avatar from './Avatar'
@@ -33,6 +34,7 @@ export default function MentionTextarea({
   placeholder,
   autoFocus,
   rows = 3,
+  maxRows = 12,
   plain = false,
 }: {
   people: Person[]
@@ -44,12 +46,19 @@ export default function MentionTextarea({
   placeholder?: string
   autoFocus?: boolean
   rows?: number
+  /** Where the box stops growing and starts scrolling. The capture bar
+   *  sits over the keyboard and wants a smaller ceiling than a full-page
+   *  note editor. */
+  maxRows?: number
   /** Insert a picked person as plain `@Name` (the caller retokenizes on
    * save) instead of the `@[Name](id)` token — a capture box must not
    * fill with ids. */
   plain?: boolean
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  // A note you can't see all of is a note you can't re-read before
+  // saving it: the box takes the height of what you wrote.
+  useGrow(ref, value, maxRows)
   const listId = useId()
   const [caret, setCaret] = useState(0)
   const [dismissed, setDismissed] = useState(false)
@@ -162,6 +171,7 @@ export default function MentionTextarea({
     <div className="mention-box">
       <textarea
         ref={ref}
+        className="grows"
         rows={rows}
         value={value}
         placeholder={placeholder}
