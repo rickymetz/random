@@ -4,14 +4,27 @@
 import * as THREE from "three";
 import { OrbitControls } from "./vendor/OrbitControls.js";
 import { TYPES, PLAN_LABELS } from "./data.js";
+// The footprint geometry and the code checks live in their own modules: they
+// are pure functions of the items handed to them, which is what lets
+// .tests/rules.test.js exercise them without a browser.
+import {
+  JOIN_EPS,
+  halfDims as gHalfDims, gapBetween as gGapBetween, overlapDepth as gOverlapDepth,
+  gapBand as gGapBand, clusterOf as gClusterOf, snapMove as gSnapMove,
+  isFree as gIsFree, findSpot as gFindSpot, unitExtents as gUnitExtents,
+} from "./geometry.js";
+import {
+  SEP_CLEAR, DIRS,
+  apertureFaces as rApertureFaces, blockedPairs as rBlockedPairs,
+  overlappingPairs as rOverlappingPairs, normalizePayload,
+  num,
+} from "./rules.js";
 
 // ---------------------------------------------------------------- unit data
 
 const WALL_T = 0.35; // container wall thickness for rendering
 const H = 9.5; // high cube exterior height
 const WET_RADIUS = 30; // advisory short-plumbing-run radius around the utility core, ft
-const SEP_CLEAR = 10; // gap giving both units >=5 ft to the imaginary line (VRC R302.1)
-const JOIN_EPS = 0.75; // gaps at or under this read as butted/joined
 const TRENCH_PER_FT = 40; // ballpark $/ft for a utility trench with supply + drain
 
 // Furniture pieces are boxes in unit-local feet, centered at the unit origin,
@@ -744,32 +757,9 @@ document.getElementById("btn-info").addEventListener("click", () =>
 document.getElementById("btn-desel").addEventListener("click", () => select(null));
 
 // find an open spot near the center for a newly added unit
-function findSpot(type, ox = 0, oz = 0) {
-  ox = clampX(ox); oz = clampZ(oz);
-  const step = 4;
-  for (let r = 0; r < 26; r++) {
-    for (let a = 0; a < Math.max(1, r * 8); a++) {
-      const ang = (a / Math.max(1, r * 8)) * Math.PI * 2;
-      const x = clampX(ox + Math.cos(ang) * r * step);
-      const z = clampZ(oz + Math.sin(ang) * r * step);
-      if (isFree(x, z, type)) return { x, z };
-    }
-  }
-  return { x: Math.round(ox), z: Math.round(oz) };
-}
-function isFree(x, z, type) {
-  // clear the rated-wall band, not just a courtesy foot, so an auto-placed
-  // unit is not already redlined the moment it lands
-  const pad = type.deck ? 1 : SEP_CLEAR;
-  const hw = type.len / 2 + pad, hd = type.wid / 2 + pad;
-  for (const it of items) {
-    const t = TYPE_BY_ID[it.typeId];
-    const ihw = (it.rot % 2 ? t.wid : t.len) / 2;
-    const ihd = (it.rot % 2 ? t.len : t.wid) / 2;
-    if (Math.abs(x - it.x) < hw + ihw && Math.abs(z - it.z) < hd + ihd) return false;
-  }
-  return true;
-}
+const findSpot = (type, ox = 0, oz = 0) =>
+  gFindSpot(type, ox, oz, items, TYPE_BY_ID, SEP_CLEAR, clampX, clampZ);
+const isFree = (x, z, type) => gIsFree(x, z, type, items, TYPE_BY_ID, SEP_CLEAR);
 
 // ------------------------------------------------------------- persistence
 
@@ -804,11 +794,6 @@ let visiting = false;
 // a single malformed row used to throw out of the boot and leave a blank app
 // that reloaded blank forever. Coerce what can be coerced, drop what cannot,
 // and never let a payload reach the model unchecked.
-const MAX_ITEMS = 400, MAX_TREES = 200;
-const num = (v, fallback = 0) => {
-  const n = typeof v === "number" ? v : parseFloat(v);
-  return Number.isFinite(n) ? n : fallback;
-};
 const onSheet = (v) => Math.max(SP_MINX, Math.min(SP_MAXX, v));
 // Placement and movement were unclamped, so a unit could be created hundreds
 // of feet off the parcel, outside the sheet's viewBox — where it is clipped
@@ -818,43 +803,8 @@ const onSheet = (v) => Math.max(SP_MINX, Math.min(SP_MAXX, v));
 // disagreed with the model by half a foot.
 const clampX = (v) => Math.round(Math.max(SP_MINX + 4, Math.min(SP_MAXX - 4, v)));
 const clampZ = (v) => Math.round(Math.max(SP_MINZ + 4, Math.min(SP_MAXZ - 4, v)));
-const rot4 = (v) => (((v | 0) % 4) + 4) % 4;
 
-function normalize(data) {
-  const out = { v: 2, items: [], trees: null, drive: null };
-  if (!data || typeof data !== "object") return out;
-  if (Array.isArray(data.items)) {
-    for (const row of data.items.slice(0, MAX_ITEMS)) {
-      if (!Array.isArray(row) || row.length < 4) continue;
-      const [typeId, x, z, rot] = row;
-      // a plain object inherits toString/constructor/__proto__, all of which
-      // used to pass `if (TYPE_BY_ID[typeId])` and reach buildUnit
-      if (typeof typeId !== "string" || !Object.hasOwn(TYPE_BY_ID, typeId)) continue;
-      out.items.push([typeId, onSheet(num(x)), onSheet(num(z)), rot4(num(rot))]);
-    }
-  }
-  if (Array.isArray(data.trees)) {
-    out.trees = data.trees.slice(0, MAX_TREES)
-      .filter((r) => Array.isArray(r) && r.length >= 2)
-      .map((r) => [onSheet(num(r[0])), onSheet(num(r[1])),
-                   Math.max(0.3, Math.min(3, num(r[2], 1.2)))]);
-  }
-  const pts = (rows) => Array.isArray(rows)
-    ? rows.slice(0, 20).filter((r) => Array.isArray(r) && r.length >= 2)
-        .map((r) => [onSheet(num(r[0])), onSheet(num(r[1]))])
-    : [];
-  out.wells = pts(data.wells);
-  out.drains = pts(data.drains);
-  out.setback = Math.max(0, Math.min(80, num(data.setback, 25)));
-  out.name = typeof data.name === "string" ? data.name.slice(0, 60) : "Container Compound";
-  if (Array.isArray(data.drive) && data.drive.length >= 3) {
-    out.drive = [onSheet(num(data.drive[0], DEFAULT_DRIVE.x)),
-                 onSheet(num(data.drive[1], DEFAULT_DRIVE.z)),
-                 rot4(num(data.drive[2]))];
-  }
-  return out;
-}
-
+const normalize = (data) => normalizePayload(data, TYPE_BY_ID, onSheet, DEFAULT_DRIVE);
 function loadFrom(raw, opts = {}) {
   const data = normalize(raw);
   // A gesture in flight refers to objects this is about to destroy. Letting it
@@ -1588,75 +1538,16 @@ let sepPairs = []; // [{a, b, gap}] freestanding pairs in the 1-9 ft zone
 let joined = new Map(); // item.id -> { count, sqft } for butted clusters
 let trenchFt = 0, trenchCost = 0;
 
-function halfDims(it) {
-  const t = TYPE_BY_ID[it.typeId];
-  return it.rot % 2 ? [t.wid / 2, t.len / 2] : [t.len / 2, t.wid / 2];
-}
-// gap between two axis-aligned footprints (0 = touching/overlapping)
-function gapBetween(a, b) {
-  const [aw, ad] = halfDims(a), [bw, bd] = halfDims(b);
-  const gx = Math.abs(a.x - b.x) - (aw + bw);
-  const gz = Math.abs(a.z - b.z) - (ad + bd);
-  if (gx <= 0 && gz <= 0) return 0;
-  if (gx <= 0) return gz;
-  if (gz <= 0) return gx;
-  return Math.hypot(gx, gz);
-}
-
-// `gapBetween` returns 0 both for two units touching and for one sitting
-// entirely inside another, so it can never tell a legal butt-join from a
-// physically impossible stack. This measures penetration instead: positive on
-// both axes means the footprints genuinely intersect.
-const OVERLAP_EPS = 0.5;
-function overlapDepth(a, b) {
-  const [aw, ad] = halfDims(a), [bw, bd] = halfDims(b);
-  return Math.min((aw + bw) - Math.abs(a.x - b.x), (ad + bd) - Math.abs(a.z - b.z));
-}
-function overlappingPairs() {
-  const out = [];
-  for (let i = 0; i < items.length; i++) {
-    for (let j = i + 1; j < items.length; j++) {
-      const a = items[i], b = items[j];
-      // a deck is meant to tuck against a container; two of either is not
-      if (TYPE_BY_ID[a.typeId].deck !== TYPE_BY_ID[b.typeId].deck) continue;
-      if (overlapDepth(a, b) > OVERLAP_EPS) out.push([a, b]);
-    }
-  }
-  return out;
-}
-
-// local +x rotated into world by rot steps (rotation.y = rot * PI/2)
-const DIRS = [[1, 0], [0, -1], [-1, 0], [0, 1]];
-// world-axis directions of a unit's aperture (door/glazed) faces
-function apertureFaces(it) {
-  const t = TYPE_BY_ID[it.typeId];
-  if (t.deck) return [];
-  const px = DIRS[it.rot % 4]; // door end at local +x on every variant
-  const faces = [px];
-  if (t.variant === "tunnel") faces.push([-px[0], -px[1]]);
-  if (t.variant === "openside") faces.push(DIRS[(it.rot + 3) % 4]); // glazed local +z side
-  return faces;
-}
-// pairs of units butted against an aperture face — entry/egress blocked
-function blockedPairs() {
-  const units = items.filter((i) => !TYPE_BY_ID[i.typeId].deck);
-  const out = [];
-  for (let i = 0; i < units.length; i++) {
-    for (let j = i + 1; j < units.length; j++) {
-      const a = units[i], b = units[j];
-      const [aw, ad] = halfDims(a), [bw, bd] = halfDims(b);
-      const gx = Math.abs(a.x - b.x) - (aw + bw);
-      const gz = Math.abs(a.z - b.z) - (ad + bd);
-      if (gx > JOIN_EPS || gz > JOIN_EPS) continue; // not touching
-      const axis = gx >= gz ? "x" : "z";
-      const s = axis === "x" ? Math.sign(b.x - a.x) || 1 : Math.sign(b.z - a.z) || 1;
-      const faceA = axis === "x" ? [s, 0] : [0, s]; // A's face toward B
-      const hit = (it, f) => apertureFaces(it).some((d) => d[0] === f[0] && d[1] === f[1]);
-      if (hit(a, faceA) || hit(b, [-faceA[0], -faceA[1]])) out.push([a, b]);
-    }
-  }
-  return out;
-}
+// Thin bindings over geometry.js and rules.js: the app has one `items` array
+// and one type table, so every call would otherwise pass the same two
+// arguments.
+const halfDims = (it) => gHalfDims(it, TYPE_BY_ID);
+const gapBetween = (a, b) => gGapBetween(a, b, TYPE_BY_ID);
+const overlapDepth = (a, b) => gOverlapDepth(a, b, TYPE_BY_ID);
+const gapBand = (a, b) => gGapBand(a, b, TYPE_BY_ID);
+const overlappingPairs = () => rOverlappingPairs(items, TYPE_BY_ID);
+const apertureFaces = (it) => rApertureFaces(it, TYPE_BY_ID);
+const blockedPairs = () => rBlockedPairs(items, TYPE_BY_ID);
 
 function groundLine(ax, az, bx, bz, mat, dashed) {
   const geo = new THREE.BufferGeometry().setFromPoints([
@@ -2159,15 +2050,7 @@ function unitPlanGroup(it, detail) {
 // re-emits `draw` whole, which is what keeps it self-consistent — the old
 // shape patched individual unit transforms and left core rings, trench runs,
 // the separation layer and the dimension strings at their previous positions.
-function unitExtents() {
-  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-  for (const it of items) {
-    const [hw, hd] = halfDims(it);
-    x0 = Math.min(x0, it.x - hw); x1 = Math.max(x1, it.x + hw);
-    z0 = Math.min(z0, it.z - hd); z1 = Math.max(z1, it.z + hd);
-  }
-  return { x0, x1, z0, z1 };
-}
+const unitExtents = () => gUnitExtents(items, TYPE_BY_ID);
 
 function paperMarkup() {
   const S = SP_S, HALF = SP_HALF, X = spX, Y = spY;
@@ -2883,90 +2766,24 @@ function driveAtWorld(p) {
 // that way — so dragging any member takes the whole cluster with it.
 let clusterIndex = new Map();
 function clusterOf(root) {
-  if (TYPE_BY_ID[root.typeId].deck) return [root];
   // updateCompliance already resolved every cluster with union-find; the
-  // flood fill below is the fallback for the rare call before that has run.
+  // flood fill in geometry.js is the fallback for the rare call before that
+  // has run.
   const known = clusterIndex.get(root.id);
   if (known && known.includes(root)) return known;
-  const units = items.filter((i) => !TYPE_BY_ID[i.typeId].deck);
-  const set = new Set([root]);
-  for (let grew = true; grew; ) {
-    grew = false;
-    for (const u of units) {
-      if (set.has(u)) continue;
-      for (const m of set) {
-        if (gapBetween(u, m) <= JOIN_EPS) { set.add(u); grew = true; break; }
-      }
-    }
-  }
-  return [...set];
+  return gClusterOf(root, items, TYPE_BY_ID);
 }
 
 // ---- snapping ----
 
-const SNAP_FT = 1.8;
 let snapGuides = [];
 
+// snapMove is pure; the guides it works out are what the chrome draws, so
+// this is where they are parked for renderChrome to pick up.
 function snapMove(primary, rawX, rawZ, moving) {
-  const [hw, hd] = halfDims(primary);
-  snapGuides = [];
-  let bestX = null, bestZ = null;
-  for (const o of items) {
-    if (moving.has(o)) continue;
-    const [ow, od] = halfDims(o);
-    const overlapZ = Math.abs(rawZ - o.z) < hd + od;
-    const overlapX = Math.abs(rawX - o.x) < hw + ow;
-    const candX = [
-      { v: o.x, line: o.x },                    // centrelines align
-      { v: o.x - ow + hw, line: o.x - ow },     // near edges flush
-      { v: o.x + ow - hw, line: o.x + ow },     // far edges flush
-    ];
-    if (overlapZ) candX.push({ v: o.x - ow - hw }, { v: o.x + ow + hw }); // butt
-    for (const c of candX) {
-      const d = Math.abs(c.v - rawX);
-      if (d <= SNAP_FT && (!bestX || d < bestX.d)) bestX = { ...c, d };
-    }
-    const candZ = [
-      { v: o.z, line: o.z },
-      { v: o.z - od + hd, line: o.z - od },
-      { v: o.z + od - hd, line: o.z + od },
-    ];
-    if (overlapX) candZ.push({ v: o.z - od - hd }, { v: o.z + od + hd });
-    for (const c of candZ) {
-      const d = Math.abs(c.v - rawZ);
-      if (d <= SNAP_FT && (!bestZ || d < bestZ.d)) bestZ = { ...c, d };
-    }
-  }
-  const x = bestX ? bestX.v : Math.round(rawX);
-  const z = bestZ ? bestZ.v : Math.round(rawZ);
-  if (bestX && bestX.line !== undefined) snapGuides.push({ axis: "x", at: bestX.line });
-  if (bestZ && bestZ.line !== undefined) snapGuides.push({ axis: "z", at: bestZ.line });
-  return { x, z };
-}
-
-// the band of empty ground between two footprints, for dimensions and hatching
-function gapBand(a, b) {
-  const [aw, ad] = halfDims(a), [bw, bd] = halfDims(b);
-  const gx = Math.abs(a.x - b.x) - (aw + bw);
-  const gz = Math.abs(a.z - b.z) - (ad + bd);
-  if (gx >= gz) {
-    const s = Math.sign(b.x - a.x) || 1;
-    const e0 = a.x + s * aw, e1 = b.x - s * bw;
-    const o0 = Math.max(a.z - ad, b.z - bd), o1 = Math.min(a.z + ad, b.z + bd);
-    return {
-      axis: "x", gap: Math.max(0, gx), overlap: o1 - o0,
-      x0: Math.min(e0, e1), x1: Math.max(e0, e1),
-      z0: Math.min(o0, o1), z1: Math.max(o0, o1),
-    };
-  }
-  const s = Math.sign(b.z - a.z) || 1;
-  const e0 = a.z + s * ad, e1 = b.z - s * bd;
-  const o0 = Math.max(a.x - aw, b.x - bw), o1 = Math.min(a.x + aw, b.x + bw);
-  return {
-    axis: "z", gap: Math.max(0, gz), overlap: o1 - o0,
-    x0: Math.min(o0, o1), x1: Math.max(o0, o1),
-    z0: Math.min(e0, e1), z1: Math.max(e0, e1),
-  };
+  const r = gSnapMove(primary, rawX, rawZ, moving, items, TYPE_BY_ID);
+  snapGuides = r.guides;
+  return { x: r.x, z: r.z };
 }
 
 // ---- the chrome overlay ----
