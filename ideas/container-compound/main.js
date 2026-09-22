@@ -128,6 +128,14 @@ const esc = (v) => String(v).replace(/[&<>"]/g, (c) =>
 // Every numeric attribute goes through this: a non-finite value used to emit
 // `x="NaN"`, which SVG drops silently, so a broken drawing looked like a
 // missing feature rather than an error.
+// the drawer swatch shows the same 40% wash over paper the sheet draws, so a
+// chip and its footprint are recognisably the same colour
+const SHEET_PAPER = [0xfb, 0xfa, 0xf6];
+const chipTint = (hex) => {
+  const n = typeof hex === "number" ? hex : parseInt(String(hex).replace("#", ""), 16);
+  const mix = (c, i) => Math.round(c * 0.4 + SHEET_PAPER[i] * 0.6);
+  return `rgb(${mix((n >> 16) & 255, 0)}, ${mix((n >> 8) & 255, 1)}, ${mix(n & 255, 2)})`;
+};
 const nf = (v, fallback = 0) => (Number.isFinite(v) ? +v.toFixed(3) : fallback);
 
 // Findings carry a second, achromatic channel — a long-short dash against the
@@ -525,8 +533,8 @@ function select(item) {
   const t = TYPE_BY_ID[item.typeId];
   document.getElementById("info-name").textContent = t.name;
   document.getElementById("info-sub").textContent = t.deck
-    ? `8' × 8' platform · 64 sq ft deck · ~$${t.cost.toLocaleString()}`
-    : `${t.len}' ${t.len === 10 ? "mini " : ""}high cube · ${t.len}' × 8' × 9'6" · ${t.len * t.wid} sq ft · ~$${t.cost.toLocaleString()}`;
+    ? `8′ × 8′ platform · 64 ft² deck · ≈$${t.cost.toLocaleString()}`
+    : `${t.len}′ ${t.len === 10 ? "mini " : ""}high cube · ${t.len}′ × 8′ × 9′6″ · ${t.len * t.wid} ft² · ≈$${t.cost.toLocaleString()}`;
   document.getElementById("info-desc").textContent = t.desc;
   const VARIANT_LABEL = {
     standard: "Standard container · shutters one end",
@@ -554,7 +562,7 @@ function select(item) {
       const d = Math.min(...cores.map((c) => Math.hypot(c.x - item.x, c.z - item.z)));
       wetEl.textContent = d <= WET_RADIUS
         ? `✓ ${Math.round(d)} ft to the utility core — short plumbing runs.`
-        : `△ ${Math.round(d)} ft to the utility core — expect a long trench.`;
+        : `${Math.round(d)} ft to the utility core — expect a long trench.`;
     }
     wetEl.style.display = "block";
   } else {
@@ -566,11 +574,11 @@ function select(item) {
     for (const p of sepPairs) {
       if (p.a !== item && p.b !== item) continue;
       const other = p.a === item ? p.b : p.a;
-      msgs.push(`△ ${Math.max(1, Math.round(p.gap))} ft to the ${TYPE_BY_ID[other.typeId].name.toLowerCase()} — 1–9 ft gaps need rated walls and limit glazing (VRC R302.1). Butt them together or open to 10 ft.`);
+      msgs.push(`${Math.max(1, Math.round(p.gap))} ft to the ${TYPE_BY_ID[other.typeId].name.toLowerCase()} — 1–9 ft gaps need rated walls and limit glazing (VRC R302.1). Butt them together or open to 10 ft.`);
     }
     const j = joined.get(item.id);
     if (j && j.sqft > 256) {
-      msgs.push(`△ Butted with ${j.count - 1} other unit${j.count > 2 ? "s" : ""}: ${j.sqft} sq ft as one structure — over the 256 sq ft permit exemption.`);
+      msgs.push(`Butted with ${j.count - 1} other unit${j.count > 2 ? "s" : ""}: ${j.sqft} ft² as one structure — the exemption is read per structure, not per box.`);
     }
   }
   sepEl.textContent = msgs.join(" ");
@@ -791,13 +799,16 @@ function setMode(m) {
 for (const b of document.querySelectorAll("#tabbar button"))
   b.addEventListener("click", () => setMode(b.dataset.mode));
 
+const SVG_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+const ICON_ROOFED = SVG_OPEN + '<path d="M3 11l9-7 9 7"/><path d="M5 11v9h14v-9"/></svg>';
+const ICON_ROOFLESS = SVG_OPEN + '<path d="M3 7l9-4 9 4" stroke-dasharray="3 3" opacity="0.55"/><path d="M5 12v8h14v-8"/><path d="M5 12h14"/></svg>';
 const btnDoll = document.getElementById("btn-doll");
 btnDoll.addEventListener("click", () => {
   dollhouseOn = !dollhouseOn;
   markShadowDirty();
   btnDoll.classList.toggle("on", dollhouseOn);
   btnDoll.setAttribute("aria-pressed", String(dollhouseOn));
-  btnDoll.textContent = dollhouseOn ? "⊔" : "⌂"; // open box vs roofed
+  btnDoll.innerHTML = dollhouseOn ? ICON_ROOFLESS : ICON_ROOFED;
   btnDoll.title = dollhouseOn ? "Dollhouse: roofs lifted" : "Dollhouse: roofs on";
   toast(dollhouseOn ? "Dollhouse — every roof lifted" : "Roofs back on");
 });
@@ -827,10 +838,10 @@ for (const group of ADD_GROUPS) {
     const row = document.createElement("button");
     row.className = "add-row";
     const meta = t.deck
-      ? `8' × 8' platform · 64 sq ft · ~$${(t.cost / 1000).toFixed(1)}k`
-      : `${t.len}' ${t.len === 10 ? "mini " : ""}high cube · ${t.len * t.wid} sq ft · ~$${Math.round(t.cost / 1000)}k`;
+      ? `8′ × 8′ platform · 64 ft² · ≈$${(t.cost / 1000).toFixed(1)}k`
+      : `${t.len}′ ${t.len === 10 ? "mini " : ""}high cube · ${t.len * t.wid} ft² · ≈$${Math.round(t.cost / 1000)}k`;
     const badge = BADGES[t.variant] ? `<span class="badge">${BADGES[t.variant]}</span>` : "";
-    row.innerHTML = `<span class="add-chip${t.len === 10 || t.deck ? " mini" : ""}" style="background:#${t.color.toString(16).padStart(6, "0")}"></span>
+    row.innerHTML = `<span class="add-chip${t.len === 10 || t.deck ? " mini" : ""}" style="background:${chipTint(t.color)}"></span>
       <span>
         <div class="add-name">${t.name}${badge}</div>
         <div class="add-meta">${meta}</div>
@@ -873,7 +884,7 @@ for (const spec of [
 ]) {
   const row = document.createElement("button");
   row.className = "add-row";
-  row.innerHTML = `<span class="add-chip mini" style="background:${spec.chip}"></span>
+  row.innerHTML = `<span class="add-chip mini" style="background:${chipTint(spec.chip)}"></span>
     <span>
       <div class="add-name">${spec.name}</div>
       <div class="add-meta">${spec.meta}</div>
@@ -1019,6 +1030,10 @@ document.getElementById("btn-close").addEventListener("click", () => {
 });
 document.getElementById("stats-pill").addEventListener("click", () =>
   document.getElementById("stats-pop").classList.toggle("open"));
+document.getElementById("cart-key").addEventListener("click", () =>
+  openDialog(document.getElementById("key-modal")));
+document.getElementById("key-close").addEventListener("click", () =>
+  closeDialog(document.getElementById("key-modal")));
 document.getElementById("btn-va").addEventListener("click", () =>
   openDialog(document.getElementById("va-modal")));
 document.getElementById("btn-va-close").addEventListener("click", () =>
@@ -1356,8 +1371,8 @@ function updateStats() {
   document.getElementById("st-units").textContent = hc20 + hc10;
   document.getElementById("st-hc20").textContent = hc20;
   document.getElementById("st-hc10").textContent = hc10;
-  document.getElementById("st-sqft").textContent = `${sqft.toLocaleString()} sq ft`;
-  document.getElementById("st-deck").textContent = `${deckSqft.toLocaleString()} sq ft`;
+  document.getElementById("st-sqft").textContent = `${sqft.toLocaleString()} ft²`;
+  document.getElementById("st-deck").textContent = `${deckSqft.toLocaleString()} ft²`;
   document.getElementById("st-trench").textContent = trenchFt
     ? `${trenchFt} ft · $${trenchCost.toLocaleString()}` : "—";
   document.getElementById("st-cost").textContent = `$${cost.toLocaleString()}`;
@@ -1391,9 +1406,11 @@ function updateStats() {
   }
   const money = cost >= 1000 ? `≈$${Math.round(cost / 1000)}k` : `$${cost.toLocaleString()}`;
   const pill = document.getElementById("stats-pill");
-  pill.textContent =
-    `${plural(n, "unit")} · ${(sqft + deckSqft).toLocaleString()} ft² · ${money}` +
-    (findings.total ? ` · ⚠ ${findings.total}` : "");
+  const warn = `<svg class="warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4" stroke-linecap="round"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>`;
+  pill.innerHTML =
+    `${plural(n, "unit")} · ${(sqft + deckSqft).toLocaleString()} ft² · ${esc(money)}` +
+    (findings.total ? ` · <span class="pill-warn">${warn}${findings.total}</span>` : "");
+  pill.classList.toggle("has-findings", findings.total > 0);
   pill.setAttribute("aria-label",
     `${plural(n, "unit")}, ${(sqft + deckSqft).toLocaleString()} square feet, about $${cost.toLocaleString()}, ` +
     (findings.total ? plural(findings.total, "code finding") : "no code findings") +
@@ -1618,7 +1635,7 @@ function unitPlanGroup(it, detail) {
   } else {
     // wall poché: dark outer line, white interior, faint tint wash
     g += `<rect x="${-hw}" y="${-hd}" width="${hw * 2}" height="${hd * 2}" fill="#ffffff" stroke="#23231f" stroke-width="2.6"/>`;
-    g += `<rect x="${-hw + 3}" y="${-hd + 3}" width="${hw * 2 - 6}" height="${hd * 2 - 6}" fill="#${t.color.toString(16).padStart(6, "0")}" fill-opacity="0.16" stroke="#55524c" stroke-width="0.8"/>`;
+    g += `<rect x="${-hw + 3}" y="${-hd + 3}" width="${hw * 2 - 6}" height="${hd * 2 - 6}" fill="#${t.color.toString(16).padStart(6, "0")}" fill-opacity="0.40" stroke="#55524c" stroke-width="${ss(0.8)}"/>`;
 
     // the finished interior after spray foam, only worth drawing up close
     if (detail) {
@@ -1638,9 +1655,11 @@ function unitPlanGroup(it, detail) {
     const ends = t.variant === "tunnel" ? [1, -1] : [1];
     for (const e of ends) {
       g += `<line x1="${e * (hw - 2)}" y1="${-hd + 4}" x2="${e * (hw - 2)}" y2="${hd - 4}" stroke="#4a90c2" stroke-width="2.2"/>`;
+      // hinge at the far jamb, leaf open square to the wall, arc closing on
+      // the strike jamb — the tip is on its own arc, which it was not before
       const hy = -3.1 * S, r = 3 * S;
-      g += `<line x1="${e * hw}" y1="${hy}" x2="${e * (hw + r * 0.6)}" y2="${hy + r * 0.6}" stroke="#55524c" stroke-width="1.4"/>`;
-      g += `<path d="M ${e * (hw + r * 0.6)} ${hy + r * 0.6} A ${r} ${r} 0 0 ${e === 1 ? 0 : 1} ${e * hw} ${hy + r}" fill="none" stroke="#55524c" stroke-width="0.8" stroke-dasharray="3 3"/>`;
+      g += `<line x1="${e * hw}" y1="${hy}" x2="${e * (hw + r)}" y2="${hy}" stroke="#55524c" stroke-width="${ss(1.6)}"/>`;
+      g += `<path d="M ${e * (hw + r)} ${hy} A ${r} ${r} 0 0 ${e === 1 ? 1 : 0} ${e * hw} ${hy + r}" fill="none" stroke="#55524c" stroke-width="${ss(0.9)}" stroke-dasharray="${dash(3, 3)}"/>`;
     }
     if (t.variant === "openside") {
       g += `<line x1="${-hw + 5}" y1="${hd - 2}" x2="${hw - 5}" y2="${hd - 2}" stroke="#4a90c2" stroke-width="2.2"/>`;
@@ -1827,6 +1846,26 @@ function unitLabel(it) {
 }
 
 // a paper-coloured knockout, so annotation stops overprinting the drawing
+// A drawn triangle at the text's own weight, replacing a font fallback that
+// rendered as a hairline outline at 0.75x the cap height beside it.
+function warnMark(x, y, size = 10, fill = "#8c3b2e") {
+  const r = ss(size) * 0.55;
+  return `<path d="M ${x} ${y - r} L ${x + r * 0.95} ${y + r * 0.75} L ${x - r * 0.95} ${y + r * 0.75} Z" fill="none" stroke="${fill}" stroke-width="${ss(1.6)}" stroke-linejoin="round"/>`
+    + `<path d="M ${x} ${y - r * 0.25} v ${r * 0.55}" stroke="${fill}" stroke-width="${ss(1.5)}" stroke-linecap="round"/>`
+    + `<circle cx="${x}" cy="${y + r * 0.55}" r="${ss(0.8)}" fill="${fill}"/>`;
+}
+
+// a drawn warning mark plus its label, centred as one unit
+function warnLabel(cx, y, text, size = 10) {
+  const tw = text.length * ss(size * 0.64);
+  const mark = ss(size) * 1.1;
+  const total = tw + mark;
+  const mx = cx - total / 2 + mark * 0.5;
+  return plate(cx, y - ss(4), total + ss(10), ss(size + 5))
+    + warnMark(mx, y - ss(3.2), size)
+    + `<text x="${cx - total / 2 + mark}" y="${y}" font-size="${ss(size)}" font-weight="700" letter-spacing="${ss(0.9)}" fill="#8c3b2e" font-family="${FONT}">${esc(text)}</text>`;
+}
+
 function plate(cx, cy, w, h) {
   return `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="${ss(2)}" fill="#fbfaf6" opacity="0.88"/>`;
 }
@@ -1847,9 +1886,7 @@ function separationMarkup() {
     // floor, never round: a diagonal pair at 9.899 ft used to print "10′
     // RATED" beside a remedy telling you to open it to 10 ft
     const shown = Math.max(1, Math.floor(p.gap));
-    const txt = `⚠ ${shown}′ RATED`;
-    s += plate(mx, my - ss(10), txt.length * ss(6.6), ss(15));
-    s += `<text x="${mx}" y="${my - ss(6)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
+    s += warnLabel(mx, my - ss(6), `${shown}′ RATED`, 11);
   }
   return s;
 }
@@ -2069,6 +2106,13 @@ const sitePtrs = new Map();
 // makes the browser stretch a bitmap, which turns the small drafting text to
 // mush exactly when you have zoomed in to read it; giving the SVG its real
 // size re-renders the vectors instead. Panning stays a cheap translate.
+// the cartouche's scale bar is live: it always spans 20 real feet
+function updateCartouche() {
+  const el = document.getElementById("cartouche");
+  if (!el) return;
+  el.style.setProperty("--scale-w", `${Math.round(20 * SP_S * sview.k)}px`);
+}
+
 function siteApply() {
   siteStageEl.style.transform = `translate(${sview.x}px, ${sview.y}px)`;
   const w = Math.round(SP_W * sview.k), h = Math.round(SP_H * sview.k);
@@ -2076,6 +2120,7 @@ function siteApply() {
     svg.setAttribute("width", w);
     svg.setAttribute("height", h);
   }
+  updateCartouche();
 }
 // crossing the detail threshold redraws the sheet at the other fidelity
 function afterZoom() {
@@ -2290,11 +2335,9 @@ function findingsMarkup() {
   // one way of flagging a unit, so every class reads the same
   const flag = (u, text, below = false) => {
     const [hw, hd] = halfDims(u);
-    let out = `<rect x="${X(u.x - hw)}" y="${Y(u.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="none" stroke="#8c3b2e" stroke-width="${ss(2.2)}" stroke-dasharray="${D()}"/>`;
+    const out = `<rect x="${X(u.x - hw)}" y="${Y(u.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="none" stroke="#8c3b2e" stroke-width="${ss(2.2)}" stroke-dasharray="${D()}"/>`;
     const y = below ? Y(u.z + hd) + ss(15) : Y(u.z - hd) - ss(8);
-    out += plate(X(u.x), y - ss(4), text.length * ss(6.4) + ss(8), ss(14));
-    out += `<text x="${X(u.x)}" y="${y}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(0.9)}" fill="#8c3b2e" font-family="${FONT}">${text}</text>`;
-    return out;
+    return out + warnLabel(X(u.x), y, text);
   };
 
   // rated-wall gaps: hatched band between the two footprints
@@ -2321,9 +2364,7 @@ function findingsMarkup() {
       z0 = Math.min(z0, m.z - hd); z1 = Math.max(z1, m.z + hd);
     }
     s += `<rect x="${X(x0) - ss(6)}" y="${Y(z0) - ss(6)}" width="${(x1 - x0) * S + ss(12)}" height="${(z1 - z0) * S + ss(12)}" fill="none" stroke="#c0574a" stroke-width="${ss(1.8)}" stroke-dasharray="${D()}"/>`;
-    const txt = `⚠ ${j.sqft} SF > 256 SF EXEMPTION`;
-    s += plate(X((x0 + x1) / 2), Y(z0) - ss(17), txt.length * ss(6.4), ss(15));
-    s += `<text x="${X((x0 + x1) / 2)}" y="${Y(z0) - ss(13)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
+    s += warnLabel(X((x0 + x1) / 2), Y(z0) - ss(13), `${j.sqft} SF > 256 SF EXEMPTION`);
   }
 
   // a deck run past the exemption, which the unit-only checks never saw
@@ -2340,9 +2381,7 @@ function findingsMarkup() {
       z0 = Math.min(z0, m.z - hd); z1 = Math.max(z1, m.z + hd);
     }
     s += `<rect x="${X(x0) - ss(4)}" y="${Y(z0) - ss(4)}" width="${(x1 - x0) * S + ss(8)}" height="${(z1 - z0) * S + ss(8)}" fill="none" stroke="#c0574a" stroke-width="${ss(1.6)}" stroke-dasharray="${D()}"/>`;
-    const txt = `⚠ DECK RUN ${d.sqft} SF > 256 SF`;
-    s += plate(X((x0 + x1) / 2), Y(z0) - ss(15), txt.length * ss(6.4), ss(14));
-    s += `<text x="${X((x0 + x1) / 2)}" y="${Y(z0) - ss(11)}" text-anchor="middle" font-size="${ss(9.5)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
+    s += warnLabel(X((x0 + x1) / 2), Y(z0) - ss(11), `DECK RUN ${d.sqft} SF > 256 SF`, 9.5);
   }
 
   const cores = items.filter((i) => TYPE_BY_ID[i.typeId].core);
@@ -2354,9 +2393,8 @@ function findingsMarkup() {
       ? Math.min(...cores.map((c) => Math.hypot(c.x - w.x, c.z - w.z))) : Infinity;
     if (near <= WET_RADIUS) continue;
     const [, hd] = halfDims(w);
-    const txt = `⚠ ${cores.length ? `${Math.round(near)}′ TO CORE` : "NO UTILITY CORE"}`;
-    s += plate(X(w.x), Y(w.z + hd) + ss(12), txt.length * ss(6.4), ss(14));
-    s += `<text x="${X(w.x)}" y="${Y(w.z + hd) + ss(16)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
+    s += warnLabel(X(w.x), Y(w.z + hd) + ss(16),
+      cores.length ? `${Math.round(near)}′ TO CORE` : "NO UTILITY CORE");
   }
 
   // overlapping footprints — a saved or shared layout can still hold these
@@ -2365,16 +2403,14 @@ function findingsMarkup() {
       const [hw, hd] = halfDims(u);
       s += `<rect x="${X(u.x - hw)}" y="${Y(u.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="url(#ch-hatch)" stroke="#8c3b2e" stroke-width="${ss(2)}"/>`;
     }
-    const txt = "⚠ UNITS OVERLAP";
-    s += plate(X((a.x + b.x) / 2), Y((a.z + b.z) / 2) - ss(8), txt.length * ss(6.4), ss(14));
-    s += `<text x="${X((a.x + b.x) / 2)}" y="${Y((a.z + b.z) / 2) - ss(4)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(0.9)}" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
+    s += warnLabel(X((a.x + b.x) / 2), Y((a.z + b.z) / 2) - ss(4), "UNITS OVERLAP");
   }
 
   // butted against a door wall
   for (const [a, b] of blockedPairs()) {
     const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
     s += `<circle cx="${X(mx)}" cy="${Y(mz)}" r="${ss(11)}" fill="#fbfaf6" stroke="#8c3b2e" stroke-width="${ss(1.8)}"/>`;
-    s += `<text x="${X(mx)}" y="${Y(mz) + ss(4)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">⚠</text>`;
+    s += warnMark(X(mx), Y(mz), 12);
     const txt = "DOOR WALL BLOCKED";
     s += plate(X(mx), Y(mz) - ss(19), txt.length * ss(6.2), ss(14));
     s += `<text x="${X(mx)}" y="${Y(mz) - ss(15)}" text-anchor="middle" font-size="${ss(9.5)}" font-weight="700" letter-spacing="${ss(0.9)}" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
@@ -2383,19 +2419,19 @@ function findingsMarkup() {
   for (const u of units) {
     const [hw, hd] = halfDims(u);
     const outside = Math.abs(u.x) + hw > SP_HALF || Math.abs(u.z) + hd > SP_HALF;
-    if (outside) { s += flag(u, "⚠ CROSSES PROPERTY LINE"); continue; }
-    if (Math.abs(u.x) + hw > sb || Math.abs(u.z) + hd > sb) s += flag(u, `⚠ INSIDE ${setback}′ SETBACK`);
+    if (outside) { s += flag(u, "CROSSES PROPERTY LINE"); continue; }
+    if (Math.abs(u.x) + hw > sb || Math.abs(u.z) + hd > sb) s += flag(u, `INSIDE ${setback}′ SETBACK`);
   }
-  for (const u of units) if (overlapsDrive(u)) s += flag(u, "⚠ ON THE DRIVE", true);
+  for (const u of units) if (overlapsDrive(u)) s += flag(u, "ON THE DRIVE", true);
   for (const u of units) {
     if (distanceToDrive(u) <= FIRE_ACCESS) continue;
-    s += flag(u, `⚠ ${Math.round(distanceToDrive(u))}′ FROM THE DRIVE`, true);
+    s += flag(u, `${Math.round(distanceToDrive(u))}′ FROM THE DRIVE`, true);
   }
   for (const u of units) {
     for (const d of drainfields) {
       const [hw, hd] = halfDims(u);
       if (Math.abs(u.x - d.x) < hw + DRAIN_W / 2 && Math.abs(u.z - d.z) < hd + DRAIN_L / 2) {
-        s += flag(u, "⚠ OVER THE DRAINFIELD", true);
+        s += flag(u, "OVER THE DRAINFIELD", true);
         break;
       }
     }
@@ -2405,10 +2441,8 @@ function findingsMarkup() {
       const gap = Math.hypot(w.x - d.x, w.z - d.z);
       if (gap >= WELL_CLEAR) continue;
       s += `<line x1="${X(w.x)}" y1="${Y(w.z)}" x2="${X(d.x)}" y2="${Y(d.z)}" stroke="#8c3b2e" stroke-width="${ss(2)}" stroke-dasharray="${D()}"/>`;
-      const txt = `⚠ ${Math.round(gap)}′ WELL TO DRAINFIELD (100′)`;
-      const mx = X((w.x + d.x) / 2), my = Y((w.z + d.z) / 2);
-      s += plate(mx, my - ss(8), txt.length * ss(6.2), ss(14));
-      s += `<text x="${mx}" y="${my - ss(4)}" text-anchor="middle" font-size="${ss(9.5)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
+      s += warnLabel(X((w.x + d.x) / 2), Y((w.z + d.z) / 2) - ss(4),
+        `${Math.round(gap)}′ WELL TO DRAINFIELD (100′)`, 9.5);
       break;
     }
   }
@@ -2521,7 +2555,7 @@ function dragDimsSVG(it, moving) {
     const danger = gap > JOIN_EPS && gap < SEP_CLEAR;
     const butt = gap <= JOIN_EPS;
     const col = butt ? "#2f7a4f" : danger ? "#8c3b2e" : "#55524c";
-    const label = butt ? "BUTT" : danger ? `⚠ ${Math.round(gap)}′ RATED` : `${Math.round(gap)}′`;
+    const label = butt ? "BUTT" : danger ? `${Math.round(gap)}′ RATED` : `${Math.round(gap)}′`;
     const w = ss(label.length * 7 + 16), h = ss(17);
     const mx = b.axis === "x" ? (X(b.x0) + X(b.x1)) / 2 : X((b.x0 + b.x1) / 2);
     const my = b.axis === "x" ? Y((b.z0 + b.z1) / 2) : (Y(b.z0) + Y(b.z1)) / 2;
@@ -2538,7 +2572,10 @@ function dragDimsSVG(it, moving) {
     // sit the chip clear of the band, and of the finger holding the unit
     const oy = my - ss(26);
     s += `<rect x="${mx - w / 2}" y="${oy - h}" width="${w}" height="${h}" rx="${ss(4)}" fill="#fbfaf6" stroke="${col}" stroke-width="${ss(1.2)}"/>`;
-    s += `<text x="${mx}" y="${oy - h / 2 + ss(4)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="${col}" font-family="${FONT}">${label}</text>`;
+    s += danger
+      ? warnMark(mx - w / 2 + ss(9), oy - h / 2, 10, col)
+        + `<text x="${mx + ss(5)}" y="${oy - h / 2 + ss(4)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="${col}" font-family="${FONT}">${label}</text>`
+      : `<text x="${mx}" y="${oy - h / 2 + ss(4)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="${col}" font-family="${FONT}">${label}</text>`;
   }
   return s;
 }
@@ -2912,8 +2949,10 @@ addEventListener("pointerup", () => {
 function planSVG(t) {
   const S = 22, M = 46; // px per foot, margin
   const L = t.len, W = t.wid;
-  const width = L * S + M * 2, height = W * S + M * 2;
-  const X = (x) => M + (x + L / 2) * S;
+  // the outswing needs its own room, or the leaf is clipped by the viewBox
+  const SW = 3.4 * S;
+  const width = L * S + M * 2 + SW * 2, height = W * S + M * 2;
+  const X = (x) => SW + M + (x + L / 2) * S;
   const Y = (z) => M + (z + W / 2) * S;
   let s = "";
 
@@ -2927,8 +2966,8 @@ function planSVG(t) {
     const gx = X(e * (L / 2 - 0.5));
     s += `<line x1="${gx}" y1="${Y(-W / 2 + 0.5)}" x2="${gx}" y2="${Y(W / 2 - 0.5)}" stroke="#5aa9e6" stroke-width="4"/>`;
     const hx = X(e * L / 2), hy = Y(-3.1), dw = 3 * S;
-    s += `<line x1="${hx}" y1="${hy}" x2="${hx + e * dw * 0.7}" y2="${hy - dw * 0.7}" stroke="#4f4a42" stroke-width="3" stroke-linecap="round"/>`;
-    s += `<path d="M ${hx + e * dw * 0.7} ${hy - dw * 0.7} A ${dw} ${dw} 0 0 ${e === 1 ? 1 : 0} ${hx} ${hy + (0 * dw)}" fill="none" stroke="#4f4a42" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.7"/>`;
+    s += `<line x1="${hx}" y1="${hy}" x2="${hx + e * dw}" y2="${hy}" stroke="#4f4a42" stroke-width="3" stroke-linecap="round"/>`;
+    s += `<path d="M ${hx + e * dw} ${hy} A ${dw} ${dw} 0 0 ${e === 1 ? 1 : 0} ${hx} ${Y(-0.1)}" fill="none" stroke="#4f4a42" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.7"/>`;
     s += `<line x1="${X(e * (L / 2 - 3.4))}" y1="${Y(-1.6)}" x2="${X(e * (L / 2 + 1.5))}" y2="${Y(-1.6)}" stroke="#c0574a" stroke-width="2" marker-end="url(#arr)"/>`;
   }
   if (t.variant === "openside") {
@@ -2954,7 +2993,7 @@ function planSVG(t) {
   s += `<line x1="${dxV}" y1="${Y(-W / 2)}" x2="${dxV}" y2="${Y(W / 2)}" stroke="#77746c" stroke-width="1.2"/>`;
   s += tick(dxV, Y(-W / 2), 5, 0) + tick(dxV, Y(W / 2), 5, 0);
   s += `<text x="${dxV + 6}" y="${Y(0)}" text-anchor="middle" font-size="12" fill="#2b2b28" font-family="ui-sans-serif, system-ui" transform="rotate(90 ${dxV + 6} ${Y(0)})">${W}′0″</text>`;
-  s += `<text x="${X(0)}" y="${Y(-W / 2) - 10}" text-anchor="middle" font-size="11" fill="#77746c" font-family="ui-sans-serif, system-ui">interior ≈ 7′2″ wide × ${t.len === 20 ? "18′8″" : "8′7″"} after spray foam</text>`;
+  s += `<text x="${X(0)}" y="${Y(-W / 2) - 10}" text-anchor="middle" font-size="11" fill="#77746c" font-family="ui-sans-serif, system-ui">interior ≈ 7′2″ wide × ${t.len === 20 ? "18′10″" : "8′10″"} after spray foam</text>`;
 
   return `<svg viewBox="0 0 ${width} ${height + 8}" xmlns="http://www.w3.org/2000/svg">
     <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#c0574a"/></marker></defs>
@@ -3056,11 +3095,11 @@ function closeDialog(el) {
   dialogReturn = null;
 }
 function anyOpenDialog() {
-  return ["parts-modal", "plan-modal", "va-modal"]
+  return ["parts-modal", "plan-modal", "va-modal", "key-modal"]
     .map((id) => document.getElementById(id))
     .find((el) => el.classList.contains("open"));
 }
-for (const id of ["parts-modal", "plan-modal", "va-modal"]) {
+for (const id of ["parts-modal", "plan-modal", "va-modal", "key-modal"]) {
   const el = document.getElementById(id);
   el.addEventListener("pointerdown", (e) => { if (e.target === el) closeDialog(el); });
   el.addEventListener("keydown", (e) => {

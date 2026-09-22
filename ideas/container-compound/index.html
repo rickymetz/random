@@ -10,6 +10,18 @@
     --panel: rgba(252, 251, 248, 0.94);
     --ink: #2b2b28;
     --muted: #6b6861;
+    /* one type scale: five steps and a fine print, so near-identical sizes
+       stop pretending to be hierarchy */
+    --t-xl: 1.6rem;
+    --t-lg: 1.15rem;
+    --t-md: 1rem;
+    --t-base: 0.875rem;
+    --t-sm: 0.78rem;
+    --t-xs: 0.7rem;
+    --t-fine: 0.63rem;
+    /* two radii: a pill for controls, one corner for panels */
+    --r-pill: 999px;
+    --r-panel: 0.75rem;
     --line: #e2ded6;
     --accent: #b3542e;
     --shadow: 0 2px 16px rgba(30, 30, 25, 0.14);
@@ -49,11 +61,11 @@
   #topbar .back {
     color: var(--muted);
     text-decoration: none;
-    font-size: 0.95rem;
+    font-size: var(--t-md);
     padding: 0.3rem 0.35rem;
   }
   #topbar h1 {
-    font-size: 0.95rem;
+    font-size: var(--t-md);
     letter-spacing: -0.01em;
     white-space: nowrap;
     overflow: hidden;
@@ -64,7 +76,7 @@
   #topbar button {
     flex: none;
     width: 2.3rem; height: 2.3rem;
-    font-size: 1.15rem;
+    font-size: var(--t-lg);
     line-height: 1;
     border-radius: 50%;
     border: 1px solid var(--line);
@@ -82,7 +94,7 @@
     display: none;
     flex-direction: column;
     min-width: 11rem;
-    border-radius: 0.7rem;
+    border-radius: var(--r-panel);
     padding: 0.3rem;
   }
   body.menu-open #menu { display: flex; }
@@ -93,9 +105,9 @@
     color: inherit;
     border: 0;
     background: transparent;
-    border-radius: 0.45rem;
+    border-radius: var(--r-panel);
     padding: 0.6rem 0.8rem;
-    font-size: 0.85rem;
+    font-size: var(--t-base);
   }
   #menu button:active, #menu a:active { background: rgba(179, 84, 46, 0.1); color: var(--accent); }
 
@@ -117,10 +129,10 @@
     border: 1px solid var(--line);
     background: var(--panel);
     box-shadow: var(--shadow);
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     width: 44px; height: 44px;
     display: grid; place-items: center;
-    font-size: 1.05rem;
+    font-size: var(--t-md);
     padding: 0;
   }
   /* clears the add button, which now steps up rather than disappearing */
@@ -138,7 +150,7 @@
     border: 0;
     background: var(--accent);
     color: #fff;
-    font-size: 1.7rem;
+    font-size: var(--t-xl);
     line-height: 1;
     display: grid;
     place-items: center;
@@ -176,20 +188,20 @@
   #add-sheet .handle {
     width: 2.4rem; height: 0.28rem;
     background: var(--line);
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     margin: 0 auto 0.6rem;
   }
   #add-sheet .head { display: flex; align-items: baseline; gap: 0.6rem; }
-  #add-sheet h3 { font-size: 1.05rem; flex: 1; }
+  #add-sheet h3 { font-size: var(--t-md); flex: 1; }
   #add-sheet .x {
     border: 0; background: transparent;
     color: var(--muted);
-    font-size: 1.15rem;
+    font-size: var(--t-lg);
     padding: 0.1rem 0.3rem;
   }
   .add-sec {
     margin: 0.9rem 0 0.25rem;
-    font-size: 0.68rem;
+    font-size: var(--t-xs);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--muted);
@@ -201,7 +213,7 @@
     width: 100%;
     border: 0;
     background: transparent;
-    border-radius: 0.6rem;
+    border-radius: var(--r-panel);
     padding: 0.55rem 0.45rem;
     text-align: left;
   }
@@ -211,25 +223,25 @@
     width: 2.7rem; height: 1.55rem;
     margin-top: 0.15rem;
     border-radius: 0.3rem;
-    border: 1px solid rgba(0,0,0,0.15);
+    border: 1px solid #55524c;
   }
   .add-chip.mini { width: 1.6rem; }
-  .add-name { font-weight: 600; font-size: 0.88rem; }
+  .add-name { font-weight: 600; font-size: var(--t-base); }
   .add-name .badge {
     font-weight: 500;
-    font-size: 0.66rem;
+    font-size: var(--t-fine);
     color: var(--accent);
     border: 1px solid currentColor;
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     padding: 0.05rem 0.4rem;
     margin-left: 0.35rem;
     vertical-align: 0.1rem;
     white-space: nowrap;
   }
-  .add-meta { color: var(--muted); font-size: 0.74rem; margin-top: 0.05rem; }
+  .add-meta { color: var(--muted); font-size: var(--t-xs); margin-top: 0.05rem; }
   .add-desc {
     color: var(--muted);
-    font-size: 0.73rem;
+    font-size: var(--t-xs);
     margin-top: 0.15rem;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -247,7 +259,7 @@
     display: flex;
     gap: 0.15rem;
     padding: 0.22rem;
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     border: 1px solid var(--line);
     background: var(--panel);
     box-shadow: var(--shadow);
@@ -256,9 +268,9 @@
     flex: 1;
     border: 0;
     background: transparent;
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     padding: 0.38rem 0.5rem;
-    font-size: 0.8rem;
+    font-size: var(--t-sm);
     color: var(--muted);
     white-space: nowrap;
   }
@@ -318,7 +330,7 @@
   #parts-modal.open { display: grid; }
   #parts-modal .box {
     background: var(--panel);
-    border-radius: 0.9rem;
+    border-radius: var(--r-panel);
     width: calc(100vw - 2rem);
     max-width: 30rem;
     max-height: 84vh;
@@ -326,15 +338,15 @@
     padding: 1.1rem 1.2rem;
     box-shadow: var(--shadow);
   }
-  #parts-modal h2 { font-size: 1.05rem; margin-bottom: 0.2rem; }
+  #parts-modal h2 { font-size: var(--t-md); margin-bottom: 0.2rem; }
   #parts-modal h4 {
-    font-size: 0.68rem;
+    font-size: var(--t-xs);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--muted);
     margin: 0.9rem 0 0.3rem;
   }
-  #parts-modal table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  #parts-modal table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
   #parts-modal td { padding: 0.18rem 0; vertical-align: top; }
   #parts-modal td:nth-child(2) { color: var(--muted); white-space: nowrap; padding-left: 0.5rem; }
   #parts-modal td:nth-child(3), #parts-modal td:nth-child(4) {
@@ -349,7 +361,7 @@
     font-weight: 600;
   }
   #parts-modal table.grand td:last-child { text-align: right; }
-  #parts-modal .fine { color: var(--muted); font-size: 0.68rem; margin-top: 0.6rem; }
+  #parts-modal .fine { color: var(--muted); font-size: var(--t-xs); margin-top: 0.6rem; }
   #parts-modal button {
     margin-top: 0.9rem;
     width: 100%;
@@ -364,9 +376,9 @@
     width: 100%;
     margin-top: 0.55rem;
     font: inherit;
-    font-size: 0.78rem;
+    font-size: var(--t-sm);
     padding: 0.42rem 0.5rem;
-    border-radius: 0.5rem;
+    border-radius: var(--r-panel);
     border: 1px solid var(--line);
     background: #fff;
     cursor: pointer;
@@ -384,7 +396,7 @@
   #plan-modal.open { display: grid; }
   #plan-modal .box {
     background: var(--panel);
-    border-radius: 0.9rem;
+    border-radius: var(--r-panel);
     width: calc(100vw - 2rem);
     max-width: 34rem;
     max-height: 86vh;
@@ -392,8 +404,8 @@
     padding: 1.1rem 1.2rem;
     box-shadow: var(--shadow);
   }
-  #plan-modal h2 { font-size: 1rem; }
-  #plan-modal .sub { color: var(--muted); font-size: 0.75rem; margin: 0.15rem 0 0.7rem; }
+  #plan-modal h2 { font-size: var(--t-md); }
+  #plan-modal .sub { color: var(--muted); font-size: var(--t-sm); margin: 0.15rem 0 0.7rem; }
   #plan-svg svg { width: 100%; height: auto; display: block; }
   #plan-modal button {
     margin-top: 0.9rem;
@@ -435,7 +447,7 @@
     border: 1px solid var(--line);
     background: var(--panel);
     box-shadow: var(--shadow);
-    font-size: 1.15rem;
+    font-size: var(--t-lg);
     display: grid;
     place-items: center;
   }
@@ -445,12 +457,12 @@
   #edge-tools button:not(:disabled):active,
   #view-tools button:active { border-color: var(--accent); color: var(--accent); }
   #compass { position: relative; }
-  #needle { display: inline-block; line-height: 1; font-size: 1.05rem; }
+  #needle { display: inline-block; line-height: 1; font-size: var(--t-md); }
   #compass .n {
     position: absolute;
     bottom: 0.18rem;
     right: 0.42rem;
-    font-size: 0.55rem;
+    font-size: var(--t-fine);
     color: var(--muted);
   }
 
@@ -460,9 +472,9 @@
     left: 0.75rem;
     bottom: calc(0.9rem + var(--sab));
     z-index: 4;
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     padding: 0.38rem 0.8rem;
-    font-size: 0.75rem;
+    font-size: var(--t-sm);
     font-variant-numeric: tabular-nums;
   }
   #stats-pop {
@@ -471,16 +483,16 @@
     bottom: calc(3.4rem + var(--sab));
     z-index: 4;
     width: 14rem;
-    border-radius: 0.7rem;
+    border-radius: var(--r-panel);
     padding: 0.7rem 0.8rem;
     display: none;
   }
   #stats-pop.open { display: block; }
-  #stats-pop table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  #stats-pop table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
   #stats-pop td { padding: 0.14rem 0; }
   #stats-pop td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
   #stats-pop .total td { border-top: 1px solid var(--line); padding-top: 0.3rem; font-weight: 600; }
-  #stats-pop .fine { color: var(--muted); font-size: 0.66rem; margin-top: 0.45rem; }
+  #stats-pop .fine { color: var(--muted); font-size: var(--t-fine); margin-top: 0.45rem; }
 
   /* ---- selection bottom sheet ---- */
   #info {
@@ -520,7 +532,7 @@
     justify-content: center;
     gap: 0.25rem;
     padding: 0.3rem 0.4rem;
-    border-radius: 1.4rem;
+    border-radius: var(--r-panel);
     border: 1px solid var(--line);
     background: var(--panel);
     box-shadow: var(--shadow);
@@ -534,6 +546,7 @@
   @media (max-width: 899px) {
     body.sheet-open #toolstrip { display: none !important; }
   }
+  #toolstrip button svg, #view-tools button svg { width: 1.15rem; height: 1.15rem; }
   #toolstrip button {
     flex: none;
     /* fixed px, not rem: at 2x system text these grew until Delete, Duplicate
@@ -542,7 +555,7 @@
     border: 0;
     border-radius: 50%;
     background: transparent;
-    font-size: 1.2rem;
+    font-size: var(--t-lg);
     line-height: 1;
     display: grid;
     place-items: center;
@@ -551,9 +564,9 @@
   #toolstrip button svg { width: 1.15rem; height: 1.15rem; }
   #toolstrip button.active { background: rgba(179, 84, 46, 0.15); color: var(--accent); }
   #toolstrip button:not(.active):active { color: var(--accent); }
-  #toolstrip #btn-desel { color: var(--muted); font-size: 1rem; }
+  #toolstrip #btn-desel { color: var(--muted); font-size: var(--t-md); }
   #toolstrip #sel-name {
-    font-size: 0.78rem;
+    font-size: var(--t-sm);
     font-weight: 600;
     padding: 0 0.3rem;
     max-width: 6rem;
@@ -570,21 +583,21 @@
   #info .handle {
     width: 2.4rem; height: 0.28rem;
     background: var(--line);
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     margin: 0 auto 0.6rem;
   }
   #info .head { display: flex; align-items: baseline; gap: 0.6rem; }
-  #info h3 { font-size: 1.05rem; flex: 1; }
+  #info h3 { font-size: var(--t-md); flex: 1; }
   #info .x {
     border: 0; background: transparent;
     color: var(--muted);
-    font-size: 1.15rem;
+    font-size: var(--t-lg);
     padding: 0.1rem 0.3rem;
   }
-  #info .sub { color: var(--muted); font-size: 0.76rem; margin: 0.15rem 0 0.55rem; }
-  #info p { font-size: 0.84rem; margin-bottom: 0.55rem; }
+  #info .sub { color: var(--muted); font-size: var(--t-sm); margin: 0.15rem 0 0.55rem; }
+  #info p { font-size: var(--t-base); margin-bottom: 0.55rem; }
   #info .build {
-    font-size: 0.72rem;
+    font-size: var(--t-xs);
     color: var(--muted);
     background: rgba(0, 0, 0, 0.045);
     border-radius: 0.4rem;
@@ -592,7 +605,7 @@
     margin-bottom: 0.55rem;
   }
   #info .va {
-    font-size: 0.75rem;
+    font-size: var(--t-sm);
     color: var(--muted);
     border-left: 3px solid var(--accent);
     padding-left: 0.55rem;
@@ -600,7 +613,7 @@
   }
   #info .wet {
     display: none;
-    font-size: 0.75rem;
+    font-size: var(--t-sm);
     color: var(--muted);
     border-left: 3px solid #7e97a6;
     padding-left: 0.55rem;
@@ -608,7 +621,7 @@
   }
   #info .sep {
     display: none;
-    font-size: 0.75rem;
+    font-size: var(--t-sm);
     color: #8c3b2e;
     border-left: 3px solid #c0574a;
     padding-left: 0.55rem;
@@ -616,7 +629,7 @@
   }
   #info .wide {
     width: 100%;
-    font-size: 0.85rem;
+    font-size: var(--t-base);
     padding: 0.55rem 0.5rem;
     border-radius: 0.55rem;
     border: 1px solid var(--line);
@@ -627,7 +640,7 @@
   #info .row { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
   #info .row button {
     flex: 1;
-    font-size: 0.85rem;
+    font-size: var(--t-base);
     padding: 0.6rem 0.5rem;
     border-radius: 0.55rem;
     border: 1px solid var(--line);
@@ -655,9 +668,9 @@
     padding: 1.2rem 1.3rem calc(1.3rem + var(--sab));
     box-shadow: var(--shadow);
   }
-  #va-modal h2 { font-size: 1rem; margin-bottom: 0.7rem; }
-  #va-modal li { margin: 0 0 0.55rem 1.1rem; font-size: 0.83rem; }
-  #va-modal .fine { color: var(--muted); font-size: 0.72rem; margin-top: 0.8rem; }
+  #va-modal h2 { font-size: var(--t-md); margin-bottom: 0.7rem; }
+  #va-modal li { margin: 0 0 0.55rem 1.1rem; font-size: var(--t-base); }
+  #va-modal .fine { color: var(--muted); font-size: var(--t-xs); margin-top: 0.8rem; }
   #va-modal button {
     margin-top: 1rem;
     width: 100%;
@@ -679,18 +692,18 @@
     align-items: center;
     gap: 0.6rem;
     padding: 0.35rem 0.4rem 0.35rem 0.9rem;
-    border-radius: 999px;
-    font-size: 0.78rem;
+    border-radius: var(--r-pill);
+    font-size: var(--t-sm);
     white-space: nowrap;
   }
   body.visiting #visit-bar { display: flex; }
   #visit-keep {
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     background: var(--accent);
     color: #fff;
     padding: 0.4rem 0.8rem;
-    font-size: 0.76rem;
+    font-size: var(--t-sm);
     min-height: 34px;
   }
 
@@ -704,6 +717,38 @@
     #menu button:hover, #menu a:hover { background: rgba(179, 84, 46, 0.08); }
     .add-row:hover { background: rgba(179, 84, 46, 0.06); }
     #fab:hover { filter: brightness(1.06); }
+  }
+
+  #cartouche {
+    position: fixed;
+    left: 1rem;
+    top: calc(6.6rem + var(--sat));
+    z-index: 5;
+    display: none;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.3rem 0.35rem 0.3rem 0.6rem;
+    border-radius: var(--r-pill);
+    font-size: var(--t-xs);
+    color: var(--muted);
+  }
+  body[data-mode="plan"] #cartouche { display: flex; }
+  #cart-north { display: inline-flex; align-items: center; gap: 0.15rem; color: var(--ink); }
+  #cart-north svg { width: 0.9rem; height: 0.9rem; }
+  #cart-north b { font-size: var(--t-fine); }
+  #cart-scale { display: inline-flex; align-items: center; gap: 0.3rem; }
+  #cart-scale i {
+    display: block; height: 0.45rem;
+    border: 1px solid var(--ink); border-top: 0;
+    width: var(--scale-w, 40px);
+  }
+  #cart-key {
+    border: 1px solid var(--line);
+    background: transparent;
+    border-radius: var(--r-pill);
+    padding: 0.25rem 0.6rem;
+    font-size: var(--t-fine);
+    min-height: 30px;
   }
 
   /* ---- mobile review fixes ---- */
@@ -721,7 +766,7 @@
   :where(button, a, [tabindex]):focus-visible {
     outline: 3px solid #8c3b2e;
     outline-offset: 2px;
-    border-radius: 0.5rem;
+    border-radius: var(--r-panel);
   }
 
   /* Dismissing a sheet was a 25 px target in the hardest corner to reach. */
@@ -738,6 +783,9 @@
   #btn-menu { width: 44px; height: 44px; }
   #tabbar button { min-height: 44px; }
   #stats-pill { min-height: 44px; }
+  .pill-warn { display: inline-flex; align-items: center; gap: 0.2em; color: #8c3b2e; font-weight: 700; }
+  .pill-warn .warn { width: 1em; height: 1em; }
+  #stats-pill.has-findings { border-color: #cc9a8e; }
 
   /* Delete sat 1.6 px from Duplicate, against a ~45 px contact patch. */
   #btn-delete { margin-left: 0.5rem; }
@@ -756,8 +804,22 @@
   }
 
   /* The compass is a readout, not a control, and was styled as a button. */
-  #compass.readout { border-color: transparent; background: transparent; box-shadow: none; }
+  #compass.readout {
+    background: transparent;
+    box-shadow: none;
+    border: 1px solid var(--line);
+    border-style: dashed;
+    color: var(--muted);
+  }
 
+
+  #key-modal .key-list { list-style: none; padding: 0; margin: 0 0 1rem; }
+  #key-modal .key-list li { display: flex; gap: 0.6rem; align-items: baseline; margin: 0.7rem 0; font-size: var(--t-sm); line-height: 1.5; }
+  #key-modal .sw { flex: none; width: 1.6rem; height: 0.7rem; border-radius: 2px; margin-top: 0.25rem; }
+  #key-modal .sw.dash { border-bottom: 2px dashed; height: 0; }
+  #key-modal .sw.dash.long { border-bottom-width: 3px; }
+  #key-modal .sw.hatch { background: repeating-linear-gradient(45deg, #c0574a 0 2px, transparent 2px 5px); }
+  #key-modal .sw.dashdot { border-bottom: 2px dashed #8a867c; height: 0; }
 
   #stats-pop tr.findings.warn td { color: #8c3b2e; font-weight: 700; }
 
@@ -774,8 +836,8 @@
     background: var(--ink);
     color: #fff;
     padding: 0.45rem 0.9rem;
-    border-radius: 999px;
-    font-size: 0.76rem;
+    border-radius: var(--r-pill);
+    font-size: var(--t-sm);
     white-space: normal;
     opacity: 0;
     transition: opacity 200ms;
@@ -795,7 +857,7 @@
     #info {
       left: auto; right: 1rem; bottom: 5.6rem;
       max-width: 19rem;
-      border-radius: 0.8rem;
+      border-radius: var(--r-panel);
       border-width: 1px;
       transform: none;
       visibility: hidden;
@@ -823,7 +885,7 @@
     body.has-selection #fab { bottom: 1rem; }
 
     #va-modal { place-items: center; }
-    #va-modal .box { border-radius: 0.9rem; width: calc(100vw - 3rem); padding-bottom: 1.3rem; }
+    #va-modal .box { border-radius: var(--r-panel); width: calc(100vw - 3rem); padding-bottom: 1.3rem; }
   }
 </style>
 </head>
@@ -879,7 +941,7 @@
 </div>
 
 <div id="view-tools">
-  <button id="btn-doll" aria-label="Dollhouse view: lift every roof" aria-pressed="false" title="Dollhouse: roofs on">⌂</button>
+  <button id="btn-doll" aria-label="Dollhouse view: lift every roof" aria-pressed="false" title="Dollhouse: roofs on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 11v9h14v-9"/></svg></button>
   <button id="btn-sun" aria-label="Cycle sun" title="Midday">☀</button>
   <div id="compass" class="readout" aria-hidden="true"><span id="needle">↑</span><span class="n">N</span></div>
   <button id="btn-fit" aria-label="Recenter view">⌖</button>
@@ -937,19 +999,34 @@
 </div>
 
 <div id="toolstrip" class="panel">
-  <button id="btn-desel" aria-label="Deselect" title="Deselect (Esc)">✕</button>
+  <button id="btn-desel" aria-label="Deselect" title="Deselect (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   <span id="sel-name"></span>
   <span class="div"></span>
   <button id="tool-move" aria-pressed="false" aria-label="Move: place this unit with the next click" title="Move — then click where it should go">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>
   </button>
-  <button id="btn-rotate" aria-label="Rotate 90°" title="Rotate 90° (R)">⟳</button>
-  <button id="btn-dup" aria-label="Duplicate" title="Duplicate">⧉</button>
+  <button id="btn-rotate" aria-label="Rotate 90°" title="Rotate 90° (R)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg></button>
+  <button id="btn-dup" aria-label="Duplicate" title="Duplicate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M15 5H5.5A1.5 1.5 0 0 0 4 6.5V16"/></svg></button>
   <button id="btn-delete" aria-label="Delete" title="Delete (Del)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v7M14 10v7"/></svg>
   </button>
   <span class="div"></span>
-  <button id="btn-info" aria-label="Details" title="Details">ⓘ</button>
+  <button id="btn-info" aria-label="Details" title="Details"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.4"/></svg></button>
+</div>
+
+<div id="key-modal" role="dialog" aria-modal="true" aria-label="Drawing key">
+  <div class="box">
+    <h2>What the drawing is telling you</h2>
+    <ul class="key-list">
+      <li><span class="sw" style="background:#4a90c2"></span> <b>Blue</b> — a glazed aperture: the container's factory door end, where the glass and the entry door go. Nothing is cut into a wall.</li>
+      <li><span class="sw dash" style="border-color:#5f7a8a"></span> <b>Even dash, blue-grey</b> — a utility run from a wet unit to the core, and the 30 ft ring around the core itself.</li>
+      <li><span class="sw dash long" style="border-color:#c0574a"></span> <b>Long dash, red</b> — a code finding. Every one is also written out under Code findings in the summary.</li>
+      <li><span class="sw hatch"></span> <b>Red hatching</b> — the gap between two units that sit 1–9 ft apart, which needs a fire-resistance-rated wall on each facing side (VRC R302.1).</li>
+      <li><span class="sw dashdot"></span> <b>Dash-dot</b> — the property line. The lighter dashed square inside it is the setback envelope.</li>
+      <li><span class="sw" style="background:#6f8a5c;opacity:.35"></span> <b>Green block</b> — the septic drainfield. Keep units, the drive and the well clear of it.</li>
+    </ul>
+    <button id="key-close">Close</button>
+  </div>
 </div>
 
 <div id="va-modal" role="dialog" aria-modal="true" aria-label="Virginia code notes">
@@ -962,7 +1039,7 @@
       <li><strong>A &#8220;wet unit&#8221;</strong> is any unit with plumbing — the kitchen, the bathhouse, the baths and the laundry. The <strong>utility core</strong> is the laundry / utility unit that carries the water supply and drain; the drawing rings it at 30 ft and flags any wet unit outside that ring, because longer runs mean more trench, more fall to hold and more to freeze.</li>
       <li>Plumbed and electrified units (kitchen, baths, laundry) still need <strong>trade permits and inspections</strong>, and any unit used for sleeping or dwelling can trigger full residential code compliance — talk to your county building department early.</li>
       <li><strong>High cube (9&#8242;6&#8243;) containers</strong> leave roughly an 8&#8242; finished ceiling after closed-cell spray foam — comfortably above the 7&#8242;0&#8243; habitable-space minimum (VRC R305).</li>
-      <li><strong>Habitable rooms need 70 sq ft and a 7&#8242; minimum dimension</strong> (VRC R304). So every habitable unit — sleeping, kitchen, dining, living, office — rides a 20&#8242; box (~131 sq ft interior), and wall build-up is capped at 3&#189;&#8243; per side to land interior width near 7&#8242;2&#8243;, clear of the minimum. The 10&#8242; minis are reserved for non-habitable roles: bath, laundry, hobby/storage.</li>
+      <li><strong>Habitable rooms need 70 sq ft and a 7&#8242; minimum dimension</strong> (VRC R304). So every habitable unit — sleeping, kitchen, dining, living, office — rides a 20&#8242; box (~135 sq ft interior), and wall build-up is capped at 3&#189;&#8243; per side to land interior width near 7&#8242;2&#8243;, clear of the minimum. The 10&#8242; minis are reserved for non-habitable roles: bath, laundry, hobby/storage.</li>
       <li>The sleeping unit is a <strong>tunnel container: two independent glazed egress doors</strong> in the factory apertures (VRC R310) — no cut openings.</li>
       <li>Habitable units carry <strong>interconnected smoke + CO alarms</strong> (VRC R314/R315), and every wet room gets <strong>mechanical exhaust</strong> (R303.3) ducted through the floor.</li>
       <li>Containers sit on <strong>pier foundations with footings below frost depth</strong> (18–24&#8243; across most of Virginia).</li>
@@ -981,6 +1058,18 @@
     <div class="fine">This is a visualization for exploring ideas — not construction documents or code advice.</div>
     <button id="btn-va-close">Close</button>
   </div>
+</div>
+
+<!-- The sheet's own title block sits in a corner of the paper that is
+     off-screen at every working zoom, so north, scale and the colour key get
+     a fixed cartouche of their own. -->
+<div id="cartouche" class="panel">
+  <span id="cart-north" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l4 14-4-3-4 3z" fill="currentColor"/></svg>
+    <b>N</b>
+  </span>
+  <span id="cart-scale"><i></i><em>20 ft</em></span>
+  <button id="cart-key" title="What the colours and dashes mean">Key</button>
 </div>
 
 <div id="visit-bar" class="panel">

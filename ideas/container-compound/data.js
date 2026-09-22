@@ -9,7 +9,10 @@
 // area, so sleeping, kitchen, bath and living units are never exempt.
 //
 // Layout rules (from the VRC + ergonomics review):
-// - Finished interior after spray foam: 7'2" wide -> walls at z = ±3.55.
+// - Finished interior after spray foam: walls at z = ±3.58, i.e. 7'1.9" wide,
+//   called 7'2" in copy. Interior length is the box less 1.1 ft: 18'10.8" in a
+//   20' and 8'10.8" in a 10'. Container lengths are nominal (ISO 20' is
+//   19'10.5"); the sheet says so in its title block.
 // - 20' units: usable x in [-9.3, +8.8] (tunnels: ±8.8). Minis: [-4.3, +3.7].
 // - Entry-door approach (z -3.1..-0.1, ~3 ft deep) stays clear at every
 //   aperture end.
@@ -103,19 +106,21 @@ export const TYPES = [
     id: "bathroom", name: "Bathroom unit", len: 10, wid: 8, color: 0x8fa0ad,
     cost: 17000, variant: "standard", wet: true, hvac: "panel",
     desc: "Compact three-fixture bath in a mini: shower, toilet, vanity. Drains drop straight through the floor.",
-    va: "Wet unit: plumbing permits apply. WC set 15in+ off the wall with a clear doorway (VRC ch.27); exhaust fan ducted through the floor.",
+    va: "Wet unit: plumbing permits apply. WC turned to the end wall so its centreline sits 15.4in off the side wall with 21in clear in front (VRC ch.27 / P2705.1); exhaust fan ducted through the floor.",
     furniture: [
-      { x: -2.6, z: 1.9, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },      // shower
-      { x: -3.4, z: -2.3, w: 1.6, d: 2.4, h: 1.4, color: 0xf2efe8 },     // WC (15.4in centerline)
+      // WC faces the door end, so the governed dimensions are the centreline
+      // to the z side wall (15.4in) and the clear floor ahead of it (24in)
+      { x: -3.2, z: -2.3, w: 2.4, d: 1.6, h: 1.4, color: 0xf2efe8 },     // WC
+      { x: -2.75, z: 1.9, w: 3.2, d: 3.2, h: 7.0, color: 0xcfd8dc },     // shower
       { x: 0.7, z: 2.65, w: 3.0, d: 1.8, h: 3.0, color: 0xdad2c4 },      // vanity
-      { x: -1.4, z: -2.9, w: 1.6, d: 0.6, h: 4.5, color: 0xbdb8ae },     // shelf
+      { x: 2.6, z: 2.9, w: 1.6, d: 0.6, h: 4.5, color: 0xbdb8ae },       // shelf
     ],
   },
   {
     id: "laundry", name: "Laundry / utility unit", len: 10, wid: 8, color: 0xb0a08d,
     cost: 15000, variant: "standard", hvac: "panel", core: true,
     desc: "Washer, dryer, water heater and the compound's mechanical closet — the utility core. Wet units want to sit inside its ring.",
-    va: "Houses water heater + panel; trade permits apply. Panel keeps its 30\" x 36\" working clearance (NEC 110.26) at the east wall.",
+    va: "Houses water heater + panel; trade permits apply. The panel sits on the solid north wall east of the dryer — never on the glazed door end — keeping its 30\" x 36\" working clearance (NEC 110.26).",
     furniture: [
       { x: -3.1, z: -2.3, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },     // washer
       { x: -0.5, z: -2.3, w: 2.4, d: 2.4, h: 3.2, color: 0xe8e6e0 },     // dryer
@@ -165,7 +170,7 @@ export const PLAN_LABELS = {
   "bath-laundry": ["shower", "WC", "vanity", "washer", "dryer", "counter", "rod"],
   dining: ["table", "banquette", "", "", "", "", "sideboard"],
   living: ["fireplace", "sofa", "table", "media"],
-  bathroom: ["shower", "WC", "vanity", "shelf"],
+  bathroom: ["WC", "shower", "vanity", "shelf"], // order follows `furniture`
   laundry: ["washer", "dryer", "WH", "shelving", "rod"],
   office: ["desk", "", "bookshelves", "chair", "cab"],
   hobby: ["workbench", "shelving", "bins"],
