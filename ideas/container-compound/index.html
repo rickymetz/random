@@ -730,7 +730,10 @@
   }
   /* the tool strip lands in this band while something is selected */
   body.has-selection[data-mode="plan"] #edge-tools { bottom: calc(var(--strip-top, 9.2rem) + 1rem + var(--sab)); }
-  #edge-tools button:disabled { opacity: 0.55; }
+  /* 0.55 measured 3.2:1 — WCAG exempts an inactive control, but outdoors it
+     read as a button that was missing rather than one that was not yet
+     available. 0.68 is 5.6:1 and still plainly dimmer than the live one. */
+  #edge-tools button:disabled { opacity: 0.68; }
   #edge-tools button:not(:disabled):active,
   #view-tools button:active { border-color: var(--accent); color: var(--accent); }
   #compass { position: relative; }
@@ -807,7 +810,10 @@
   @media (max-width: 899px) {
     body.sheet-open #toolstrip { display: none !important; }
   }
-  #toolstrip button svg, #view-tools button svg { width: 1.15rem; height: 1.15rem; }
+  #toolstrip button svg,
+  #view-tools button svg,
+  #site-actions button svg,
+  #edge-tools button svg { width: 1.15rem; height: 1.15rem; }
   #toolstrip button {
     flex: none;
     /* fixed px, not rem: at 2x system text these grew until Delete, Duplicate
@@ -1263,8 +1269,12 @@
 </div>
 
 <div id="edge-tools">
-  <button id="btn-undo" aria-label="Undo" title="Undo (Ctrl+Z)" disabled>↩</button>
-  <button id="btn-redo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled>↪</button>
+  <button id="btn-undo" aria-label="Undo" title="Undo (Ctrl+Z)" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h10a5.5 5.5 0 0 1 0 11H8"/><path d="M7.5 5.5 4 9l3.5 3.5"/></svg>
+  </button>
+  <button id="btn-redo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 9H10a5.5 5.5 0 0 0 0 11h6"/><path d="M16.5 5.5 20 9l-3.5 3.5"/></svg>
+  </button>
 </div>
 
 <div id="view-tools">
@@ -1276,10 +1286,10 @@
 
 <div id="site-actions">
   <button id="btn-turn" aria-label="Turn the sheet a quarter turn" aria-pressed="false" title="Turn the sheet (T)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="10" rx="1.5"/><path d="M8.5 3.5L12 6l-3.5 2.5" transform="translate(6 -1.2)"/><path d="M3.8 5.2A9 9 0 0 1 16.5 4.8"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="9.6" width="11.8" height="11.8" rx="1.5"/><path d="M17.9 13.2A6.5 6.5 0 0 0 11.4 6.7"/><path d="M14.9 3.1 11.1 6.8l3.7 3.5"/></svg>
   </button>
   <button id="btn-measure" aria-label="Measure a distance" aria-pressed="false" title="Measure — drag between two points (M)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15.5L15.5 3l5.5 5.5L8.5 21z"/><path d="M7.5 11l2 2M11 7.5l2 2M14.5 4l2 2"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.4" y="7.6" width="19.2" height="8.8" rx="1.5"/><path d="M7.2 7.6v3.4M12 7.6v3.4M16.8 7.6v3.4"/></svg>
   </button>
   <button id="site-zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
   <button id="site-zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
@@ -1337,7 +1347,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v7M14 10v7"/></svg>
   </button>
   <button id="btn-multi" class="touch-only" aria-pressed="false" aria-label="Select more units" title="Select more — then tap each unit you want">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="11" height="11" rx="1.5"/><path d="M18 10v11M12.5 15.5h11" stroke-dasharray="0 0"/><rect x="10" y="10" width="11" height="11" rx="1.5" stroke-dasharray="3 2.4"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="2.6" width="11.4" height="11.4" rx="1.5"/><rect x="10" y="10" width="11.4" height="11.4" rx="1.5" stroke-dasharray="3.4 2.8"/></svg>
   </button>
   <span class="div align-only"></span>
   <span id="align-tools" class="align-only" role="group" aria-label="Align the selected units to the last one picked">
@@ -1404,7 +1414,7 @@
      a fixed cartouche of their own. -->
 <div id="cartouche" class="panel">
   <span id="cart-north" aria-hidden="true">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l4 14-4-3-4 3z" fill="currentColor"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.6 15.7 11 12 9.1 8.3 11Z" fill="currentColor" stroke="none"/><path d="M12 9.6v11.8"/></svg>
     <b>N</b>
   </span>
   <span id="cart-scale"><i></i><em>20 ft</em></span>
