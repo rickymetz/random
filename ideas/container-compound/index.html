@@ -136,7 +136,7 @@
     padding: 0;
   }
   /* clears the add button, which now steps up rather than disappearing */
-  body.has-selection[data-mode="plan"] #site-actions { bottom: calc(13.6rem + var(--sab)); }
+  body.has-selection[data-mode="plan"] #site-actions { bottom: calc(var(--strip-top, 13.6rem) + 1rem + var(--sab)); }
   #site-actions button:active { border-color: var(--accent); color: var(--accent); }
   #site-actions button.active {
     background: var(--accent); color: #fff; border-color: var(--accent);
@@ -163,7 +163,7 @@
   /* Composing a compound IS adding units in a run, and the app used to
      interrupt its own primary loop after every one. The button now steps up
      out of the tool strip's band instead of vanishing. */
-  body.has-selection #fab { bottom: calc(8.2rem + var(--sab)); }
+  body.has-selection #fab { bottom: calc(var(--strip-top, 8.2rem) + var(--sab)); }
   body.add-open #fab { display: none; }
   #add-backdrop {
     position: fixed;
@@ -240,6 +240,22 @@
   #toolstrip .align-only { display: none; }
   body.multi-selection #toolstrip .align-only { display: flex; }
   #align-tools { align-items: center; gap: 0.1rem; }
+  /* On a phone the align row took the tool strip to four rows and 193 px —
+     30% of a 360x640. It acts on the selection, and the details card is what
+     describes the selection, so below 600 px it lives there instead. */
+  #info-align { display: none; margin: 0.7rem 0 0.2rem; }
+  body.multi-selection #info-align { display: block; }
+  #info-align .lab { display: block; color: var(--muted); font-size: var(--t-xs); margin-bottom: 0.3rem; }
+  #info-align #align-tools { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+  #info-align #align-tools button {
+    width: 44px; height: 44px;
+    display: grid; place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    background: #fff;
+    color: var(--ink);
+  }
+  #info-align #align-tools button svg { width: 1.15rem; height: 1.15rem; }
   /* ---- split: the sheet on the left, the model on the right ----
      Only offered where there is room for two drawings; below that the two
      halves are each narrower than a phone. */
@@ -317,8 +333,6 @@
   #layout-name:hover { border-color: var(--line); }
   #layout-name:focus { border-color: var(--accent); outline: none; background: #fff; }
 
-  #layouts-modal { position: fixed; inset: 0; z-index: 20; display: none; place-items: center; background: rgba(30,28,25,0.35); }
-  #layouts-modal.open { display: grid; }
   #layouts-modal .box {
     background: var(--panel);
     border-radius: var(--r-panel);
@@ -395,7 +409,6 @@
   @media (max-width: 599px) {
     #toolstrip { gap: 0.1rem; padding: 0.25rem; }
     body.multi-selection #toolstrip .div { display: none; }
-    body.multi-selection #toolstrip button { width: 2.2rem; height: 2.2rem; }
   }
   /* There is no shift key on a phone, so additive picking needs a button.
      A mouse has the chord and does not need one. */
@@ -530,15 +543,6 @@
      the sheet is ever stale and nothing needs hiding */
 
   /* ---- parts list modal ---- */
-  #parts-modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(30, 28, 24, 0.45);
-    display: none;
-    place-items: center;
-    z-index: 11;
-  }
-  #parts-modal.open { display: grid; }
   #parts-modal .box {
     background: var(--panel);
     border-radius: var(--r-panel);
@@ -603,15 +607,6 @@
   }
 
   /* ---- floor plan modal ---- */
-  #plan-modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(30, 28, 24, 0.45);
-    display: none;
-    place-items: center;
-    z-index: 11;
-  }
-  #plan-modal.open { display: grid; }
   #plan-modal .box {
     background: var(--panel);
     border-radius: var(--r-panel);
@@ -670,7 +665,7 @@
     place-items: center;
   }
   /* the tool strip lands in this band while something is selected */
-  body.has-selection[data-mode="plan"] #edge-tools { bottom: calc(9.2rem + var(--sab)); }
+  body.has-selection[data-mode="plan"] #edge-tools { bottom: calc(var(--strip-top, 9.2rem) + 1rem + var(--sab)); }
   #edge-tools button:disabled { opacity: 0.55; }
   #edge-tools button:not(:disabled):active,
   #view-tools button:active { border-color: var(--accent); color: var(--accent); }
@@ -726,7 +721,7 @@
     width: fit-content;
     /* clears the stats pill, which it used to bury for the whole of an edit */
     bottom: calc(4rem + var(--sab));
-    max-width: calc(100vw - 1.5rem);
+    max-width: calc(100vw - 1rem);
     z-index: 6;
     display: none;
     align-items: center;
@@ -851,15 +846,6 @@
   #info .row button:active { border-color: var(--accent); color: var(--accent); }
 
   /* ---- VA modal ---- */
-  #va-modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(30, 28, 24, 0.45);
-    display: none;
-    place-items: end center;
-    z-index: 10;
-  }
-  #va-modal.open { display: grid; }
   #va-modal .box {
     background: var(--panel);
     border-radius: 1rem 1rem 0 0;
@@ -1023,6 +1009,35 @@
   }
 
 
+  /* Every dialog is this overlay. #key-modal was added with only its content
+     styles, so it laid out statically below the fold on a page that cannot
+     scroll: the chip did nothing, focus jumped off-screen, and because
+     anyOpenDialog() counts a .open dialog, every keypress died until Escape.
+     One rule for all five, so a sixth cannot be added half-dressed. */
+  #parts-modal, #plan-modal, #va-modal, #key-modal, #layouts-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 11;
+    display: none;
+    place-items: center;
+    background: rgba(30, 28, 24, 0.42);
+  }
+  #parts-modal.open, #plan-modal.open, #va-modal.open,
+  #key-modal.open, #layouts-modal.open { display: grid; }
+  /* the VA notes are a bottom sheet on a phone; everything else is a card */
+  #va-modal { place-items: end center; }
+
+  #key-modal .box {
+    background: var(--panel);
+    border-radius: var(--r-panel);
+    width: calc(100vw - 2rem);
+    max-width: 30rem;
+    max-height: 84vh;
+    overflow-y: auto;
+    padding: 1.1rem 1.2rem;
+    box-shadow: var(--shadow);
+  }
+  #key-modal h2 { font-size: var(--t-md); margin-bottom: 0.5rem; }
   #key-modal .key-list { list-style: none; padding: 0; margin: 0 0 1rem; }
   #key-modal .key-list li { display: flex; gap: 0.6rem; align-items: baseline; margin: 0.7rem 0; font-size: var(--t-sm); line-height: 1.5; }
   #key-modal .sw { flex: none; width: 1.6rem; height: 0.7rem; border-radius: 2px; margin-top: 0.25rem; }
@@ -1033,13 +1048,13 @@
 
 
   @media (prefers-reduced-motion: reduce) {
-    #info, #add-sheet, #toast { transition-duration: 1ms; }
+    #info, #add-sheet { transition-duration: 1ms; }
   }
 
   /* ---- toast ---- */
   #toast {
     position: fixed;
-    top: calc(7.6rem + var(--sat));
+    top: calc(11.2rem + var(--sat));
     left: 50%;
     transform: translateX(-50%);
     background: var(--ink);
@@ -1051,11 +1066,16 @@
     opacity: 0;
     transition: opacity 200ms;
     pointer-events: none;
-    z-index: 11;
+    z-index: 30;
     max-width: min(30rem, calc(100vw - 2.5rem));
     text-align: center;
   }
   #toast.show { opacity: 1; }
+  /* This block sits after every rule it overrides. The earlier reduce block
+     was written before #toast and #cart-north existed, so it silently lost. */
+  @media (prefers-reduced-motion: reduce) {
+    #toast, #cart-north svg { transition-duration: 1ms; }
+  }
 
   /* ---- larger screens: same layout, roomier ---- */
   @media (min-width: 900px) {
@@ -1228,6 +1248,7 @@
     <label>S<input id="pos-z" type="number" step="1" inputmode="numeric" aria-label="Distance south of the middle of the lot, in feet"></label>
     <span class="unit">ft from centre</span>
   </div>
+  <div id="info-align" class="align-only"><span class="lab">Line these up with the last one picked</span></div>
   <button id="btn-edit-here" class="wide">Edit on the plan</button>
   <button id="btn-plan" class="wide">Floor plan</button>
 </div>

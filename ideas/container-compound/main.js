@@ -611,6 +611,38 @@ function removeItem(item, opts = {}) {
   updateStats();
 }
 
+// The corner controls are positioned to clear the tool strip, whose height
+// depends on how many buttons it is carrying — one row with a single unit
+// selected, two or three once the align row appears. CSS cannot read that, so
+// it is measured and published. Before this, a 360 px phone put the Add button
+// inside the strip, on top of Delete: tapping Add deleted the selection.
+// One align group, two homes. On a wide screen it is a verb beside the other
+// verbs in the tool strip; on a phone the strip cannot afford it, so it sits
+// in the details card, which is the surface that describes the selection it
+// acts on. Reparented rather than duplicated, so there is one set of handlers.
+const ALIGN_IN_STRIP = matchMedia("(min-width: 600px)");
+function placeAlignTools() {
+  const group = document.getElementById("align-tools");
+  const strip = document.getElementById("toolstrip");
+  const card = document.getElementById("info-align");
+  if (!group || !strip || !card) return;
+  const want = ALIGN_IN_STRIP.matches ? strip : card;
+  if (group.parentElement === want) return;
+  if (want === strip) strip.insertBefore(group, document.getElementById("btn-info").previousElementSibling);
+  else card.appendChild(group);
+}
+
+function measureStrip() {
+  placeAlignTools();
+  const el = document.getElementById("toolstrip");
+  if (!el) return;
+  const on = getComputedStyle(el).display !== "none";
+  const h = on ? el.getBoundingClientRect().height : 0;
+  // 4rem is the strip's own bottom offset; 0.75rem of air above it
+  document.body.style.setProperty("--strip-top",
+    on ? `calc(4.75rem + ${Math.round(h)}px)` : "");
+}
+
 // The strip names what a command will act on, which for a set is not any one
 // unit's name.
 function updateSelName() {
@@ -619,6 +651,7 @@ function updateSelName() {
   if (!el) return;
   el.textContent = !selected ? ""
     : n > 1 ? `${n} units` : TYPE_BY_ID[selected.typeId].name;
+  requestAnimationFrame(measureStrip);
 }
 
 function select(item, opts = {}) {
@@ -630,6 +663,7 @@ function select(item, opts = {}) {
   selected = item;
   document.body.classList.toggle("multi-selection", selection().length > 1);
   document.body.classList.toggle("has-selection", !!item);
+  requestAnimationFrame(measureStrip);
   const info = document.getElementById("info");
   if (!item) {
     document.body.classList.remove("sheet-open", "multi-selection");
@@ -2434,9 +2468,13 @@ function chromeBand() {
   for (const id of ["site-actions", "fab", "stats-pill", "toolstrip", "edge-tools", "info"]) {
     const r = box(id);
     if (!r) continue;
-    // Anything that runs a good part of the window's height can only be
-    // stepped around sideways — giving up rows to it would leave none.
-    if (r.height > innerHeight * 0.3) { side(r); continue; }
+    // Anything TALL AND NARROW can only be stepped around sideways. The
+    // height test alone was wrong: the details card is a full-width bottom
+    // sheet on a phone at 60% of the window height, so it was taken for a side
+    // panel and set band.left past the right edge — sheetViewport() returned a
+    // 160 px strip off the edge of a 360 px window and the whole compound went
+    // off screen, with neither Fit nor closing the card able to recover it.
+    if (r.height > innerHeight * 0.3 && r.width < innerWidth * 0.5) { side(r); continue; }
     // Otherwise take whichever bite is smaller in area: a corner pill costs
     // far less as a narrow side inset than as a strip the whole width of the
     // window, which is what every piece of chrome used to cost.
@@ -4045,6 +4083,8 @@ function sizeView() {
 addEventListener("resize", () => {
   // the split needs room for two drawings; below that it collapses back
   if (split && innerWidth < SPLIT_MIN) setSplit(false);
+  placeAlignTools();
+  measureStrip();
   sizeView();
   // The plan used to ignore resizing entirely — the one event that only
   // happens on a desktop. Snap a window or plug in a monitor and the drawing
