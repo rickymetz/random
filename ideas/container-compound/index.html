@@ -226,6 +226,24 @@
     border: 1px solid #55524c;
   }
   .add-chip.mini { width: 1.6rem; }
+  /* the align row only means anything with two or more units picked */
+  #toolstrip .align-only { display: none; }
+  body.multi-selection #toolstrip .align-only { display: flex; }
+  #align-tools { align-items: center; gap: 0.1rem; }
+  /* With the align row in it the strip needs three rows on a phone, which is
+     a third of the screen. Drop the dividers and tighten the gaps there: the
+     groups still read, because the align glyphs are plainly one family. */
+  @media (max-width: 599px) {
+    #toolstrip { gap: 0.1rem; padding: 0.25rem; }
+    body.multi-selection #toolstrip .div { display: none; }
+    body.multi-selection #toolstrip button { width: 2.2rem; height: 2.2rem; }
+  }
+  /* There is no shift key on a phone, so additive picking needs a button.
+     A mouse has the chord and does not need one. */
+  #toolstrip .touch-only { display: none; }
+  @media (hover: none), (pointer: coarse) {
+    #toolstrip .touch-only { display: inline-flex; }
+  }
   /* typing a distance is the only way to place something exactly, and the
      only way at all without a pointer that can drag */
   #info .coords {
@@ -835,6 +853,14 @@
      fallback at very large text rather than pushing Delete off-screen. */
   @media (max-width: 460px) {
     #toolstrip .div, #sel-name { display: none; }
+    /* ...except the count, which is the only place a set says how big it is:
+       the details card describes one unit, not the selection. */
+    body.multi-selection #toolstrip #sel-name {
+      display: block;
+      width: 100%;
+      text-align: center;
+      padding-bottom: 0.15rem;
+    }
     #toolstrip { gap: 0.15rem; padding: 0.25rem 0.3rem; }
     #btn-delete { margin-left: 0.3rem; }
   }
@@ -1055,6 +1081,19 @@
   <button id="btn-delete" aria-label="Delete" title="Delete (Del)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v7M14 10v7"/></svg>
   </button>
+  <button id="btn-multi" class="touch-only" aria-pressed="false" aria-label="Select more units" title="Select more — then tap each unit you want">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="11" height="11" rx="1.5"/><path d="M18 10v11M12.5 15.5h11" stroke-dasharray="0 0"/><rect x="10" y="10" width="11" height="11" rx="1.5" stroke-dasharray="3 2.4"/></svg>
+  </button>
+  <span class="div align-only"></span>
+  <span id="align-tools" class="align-only" role="group" aria-label="Align the selected units to the last one picked">
+    <button data-align="left" aria-label="Align west edges" title="Align west edges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 3v18"/><rect x="7" y="5.5" width="12" height="4" rx="1"/><rect x="7" y="14.5" width="7" height="4" rx="1"/></svg></button>
+    <button data-align="cx" aria-label="Align on a north-south centreline" title="Align on a north–south centreline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18"/><rect x="6" y="5.5" width="12" height="4" rx="1"/><rect x="8.5" y="14.5" width="7" height="4" rx="1"/></svg></button>
+    <button data-align="right" aria-label="Align east edges" title="Align east edges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 3v18"/><rect x="5" y="5.5" width="12" height="4" rx="1"/><rect x="10" y="14.5" width="7" height="4" rx="1"/></svg></button>
+    <button data-align="top" aria-label="Align north edges" title="Align north edges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 4h18"/><rect x="5.5" y="7" width="4" height="12" rx="1"/><rect x="14.5" y="7" width="4" height="7" rx="1"/></svg></button>
+    <button data-align="cz" aria-label="Align on an east-west centreline" title="Align on an east–west centreline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18"/><rect x="5.5" y="6" width="4" height="12" rx="1"/><rect x="14.5" y="8.5" width="4" height="7" rx="1"/></svg></button>
+    <button data-align="bottom" aria-label="Align south edges" title="Align south edges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 20h18"/><rect x="5.5" y="5" width="4" height="12" rx="1"/><rect x="14.5" y="10" width="4" height="7" rx="1"/></svg></button>
+    <button id="btn-distribute" aria-label="Space evenly" title="Space evenly (needs three or more)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2.5" y="7" width="4" height="10" rx="1"/><rect x="10" y="7" width="4" height="10" rx="1"/><rect x="17.5" y="7" width="4" height="10" rx="1"/></svg></button>
+  </span>
   <span class="div"></span>
   <button id="btn-info" aria-label="Details" title="Details"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.4"/></svg></button>
 </div>

@@ -518,6 +518,23 @@ const trenchMat = new THREE.LineDashedMaterial({
 let items = []; // { id, typeId, x, z, rot, group, ring, sepRing, peek }
 let nextId = 1;
 let selected = null;
+// Units picked alongside the primary one. `selected` stays the anchor — the
+// one the details card describes and the one an align snaps the rest to — so
+// every path that already reads `selected` keeps working; the set is what the
+// bulk operations walk.
+let marked = new Set();
+function selection() {
+  const out = new Set(marked);
+  if (selected) out.add(selected);
+  return [...out].filter((it) => items.includes(it));
+}
+// what a bulk edit actually moves: each picked unit drags its butted cluster
+function selectionMembers() {
+  const out = new Set();
+  for (const it of selection()) for (const m of clusterOf(it)) out.add(m);
+  return [...out];
+}
+const isPicked = (it) => it === selected || marked.has(it);
 
 const unitRoot = new THREE.Group();
 scene.add(unitRoot);
@@ -574,13 +591,29 @@ function removeItem(item, opts = {}) {
   updateStats();
 }
 
-function select(item) {
-  if (selected) selected.ring.visible = false;
+// The strip names what a command will act on, which for a set is not any one
+// unit's name.
+function updateSelName() {
+  const n = selection().length;
+  const el = document.getElementById("sel-name");
+  if (!el) return;
+  el.textContent = !selected ? ""
+    : n > 1 ? `${n} units` : TYPE_BY_ID[selected.typeId].name;
+}
+
+function select(item, opts = {}) {
+  if (!opts.keepMarked) {
+    for (const m of marked) if (m.ring) m.ring.visible = false;
+    marked.clear();
+  }
+  if (selected && selected !== item && !marked.has(selected)) selected.ring.visible = false;
   selected = item;
+  document.body.classList.toggle("multi-selection", selection().length > 1);
   document.body.classList.toggle("has-selection", !!item);
   const info = document.getElementById("info");
   if (!item) {
-    document.body.classList.remove("sheet-open");
+    document.body.classList.remove("sheet-open", "multi-selection");
+    if (typeof multiPick !== "undefined") setMultiPick(false);
     document.getElementById("sel-name").textContent = "";
     setPlacing(false);
     updateSelDims();
@@ -642,7 +675,7 @@ function select(item) {
   sepEl.style.display = msgs.length ? "block" : "none";
   document.getElementById("btn-plan").style.display = t.deck ? "none" : "block";
   syncCoordFields(item);
-  document.getElementById("sel-name").textContent = t.name;
+  updateSelName();
   // plan: selection shows the tool strip; the sheet opens via the name chip.
   // 3D: a tap goes straight to the (read-only) sheet.
   // On a phone the details sheet covers the drawing, so it stays on demand.
@@ -1114,15 +1147,31 @@ for (const id of ["btn-share", "btn-va", "btn-reset"])
 function duplicateSelected() {
   if (!selected || mode !== "plan") return;
   pushUndo();
-  const t = TYPE_BY_ID[selected.typeId];
-  const spot = findSpot(t, selected.x, selected.z); // land beside the original
-  const item = addItem(selected.typeId, spot.x, spot.z, selected.rot);
-  select(item);
+  const picked = selection();
+  let last = null;
+  for (const src of picked) {
+    const t = TYPE_BY_ID[src.typeId];
+    const spot = findSpot(t, src.x, src.z); // land beside the original
+    last = addItem(src.typeId, spot.x, spot.z, src.rot);
+    if (picked.length > 1) marked.add(last);
+  }
+  if (last) { marked.delete(last); select(last, { keepMarked: picked.length > 1 }); }
   renderSitePlan();
 }
 document.getElementById("btn-dup").addEventListener("click", duplicateSelected);
 
 document.getElementById("btn-rotate").addEventListener("click", rotateSelected);
+document.getElementById("btn-multi").addEventListener("click", () => {
+  setMultiPick(!multiPick);
+  toast(multiPick ? "Select more — tap each unit; tap again to drop one"
+                  : "Back to single selection");
+});
+for (const b of document.querySelectorAll("#align-tools [data-align]"))
+  b.addEventListener("click", () => alignSelection(b.dataset.align));
+document.getElementById("btn-distribute").addEventListener("click", () => {
+  if (selection().length < 3) { toast("Pick three or more to space them evenly"); return; }
+  distributeSelection();
+});
 function deleteSelected() {
   if (!selected || mode !== "plan") return;
   // A drag still holding this unit would re-select it on release and put its
@@ -1130,9 +1179,14 @@ function deleteSelected() {
   const snapshot = planDrag && planDrag.moved ? planDrag.snapshot : undefined;
   if (planDrag) { abortGestures(); if (snapshot) undoStack.pop(); }
   pushUndo(snapshot);
-  removeItem(selected);
+  const picked = selection();
+  for (const it of picked) removeItem(it, { silent: true });
+  marked.clear();
+  select(null);
+  save();
+  updateStats();
   renderSitePlan();
-  toast("Deleted — ↩ to undo");
+  toast(picked.length > 1 ? `${picked.length} deleted — ↩ to undo` : "Deleted — ↩ to undo");
 }
 document.getElementById("btn-delete").addEventListener("click", deleteSelected);
 document.getElementById("btn-close").addEventListener("click", () => {
@@ -1175,32 +1229,103 @@ document.getElementById("btn-share").addEventListener("click", async () => {
 function tryEdit(mutate, rejectMsg) {
   const before = JSON.stringify(serialize());
   const keep = selected && selected.id;
+  // A rejection rebuilds every item, so the set has to come back by id too —
+  // otherwise one refused align threw away the selection you had just made,
+  // and you had to pick all of them again to try a different alignment.
+  const keepSet = selection().map((it) => it.id);
   const preBlocked = blockedPairs().length;
   const preOverlap = overlappingPairs().length;
   mutate();
   if (blockedPairs().length > preBlocked) {
-    restoreSnapshot(before, keep);
+    restoreSnapshot(before, keep, keepSet);
     toast(rejectMsg || "That blocks a door wall — butt against solid sides only");
     return false;
   }
   if (overlappingPairs().length > preOverlap) {
-    restoreSnapshot(before, keep);
+    restoreSnapshot(before, keep, keepSet);
     toast("Units cannot overlap — butt them edge to edge instead");
     return false;
   }
   pushUndo(before);
   save();
   updateStats();
-  if (selected) select(selected);
+  if (selected) select(selected, { keepMarked: true });
   if (mode === "plan") renderSitePlan();
   return true;
 }
 
 function rotateSelected() {
   if (!selected || mode !== "plan" || anyOpenDialog()) return;
-  const it = selected;
-  tryEdit(() => { it.rot = (it.rot + 1) % 4; applyTransform(it); },
-    "That blocks a door wall — keep apertures clear");
+  // each picked unit turns about its own centre, which is what "rotate these"
+  // means for a set of separate buildings
+  const picked = selection();
+  tryEdit(() => {
+    for (const it of picked) { it.rot = (it.rot + 1) % 4; applyTransform(it); }
+  }, "That blocks a door wall — keep apertures clear");
+}
+
+// ---- align and distribute -------------------------------------------------
+//
+// Lining two units up meant reading their coordinates off the sheet and typing
+// them, or nudging one a foot at a time until the snap guide appeared.
+// Everything is relative to the anchor — the unit picked last, which is also
+// the one the details card is describing — so the result is predictable.
+const ALIGNS = {
+  left:   (it, a) => ({ x: a.x0 + halfDims(it)[0] }),
+  right:  (it, a) => ({ x: a.x1 - halfDims(it)[0] }),
+  top:    (it, a) => ({ z: a.z0 + halfDims(it)[1] }),
+  bottom: (it, a) => ({ z: a.z1 - halfDims(it)[1] }),
+  cx:     (it, a) => ({ x: a.x }),
+  cz:     (it, a) => ({ z: a.z }),
+};
+function alignSelection(how) {
+  const picked = selection();
+  if (picked.length < 2 || !selected) return;
+  const [ahw, ahd] = halfDims(selected);
+  const a = { x: selected.x, z: selected.z,
+              x0: selected.x - ahw, x1: selected.x + ahw,
+              z0: selected.z - ahd, z1: selected.z + ahd };
+  tryEdit(() => {
+    for (const it of picked) {
+      if (it === selected) continue;
+      const to = ALIGNS[how](it, a);
+      const dx = to.x == null ? 0 : clampX(to.x) - it.x;
+      const dz = to.z == null ? 0 : clampZ(to.z) - it.z;
+      for (const m of clusterOf(it)) {
+        m.x = clampX(m.x + dx); m.z = clampZ(m.z + dz);
+        applyTransform(m);
+      }
+    }
+  }, "That alignment would block a door wall");
+}
+
+// Even gaps along whichever axis the units are more spread out on, keeping the
+// two end units where they are.
+function distributeSelection() {
+  const picked = selection();
+  if (picked.length < 3) return;
+  const spanX = Math.max(...picked.map((i) => i.x)) - Math.min(...picked.map((i) => i.x));
+  const spanZ = Math.max(...picked.map((i) => i.z)) - Math.min(...picked.map((i) => i.z));
+  const axis = spanX >= spanZ ? "x" : "z";
+  const dim = axis === "x" ? 0 : 1;
+  const order = [...picked].sort((p, q) => p[axis] - q[axis]);
+  const total = order.reduce((n, it) => n + halfDims(it)[dim] * 2, 0);
+  const first = order[0], last = order[order.length - 1];
+  const span = (last[axis] + halfDims(last)[dim]) - (first[axis] - halfDims(first)[dim]);
+  const gap = (span - total) / (order.length - 1);
+  tryEdit(() => {
+    let edge = first[axis] - halfDims(first)[dim];
+    for (const it of order) {
+      const half = halfDims(it)[dim];
+      const want = edge + half;
+      const d = (axis === "x" ? clampX(want) : clampZ(want)) - it[axis];
+      for (const m of clusterOf(it)) {
+        if (axis === "x") m.x = clampX(m.x + d); else m.z = clampZ(m.z + d);
+        applyTransform(m);
+      }
+      edge += half * 2 + gap;
+    }
+  }, "Spacing them evenly would block a door wall");
 }
 
 // A control with focus owns its own keys. Arrow keys move between the tabs of
@@ -2708,7 +2833,7 @@ function renderChrome() {
   // Butted units move as one, so say so while one of them is selected —
   // previously the only cluster outline was a >256 SF violation marker, and
   // a legal cluster moved as a group with nothing on screen to predict it.
-  if (selected && !TYPE_BY_ID[selected.typeId].deck) {
+  if (selected && selection().length === 1 && !TYPE_BY_ID[selected.typeId].deck) {
     const members = clusterOf(selected);
     if (members.length > 1) {
       let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
@@ -2722,10 +2847,18 @@ function renderChrome() {
     }
   }
 
-  // selection halo
-  if (selected) {
-    const [hw, hd] = halfDims(selected);
-    s += `<rect x="${X(selected.x - hw) - ss(5)}" y="${Y(selected.z - hd) - ss(5)}" width="${hw * 2 * S + ss(10)}" height="${hd * 2 * S + ss(10)}" rx="${ss(3)}" fill="none" stroke="#b3542e" stroke-width="${ss(2.4)}"/>`;
+  // selection halo. With a set, the anchor keeps the solid halo — it is what
+  // the align commands measure from — and the rest get a lighter one.
+  for (const it of selection()) {
+    const [hw, hd] = halfDims(it);
+    const anchor = it === selected;
+    s += `<rect x="${X(it.x - hw) - ss(5)}" y="${Y(it.z - hd) - ss(5)}" width="${hw * 2 * S + ss(10)}" height="${hd * 2 * S + ss(10)}" rx="${ss(3)}" fill="none" stroke="#b3542e" stroke-width="${ss(anchor ? 2.4 : 1.6)}"${anchor ? "" : ` stroke-dasharray="${dash(6, 4)}"`}/>`;
+  }
+
+  if (marquee) {
+    const x0 = Math.min(marquee.x0, marquee.x1), x1 = Math.max(marquee.x0, marquee.x1);
+    const z0 = Math.min(marquee.z0, marquee.z1), z1 = Math.max(marquee.z0, marquee.z1);
+    s += `<rect x="${X(x0)}" y="${Y(z0)}" width="${(x1 - x0) * S}" height="${(z1 - z0) * S}" fill="#b3542e" fill-opacity="0.08" stroke="#b3542e" stroke-width="${ss(1.2)}" stroke-dasharray="${dash(5, 4)}"/>`;
   }
 
   // in-flight: snap guides, then the gaps this move is creating
@@ -2818,6 +2951,18 @@ const SLOP = (e) => (e.pointerType === "touch" ? 10 : 3);
 // Held space is the pan modifier every drawing tool has. It used to fall
 // through to whatever button had focus, so the key that means "get out of the
 // way" instead rotated or deleted something.
+// a shift-sweep over empty paper, in world feet
+let marquee = null;
+// the latched additive-pick mode, for pointers with no modifier keys
+let multiPick = false;
+function setMultiPick(on) {
+  multiPick = !!on;
+  const b = document.getElementById("btn-multi");
+  if (b) {
+    b.classList.toggle("active", multiPick);
+    b.setAttribute("aria-pressed", String(multiPick));
+  }
+}
 let spaceHeld = false;
 function setSpaceHeld(on) {
   if (spaceHeld === on) return;
@@ -2826,8 +2971,33 @@ function setSpaceHeld(on) {
 }
 addEventListener("blur", () => setSpaceHeld(false));
 
+// Shift-clicking a unit adds it to the set; shift-clicking one that is
+// already in takes it out again, and the last one left standing becomes the
+// anchor the align commands measure from.
+function togglePicked(it) {
+  if (it === selected) {
+    const rest = selection().filter((x) => x !== it);
+    marked.delete(it);
+    it.ring.visible = false;
+    select(rest[rest.length - 1] || null, { keepMarked: true });
+  } else if (marked.has(it)) {
+    marked.delete(it);
+    it.ring.visible = false;
+  } else {
+    if (selected) marked.add(selected);
+    select(it, { keepMarked: true });
+  }
+  for (const m of selection()) m.ring.visible = true;
+  document.body.classList.toggle("multi-selection", selection().length > 1);
+  updateSelName();
+  renderChrome();
+}
+
 function beginUnitDrag(it, p, solo, e) {
-  const members = solo ? [it] : clusterOf(it);
+  // a drag that starts on a unit already in the set moves the whole set
+  const members = solo ? [it]
+    : isPicked(it) && selection().length > 1 ? selectionMembers()
+    : clusterOf(it);
   planDrag = {
     kind: "unit", primary: it, members, solo,
     offs: members.map((m) => ({ m, dx: m.x - it.x, dz: m.z - it.z })),
@@ -2865,6 +3035,14 @@ sitePanelEl.addEventListener("pointerdown", (e) => {
   pinching = false;
   const it = unitAtWorld(p);
   if (it) {
+    // Shift or the platform accelerator adds to the selection rather than
+    // replacing it — the same chord every drawing tool uses. A phone has no
+    // chord, so the Select more button latches the same behaviour.
+    if (e.shiftKey || e.metaKey || e.ctrlKey || multiPick) {
+      togglePicked(it);
+      return;
+    }
+    if (!isPicked(it)) select(it);
     beginUnitDrag(it, p, e.altKey, e);
     // held still, a press breaks one unit out of its cluster
     breakoutTimer = setTimeout(() => {
@@ -2898,6 +3076,14 @@ sitePanelEl.addEventListener("pointerdown", (e) => {
     planDrag = { kind: "drive", grabX: drive.x - p.x, grabZ: drive.z - p.z,
                  snapshot: JSON.stringify(serialize()), moved: false,
                  startX: e.clientX, startY: e.clientY, slop: SLOP(e) };
+    return;
+  }
+  // Shift on empty paper sweeps a box instead of panning: the fast way to
+  // take a row of units without shift-clicking each one.
+  if (e.shiftKey || e.metaKey || e.ctrlKey) {
+    marquee = { x0: p.x, z0: p.z, x1: p.x, z1: p.z,
+                add: e.shiftKey && (e.metaKey || e.ctrlKey) };
+    renderChrome();
     return;
   }
   sitePanning = true;
@@ -2964,6 +3150,13 @@ sitePanelEl.addEventListener("pointermove", (e) => {
     return;
   }
 
+  if (marquee) {
+    const p = clientToWorld(cur.x, cur.y);
+    marquee.x1 = p.x; marquee.z1 = p.z;
+    renderChrome();
+    return;
+  }
+
   if (sitePanning) {
     sview.x += cur.x - prev.x;
     sview.y += cur.y - prev.y;
@@ -2985,6 +3178,7 @@ function abortGestures() {
   planDrag = null;
   sitePanning = false;
   pinching = false;
+  marquee = null;
   ghost = null;
   pendingAdd = null;
   snapGuides = [];
@@ -2995,12 +3189,24 @@ function abortGestures() {
 // Restore the pre-drag state. Selection survives by id, which only works now
 // that loadFrom restarts ids from 1 — before, every restore minted fresh ids
 // and the lookup could never match.
-function restoreSnapshot(snapshot, keepId) {
+function restoreSnapshot(snapshot, keepId, keepSet) {
   loadFrom(JSON.parse(snapshot));
+  if (keepSet) {
+    for (const id of keepSet) {
+      const it = items.find((i) => i.id === id);
+      if (it && id !== keepId) { marked.add(it); it.ring.visible = true; }
+    }
+  }
   if (keepId != null) {
     const again = items.find((i) => i.id === keepId);
-    if (again) select(again);
+    if (again) select(again, { keepMarked: !!keepSet });
   }
+  updateSelName();
+  document.body.classList.toggle("multi-selection", selection().length > 1);
+  // loadFrom re-emitted the chrome while the set was still empty, so a
+  // rejected edit left the drawing showing no selection at all even though
+  // the set had been put back.
+  if (mode === "plan") renderChrome();
 }
 
 function cancelPlanDrag() {
@@ -3023,6 +3229,31 @@ sitePanelEl.addEventListener("pointerup", (e) => {
   }
   sitePtrs.delete(e.pointerId);
   clearTimeout(breakoutTimer);
+  if (marquee) {
+    const m = marquee;
+    marquee = null;
+    const x0 = Math.min(m.x0, m.x1), x1 = Math.max(m.x0, m.x1);
+    const z0 = Math.min(m.z0, m.z1), z1 = Math.max(m.z0, m.z1);
+    const hit = items.filter((it) => {
+      const [hw, hd] = halfDims(it);
+      return it.x + hw > x0 && it.x - hw < x1 && it.z + hd > z0 && it.z - hd < z1;
+    });
+    if (!m.add) { for (const it of marked) it.ring.visible = false; marked.clear(); }
+    if (hit.length) {
+      for (const it of hit) marked.add(it);
+      const anchor = hit[hit.length - 1];
+      marked.delete(anchor);
+      select(anchor, { keepMarked: true });
+      for (const it of selection()) it.ring.visible = true;
+      document.body.classList.toggle("multi-selection", selection().length > 1);
+      updateSelName();
+      toast(hit.length > 1 ? `${hit.length} units selected` : "");
+    } else if (!m.add) {
+      select(null);
+    }
+    renderChrome();
+    return;
+  }
   const d = planDrag;
   planDrag = null;
   document.body.classList.remove("plan-dragging", "breaking-out");
@@ -3067,7 +3298,7 @@ sitePanelEl.addEventListener("pointerup", (e) => {
   if (!d) { // a press on empty paper clears the selection — but the tail of a
     if (wasPinch) return; // pinch is not a press, and must not deselect
     const p = clientToWorld(e.clientX, e.clientY);
-    if (!unitAtWorld(p)) { select(null); renderChrome(); }
+    if (!unitAtWorld(p)) { select(null); renderChrome(); } // clears the set too
     return;
   }
 
@@ -3329,7 +3560,7 @@ function placeSelectedAt(x, z) {
 
 function nudgeSelected(dx, dz) {
   if (!selected || mode !== "plan" || anyOpenDialog()) return;
-  const members = clusterOf(selected);
+  const members = selectionMembers();
   tryEdit(() => {
     for (const m of members) {
       m.x = clampX(m.x + dx); m.z = clampZ(m.z + dz);
