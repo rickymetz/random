@@ -993,12 +993,11 @@ function centreOnSelected() {
   if (!selected) return;
   const vp = sheetViewport();
   const cx = vp.x + vp.w / 2, cy = vp.y + vp.h / 2;
-  const sx = spX(selected.x) * sview.k + sview.x;
-  const sy = spY(selected.z) * sview.k + sview.y;
+  const at = sheetToClient(spX(selected.x), spY(selected.z));
   // leave it alone if it is already comfortably on screen
-  if (Math.abs(sx - cx) < vp.w * 0.34 && Math.abs(sy - cy) < vp.h * 0.34) return;
-  sview.x += cx - sx;
-  sview.y += cy - sy;
+  if (Math.abs(at.x - cx) < vp.w * 0.34 && Math.abs(at.y - cy) < vp.h * 0.34) return;
+  sview.x += cx - at.x;
+  sview.y += cy - at.y;
   siteApply();
   renderChrome();
 }
@@ -1237,6 +1236,7 @@ function duplicateSelected() {
 document.getElementById("btn-dup").addEventListener("click", duplicateSelected);
 
 document.getElementById("btn-rotate").addEventListener("click", rotateSelected);
+document.getElementById("btn-turn").addEventListener("click", () => setSheetRot(!sheetRot));
 document.getElementById("btn-measure").addEventListener("click", () => {
   setMeasuring(!measuring);
   if (measuring) { tapeKept = null; toast("Measure — drag between two points; Shift keeps it square"); }
@@ -1434,8 +1434,10 @@ function cycleSelection(dir) {
   const c = viewCenterWorld();
   if (Math.abs(next.x - c.x) * SP_S * sview.k > innerWidth * 0.45
       || Math.abs(next.z - c.z) * SP_S * sview.k > innerHeight * 0.4) {
-    sview.x += (c.x - next.x) * SP_S * sview.k;
-    sview.y += (c.z - next.z) * SP_S * sview.k;
+    const here = sheetToClient(spX(next.x), spY(next.z));
+    const was = sheetToClient(spX(c.x), spY(c.z));
+    sview.x += was.x - here.x;
+    sview.y += was.y - here.y;
     siteApply();
   }
 }
@@ -1475,6 +1477,8 @@ addEventListener("keydown", (e) => {
   else if ((e.key === "Delete" || e.key === "Backspace") && selected && sheet) {
     e.preventDefault();
     deleteSelected();
+  } else if (sheet && !focusOwnsKeys() && (e.key === "t" || e.key === "T")) {
+    setSheetRot(!sheetRot);
   } else if (sheet && !focusOwnsKeys() && (e.key === "m" || e.key === "M")) {
     setMeasuring(!measuring);
     if (measuring) { tapeKept = null; toast("Measure — drag between two points; Shift keeps it square"); }
@@ -2357,6 +2361,53 @@ function sheetDefs() {
   return `<defs><marker id="sp-arr" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 z" fill="#c0574a"/></marker>${HATCH_DEF}</defs>`;
 }
 
+// Where a unit sits, in the words the drawing uses: feet east or west of the
+// middle of the lot, feet north or south of it.
+function saySpot(x, z) {
+  const ew = Math.round(x) === 0 ? "" : `${Math.abs(Math.round(x))} ft ${x > 0 ? "east" : "west"}`;
+  const ns = Math.round(z) === 0 ? "" : `${Math.abs(Math.round(z))} ft ${z > 0 ? "south" : "north"}`;
+  return [ew, ns].filter(Boolean).join(" and ") || "at the middle of the lot";
+}
+
+function planSummary() {
+  if (!items.length) return "An empty one-acre lot, 209 ft square, with the property line and the setback drawn.";
+  const units = items.filter((it) => !TYPE_BY_ID[it.typeId].deck);
+  const decks = items.length - units.length;
+  const e = unitExtents();
+  return `${layoutName}: ${units.length} unit${units.length === 1 ? "" : "s"}`
+    + `${decks ? ` and ${decks} deck section${decks === 1 ? "" : "s"}` : ""}`
+    + ` on a one-acre lot, occupying ${Math.round(e.x1 - e.x0)} by ${Math.round(e.z1 - e.z0)} ft.`
+    + ` ${findings.total ? `${findings.total} code finding${findings.total === 1 ? "" : "s"}.` : "No code findings."}`;
+}
+
+// The drawing carries the whole state of the layout and says none of it to a
+// screen reader. This is the same drawing as a list, kept in step with it.
+function renderPlanText() {
+  const el = document.getElementById("plan-text");
+  if (!el) return;
+  const rows = items
+    .slice()
+    .sort((a, b) => a.z - b.z || a.x - b.x)
+    .map((it) => {
+      const t = TYPE_BY_ID[it.typeId];
+      const facing = ["east", "south", "west", "north"][it.rot % 4];
+      return `${t.name}, ${t.len} by ${t.wid} ft, ${saySpot(it.x, it.z)}, `
+        + `${t.deck ? "a platform" : `door end facing ${facing}`}.`;
+    });
+  const extras = [
+    trees.length && `${trees.length} tree${trees.length === 1 ? "" : "s"}.`,
+    wells.length && `${wells.length} well${wells.length === 1 ? "" : "s"}.`,
+    drainfields.length && `${drainfields.length} septic drainfield${drainfields.length === 1 ? "" : "s"}.`,
+    `Gravel drive ${saySpot(drive.x, drive.z)}.`,
+  ].filter(Boolean);
+  el.innerHTML =
+    `<p>${esc(planSummary())}</p>`
+    + `<p>North is ${sheetRot ? "to the right" : "up"} on the drawing. Setback ${setback} ft.</p>`
+    + `<ul>${rows.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`
+    + `<p>${esc(extras.join(" "))}</p>`
+    + `<p>Code findings: ${esc(findingsLine)}</p>`;
+}
+
 function renderSitePlan(opts = {}) {
   rendering = true;
   try {
@@ -2375,11 +2426,14 @@ function renderSitePlan(opts = {}) {
 
     const w = Math.round(SP_W), h = Math.round(SP_H);
     document.getElementById("site-svg").innerHTML =
-      `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`
+      `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg"`
+      + ` role="img" aria-label="${esc(planSummary())}">`
+      + `<title>${esc(layoutName)} — site plan</title><desc>${esc(planSummary())}</desc>`
       + `${sheetDefs()}<g id="paper-layer">${paperMarkup()}</g>`
       + `<g id="draw-layer">${derivedMarkup()}</g></svg>`;
     siteApply();
     renderChrome();
+    renderPlanText();
   } finally {
     // without this, one throw left the flag set and afterZoom returned early
     // forever, so zooming silently stopped redrawing the sheet
@@ -2490,13 +2544,20 @@ function siteFitView() {
   if (!siteFitBox) return;
   const { x0, x1, y0, y1 } = siteFitBox;
   const vp = sheetViewport();
+  // a turned sheet presents its height across the window and its width down it
+  const bw = x1 - x0, bh = y1 - y0;
+  const aw = sheetRot ? bh : bw, ah = sheetRot ? bw : bh;
   const k = Math.min(
-    Math.max(MIN_FIT_K, Math.min(vp.w / (x1 - x0), vp.h / (y1 - y0))),
+    Math.max(MIN_FIT_K, Math.min(vp.w / aw, vp.h / ah)),
     2.5);
   sview.k = k;
   fitK = k;
-  sview.x = vp.x + (vp.w - k * (x1 - x0)) / 2 - k * x0;
-  sview.y = vp.y + (vp.h - k * (y1 - y0)) / 2 - k * y0;
+  // place the box's own centre at the centre of the free rectangle, whichever
+  // way the sheet is turned
+  const cx = vp.x + vp.w / 2, cy = vp.y + vp.h / 2;
+  const mid = sheetToClient((x0 + x1) / 2, (y0 + y1) / 2);
+  sview.x += cx - mid.x;
+  sview.y += cy - mid.y;
   afterZoom();
 }
 document.getElementById("site-fit").addEventListener("click", siteFitView);
@@ -2635,8 +2696,31 @@ function updateCartouche() {
   el.style.setProperty("--scale-w", `${Math.round(20 * SP_S * sview.k)}px`);
 }
 
+// A compound is about twice as wide as it is deep and a phone is about twice
+// as tall as it is wide, so the sheet fits a portrait screen at half the size
+// it fits a landscape one — the floor at 0.5 was doing most of the work and
+// the drawing was overflowing anyway. Turning the sheet a quarter turn takes
+// the same compound from a fit of 0.38 to about 0.95. The drawing then reads
+// sideways, which is what turning a phone is for.
+let sheetRot = 0; // 0 = north up, 1 = north to the right (sheet turned 90° cw)
+
+// client = translate + rotate(sheetRot) * (k * sheetPoint)
+function sheetToClient(sx, sy) {
+  const k = sview.k;
+  return sheetRot
+    ? { x: sview.x - sy * k, y: sview.y + sx * k }
+    : { x: sview.x + sx * k, y: sview.y + sy * k };
+}
+function clientToSheet(cx, cy) {
+  const k = sview.k;
+  return sheetRot
+    ? { x: (cy - sview.y) / k, y: (sview.x - cx) / k }
+    : { x: (cx - sview.x) / k, y: (cy - sview.y) / k };
+}
+
 function siteApply() {
-  siteStageEl.style.transform = `translate(${sview.x}px, ${sview.y}px)`;
+  siteStageEl.style.transform =
+    `translate(${sview.x}px, ${sview.y}px)${sheetRot ? " rotate(90deg)" : ""}`;
   const w = Math.round(SP_W * sview.k), h = Math.round(SP_H * sview.k);
   for (const svg of siteStageEl.querySelectorAll("svg")) {
     svg.setAttribute("width", w);
@@ -2666,10 +2750,8 @@ function siteZoomAt(px, py, f) {
   afterZoom();
 }
 function clientToWorld(cx, cy) {
-  return {
-    x: spInvX((cx - sview.x) / sview.k),
-    z: spInvZ((cy - sview.y) / sview.k),
-  };
+  const p = clientToSheet(cx, cy);
+  return { x: spInvX(p.x), z: spInvZ(p.y) };
 }
 function viewCenterWorld() {
   return clientToWorld(innerWidth / 2, innerHeight / 2);
@@ -3172,6 +3254,23 @@ let marquee = null;
 let measuring = false;
 let tape = null;      // the drag in flight
 let tapeKept = null;  // the last completed reading
+function setSheetRot(r, opts = {}) {
+  r = r ? 1 : 0;
+  if (sheetRot === r) return;
+  sheetRot = r;
+  document.body.classList.toggle("sheet-turned", !!sheetRot);
+  const b = document.getElementById("btn-turn");
+  if (b) {
+    b.classList.toggle("active", !!sheetRot);
+    b.setAttribute("aria-pressed", String(!!sheetRot));
+  }
+  try { localStorage.setItem(LS_KEY + ":rot", String(sheetRot)); } catch {}
+  if (mode === "plan") renderSitePlan({ fit: true });
+  if (!opts.silent) {
+    toast(sheetRot ? "Sheet turned — north is to the right" : "Sheet upright — north is up");
+  }
+}
+
 function setMeasuring(on) {
   measuring = !!on;
   if (!measuring) tape = null;
@@ -4018,6 +4117,12 @@ function showShared(data) {
 }
 
 function init() {
+  // restore the sheet's orientation before the first fit, so it does not
+  // settle at one size and jump to another a frame later
+  let savedRot = null;
+  try { savedRot = localStorage.getItem(LS_KEY + ":rot"); } catch {}
+  if (savedRot != null) setSheetRot(savedRot === "1", { silent: true });
+
   const hashData = hashLayout();
   let stored = null;
   try { stored = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch {}
@@ -4026,6 +4131,21 @@ function init() {
   const seeded = stored && typeof stored.v === "number" && Array.isArray(stored.items);
   if (hashData) showShared(hashData);
   else loadFrom(seeded ? stored : EXAMPLE, { refit: true });
+
+  // Offer the turn once, where it is worth taking: a portrait window whose
+  // fit is being held up by the floor rather than by the drawing. Offering,
+  // not doing — which way the sheet faces is the reader's call.
+  if (savedRot == null && innerHeight > innerWidth * 1.2 && items.length) {
+    const vp = sheetViewport();
+    const b = siteFitBox;
+    if (b) {
+      const up = Math.min(vp.w / (b.x1 - b.x0), vp.h / (b.y1 - b.y0));
+      const turned = Math.min(vp.w / (b.y1 - b.y0), vp.h / (b.x1 - b.x0));
+      if (turned > up * 1.6) {
+        setTimeout(() => toast("Turn the sheet for a bigger drawing — the ⟳ button, or T"), 900);
+      }
+    }
+  }
 }
 
 // A throw in here used to decapitate the module — the boot was a bare
