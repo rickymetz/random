@@ -884,7 +884,7 @@ function loadFrom(raw, opts = {}) {
   setback = data.setback;
   layoutName = data.name;
   const nameEl = document.getElementById("layout-name");
-  if (nameEl) nameEl.textContent = layoutName;
+  if (nameEl && document.activeElement !== nameEl) nameEl.value = layoutName;
   rebuildScenery();
   if (!opts.noSave) save();
   updateStats();
@@ -969,10 +969,48 @@ function setMode(m) {
   syncTabs();
   setPlacing(false);
   closeAdd();
-  document.body.classList.remove("sheet-open");
-  // selection survives the switch, so you land on the same unit
-  if (m === "plan") { if (!split) stopLoop(); renderSitePlan(); }
-  else { markShadowDirty(); startLoop(); updateSelDims(); renderChrome(); }
+  // The selection survives the switch, so the card describing it has no
+  // reason to close — it used to, and you arrived in the other view with the
+  // same unit selected and nothing on screen saying so.
+  if (!selected) document.body.classList.remove("sheet-open");
+  if (m === "plan") {
+    if (!split) stopLoop();
+    renderSitePlan();
+    if (selected) centreOnSelected();
+  } else {
+    markShadowDirty();
+    startLoop();
+    if (selected) frameSelected();
+    updateSelDims();
+    renderChrome();
+  }
+}
+
+// Arriving in a view with a selection you cannot see is the same as arriving
+// with no selection. Both views now move to it — gently, keeping the zoom and
+// the orbit you had.
+function centreOnSelected() {
+  if (!selected) return;
+  const vp = sheetViewport();
+  const cx = vp.x + vp.w / 2, cy = vp.y + vp.h / 2;
+  const sx = spX(selected.x) * sview.k + sview.x;
+  const sy = spY(selected.z) * sview.k + sview.y;
+  // leave it alone if it is already comfortably on screen
+  if (Math.abs(sx - cx) < vp.w * 0.34 && Math.abs(sy - cy) < vp.h * 0.34) return;
+  sview.x += cx - sx;
+  sview.y += cy - sy;
+  siteApply();
+  renderChrome();
+}
+
+function frameSelected() {
+  if (!selected) return;
+  // keep the camera's distance and direction, just point them at the unit
+  const off = camera.position.clone().sub(controls.target);
+  controls.target.set(selected.x, 4, selected.z);
+  camera.position.copy(controls.target).add(off);
+  controls.update();
+  markShadowDirty();
 }
 for (const b of document.querySelectorAll("#tabbar button"))
   b.addEventListener("click", () => setMode(b.dataset.mode));
@@ -3717,6 +3755,12 @@ function openPlan(t) {
 document.getElementById("btn-plan").addEventListener("click", () => {
   if (selected) openPlan(TYPE_BY_ID[selected.typeId]);
 });
+// The 3D view is read-only, and nothing on it said where editing happens.
+document.getElementById("btn-edit-here").addEventListener("click", () => {
+  if (!selected) return;
+  setMode("plan");
+  toast(`Editing ${TYPE_BY_ID[selected.typeId].name.toLowerCase()} on the plan`);
+});
 document.getElementById("plan-close").addEventListener("click", () =>
   closeDialog(document.getElementById("plan-modal")));
 
@@ -3811,11 +3855,11 @@ function closeDialog(el) {
   dialogReturn = null;
 }
 function anyOpenDialog() {
-  return ["parts-modal", "plan-modal", "va-modal", "key-modal"]
+  return ["parts-modal", "plan-modal", "va-modal", "key-modal", "layouts-modal"]
     .map((id) => document.getElementById(id))
     .find((el) => el.classList.contains("open"));
 }
-for (const id of ["parts-modal", "plan-modal", "va-modal", "key-modal"]) {
+for (const id of ["parts-modal", "plan-modal", "va-modal", "key-modal", "layouts-modal"]) {
   const el = document.getElementById(id);
   el.addEventListener("pointerdown", (e) => { if (e.target === el) closeDialog(el); });
   el.addEventListener("keydown", (e) => {
@@ -3828,6 +3872,126 @@ for (const id of ["parts-modal", "plan-modal", "va-modal", "key-modal"]) {
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   });
 }
+
+// ---- the layout's name, and keeping more than one -------------------------
+//
+// The name was state with no way to set it: it printed in the title block and
+// nowhere else. It is the page title now, edited where you read it, and it
+// names the export file too. And the acre was a single slot, so trying a
+// second arrangement meant losing the first — which is the one thing you want
+// to do with a layout tool.
+
+const LAYOUTS_KEY = LS_KEY + ":layouts";
+const MAX_LAYOUTS = 30;
+
+function readLayouts() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LAYOUTS_KEY) || "[]");
+    return Array.isArray(raw) ? raw.filter((r) => r && r.id && r.data) : [];
+  } catch { return []; }
+}
+function writeLayouts(rows) {
+  try { localStorage.setItem(LAYOUTS_KEY, JSON.stringify(rows.slice(0, MAX_LAYOUTS))); }
+  catch { toast("No room left to save another layout"); }
+}
+
+const nameInput = document.getElementById("layout-name");
+function commitName() {
+  const v = nameInput.value.trim().slice(0, 60) || "Container Compound";
+  nameInput.value = v;
+  if (v === layoutName) return;
+  layoutName = v;
+  save();
+  // the name prints in the title block, so the sheet is now out of date
+  if (mode === "plan") renderSitePlan();
+}
+nameInput.addEventListener("change", commitName);
+nameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); commitName(); nameInput.blur(); }
+  else if (e.key === "Escape") { e.preventDefault(); nameInput.value = layoutName; nameInput.blur(); }
+});
+
+// Which saved row the working acre came from, so re-saving updates it rather
+// than leaving two rows with the same name.
+let currentLayoutId = null;
+
+function renderLayouts() {
+  const rows = readLayouts();
+  const list = document.getElementById("layouts-list");
+  if (!rows.length) {
+    list.innerHTML = `<div class="empty">Nothing saved yet.</div>`;
+    return;
+  }
+  list.innerHTML = rows.map((r) => {
+    const n = (r.data.items || []).filter((i) => i[0] !== "deck").length;
+    const when = new Date(r.updated || Date.now()).toLocaleDateString(undefined,
+      { month: "short", day: "numeric", year: "numeric" });
+    return `<div class="lay-row${r.id === currentLayoutId ? " current" : ""}">
+      <button class="lay-open" data-id="${esc(r.id)}">
+        <span class="lay-name">${esc(r.name || "Untitled")}</span>
+        <span class="lay-meta">${n} unit${n === 1 ? "" : "s"} · saved ${esc(when)}</span>
+      </button>
+      <button class="lay-del" data-del="${esc(r.id)}" aria-label="Delete ${esc(r.name || "Untitled")}" title="Delete">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13"/></svg>
+      </button>
+    </div>`;
+  }).join("");
+  for (const b of list.querySelectorAll(".lay-open"))
+    b.addEventListener("click", () => openLayout(b.dataset.id));
+  for (const b of list.querySelectorAll(".lay-del"))
+    b.addEventListener("click", () => deleteLayout(b.dataset.del));
+}
+
+function saveLayout() {
+  const rows = readLayouts();
+  const data = serialize();
+  const at = currentLayoutId ? rows.findIndex((r) => r.id === currentLayoutId) : -1;
+  if (at >= 0) {
+    rows[at] = { ...rows[at], name: layoutName, data, updated: Date.now() };
+    toast(`Updated "${layoutName}"`);
+  } else {
+    if (rows.length >= MAX_LAYOUTS) { toast(`Only ${MAX_LAYOUTS} layouts fit — delete one first`); return; }
+    currentLayoutId = `l${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
+    rows.unshift({ id: currentLayoutId, name: layoutName, data, updated: Date.now() });
+    toast(`Saved "${layoutName}"`);
+  }
+  writeLayouts(rows);
+  renderLayouts();
+}
+
+function openLayout(id) {
+  const row = readLayouts().find((r) => r.id === id);
+  if (!row) return;
+  currentLayoutId = id;
+  // a saved layout replaces the working acre, which is itself saved, so the
+  // only thing at risk is unsaved work in the acre you are leaving
+  history.replaceState(null, "", location.pathname);
+  loadFrom(row.data, { refit: true });
+  undoStack.length = 0;
+  redoStack.length = 0;
+  updateHistoryButtons();
+  closeDialog(document.getElementById("layouts-modal"));
+  toast(`Opened "${row.name}"`);
+}
+
+function deleteLayout(id) {
+  const rows = readLayouts();
+  const row = rows.find((r) => r.id === id);
+  if (!row) return;
+  if (!confirm(`Delete the saved layout "${row.name}"? The acre you are working on is not affected.`)) return;
+  writeLayouts(rows.filter((r) => r.id !== id));
+  if (currentLayoutId === id) currentLayoutId = null;
+  renderLayouts();
+}
+
+document.getElementById("btn-layouts").addEventListener("click", () => {
+  document.body.classList.remove("menu-open");
+  renderLayouts();
+  openDialog(document.getElementById("layouts-modal"));
+});
+document.getElementById("btn-save-layout").addEventListener("click", saveLayout);
+document.getElementById("layouts-close").addEventListener("click", () =>
+  closeDialog(document.getElementById("layouts-modal")));
 
 // ---- clearing the acre ---------------------------------------------------
 
