@@ -303,10 +303,8 @@
   #site-svg, #site-chrome { position: absolute; top: 0; left: 0; }
   #site-chrome { pointer-events: none; }
   #site-svg svg, #site-chrome svg { display: block; }
-  /* mid-drag the sheet's settled marks would be stale, so the live
-     chrome overlay speaks for them until the unit lands */
-  body.plan-dragging #site-svg #sep-layer,
-  body.plan-dragging #site-svg #dim-layer { display: none; }
+  /* the derived layer is re-emitted whole on every drag frame, so nothing on
+     the sheet is ever stale and nothing needs hiding */
 
   /* ---- parts list modal ---- */
   #parts-modal {
@@ -760,8 +758,6 @@
   /* The compass is a readout, not a control, and was styled as a button. */
   #compass.readout { border-color: transparent; background: transparent; box-shadow: none; }
 
-  /* Mid-drag the settled findings are stale; the chrome overlay redraws them. */
-  body.plan-dragging #site-svg #findings-layer { display: none; }
 
   #stats-pop tr.findings.warn td { color: #8c3b2e; font-weight: 700; }
 

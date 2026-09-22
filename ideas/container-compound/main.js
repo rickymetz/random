@@ -121,7 +121,29 @@ scene.add(grid);
 // Both are saved state, not fixtures: they move with the layout, ride the
 // share link and sit on the undo stack. The parcel itself stays a fixed acre.
 
+// Text reaching markup is escaped at the emitter rather than trusted to be
+// safe by accident — the layout name is user-supplied.
+const esc = (v) => String(v).replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+// Every numeric attribute goes through this: a non-finite value used to emit
+// `x="NaN"`, which SVG drops silently, so a broken drawing looked like a
+// missing feature rather than an error.
+const nf = (v, fallback = 0) => (Number.isFinite(v) ? +v.toFixed(3) : fallback);
+
+// Findings carry a second, achromatic channel — a long-short dash against the
+// utility run's even one — because in greyscale the redline and the trench are
+// within half a luminance point of each other.
+const FINDING_DASH_A = 14, FINDING_DASH_B = 5;
+
+let layoutName = "Container Compound";
+// County-specific, so it is a setting rather than a constant. 25 ft is a
+// common rural A-1 side/rear figure; the front is usually more.
+let setback = 25;
+
 const DRIVE_LEN = 96, DRIVE_WID = 14, PAD_R = 16, PAD_OFF = -46;
+// VDH separations: 50 ft well to septic tank, 100 ft well to drainfield. The
+// larger one is what actually shapes a one-acre site, so that is the ring.
+const WELL_CLEAR = 100, DRAIN_W = 40, DRAIN_L = 60;
 // pulled east so the turnaround pad no longer sits on the bath + laundry unit
 const DEFAULT_DRIVE = { x: 66, z: 56, rot: 0 };
 const DEFAULT_TREES = [
@@ -133,8 +155,32 @@ const DEFAULT_TREES = [
 let drive = { ...DEFAULT_DRIVE };
 let trees = DEFAULT_TREES.map(([x, z, s], i) => ({ id: i + 1, x, z, s }));
 let nextTreeId = trees.length + 1;
+// A rural acre's real constraint is rarely the building code — it is where the
+// well and the drainfield already are, and the 100 ft they hold around them.
+let wells = [];
+let drainfields = [];
+let nextSiteId = 1;
 
 // the drive's turnaround pad, in world feet, for hit tests and the plan
+// Trench length measured between the facing edges rather than centre to
+// centre, which used to charge 8 ft to connect a unit physically butted to
+// the core.
+function trenchRuns() {
+  const cores = items.filter((i) => TYPE_BY_ID[i.typeId].core);
+  if (!cores.length) return [];
+  const out = [];
+  for (const w of items.filter((i) => TYPE_BY_ID[i.typeId].wet && !TYPE_BY_ID[i.typeId].core)) {
+    let best = cores[0], bd = Infinity;
+    for (const c of cores) {
+      const d = Math.hypot(c.x - w.x, c.z - w.z);
+      if (d < bd) { bd = d; best = c; }
+    }
+    const b = gapBand(w, best);
+    out.push({ ax: b.x0, az: b.z0, bx: b.x1, bz: b.z1, ft: Math.max(0, b.gap) });
+  }
+  return out;
+}
+
 function padCenter(d = drive) {
   const [dx, dz] = DIRS[d.rot % 4];
   // local +z maps to world by the same rotation the mesh group uses
@@ -404,7 +450,7 @@ const trenchMat = new THREE.LineDashedMaterial({
 
 // ------------------------------------------------------------------ state
 
-let items = []; // { id, typeId, x, z, rot, group, ring, peek }
+let items = []; // { id, typeId, x, z, rot, group, ring, sepRing, peek }
 let nextId = 1;
 let selected = null;
 
@@ -578,6 +624,10 @@ function serialize() {
     items: items.map((i) => [i.typeId, i.x, i.z, i.rot]),
     trees: trees.map((t) => [t.x, t.z, t.s]),
     drive: [drive.x, drive.z, drive.rot],
+    wells: wells.map((w) => [w.x, w.z]),
+    drains: drainfields.map((d) => [d.x, d.z]),
+    setback,
+    name: layoutName,
   };
 }
 function save() {
@@ -629,6 +679,14 @@ function normalize(data) {
       .map((r) => [onSheet(num(r[0])), onSheet(num(r[1])),
                    Math.max(0.3, Math.min(3, num(r[2], 1.2)))]);
   }
+  const pts = (rows) => Array.isArray(rows)
+    ? rows.slice(0, 20).filter((r) => Array.isArray(r) && r.length >= 2)
+        .map((r) => [onSheet(num(r[0])), onSheet(num(r[1]))])
+    : [];
+  out.wells = pts(data.wells);
+  out.drains = pts(data.drains);
+  out.setback = Math.max(0, Math.min(80, num(data.setback, 25)));
+  out.name = typeof data.name === "string" ? data.name.slice(0, 60) : "Container Compound";
   if (Array.isArray(data.drive) && data.drive.length >= 3) {
     out.drive = [onSheet(num(data.drive[0], DEFAULT_DRIVE.x)),
                  onSheet(num(data.drive[1], DEFAULT_DRIVE.z)),
@@ -660,6 +718,13 @@ function loadFrom(raw, opts = {}) {
   drive = data.drive
     ? { x: data.drive[0], z: data.drive[1], rot: data.drive[2] }
     : { ...DEFAULT_DRIVE };
+  nextSiteId = 1;
+  wells = data.wells.map(([x, z]) => ({ id: nextSiteId++, x, z }));
+  drainfields = data.drains.map(([x, z]) => ({ id: nextSiteId++, x, z }));
+  setback = data.setback;
+  layoutName = data.name;
+  const nameEl = document.getElementById("layout-name");
+  if (nameEl) nameEl.textContent = layoutName;
   rebuildScenery();
   if (!opts.noSave) save();
   updateStats();
@@ -684,7 +749,7 @@ function decodeShare(s) {
 // walls), and the utility core butts the bathhouse's solid side — legal
 // joining, 240 sq ft combined, still under the 256 sq ft permit exemption.
 const EXAMPLE = {
-  v: 1,
+  v: 2,
   items: [
     ["dining", -16, 14, 0],
     ["kitchen", 16, 4, 0],
@@ -718,7 +783,6 @@ function setMode(m) {
   }
   setPlacing(false);
   closeAdd();
-  clearDragLabels();
   document.body.classList.remove("sheet-open");
   // selection survives the switch, so you land on the same unit
   if (m === "plan") { stopLoop(); renderSitePlan(); }
@@ -794,32 +858,58 @@ for (const group of ADD_GROUPS) {
   }
 }
 
-// a tree is scenery, not a unit, so it gets its own row under Site
-{
+// scenery and site constraints, which are not units but are what you plan
+// around, get their own rows under Site
+for (const spec of [
+  { id: "__tree", name: "Tree", chip: "#6b8a55",
+    meta: "Existing canopy · shade and screening",
+    desc: "Drag onto the plan to place. Drag to move, double-tap to clear." },
+  { id: "__well", name: "Well", chip: "#3f5c70",
+    meta: "Existing or planned · 100 ft to a drainfield",
+    desc: "VDH wants 50 ft from a septic tank and 100 ft from a drainfield. The ring shows the 100 ft." },
+  { id: "__drain", name: "Septic drainfield", chip: "#6f8a5c",
+    meta: "40 ft × 60 ft · AOSE-designed",
+    desc: "Usually the biggest constraint on a rural acre. Keep units and the drive off it." },
+]) {
   const row = document.createElement("button");
   row.className = "add-row";
-  row.innerHTML = `<span class="add-chip mini" style="background:#6b8a55"></span>
+  row.innerHTML = `<span class="add-chip mini" style="background:${spec.chip}"></span>
     <span>
-      <div class="add-name">Tree</div>
-      <div class="add-meta">Existing canopy · shade and screening</div>
-      <div class="add-desc">Drag onto the plan to place. Drag a tree to move it, double-tap to clear it.</div>
+      <div class="add-name">${spec.name}</div>
+      <div class="add-meta">${spec.meta}</div>
+      <div class="add-desc">${spec.desc}</div>
     </span>`;
-  const TREE_TYPE = { id: "__tree", name: "Tree", deck: true, len: 12, wid: 12 };
+  const TYPE = { id: spec.id, name: spec.name, deck: true, len: 12, wid: 12 };
   row.addEventListener("pointerdown", (e) => {
     if (e.pointerType !== "mouse") return;
-    pendingAdd = { type: TREE_TYPE, from: { x: e.clientX, y: e.clientY }, armed: false };
+    pendingAdd = { type: TYPE, from: { x: e.clientX, y: e.clientY }, armed: false };
   });
   row.addEventListener("click", () => {
     pushUndo();
     const c = viewCenterWorld();
-    trees.push({ id: nextTreeId++, x: Math.round(c.x), z: Math.round(c.z), s: 1.2 });
-    rebuildScenery();
+    placeSiteObject(spec.id, clampX(c.x), clampZ(c.z));
     closeAdd();
     save();
     renderSitePlan();
   });
   addList.appendChild(row);
 }
+
+function placeSiteObject(kind, x, z) {
+  // nudge off anything already there, so a second tap does not stack
+  const taken = [...trees, ...wells, ...drainfields];
+  for (let r = 0; r < 24 && taken.some((o) => Math.hypot(o.x - x, o.z - z) < 24); r++) {
+    x = clampX(x + 26); if (x >= SP_MAXX - 8) { x = clampX(x - 120); z = clampZ(z + 26); }
+  }
+  if (kind === "__tree") trees.push({ id: nextTreeId++, x, z, s: 1.2 });
+  else if (kind === "__well") wells.push({ id: nextSiteId++, x, z });
+  else if (kind === "__drain") drainfields.push({ id: nextSiteId++, x, z });
+  else return false;
+  rebuildScenery();
+  updateStats();
+  return true;
+}
+
 
 // ---- undo / redo ----
 const undoStack = [];
@@ -1162,16 +1252,9 @@ function updateCompliance() {
   // utility trenches: each wet unit to its nearest core
   trenchFt = 0;
   const cores = units.filter((u) => TYPE_BY_ID[u.typeId].core);
-  if (cores.length) {
-    for (const w of units.filter((u) => TYPE_BY_ID[u.typeId].wet)) {
-      let best = null, bestD = Infinity;
-      for (const c of cores) {
-        const d = Math.hypot(c.x - w.x, c.z - w.z);
-        if (d < bestD) { bestD = d; best = c; }
-      }
-      trenchFt += bestD;
-      groundLine(w.x, w.z, best.x, best.z, trenchMat, true);
-    }
+  for (const run of trenchRuns()) {
+    trenchFt += run.ft;
+    groundLine(run.ax, run.az, run.bx, run.bz, trenchMat, true);
   }
   trenchFt = Math.round(trenchFt);
   trenchCost = trenchFt * TRENCH_PER_FT;
@@ -1210,13 +1293,54 @@ function updateCompliance() {
   }
   const blocked = blockedPairs().length;
   const overlap = overlappingPairs().length;
+
+  // Inside the setback line rather than merely inside the parcel — the
+  // setback is what a county actually enforces.
+  const sb = SP_HALF - setback;
+  let tooClose = 0;
+  for (const u of units) {
+    const [hw, hd] = halfDims(u);
+    if (Math.abs(u.x) + hw > SP_HALF || Math.abs(u.z) + hd > SP_HALF) continue; // already offsite
+    if (Math.abs(u.x) + hw > sb || Math.abs(u.z) + hd > sb) tooClose++;
+  }
+  // A unit sitting on the gravel — the drive is editable and was checked
+  // nowhere, so the shipped example used to do this.
+  let onDrive = 0;
+  for (const u of units) if (overlapsDrive(u)) onDrive++;
+  // Fire apparatus access: IFC D107 wants a dwelling reachable from the
+  // approved road, and many VA counties enforce it past a driveway length.
+  let farFromDrive = 0;
+  for (const u of units) if (distanceToDrive(u) > FIRE_ACCESS) farFromDrive++;
+  // VDH: 100 ft between a well and a drainfield.
+  let wellTooClose = 0;
+  for (const w of wells) {
+    for (const d of drainfields) {
+      if (Math.hypot(w.x - d.x, w.z - d.z) < WELL_CLEAR) { wellTooClose++; break; }
+    }
+  }
+  let deckOver = 0;
+  for (const d of deckClusters()) if (d.sqft > 256) deckOver++;
+  // and nothing may be built over the drainfield
+  let overDrain = 0;
+  for (const u of units) {
+    for (const d of drainfields) {
+      const [hw, hd] = halfDims(u);
+      if (Math.abs(u.x - d.x) < hw + DRAIN_W / 2 && Math.abs(u.z - d.z) < hd + DRAIN_L / 2) {
+        overDrain++; break;
+      }
+    }
+  }
   dwellingUnits = dwelling;
   findings = {
     sep: sepPairs.length, over, stranded, offsite, blocked, overlap,
-    total: sepPairs.length + over + stranded + offsite + blocked + overlap,
+    tooClose, onDrive, farFromDrive, wellTooClose, overDrain, deckOver,
+    total: sepPairs.length + over + stranded + offsite + blocked + overlap
+      + tooClose + onDrive + farFromDrive + wellTooClose + overDrain + deckOver,
   };
 }
-let findings = { sep: 0, over: 0, stranded: 0, offsite: 0, blocked: 0, overlap: 0, total: 0 };
+let findings = { sep: 0, over: 0, stranded: 0, offsite: 0, blocked: 0, overlap: 0,
+                 tooClose: 0, onDrive: 0, farFromDrive: 0, wellTooClose: 0,
+                 overDrain: 0, deckOver: 0, total: 0 };
 let dwellingUnits = 0;
 
 function updateStats() {
@@ -1246,8 +1370,14 @@ function updateStats() {
       ? [findings.overlap && `${plural(findings.overlap, "pair")} of units overlap`,
          findings.blocked && `${plural(findings.blocked, "unit")} butted against a door wall`,
          findings.offsite && `${plural(findings.offsite, "unit")} across the property line`,
+         findings.tooClose && `${plural(findings.tooClose, "unit")} inside the ${setback} ft setback`,
+         findings.overDrain && `${plural(findings.overDrain, "unit")} over the drainfield`,
+         findings.onDrive && `${plural(findings.onDrive, "unit")} sitting on the drive`,
+         findings.farFromDrive && `${plural(findings.farFromDrive, "unit")} over ${FIRE_ACCESS} ft from the drive`,
+         findings.wellTooClose && `${plural(findings.wellTooClose, "well")} within 100 ft of a drainfield`,
          findings.sep && `${plural(findings.sep, "pair")} 1–9 ft apart, needing rated walls`,
          findings.over && `${plural(findings.over, "storage cluster")} over the 256 sq ft exemption`,
+         findings.deckOver && `${plural(findings.deckOver, "deck run")} over the 256 sq ft exemption`,
          findings.stranded && `${plural(findings.stranded, "wet unit")} too far from a utility core`]
         .filter(Boolean).join(" · ")
       : "None";
@@ -1273,8 +1403,8 @@ function updateStats() {
 // ------------------------------------------------- CAD-style dimension labels
 
 const labelCache = new Map();
-function dimSprite(text, danger) {
-  const key = text + (danger ? "!" : "");
+function dimSprite(text) {
+  const key = text;
   let proto = labelCache.get(key);
   if (!proto) {
     const c = document.createElement("canvas");
@@ -1284,7 +1414,7 @@ function dimSprite(text, danger) {
     c.width = w;
     c.height = 54;
     const g = c.getContext("2d");
-    g.fillStyle = danger ? "rgba(192, 87, 74, 0.92)" : "rgba(43, 43, 40, 0.85)";
+    g.fillStyle = "rgba(43, 43, 40, 0.85)";
     g.beginPath();
     g.roundRect(0, 0, w, 54, 16);
     g.fill();
@@ -1301,13 +1431,9 @@ function dimSprite(text, danger) {
   return proto.clone(); // clones share the material/texture
 }
 
-const dragLabelGroup = new THREE.Group();
 const selDimGroup = new THREE.Group();
-scene.add(dragLabelGroup, selDimGroup);
+scene.add(selDimGroup);
 
-function clearDragLabels() {
-  for (const c of [...dragLabelGroup.children]) dragLabelGroup.remove(c);
-}
 // footprint dimensions of the selected unit
 function updateSelDims() {
   for (const c of [...selDimGroup.children]) selDimGroup.remove(c);
@@ -1315,8 +1441,8 @@ function updateSelDims() {
   const t = TYPE_BY_ID[selected.typeId];
   if (t.deck) return;
   const [hw, hd] = halfDims(selected);
-  const lenLabel = dimSprite(`${t.len}′`, false);
-  const widLabel = dimSprite(`${t.wid}′`, false);
+  const lenLabel = dimSprite(`${t.len}′`);
+  const widLabel = dimSprite(`${t.wid}′`);
   if (selected.rot % 2 === 0) {
     lenLabel.position.set(selected.x, 4, selected.z + hd + 2.6);
     widLabel.position.set(selected.x + hw + 2.6, 4, selected.z);
@@ -1535,78 +1661,128 @@ function unitPlanGroup(it, detail) {
   return g;
 }
 
-function renderSitePlan(opts = {}) {
-  updateCompliance();
-  const S = SP_S, M = SP_M, HALF = SP_HALF;
-  const minX = SP_MINX, maxX = SP_MAXX, minZ = SP_MINZ, maxZ = SP_MAXZ;
-  const X = spX, Y = spY;
-  const width = SP_W, height = SP_H;
-  rendering = true;
-
-  // The fit has to settle before anything is emitted: annotation is sized in
-  // screen pixels, so building the markup first and zooming afterwards writes
-  // every label at the wrong scale.
-  let uMinX = Infinity, uMaxX = -Infinity, uMinZ = Infinity, uMaxZ = -Infinity;
+// The sheet is emitted as two groups inside one SVG. `paper` is everything
+// that does not depend on the layout; `draw` is everything that does. A drag
+// re-emits `draw` whole, which is what keeps it self-consistent — the old
+// shape patched individual unit transforms and left core rings, trench runs,
+// the separation layer and the dimension strings at their previous positions.
+function unitExtents() {
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
   for (const it of items) {
     const [hw, hd] = halfDims(it);
-    uMinX = Math.min(uMinX, it.x - hw); uMaxX = Math.max(uMaxX, it.x + hw);
-    uMinZ = Math.min(uMinZ, it.z - hd); uMaxZ = Math.max(uMaxZ, it.z + hd);
+    x0 = Math.min(x0, it.x - hw); x1 = Math.max(x1, it.x + hw);
+    z0 = Math.min(z0, it.z - hd); z1 = Math.max(z1, it.z + hd);
   }
-  siteFitBox = items.length
-    ? { x0: X(uMinX) - 30, x1: X(uMaxX) + 40, y0: Y(uMinZ) - 30, y1: Y(uMaxZ) + 45 }
-    : { x0: 0, x1: SP_W, y0: 0, y1: SP_H };
-  if (!exportScale && (opts.fit || !siteFitted)) { siteFitted = true; siteFitView(); }
+  return { x0, x1, z0, z1 };
+}
 
-  detailOn = exportScale ? true : (detailOn ? sview.k >= detailOut() : sview.k >= detailIn());
-  AK = exportScale ? 1 : sview.k;
+function paperMarkup() {
+  const S = SP_S, HALF = SP_HALF, X = spX, Y = spY;
+  const minX = SP_MINX, maxX = SP_MAXX, minZ = SP_MINZ, maxZ = SP_MAXZ;
   let s = "";
 
   // paper sheet with a soft shadow, sitting on the workspace
-  s += `<rect x="10" y="12" width="${width - 14}" height="${height - 14}" fill="#22201c" opacity="0.10"/>`;
-  s += `<rect x="4" y="4" width="${width - 14}" height="${height - 14}" fill="#fbfaf6" stroke="#c9c4b8" stroke-width="1.5"/>`;
+  s += `<rect x="10" y="12" width="${SP_W - 14}" height="${SP_H - 14}" fill="#22201c" opacity="0.10"/>`;
+  s += `<rect x="4" y="4" width="${SP_W - 14}" height="${SP_H - 14}" fill="#fbfaf6" stroke="#c9c4b8" stroke-width="1.5"/>`;
 
-  // fine 10 ft grid, heavier every 50 ft
-  for (let gx = Math.ceil(minX / 10) * 10; gx <= maxX; gx += 10) {
+  // The grid's pitch follows the zoom: at the fitted view a 10 ft grid is
+  // uncountable noise, and at floor-plan zoom a 1 ft grid is what you want.
+  const pitch = sview.k >= detailIn() ? 5 : sview.k >= 0.8 ? 10 : 50;
+  for (let gx = Math.ceil(minX / pitch) * pitch; gx <= maxX; gx += pitch) {
     const major = gx % 50 === 0;
-    s += `<line x1="${X(gx)}" y1="${Y(minZ)}" x2="${X(gx)}" y2="${Y(maxZ)}" stroke="${major ? "#ddd8cc" : "#eceae1"}" stroke-width="1"/>`;
+    s += `<line x1="${X(gx)}" y1="${Y(minZ)}" x2="${X(gx)}" y2="${Y(maxZ)}" stroke="${major ? "#d6d0c2" : "#e7e4da"}" stroke-width="${ss(major ? 0.9 : 0.6)}"/>`;
   }
-  for (let gz = Math.ceil(minZ / 10) * 10; gz <= maxZ; gz += 10) {
+  for (let gz = Math.ceil(minZ / pitch) * pitch; gz <= maxZ; gz += pitch) {
     const major = gz % 50 === 0;
-    s += `<line x1="${X(minX)}" y1="${Y(gz)}" x2="${X(maxX)}" y2="${Y(gz)}" stroke="${major ? "#ddd8cc" : "#eceae1"}" stroke-width="1"/>`;
+    s += `<line x1="${X(minX)}" y1="${Y(gz)}" x2="${X(maxX)}" y2="${Y(gz)}" stroke="${major ? "#d6d0c2" : "#e7e4da"}" stroke-width="${ss(major ? 0.9 : 0.6)}"/>`;
   }
 
   // property line (dash-dot) — the one-acre parcel
-  s += `<rect x="${X(-HALF)}" y="${Y(-HALF)}" width="${HALF * 2 * S}" height="${HALF * 2 * S}" fill="none" stroke="#8a867c" stroke-width="1.6" stroke-dasharray="16 6 3 6"/>`;
+  s += `<rect x="${X(-HALF)}" y="${Y(-HALF)}" width="${HALF * 2 * S}" height="${HALF * 2 * S}" fill="none" stroke="#8a867c" stroke-width="${ss(1.6)}" stroke-dasharray="${dash(16, 6)} ${dash(3, 6)}"/>`;
+
+  // the buildable envelope after setbacks, which is what actually constrains
+  // where anything can go in a rural A-1 district
+  const sb = SP_HALF - setback;
+  s += `<rect x="${X(-sb)}" y="${Y(-sb)}" width="${sb * 2 * S}" height="${sb * 2 * S}" fill="none" stroke="#a89f8c" stroke-width="${ss(1)}" stroke-dasharray="${dash(6, 5)}"/>`;
+  s += `<text x="${X(-sb) + ss(6)}" y="${Y(-sb) - ss(5)}" font-size="${ss(8.5)}" letter-spacing="${ss(0.8)}" fill="#8a8272" font-family="${FONT}">${setback}′ SETBACK</text>`;
+
+  // north arrow and graphic scale, sheet furniture at a constant screen size
+  const nx = X(maxX) - ss(40), ny = Y(minZ) + ss(42);
+  const r = ss(22);
+  s += `<circle cx="${nx}" cy="${ny}" r="${r}" fill="#fbfaf6" stroke="#55524c" stroke-width="${ss(1.4)}"/>`;
+  s += `<path d="M ${nx} ${ny - ss(15)} L ${nx - ss(7)} ${ny + ss(9)} L ${nx} ${ny + ss(3)} L ${nx + ss(7)} ${ny + ss(9)} Z" fill="#23231f"/>`;
+  s += `<text x="${nx}" y="${ny + ss(38)}" text-anchor="middle" font-size="${ss(12)}" font-weight="700" fill="#23231f" font-family="${FONT}">N</text>`;
+  return s;
+}
+
+function titleBlockMarkup() {
+  const S = SP_S;
+  let hc20 = 0, hc10 = 0, sqft = 0, deckSf = 0;
+  for (const it of items) {
+    const t = TYPE_BY_ID[it.typeId];
+    if (t.deck) { deckSf += t.len * t.wid; continue; }
+    if (t.len === 20) hc20++; else hc10++;
+    sqft += t.len * t.wid;
+  }
+  const tbw = 340, tbh = 150;
+  const tbx = SP_W - tbw - 40, tby = SP_H - tbh - 42;
+  const L = (y, size, fill, text, weight = "400", ls = 0) =>
+    `<text x="${tbx + 14}" y="${tby + y}" font-size="${size}" font-weight="${weight}" letter-spacing="${ls}" fill="${fill}" font-family="${FONT}">${text}</text>`;
+  let s = `<rect x="${tbx}" y="${tby}" width="${tbw}" height="${tbh}" fill="#ffffff" stroke="#23231f" stroke-width="1.6"/>`;
+  s += `<line x1="${tbx}" y1="${tby + 36}" x2="${tbx + tbw}" y2="${tby + 36}" stroke="#23231f" stroke-width="1"/>`;
+  s += L(24, 14, "#23231f", esc(layoutName.toUpperCase()), "700", 2);
+  s += L(54, 10, "#55524c", "SITE PLAN · VIRGINIA · 1.0 AC PARCEL", "400", 1);
+  s += L(70, 8.5, "#55524c", `${hc20 + hc10} UNITS (${hc20}× 20′ HC, ${hc10}× 10′ MINI) · ${sqft.toLocaleString()} SF ENCLOSED · ${deckSf} SF DECK`);
+  s += L(84, 8.5, "#55524c", `DRAWN ${new Date().toISOString().slice(0, 10)} · SHEET A1 · NOT FOR CONSTRUCTION`);
+  s += L(101, 7.5, "#6b6861", "BLUE = GLAZED APERTURE · DASHED = UTILITY RUN / CORE RING");
+  s += L(113, 7.5, "#6b6861", "RED, HEAVY DASH = CODE FINDING · NOMINAL CONTAINER LENGTHS SHOWN");
+  s += `<line x1="${tbx + 14}" y1="${tby + 135}" x2="${tbx + 14 + 20 * S}" y2="${tby + 135}" stroke="#23231f" stroke-width="3"/>`;
+  s += `<line x1="${tbx + 14 + 10 * S}" y1="${tby + 131}" x2="${tbx + 14 + 10 * S}" y2="${tby + 139}" stroke="#23231f" stroke-width="1.2"/>`;
+  s += `<text x="${tbx + 22 + 20 * S}" y="${tby + 139}" font-size="9" fill="#55524c" font-family="${FONT}">20 FT</text>`;
+  return s;
+}
+
+function derivedMarkup() {
+  const S = SP_S, X = spX, Y = spY;
+  let s = "";
 
   // gravel drive (editable: the strip and its turnaround move together)
-  // one translated group so a drag is a transform, not a re-render
   s += `<g id="drive-layer" transform="${driveTransform()}">`
-    + `<circle cx="0" cy="${PAD_OFF * S}" r="${PAD_R * S}" fill="#e7e2d6" stroke="#b9b1a0" stroke-width="1"/>`
-    + `<rect x="${-DRIVE_WID / 2 * S}" y="${-DRIVE_LEN / 2 * S}" width="${DRIVE_WID * S}" height="${DRIVE_LEN * S}" fill="#e7e2d6" stroke="#b9b1a0" stroke-width="1"/>`
+    + `<circle cx="0" cy="${PAD_OFF * S}" r="${PAD_R * S}" fill="#e7e2d6" stroke="#b9b1a0" stroke-width="${ss(1)}"/>`
+    + `<rect x="${-DRIVE_WID / 2 * S}" y="${-DRIVE_LEN / 2 * S}" width="${DRIVE_WID * S}" height="${DRIVE_LEN * S}" fill="#e7e2d6" stroke="#b9b1a0" stroke-width="${ss(1)}"/>`
     + `</g>`;
 
   // tree canopies
   for (const t of trees) {
     s += `<g id="tree${t.id}" transform="translate(${X(t.x)} ${Y(t.z)})">`
-      + `<circle cx="0" cy="0" r="${6 * t.s * S}" fill="#7c9464" fill-opacity="0.14" stroke="#7c9464" stroke-width="1"/>`
-      + `<circle cx="0" cy="0" r="2" fill="#5f7350"/></g>`;
+      + `<circle cx="0" cy="0" r="${6 * t.s * S}" fill="#7c9464" fill-opacity="0.14" stroke="#7c9464" stroke-width="${ss(1)}"/>`
+      + `<circle cx="0" cy="0" r="${ss(2)}" fill="#5f7350"/></g>`;
   }
 
-  // utility core rings + trench runs
+  // well and septic, with the separations the health department enforces
+  for (const w of wells) {
+    s += `<g id="well${w.id}" transform="translate(${X(w.x)} ${Y(w.z)})">`
+      + `<circle cx="0" cy="0" r="${WELL_CLEAR * S}" fill="none" stroke="#6f8fa6" stroke-width="${ss(1.1)}" stroke-dasharray="${dash(7, 6)}" opacity="0.7"/>`
+      + `<circle cx="0" cy="0" r="${ss(7)}" fill="#fbfaf6" stroke="#3f5c70" stroke-width="${ss(1.8)}"/>`
+      + `<text x="0" y="${ss(3.5)}" text-anchor="middle" font-size="${ss(9)}" font-weight="700" fill="#3f5c70" font-family="${FONT}">W</text></g>`;
+  }
+  for (const d of drainfields) {
+    const hw = DRAIN_W / 2 * S, hd = DRAIN_L / 2 * S;
+    s += `<g id="drain${d.id}" transform="translate(${X(d.x)} ${Y(d.z)})">`
+      + `<rect x="${-hw}" y="${-hd}" width="${hw * 2}" height="${hd * 2}" fill="#6f8a5c" fill-opacity="0.10" stroke="#6f8a5c" stroke-width="${ss(1.4)}"/>`;
+    for (let i = 1; i < 5; i++) {
+      s += `<line x1="${-hw}" y1="${-hd + (hd * 2 / 5) * i}" x2="${hw}" y2="${-hd + (hd * 2 / 5) * i}" stroke="#6f8a5c" stroke-width="${ss(0.7)}" stroke-dasharray="${dash(4, 3)}"/>`;
+    }
+    s += `<text x="0" y="${-hd + ss(12)}" text-anchor="middle" font-size="${ss(8.5)}" font-weight="700" letter-spacing="${ss(0.8)}" fill="#4d6640" font-family="${FONT}">DRAINFIELD</text></g>`;
+  }
+
+  // utility core rings + trench runs, measured edge to edge
   for (const it of items) {
     if (!TYPE_BY_ID[it.typeId].core) continue;
-    s += `<circle cx="${X(it.x)}" cy="${Y(it.z)}" r="${WET_RADIUS * S}" fill="none" stroke="#7e97a6" stroke-width="1.4" stroke-dasharray="8 6" opacity="0.6"/>`;
+    s += `<circle cx="${X(it.x)}" cy="${Y(it.z)}" r="${WET_RADIUS * S}" fill="none" stroke="#7e97a6" stroke-width="${ss(1.2)}" stroke-dasharray="${dash(8, 6)}" opacity="0.55"/>`;
   }
-  const cores = items.filter((i) => TYPE_BY_ID[i.typeId].core);
-  if (cores.length) {
-    for (const w of items.filter((i) => TYPE_BY_ID[i.typeId].wet)) {
-      let best = cores[0], bd = Infinity;
-      for (const c of cores) {
-        const d = Math.hypot(c.x - w.x, c.z - w.z);
-        if (d < bd) { bd = d; best = c; }
-      }
-      s += `<line x1="${X(w.x)}" y1="${Y(w.z)}" x2="${X(best.x)}" y2="${Y(best.z)}" stroke="#5f7a8a" stroke-width="1.4" stroke-dasharray="5 5" opacity="0.7"/>`;
-    }
+  for (const run of trenchRuns()) {
+    s += `<line x1="${X(run.ax)}" y1="${Y(run.az)}" x2="${X(run.bx)}" y2="${Y(run.bz)}" stroke="#5f7a8a" stroke-width="${ss(1.4)}" stroke-dasharray="${dash(5, 5)}" opacity="0.7"/>`;
   }
 
   // units: decks underneath, then containers, world rotation -> screen rotation
@@ -1615,111 +1791,162 @@ function renderSitePlan(opts = {}) {
   for (const it of drawOrder) {
     s += `<g id="u${it.id}" transform="translate(${X(it.x)} ${Y(it.z)}) rotate(${-it.rot * 90})">${unitPlanGroup(it, detailOn)}</g>`;
   }
-  // labels drawn unrotated, above everything. Zoomed in, the room name moves
-  // off the footprint so it stops sitting on top of the furniture labels.
+
+  // labels, always upright: a label that rode the unit's rotate() read upside
+  // down at rot 2 and sideways at rot 3
   for (const it of items) {
     const t = TYPE_BY_ID[it.typeId];
     if (t.deck) continue;
-    const label = SHORT_NAME[it.typeId] || t.name;
-    // The label holds a constant screen size while the footprint scales, so on
-    // a narrow unit — or zoomed out — it outgrew the box it names. Take the
-    // drafting answer in order: set it across the room, then along the room,
-    // and only put it outside when neither fits.
-    const [lhw, lhd] = halfDims(it);
-    const nameW = label.length * ss(11) * 0.72; // caps plus tracking
-    const acrossW = lhw * 2 * S * 0.95, alongW = lhd * 2 * S * 0.95;
-    const fitsInside = nameW < acrossW;
-    const fitsAlong = !fitsInside && lhd > lhw && nameW < alongW;
-    let inner;
-    if (fitsAlong) {
-      inner = `<g transform="rotate(-90)"><text x="0" y="${-ss(2)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" letter-spacing="${ss(1.1)}" fill="#23231f" font-family="${FONT}">${label.toUpperCase()}</text>`
-        + `<text x="0" y="${ss(10)}" text-anchor="middle" font-size="${ss(9)}" fill="#6b6861" font-family="${FONT}">${t.len * t.wid} SF</text></g>`;
-    } else if (detailOn || !fitsInside) {
-      inner = `<text x="0" y="${-lhd * S - ss(7)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(1.1)}" fill="#23231f" font-family="${FONT}">${label.toUpperCase()} · ${t.len * t.wid} SF</text>`;
-    } else {
-      inner = `<text x="0" y="${-ss(2)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" letter-spacing="${ss(1.1)}" fill="#23231f" font-family="${FONT}">${label.toUpperCase()}</text>`
-        + `<text x="0" y="${ss(10)}" text-anchor="middle" font-size="${ss(9)}" fill="#6b6861" font-family="${FONT}">${t.len * t.wid} SF</text>`;
-    }
-    s += `<g id="ul${it.id}" transform="translate(${X(it.x)} ${Y(it.z)})">${inner}</g>`;
+    s += `<g id="ul${it.id}" transform="translate(${X(it.x)} ${Y(it.z)})">${unitLabel(it)}</g>`;
   }
 
-  // fire-separation conflicts
-  // Drawn along the gap itself rather than centre-to-centre, which used to
-  // strike the line and its label straight through the units it annotates.
-  s += `<g id="sep-layer">`;
+  s += `<g id="sep-layer">${separationMarkup()}</g>`;
+  s += `<g id="findings-layer">${findingsMarkup()}</g>`;
+  s += `<g id="dim-layer">${dimensionMarkup()}</g>`;
+  s += titleBlockMarkup();
+  return s;
+}
+
+// the unit's name, set across the room, along it, or outside it
+function unitLabel(it) {
+  const t = TYPE_BY_ID[it.typeId], S = SP_S;
+  const label = SHORT_NAME[it.typeId] || t.name;
+  const [lhw, lhd] = halfDims(it);
+  const nameW = label.length * ss(11) * 0.72;
+  const acrossW = lhw * 2 * S * 0.95, alongW = lhd * 2 * S * 0.95;
+  const fitsInside = nameW < acrossW;
+  const fitsAlong = !fitsInside && lhd > lhw && nameW < alongW;
+  const name = (y) => `<text x="0" y="${y}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" letter-spacing="${ss(1.1)}" fill="#23231f" font-family="${FONT}">${esc(label.toUpperCase())}</text>`;
+  const area = (y) => `<text x="0" y="${y}" text-anchor="middle" font-size="${ss(9)}" fill="#6b6861" font-family="${FONT}">${t.len * t.wid} SF</text>`;
+  if (fitsAlong) return `<g transform="rotate(-90)">${name(-ss(2))}${area(ss(10))}</g>`;
+  if (detailOn || !fitsInside) {
+    return plate(0, -lhd * S - ss(13), (label.length + 7) * ss(7), ss(15))
+      + `<text x="0" y="${-lhd * S - ss(9)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(1.1)}" fill="#23231f" font-family="${FONT}">${esc(label.toUpperCase())} · ${t.len * t.wid} SF</text>`;
+  }
+  return name(-ss(2)) + area(ss(10));
+}
+
+// a paper-coloured knockout, so annotation stops overprinting the drawing
+function plate(cx, cy, w, h) {
+  return `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="${ss(2)}" fill="#fbfaf6" opacity="0.88"/>`;
+}
+
+function separationMarkup() {
+  const X = spX, Y = spY;
+  let s = "";
   for (const p of sepPairs) {
     const b = gapBand(p.a, p.b);
     const mx = b.axis === "x" ? (X(b.x0) + X(b.x1)) / 2 : X((b.x0 + b.x1) / 2);
     const my = b.axis === "x" ? Y((b.z0 + b.z1) / 2) : (Y(b.z0) + Y(b.z1)) / 2;
+    const d = dash(FINDING_DASH_A, FINDING_DASH_B);
     if (b.axis === "x") {
-      s += `<line x1="${X(b.x0)}" y1="${my}" x2="${X(b.x1)}" y2="${my}" stroke="#c0574a" stroke-width="${ss(1.6)}"/>`;
+      s += `<line x1="${X(b.x0)}" y1="${my}" x2="${X(b.x1)}" y2="${my}" stroke="#c0574a" stroke-width="${ss(2.6)}" stroke-dasharray="${d}"/>`;
     } else {
-      s += `<line x1="${mx}" y1="${Y(b.z0)}" x2="${mx}" y2="${Y(b.z1)}" stroke="#c0574a" stroke-width="${ss(1.6)}"/>`;
+      s += `<line x1="${mx}" y1="${Y(b.z0)}" x2="${mx}" y2="${Y(b.z1)}" stroke="#c0574a" stroke-width="${ss(2.6)}" stroke-dasharray="${d}"/>`;
     }
     // floor, never round: a diagonal pair at 9.899 ft used to print "10′
     // RATED" beside a remedy telling you to open it to 10 ft
     const shown = Math.max(1, Math.floor(p.gap));
-    s += `<text x="${mx}" y="${my - ss(6)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">⚠ ${shown}′ RATED</text>`;
+    const txt = `⚠ ${shown}′ RATED`;
+    s += plate(mx, my - ss(10), txt.length * ss(6.6), ss(15));
+    s += `<text x="${mx}" y="${my - ss(6)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
   }
-
-  s += `</g>`;
-  // the findings ride on the drawing, so they survive export
-  s += `<g id="findings-layer">${findingsMarkup()}</g>`;
-
-  // compound extent dimension strings
-  if (items.length) {
-    s += `<g id="dim-layer">`;
-    const tick = (x, y, dx, dy) => `<line x1="${x - dx}" y1="${y - dy}" x2="${x + dx}" y2="${y + dy}" stroke="#6b6861" stroke-width="${ss(1.1)}"/>`;
-    const dy = Y(uMaxZ) + ss(30);
-    s += `<line x1="${X(uMinX)}" y1="${dy}" x2="${X(uMaxX)}" y2="${dy}" stroke="#6b6861" stroke-width="${ss(1.1)}"/>`;
-    s += tick(X(uMinX), dy, 0, ss(5)) + tick(X(uMaxX), dy, 0, ss(5));
-    s += `<line x1="${X(uMinX)}" y1="${Y(uMaxZ) + ss(6)}" x2="${X(uMinX)}" y2="${dy + ss(4)}" stroke="#a9a397" stroke-width="${ss(0.9)}"/>`;
-    s += `<line x1="${X(uMaxX)}" y1="${Y(uMaxZ) + ss(6)}" x2="${X(uMaxX)}" y2="${dy + ss(4)}" stroke="#a9a397" stroke-width="${ss(0.9)}"/>`;
-    s += `<text x="${(X(uMinX) + X(uMaxX)) / 2}" y="${dy - ss(6)}" text-anchor="middle" font-size="${ss(10)}" fill="#23231f" font-family="${FONT}">${Math.round(uMaxX - uMinX)}′-0″</text>`;
-    const dx2 = X(uMaxX) + ss(30);
-    s += `<line x1="${dx2}" y1="${Y(uMinZ)}" x2="${dx2}" y2="${Y(uMaxZ)}" stroke="#6b6861" stroke-width="${ss(1.1)}"/>`;
-    s += tick(dx2, Y(uMinZ), ss(5), 0) + tick(dx2, Y(uMaxZ), ss(5), 0);
-    s += `<text x="${dx2 + ss(9)}" y="${(Y(uMinZ) + Y(uMaxZ)) / 2}" text-anchor="middle" font-size="${ss(10)}" fill="#23231f" font-family="${FONT}" transform="rotate(-90 ${dx2 + ss(9)} ${(Y(uMinZ) + Y(uMaxZ)) / 2})">${Math.round(uMaxZ - uMinZ)}′-0″</text>`;
-    s += `</g>`;
-  }
-
-  // north arrow (north = up)
-  const nx = X(maxX) - 34, ny = Y(minZ) + 36;
-  s += `<circle cx="${nx}" cy="${ny}" r="22" fill="#fbfaf6" stroke="#55524c" stroke-width="1.4"/>`;
-  s += `<path d="M ${nx} ${ny - 15} L ${nx - 7} ${ny + 9} L ${nx} ${ny + 3} L ${nx + 7} ${ny + 9} Z" fill="#23231f"/>`;
-  s += `<text x="${nx}" y="${ny + 38}" text-anchor="middle" font-size="12" font-weight="700" fill="#23231f" font-family="${FONT}">N</text>`;
-
-  // title block, bottom-right of the sheet
-  let hc20 = 0, hc10 = 0, sqft = 0, deckSf = 0;
-  for (const it of items) {
-    const t = TYPE_BY_ID[it.typeId];
-    if (t.deck) { deckSf += 64; continue; }
-    if (t.len === 20) hc20++; else hc10++;
-    sqft += t.len * t.wid;
-  }
-  const tbw = 340, tbh = 132;
-  const tbx = width - tbw - 40, tby = height - tbh - 42;
-  s += `<rect x="${tbx}" y="${tby}" width="${tbw}" height="${tbh}" fill="#ffffff" stroke="#23231f" stroke-width="1.6"/>`;
-  s += `<line x1="${tbx}" y1="${tby + 36}" x2="${tbx + tbw}" y2="${tby + 36}" stroke="#23231f" stroke-width="1"/>`;
-  s += `<text x="${tbx + 14}" y="${tby + 24}" font-size="14" font-weight="700" letter-spacing="2" fill="#23231f" font-family="${FONT}">CONTAINER COMPOUND</text>`;
-  s += `<text x="${tbx + 14}" y="${tby + 54}" font-size="10" letter-spacing="1" fill="#55524c" font-family="${FONT}">SITE PLAN · VIRGINIA · 1.0 AC PARCEL</text>`;
-  s += `<text x="${tbx + 14}" y="${tby + 70}" font-size="8.5" fill="#55524c" font-family="${FONT}">${hc20 + hc10} UNITS (${hc20}× 20′ HC, ${hc10}× 10′ MINI) · ${sqft.toLocaleString()} SF ENCLOSED · ${deckSf} SF DECK</text>`;
-  // split across two lines: as one line this ran 68 px off the sheet's own
-  // viewBox, so every export lost the key to its colour language
-  s += `<text x="${tbx + 14}" y="${tby + 85}" font-size="7.5" fill="#6b6861" font-family="${FONT}">BLUE = GLAZED APERTURE · DASHED = UTILITY RUN / CORE RING</text>`;
-  s += `<text x="${tbx + 14}" y="${tby + 97}" font-size="7.5" fill="#6b6861" font-family="${FONT}">RED = CODE FINDING (R302.1 GAP · &gt;256 SF CLUSTER · STRANDED WET UNIT)</text>`;
-  s += `<line x1="${tbx + 14}" y1="${tby + 117}" x2="${tbx + 14 + 20 * S}" y2="${tby + 117}" stroke="#23231f" stroke-width="3"/>`;
-  s += `<line x1="${tbx + 14 + 10 * S}" y1="${tby + 113}" x2="${tbx + 14 + 10 * S}" y2="${tby + 121}" stroke="#23231f" stroke-width="1.2"/>`;
-  s += `<text x="${tbx + 22 + 20 * S}" y="${tby + 121}" font-size="9" fill="#55524c" font-family="${FONT}">20 FT</text>`;
-
-  const svgW = Math.round(width), svgH = Math.round(height);
-  const defs = `<defs><marker id="sp-arr" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 z" fill="#c0574a"/></marker>${HATCH_DEF}</defs>`;
-  document.getElementById("site-svg").innerHTML =
-    `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">${defs}${s}</svg>`;
-  siteApply();
-  renderChrome();
-  rendering = false;
+  return s;
 }
+
+// Setback dimensions to each property line, which is what a plan reviewer
+// looks for, plus the compound's overall extent.
+function dimensionMarkup() {
+  if (!items.length) return "";
+  const X = spX, Y = spY;
+  const { x0, x1, z0, z1 } = unitExtents();
+  const tick = (x, y, dx, dy) => `<line x1="${x - dx}" y1="${y - dy}" x2="${x + dx}" y2="${y + dy}" stroke="#6b6861" stroke-width="${ss(1.1)}"/>`;
+  const label = (x, y, text, rot) => plate(x, y - ss(4), text.length * ss(6.4), ss(14))
+    + `<text x="${x}" y="${y}" text-anchor="middle" font-size="${ss(10)}" fill="#23231f" font-family="${FONT}"${rot ? ` transform="rotate(-90 ${x} ${y})"` : ""}>${text}</text>`;
+  let s = "";
+  const dy = Y(z1) + ss(30);
+  s += `<line x1="${X(x0)}" y1="${dy}" x2="${X(x1)}" y2="${dy}" stroke="#6b6861" stroke-width="${ss(1.1)}"/>`;
+  s += tick(X(x0), dy, 0, ss(5)) + tick(X(x1), dy, 0, ss(5));
+  s += label((X(x0) + X(x1)) / 2, dy - ss(6), `${Math.round(x1 - x0)}′-0″`);
+  const dx2 = X(x1) + ss(30);
+  s += `<line x1="${dx2}" y1="${Y(z0)}" x2="${dx2}" y2="${Y(z1)}" stroke="#6b6861" stroke-width="${ss(1.1)}"/>`;
+  s += tick(dx2, Y(z0), ss(5), 0) + tick(dx2, Y(z1), ss(5), 0);
+  s += label(dx2 + ss(9), (Y(z0) + Y(z1)) / 2, `${Math.round(z1 - z0)}′-0″`, true);
+
+  // distance from the compound to each property line
+  const edges = [
+    { a: [X(x0), Y(z0) - ss(16)], b: [X(-SP_HALF), Y(z0) - ss(16)], v: x0 + SP_HALF, rot: false,
+      m: [(X(x0) + X(-SP_HALF)) / 2, Y(z0) - ss(20)] },
+    { a: [X(x1), Y(z0) - ss(16)], b: [X(SP_HALF), Y(z0) - ss(16)], v: SP_HALF - x1, rot: false,
+      m: [(X(x1) + X(SP_HALF)) / 2, Y(z0) - ss(20)] },
+    { a: [X(x0) - ss(16), Y(z0)], b: [X(x0) - ss(16), Y(-SP_HALF)], v: z0 + SP_HALF, rot: true,
+      m: [X(x0) - ss(20), (Y(z0) + Y(-SP_HALF)) / 2] },
+    { a: [X(x0) - ss(16), Y(z1)], b: [X(x0) - ss(16), Y(SP_HALF)], v: SP_HALF - z1, rot: true,
+      m: [X(x0) - ss(20), (Y(z1) + Y(SP_HALF)) / 2] },
+  ];
+  for (const e of edges) {
+    const tight = e.v < setback;
+    s += `<line x1="${e.a[0]}" y1="${e.a[1]}" x2="${e.b[0]}" y2="${e.b[1]}" stroke="${tight ? "#8c3b2e" : "#a9a397"}" stroke-width="${ss(0.9)}" stroke-dasharray="${dash(4, 4)}"/>`;
+    const txt = `${Math.round(e.v)}′`;
+    s += plate(e.m[0], e.m[1] - ss(4), txt.length * ss(7) + ss(6), ss(13));
+    s += `<text x="${e.m[0]}" y="${e.m[1]}" text-anchor="middle" font-size="${ss(9)}" font-weight="${tight ? 700 : 400}" fill="${tight ? "#8c3b2e" : "#77746c"}" font-family="${FONT}"${e.rot ? ` transform="rotate(-90 ${e.m[0]} ${e.m[1]})"` : ""}>${txt}</text>`;
+  }
+  return s;
+}
+
+function sheetDefs() {
+  return `<defs><marker id="sp-arr" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 z" fill="#c0574a"/></marker>${HATCH_DEF}</defs>`;
+}
+
+function renderSitePlan(opts = {}) {
+  rendering = true;
+  try {
+    updateCompliance();
+    // The fit has to settle before anything is emitted: annotation is sized in
+    // screen pixels, so building the markup first and zooming afterwards writes
+    // every label at the wrong scale.
+    const e = unitExtents();
+    siteFitBox = items.length
+      ? { x0: spX(e.x0) - 30, x1: spX(e.x1) + 40, y0: spY(e.z0) - 30, y1: spY(e.z1) + 45 }
+      : { x0: 0, x1: SP_W, y0: 0, y1: SP_H };
+    if (!exportScale && (opts.fit || !siteFitted)) { siteFitted = true; siteFitView(); }
+
+    detailOn = exportScale ? true : (detailOn ? sview.k >= detailOut() : sview.k >= detailIn());
+    AK = exportScale ? 1 : sview.k;
+
+    const w = Math.round(SP_W), h = Math.round(SP_H);
+    document.getElementById("site-svg").innerHTML =
+      `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`
+      + `${sheetDefs()}<g id="paper-layer">${paperMarkup()}</g>`
+      + `<g id="draw-layer">${derivedMarkup()}</g></svg>`;
+    siteApply();
+    renderChrome();
+  } finally {
+    // without this, one throw left the flag set and afterZoom returned early
+    // forever, so zooming silently stopped redrawing the sheet
+    rendering = false;
+  }
+}
+
+// Re-emit only the layout-dependent half. One string, so every derived mark —
+// rings, trenches, findings, dimensions — moves together with the units.
+let derivedPending = false;
+function renderDerived() {
+  if (mode !== "plan" || exportScale) return;
+  const g = document.getElementById("draw-layer");
+  if (!g) { renderSitePlan(); return; }
+  updateCompliance();
+  AK = sview.k;
+  g.innerHTML = derivedMarkup();
+  renderChrome();
+}
+// coalesced to one emission per frame, however fast the pointer moves
+function scheduleDerived() {
+  if (derivedPending) return;
+  derivedPending = true;
+  requestAnimationFrame(() => { derivedPending = false; renderDerived(); });
+}
+
 let siteFitted = false;
 let rendering = false;
 
@@ -1901,6 +2128,47 @@ function treeAtWorld(p) {
   }
   return null;
 }
+const FIRE_ACCESS = 150; // ft from the drive, IFC D107-ish
+
+// the drive's footprint in world space: the strip plus its turnaround
+function driveShapes() {
+  const [dx, dz] = DIRS[drive.rot % 4];
+  const pc = padCenter();
+  return { dx, dz, pc };
+}
+function overlapsDrive(u) {
+  const [hw, hd] = halfDims(u);
+  const { dx, dz, pc } = driveShapes();
+  // pad: circle against the unit's rectangle
+  const cx = Math.max(u.x - hw, Math.min(pc.x, u.x + hw));
+  const cz = Math.max(u.z - hd, Math.min(pc.z, u.z + hd));
+  if (Math.hypot(pc.x - cx, pc.z - cz) < PAD_R) return true;
+  // strip: the unit's centre rotated into the strip's own frame, inflated by
+  // the unit's half-extent (an approximation, and a conservative one)
+  const rx = u.x - drive.x, rz = u.z - drive.z;
+  const lx = rx * dx + rz * dz, lz = -rx * dz + rz * dx;
+  return Math.abs(lx) < DRIVE_WID / 2 + Math.min(hw, hd)
+      && Math.abs(lz) < DRIVE_LEN / 2 + Math.min(hw, hd);
+}
+function distanceToDrive(u) {
+  const { dx, dz, pc } = driveShapes();
+  const rx = u.x - drive.x, rz = u.z - drive.z;
+  const lx = rx * dx + rz * dz, lz = -rx * dz + rz * dx;
+  const stripD = Math.hypot(
+    Math.max(0, Math.abs(lx) - DRIVE_WID / 2),
+    Math.max(0, Math.abs(lz) - DRIVE_LEN / 2));
+  const padD = Math.max(0, Math.hypot(u.x - pc.x, u.z - pc.z) - PAD_R);
+  return Math.min(stripD, padD);
+}
+
+function siteObjAt(p) {
+  for (const w of wells) if (Math.hypot(p.x - w.x, p.z - w.z) <= 8) return { obj: w, kind: "well" };
+  for (const d of drainfields) {
+    if (Math.abs(p.x - d.x) <= DRAIN_W / 2 && Math.abs(p.z - d.z) <= DRAIN_L / 2)
+      return { obj: d, kind: "drain" };
+  }
+  return null;
+}
 function driveAtWorld(p) {
   const pc = padCenter();
   if (Math.hypot(p.x - pc.x, p.z - pc.z) <= PAD_R) return true;
@@ -2016,17 +2284,33 @@ let ghost = null; // { type, x, z, rot } while adding by drag
 // chrome, and only those are stripped.
 function findingsMarkup() {
   const X = spX, Y = spY, S = SP_S;
+  const D = () => dash(FINDING_DASH_A, FINDING_DASH_B);
   let s = "";
+
+  // one way of flagging a unit, so every class reads the same
+  const flag = (u, text, below = false) => {
+    const [hw, hd] = halfDims(u);
+    let out = `<rect x="${X(u.x - hw)}" y="${Y(u.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="none" stroke="#8c3b2e" stroke-width="${ss(2.2)}" stroke-dasharray="${D()}"/>`;
+    const y = below ? Y(u.z + hd) + ss(15) : Y(u.z - hd) - ss(8);
+    out += plate(X(u.x), y - ss(4), text.length * ss(6.4) + ss(8), ss(14));
+    out += `<text x="${X(u.x)}" y="${y}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(0.9)}" fill="#8c3b2e" font-family="${FONT}">${text}</text>`;
+    return out;
+  };
+
+  // rated-wall gaps: hatched band between the two footprints
   for (const p of sepPairs) {
     const b = gapBand(p.a, p.b);
     if (b.overlap <= 0) continue;
-    s += `<rect x="${X(b.x0)}" y="${Y(b.z0)}" width="${Math.max(1, (b.x1 - b.x0) * S)}" height="${Math.max(1, (b.z1 - b.z0) * S)}" fill="url(#ch-hatch)" stroke="#c0574a" stroke-width="${ss(1)}" stroke-dasharray="${dash(4, 3)}"/>`;
+    s += `<rect x="${X(b.x0)}" y="${Y(b.z0)}" width="${Math.max(1, (b.x1 - b.x0) * S)}" height="${Math.max(1, (b.z1 - b.z0) * S)}" fill="url(#ch-hatch)" stroke="#c0574a" stroke-width="${ss(1)}" stroke-dasharray="${D()}"/>`;
   }
+
+  // a butted cluster past the exemption, where the exemption could apply
   const seen = new Set();
   for (const it of items) {
     const j = joined.get(it.id);
     if (!j || j.sqft <= 256) continue;
     const members = clusterOf(it);
+    if (!members.every((m) => TYPE_BY_ID[m.typeId].accessory)) continue;
     const key = members.map((m) => m.id).sort().join(",");
     if (seen.has(key)) continue;
     seen.add(key);
@@ -2036,45 +2320,125 @@ function findingsMarkup() {
       x0 = Math.min(x0, m.x - hw); x1 = Math.max(x1, m.x + hw);
       z0 = Math.min(z0, m.z - hd); z1 = Math.max(z1, m.z + hd);
     }
-    s += `<rect x="${X(x0) - ss(6)}" y="${Y(z0) - ss(6)}" width="${(x1 - x0) * S + ss(12)}" height="${(z1 - z0) * S + ss(12)}" fill="none" stroke="#c0574a" stroke-width="${ss(1.8)}" stroke-dasharray="${dash(10, 5)}"/>`;
-    s += `<text x="${X((x0 + x1) / 2)}" y="${Y(z0) - ss(13)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">⚠ ${j.sqft} SF &gt; 256 SF EXEMPTION</text>`;
+    s += `<rect x="${X(x0) - ss(6)}" y="${Y(z0) - ss(6)}" width="${(x1 - x0) * S + ss(12)}" height="${(z1 - z0) * S + ss(12)}" fill="none" stroke="#c0574a" stroke-width="${ss(1.8)}" stroke-dasharray="${D()}"/>`;
+    const txt = `⚠ ${j.sqft} SF > 256 SF EXEMPTION`;
+    s += plate(X((x0 + x1) / 2), Y(z0) - ss(17), txt.length * ss(6.4), ss(15));
+    s += `<text x="${X((x0 + x1) / 2)}" y="${Y(z0) - ss(13)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
   }
+
+  // a deck run past the exemption, which the unit-only checks never saw
+  const deckSeen = new Set();
+  for (const d of deckClusters()) {
+    if (d.sqft <= 256) continue;
+    const key = d.members.map((m) => m.id).sort().join(",");
+    if (deckSeen.has(key)) continue;
+    deckSeen.add(key);
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const m of d.members) {
+      const [hw, hd] = halfDims(m);
+      x0 = Math.min(x0, m.x - hw); x1 = Math.max(x1, m.x + hw);
+      z0 = Math.min(z0, m.z - hd); z1 = Math.max(z1, m.z + hd);
+    }
+    s += `<rect x="${X(x0) - ss(4)}" y="${Y(z0) - ss(4)}" width="${(x1 - x0) * S + ss(8)}" height="${(z1 - z0) * S + ss(8)}" fill="none" stroke="#c0574a" stroke-width="${ss(1.6)}" stroke-dasharray="${D()}"/>`;
+    const txt = `⚠ DECK RUN ${d.sqft} SF > 256 SF`;
+    s += plate(X((x0 + x1) / 2), Y(z0) - ss(15), txt.length * ss(6.4), ss(14));
+    s += `<text x="${X((x0 + x1) / 2)}" y="${Y(z0) - ss(11)}" text-anchor="middle" font-size="${ss(9.5)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
+  }
+
   const cores = items.filter((i) => TYPE_BY_ID[i.typeId].core);
-  for (const w of items.filter((i) => TYPE_BY_ID[i.typeId].wet)) {
+  const units = items.filter((i) => !TYPE_BY_ID[i.typeId].deck);
+  const sb = SP_HALF - setback;
+
+  for (const w of items.filter((i) => TYPE_BY_ID[i.typeId].wet && !TYPE_BY_ID[i.typeId].core)) {
     const near = cores.length
       ? Math.min(...cores.map((c) => Math.hypot(c.x - w.x, c.z - w.z))) : Infinity;
     if (near <= WET_RADIUS) continue;
     const [, hd] = halfDims(w);
-    s += `<text x="${X(w.x)}" y="${Y(w.z + hd) + ss(16)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">⚠ ${cores.length ? `${Math.round(near)}′ TO CORE` : "NO UTILITY CORE"}</text>`;
+    const txt = `⚠ ${cores.length ? `${Math.round(near)}′ TO CORE` : "NO UTILITY CORE"}`;
+    s += plate(X(w.x), Y(w.z + hd) + ss(12), txt.length * ss(6.4), ss(14));
+    s += `<text x="${X(w.x)}" y="${Y(w.z + hd) + ss(16)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
   }
 
-  // Overlapping footprints. A saved or shared layout can hold these even
-  // though the editor now refuses to create them.
+  // overlapping footprints — a saved or shared layout can still hold these
   for (const [a, b] of overlappingPairs()) {
     for (const u of [a, b]) {
       const [hw, hd] = halfDims(u);
       s += `<rect x="${X(u.x - hw)}" y="${Y(u.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="url(#ch-hatch)" stroke="#8c3b2e" stroke-width="${ss(2)}"/>`;
     }
-    s += `<text x="${X((a.x + b.x) / 2)}" y="${Y((a.z + b.z) / 2) - ss(4)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(0.9)}" fill="#8c3b2e" font-family="${FONT}">⚠ UNITS OVERLAP</text>`;
+    const txt = "⚠ UNITS OVERLAP";
+    s += plate(X((a.x + b.x) / 2), Y((a.z + b.z) / 2) - ss(8), txt.length * ss(6.4), ss(14));
+    s += `<text x="${X((a.x + b.x) / 2)}" y="${Y((a.z + b.z) / 2) - ss(4)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(0.9)}" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
   }
 
-  // Butted against a door wall. The editor rejects the move, but loadFrom
-  // never did, so a shared link could carry one with nothing drawn.
+  // butted against a door wall
   for (const [a, b] of blockedPairs()) {
     const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
     s += `<circle cx="${X(mx)}" cy="${Y(mz)}" r="${ss(11)}" fill="#fbfaf6" stroke="#8c3b2e" stroke-width="${ss(1.8)}"/>`;
     s += `<text x="${X(mx)}" y="${Y(mz) + ss(4)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">⚠</text>`;
-    s += `<text x="${X(mx)}" y="${Y(mz) - ss(15)}" text-anchor="middle" font-size="${ss(9.5)}" font-weight="700" letter-spacing="${ss(0.9)}" fill="#8c3b2e" font-family="${FONT}">DOOR WALL BLOCKED</text>`;
+    const txt = "DOOR WALL BLOCKED";
+    s += plate(X(mx), Y(mz) - ss(19), txt.length * ss(6.2), ss(14));
+    s += `<text x="${X(mx)}" y="${Y(mz) - ss(15)}" text-anchor="middle" font-size="${ss(9.5)}" font-weight="700" letter-spacing="${ss(0.9)}" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
   }
 
-  // Across the property line.
-  for (const u of items.filter((i) => !TYPE_BY_ID[i.typeId].deck)) {
+  for (const u of units) {
     const [hw, hd] = halfDims(u);
-    if (Math.abs(u.x) + hw <= SP_HALF && Math.abs(u.z) + hd <= SP_HALF) continue;
-    s += `<rect x="${X(u.x - hw)}" y="${Y(u.z - hd)}" width="${hw * 2 * S}" height="${hd * 2 * S}" fill="none" stroke="#8c3b2e" stroke-width="${ss(2.2)}" stroke-dasharray="${dash(9, 4)}"/>`;
-    s += `<text x="${X(u.x)}" y="${Y(u.z - hd) - ss(6)}" text-anchor="middle" font-size="${ss(10)}" font-weight="700" letter-spacing="${ss(0.9)}" fill="#8c3b2e" font-family="${FONT}">⚠ CROSSES PROPERTY LINE</text>`;
+    const outside = Math.abs(u.x) + hw > SP_HALF || Math.abs(u.z) + hd > SP_HALF;
+    if (outside) { s += flag(u, "⚠ CROSSES PROPERTY LINE"); continue; }
+    if (Math.abs(u.x) + hw > sb || Math.abs(u.z) + hd > sb) s += flag(u, `⚠ INSIDE ${setback}′ SETBACK`);
+  }
+  for (const u of units) if (overlapsDrive(u)) s += flag(u, "⚠ ON THE DRIVE", true);
+  for (const u of units) {
+    if (distanceToDrive(u) <= FIRE_ACCESS) continue;
+    s += flag(u, `⚠ ${Math.round(distanceToDrive(u))}′ FROM THE DRIVE`, true);
+  }
+  for (const u of units) {
+    for (const d of drainfields) {
+      const [hw, hd] = halfDims(u);
+      if (Math.abs(u.x - d.x) < hw + DRAIN_W / 2 && Math.abs(u.z - d.z) < hd + DRAIN_L / 2) {
+        s += flag(u, "⚠ OVER THE DRAINFIELD", true);
+        break;
+      }
+    }
+  }
+  for (const w of wells) {
+    for (const d of drainfields) {
+      const gap = Math.hypot(w.x - d.x, w.z - d.z);
+      if (gap >= WELL_CLEAR) continue;
+      s += `<line x1="${X(w.x)}" y1="${Y(w.z)}" x2="${X(d.x)}" y2="${Y(d.z)}" stroke="#8c3b2e" stroke-width="${ss(2)}" stroke-dasharray="${D()}"/>`;
+      const txt = `⚠ ${Math.round(gap)}′ WELL TO DRAINFIELD (100′)`;
+      const mx = X((w.x + d.x) / 2), my = Y((w.z + d.z) / 2);
+      s += plate(mx, my - ss(8), txt.length * ss(6.2), ss(14));
+      s += `<text x="${mx}" y="${my - ss(4)}" text-anchor="middle" font-size="${ss(9.5)}" font-weight="700" fill="#8c3b2e" font-family="${FONT}">${txt}</text>`;
+      break;
+    }
   }
   return s;
+}
+
+// decks chain into runs the unit checks never saw, and the exemption reads
+// per structure — twelve butted 8x8s is 768 sq ft of one platform
+function deckClusters() {
+  const decks = items.filter((i) => TYPE_BY_ID[i.typeId].deck);
+  const seen = new Set();
+  const out = [];
+  for (const d of decks) {
+    if (seen.has(d.id)) continue;
+    const members = [d];
+    seen.add(d.id);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const o of decks) {
+        if (seen.has(o.id)) continue;
+        if (members.some((m) => gapBetween(o, m) <= JOIN_EPS)) {
+          members.push(o); seen.add(o.id); grew = true;
+        }
+      }
+    }
+    if (members.length < 2) continue;
+    out.push({ members, sqft: members.reduce((a, m) =>
+      a + TYPE_BY_ID[m.typeId].len * TYPE_BY_ID[m.typeId].wid, 0) });
+  }
+  return out;
 }
 
 const HATCH_DEF = `<pattern id="ch-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -2085,9 +2449,6 @@ function renderChrome() {
   AK = sview.k;
   const X = spX, Y = spY, S = SP_S;
   let s = "";
-
-  // mid-drag the sheet's settled findings are stale, so redraw them live here
-  if (planDrag && planDrag.moved) s += findingsMarkup();
 
   // Butted units move as one, so say so while one of them is selected —
   // previously the only cluster outline was a >256 SF violation marker, and
@@ -2184,19 +2545,6 @@ function dragDimsSVG(it, moving) {
 
 const driveTransform = () =>
   `translate(${spX(drive.x)} ${spY(drive.z)}) rotate(${-drive.rot * 90})`;
-function moveSceneryGroup(id, x, z) {
-  const g = document.getElementById(id);
-  if (g) g.setAttribute("transform", `translate(${spX(x)} ${spY(z)})`);
-}
-
-// move one unit's group on the sheet without redrawing the whole thing
-function moveUnitGroup(it) {
-  const g = document.getElementById(`u${it.id}`);
-  if (g) g.setAttribute("transform",
-    `translate(${spX(it.x)} ${spY(it.z)}) rotate(${-it.rot * 90})`);
-  const lab = document.getElementById(`ul${it.id}`);
-  if (lab) lab.setAttribute("transform", `translate(${spX(it.x)} ${spY(it.z)})`);
-}
 
 // ---- pointer handling ----
 
@@ -2251,6 +2599,14 @@ sitePanelEl.addEventListener("pointerdown", (e) => {
     }, 450);
     return;
   }
+  const so = siteObjAt(p);
+  if (so) {
+    planDrag = { kind: "site", obj: so.obj, objKind: so.kind,
+                 grabX: so.obj.x - p.x, grabZ: so.obj.z - p.z,
+                 snapshot: JSON.stringify(serialize()), moved: false,
+                 startX: e.clientX, startY: e.clientY, slop: SLOP(e) };
+    return;
+  }
   const tr = treeAtWorld(p);
   if (tr) {
     planDrag = { kind: "tree", tree: tr, grabX: tr.x - p.x, grabZ: tr.z - p.z,
@@ -2303,19 +2659,21 @@ sitePanelEl.addEventListener("pointermove", (e) => {
         m.x = clampX(snapped.x + dx);
         m.z = clampZ(snapped.z + dz);
         applyTransform(m);
-        moveUnitGroup(m);
       }
-      updateCompliance(); // live separation + trench feedback
+      scheduleDerived(); // one consistent re-emission per frame
     }
  else if (planDrag.kind === "tree") {
-      planDrag.tree.x = Math.round(p.x + planDrag.grabX);
-      planDrag.tree.z = Math.round(p.z + planDrag.grabZ);
-      moveSceneryGroup(`tree${planDrag.tree.id}`, planDrag.tree.x, planDrag.tree.z);
+      planDrag.tree.x = clampX(p.x + planDrag.grabX);
+      planDrag.tree.z = clampZ(p.z + planDrag.grabZ);
+      scheduleDerived();
     } else if (planDrag.kind === "drive") {
-      drive.x = Math.round(p.x + planDrag.grabX);
-      drive.z = Math.round(p.z + planDrag.grabZ);
-      const g = document.getElementById("drive-layer");
-      if (g) g.setAttribute("transform", driveTransform());
+      drive.x = clampX(p.x + planDrag.grabX);
+      drive.z = clampZ(p.z + planDrag.grabZ);
+      scheduleDerived();
+    } else if (planDrag.kind === "site") {
+      planDrag.obj.x = clampX(p.x + planDrag.grabX);
+      planDrag.obj.z = clampZ(p.z + planDrag.grabZ);
+      scheduleDerived();
     }
     // scenery has no bearing on the code checks, which only read unit
     // footprints, so a tree move does not need the compliance pass at all
@@ -2332,7 +2690,7 @@ sitePanelEl.addEventListener("pointermove", (e) => {
 
 function hoverCursor(e) {
   const p = clientToWorld(e.clientX, e.clientY);
-  const over = !!unitAtWorld(p) || !!treeAtWorld(p) || driveAtWorld(p);
+  const over = !!unitAtWorld(p) || !!treeAtWorld(p) || !!siteObjAt(p) || driveAtWorld(p);
   sitePanelEl.classList.toggle("over-object", over);
 }
 
@@ -2432,7 +2790,8 @@ sitePanelEl.addEventListener("pointerup", (e) => {
 
   // a press that did not move is a tap
   const key = d.kind === "unit" ? `u${d.primary.id}`
-    : d.kind === "tree" ? `t${d.tree.id}` : "drive";
+    : d.kind === "tree" ? `t${d.tree.id}`
+    : d.kind === "site" ? `s${d.obj.id}` : "drive";
   const now = Date.now();
   const isDouble = now - lastTap.t < 380 && lastTap.key === key;
   lastTap = { t: now, key };
@@ -2440,10 +2799,22 @@ sitePanelEl.addEventListener("pointerup", (e) => {
   if (d.kind === "unit") {
     select(selected === d.primary ? null : d.primary);
     renderChrome();
+  } else if (d.kind === "site" && isDouble) {
+    pushUndo();
+    if (d.objKind === "well") wells = wells.filter((w) => w !== d.obj);
+    else drainfields = drainfields.filter((x) => x !== d.obj);
+    rebuildScenery();
+    updateStats();
+    save();
+    renderSitePlan();
+    toast(`${d.objKind === "well" ? "Well" : "Drainfield"} removed — ↩ to undo`);
+  } else if (d.kind === "site") {
+    toast(FINE_POINTER ? "Drag to move · double-click to remove" : "Drag to move · double-tap to remove");
   } else if (d.kind === "tree" && isDouble) {
     pushUndo();
     trees = trees.filter((t) => t !== d.tree);
     rebuildScenery();
+    updateStats();
     save();
     renderSitePlan();
     toast("Tree removed — ↩ to undo");
@@ -2511,9 +2882,8 @@ addEventListener("pointerup", () => {
   snapGuides = [];
   if (!g) { renderChrome(); return; }
   pushUndo();
-  if (pa.type.id === "__tree") {
-    trees.push({ id: nextTreeId++, x: g.x, z: g.z, s: 1.2 });
-    rebuildScenery();
+  if (pa.type.id.startsWith("__")) {
+    placeSiteObject(pa.type.id, clampX(g.x), clampZ(g.z));
     save();
     renderSitePlan();
     return;
