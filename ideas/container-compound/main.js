@@ -637,6 +637,35 @@ function placeAlignTools() {
   else card.appendChild(group);
 }
 
+// The plan controls are a tall column. Whether it fits depends on the window,
+// the tool strip's height and the reader's text size all at once, so it is
+// measured rather than guessed at with a media query.
+function fitToolColumn() {
+  const acts = document.getElementById("site-actions");
+  const cart = document.getElementById("cartouche");
+  const fab = document.getElementById("fab");
+  if (!acts || getComputedStyle(acts).display === "none") return;
+  const clashes = () => {
+    const a = acts.getBoundingClientRect();
+    const floor = cart ? cart.getBoundingClientRect().bottom + 6 : 6;
+    if (a.top < floor || a.bottom > innerHeight || a.left < 0) return true;
+    if (fab && getComputedStyle(fab).display !== "none") {
+      const f = fab.getBoundingClientRect();
+      if (a.right > f.left - 2 && a.left < f.right + 2
+          && a.bottom > f.top - 2 && a.top < f.bottom + 2) return true;
+    }
+    return false;
+  };
+  // Escalate only as far as needed: a column, then a row, then a row without
+  // the zoom pair — pinch and the +/-/0 keys still zoom, so those two buttons
+  // are the ones that can go when a reader's text size leaves no room.
+  document.body.classList.remove("tools-row", "tools-min");
+  if (!clashes()) return;
+  document.body.classList.add("tools-row");
+  if (!clashes()) return;
+  document.body.classList.add("tools-min");
+}
+
 function measureStrip() {
   placeAlignTools();
   const el = document.getElementById("toolstrip");
@@ -646,6 +675,7 @@ function measureStrip() {
   // 4rem is the strip's own bottom offset; 0.75rem of air above it
   document.body.style.setProperty("--strip-top",
     on ? `calc(4.75rem + ${Math.round(h)}px)` : "");
+  fitToolColumn();
 }
 
 // The strip names what a command will act on, which for a set is not any one
@@ -1680,8 +1710,11 @@ function toast(msg, opts = {}) {
 }
 function pumpToast() {
   const el = document.getElementById("toast");
+  if (!el || !toastQueue.length) { toastBusy = false; return; }
+  // Unprompted teaching waits for the reader to finish with a dialog rather
+  // than being painted over the top of it.
+  if (anyOpenDialog()) { toastBusy = true; setTimeout(pumpToast, 700); return; }
   const next = toastQueue.shift();
-  if (!el || next === undefined) { toastBusy = false; return; }
   toastBusy = true;
   el.textContent = next;
   el.classList.add("show");
@@ -4131,6 +4164,10 @@ function openDialog(el) {
   if (already && already !== el) already.classList.remove("open");
   else dialogReturn = document.activeElement;
   el.classList.add("open");
+  // A hint already on screen rides out its timer over the top of the dialog,
+  // so a dialog takes the screen back.
+  const t = document.getElementById("toast");
+  if (t) { t.classList.remove("show"); clearTimeout(toast._t); }
   // A scrollable dialog whose only focusable control is the Close button at
   // the bottom scrolled itself past its own heading the moment it opened.
   for (const box of el.querySelectorAll(".box")) box.scrollTop = 0;

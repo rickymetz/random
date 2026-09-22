@@ -136,7 +136,7 @@
     padding: 0;
   }
   /* clears the add button, which now steps up rather than disappearing */
-  body.has-selection[data-mode="plan"] #site-actions { bottom: calc(var(--strip-top, 13.6rem) + 1rem + var(--sab)); }
+  body.has-selection[data-mode="plan"] #site-actions { bottom: calc(var(--strip-top, 8.2rem) + 4.4rem + var(--sab)); }
   #site-actions button:active { border-color: var(--accent); color: var(--accent); }
   #site-actions button.active {
     background: var(--accent); color: #fff; border-color: var(--accent);
@@ -148,7 +148,7 @@
     right: 0.9rem;
     bottom: calc(0.9rem + var(--sab));
     z-index: 5;
-    width: 3.5rem; height: 3.5rem;
+    width: 56px; height: 56px;
     border-radius: 50%;
     border: 0;
     background: var(--accent);
@@ -426,6 +426,26 @@
       bottom: calc(var(--strip-top, 4.75rem) + 3.6rem + var(--sab));
     }
   }
+
+  /* The column is 242 px tall. Landscape is not the only way to run out of
+     room for it — so does 200% text on a short phone, where it climbed into
+     the cartouche. Measured in JS, since CSS cannot ask how tall the column
+     ended up against how much room is left above the tool strip. */
+  /* has-selection[data-mode="plan"] out-specifies a bare .tools-row, so the
+     row kept the column's offset and rose into the add button. */
+  body.tools-row #site-actions,
+  body.tools-row.has-selection[data-mode="plan"] #site-actions {
+    flex-direction: row;
+    top: auto;
+    bottom: calc(var(--strip-top, 4.75rem) + var(--sab));
+    right: 0.75rem;
+  }
+  body.tools-row #fab,
+  body.tools-row.has-selection #fab {
+    bottom: calc(var(--strip-top, 4.75rem) + 3.6rem + var(--sab));
+  }
+
+  body.tools-min #site-zoom-out, body.tools-min #site-zoom-in { display: none; }
 
   /* the measuring cursor: crosshairs, because the drag is not a move */
   body.measuring #site-panel,
@@ -947,8 +967,8 @@
 
   #cartouche {
     position: fixed;
-    left: 1rem;
-    top: calc(6.6rem + var(--sat));
+    left: 16px;
+    top: calc(106px + var(--sat));
     z-index: 5;
     display: none;
     align-items: center;
@@ -1098,7 +1118,8 @@
     background: var(--ink);
     color: #fff;
     padding: 0.45rem 0.9rem;
-    border-radius: var(--r-pill);
+    /* a pill radius on text that has wrapped to four lines is a circle */
+    border-radius: 1rem;
     font-size: var(--t-sm);
     white-space: normal;
     opacity: 0;
