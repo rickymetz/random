@@ -566,6 +566,36 @@ button.icon {
 .row.wrap {
   flex-wrap: wrap;
 }
+/* Restore: the passphrase takes the room, the button sits on its
+   baseline, and at large text the button drops below rather than
+   squeezing. */
+.restore-row {
+  align-items: flex-end;
+}
+/* (Beats `.settings form.column .field`, which sets a column form's
+   fields to their content width — the input's 20ch — and so pushed the
+   button onto its own line at ordinary text sizes.) */
+.settings form.column .restore-row .field {
+  flex: 1 1 8rem;
+}
+.settings form .row.file-pick {
+  margin: 0;
+  flex-wrap: wrap;
+  /* The button and what it chose read as one line, not bottom-aligned
+     the way a field beside its button is in the rest of Settings. */
+  align-items: center;
+}
+/* The field's own caption styling (`.settings .field span`) must not
+   reach the file name: it is a value, not a label. */
+.settings .field .file-pick .file-name {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-transform: none;
+  letter-spacing: 0;
+  font: 400 var(--fs-meta) / 1.3 var(--font-ui);
+  color: var(--text-3);
+}
 .row input {
   flex: 1;
   min-width: 0;
@@ -3817,7 +3847,11 @@ button {
   white-space: normal;
   line-height: 1.2;
   padding-block: 0.45rem;
-  overflow-wrap: anywhere;
+  /* break-word, never anywhere: `anywhere` also shrinks a button's
+     minimum width to one letter, so a flex row squeezed "Restore" beside
+     a text field into "Restor / e". break-word keeps the longest word
+     whole and only splits one that could never fit on its own line. */
+  overflow-wrap: break-word;
 }
 .section-head {
   flex-wrap: wrap;
@@ -3837,7 +3871,7 @@ button {
 .chip {
   max-width: 100%;
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   text-align: left;
 }
 /* The graph's chip strip scrolls sideways instead: its chips stay on one line. */

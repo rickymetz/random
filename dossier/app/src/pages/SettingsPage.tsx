@@ -569,6 +569,7 @@ function ExportSection() {
 function ImportSection() {
   const importRecords = useVaultStore((s) => s.importRecords)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [fileName, setFileName] = useState('')
   const [passphrase, setPassphrase] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -598,6 +599,7 @@ function ImportSection() {
       const count = await importRecords(restored.records, restored.blobs)
       setMessage(`Restored ${count} items`)
       if (fileRef.current) fileRef.current.value = ''
+      setFileName('')
     } catch (err) {
       setError(err instanceof Error && err.message ? err.message : 'Couldn’t restore that file.')
     } finally {
@@ -614,18 +616,36 @@ function ImportSection() {
         the newer one wins. For phone contacts, use “Import contacts…” on the People page.
       </p>
       <form className="column" onSubmit={doImport}>
-        <label className="field">
-          <span>Backup file</span>
+        {/* The browser's own file control drew a second bordered button
+            inside our field, with its own lowercase "no file selected":
+            a button of ours opens the same picker, and says what's
+            chosen in the app's voice — as Import contacts already does. */}
+        <div className="field">
+          <span id="backup-file-label">Backup file</span>
           <input
             ref={fileRef}
             type="file"
+            hidden
             // iOS maps accept to UTIs and can grey out a .ledger file in
             // the Files picker; the importer validates the contents anyway.
             accept={isIos() ? undefined : '.ledger,.planner,.grid,application/json'}
             aria-label="Backup file"
+            onChange={(e) => setFileName(e.target.files?.[0]?.name ?? '')}
           />
-        </label>
-        <div className="row">
+          <div className="row file-pick">
+            <button
+              type="button"
+              aria-describedby="backup-file-label backup-file-name"
+              onClick={() => fileRef.current?.click()}
+            >
+              {fileName ? 'Choose another…' : 'Choose file…'}
+            </button>
+            <span className="hint file-name" id="backup-file-name">
+              {fileName || 'None chosen'}
+            </span>
+          </div>
+        </div>
+        <div className="row wrap restore-row">
           <label className="field">
             <span>Backup passphrase</span>
             <input
