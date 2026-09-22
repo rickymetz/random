@@ -41,6 +41,13 @@ else camera.position.set(85, 70, 125);
 // A phone at DSF 3 does not need a 2x buffer for a read-only viewer; the fill
 // rate costs more than the extra sharpness is worth on a 390 px screen.
 const PHONE_VIEW = innerWidth < 700;
+// In split the 3D pane is the right half of the window, so everything that
+// reads the viewport — the renderer, the camera aspect and the raycast — has
+// to read the pane instead. One place says how big it is.
+let split = false;
+const SPLIT_MIN = 1200;
+const paneW = () => (split ? Math.round(innerWidth / 2) : innerWidth);
+const paneX = () => (split ? innerWidth - paneW() : 0);
 const renderer = new THREE.WebGLRenderer({ antialias: !PHONE_VIEW });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, PHONE_VIEW ? 1.5 : 2));
@@ -682,7 +689,9 @@ function select(item, opts = {}) {
   // On a wide screen it is a docked inspector beside the drawing, and having
   // to ask for it hid the position fields — the only precise way to place
   // anything — behind a second click.
-  if (mode === "view" || matchMedia("(min-width: 900px)").matches)
+  // In split the sheet only has half the window, and an auto-opened card
+  // covers a third of it, so there it stays on demand.
+  if (mode === "view" || (!split && matchMedia("(min-width: 900px)").matches))
     document.body.classList.add("sheet-open");
   updateSelDims();
 }
@@ -923,20 +932,46 @@ const EXAMPLE = {
 let mode = "plan";
 let dollhouseOn = false;
 document.body.dataset.mode = "plan";
-function setMode(m) {
-  if (mode === m) return;
-  mode = m;
-  document.body.dataset.mode = m;
+// Split is a third tab rather than a third value of `mode`: the sheet is
+// still the editor and the 3D pane is still read-only, so every guard that
+// asks "is this the plan?" keeps its answer and only the geometry changes.
+function setSplit(on) {
+  on = !!on && innerWidth >= SPLIT_MIN;
+  if (split === on) return;
+  split = on;
+  document.body.classList.toggle("split", split);
+  sizeView();
+  if (split) {
+    if (mode !== "plan") { setMode("plan"); }
+    else { markShadowDirty(); startLoop(); }
+    renderSitePlan({ fit: true });
+  } else {
+    if (mode === "plan") stopLoop();
+    renderSitePlan({ fit: true });
+  }
+  syncTabs();
+}
+
+function syncTabs() {
   for (const b of document.querySelectorAll("#tabbar button")) {
-    const on = b.dataset.mode === m;
+    const on = b.dataset.mode === "split" ? split : (!split && b.dataset.mode === mode);
     b.classList.toggle("active", on);
     b.setAttribute("aria-selected", String(on));
   }
+}
+
+function setMode(m) {
+  if (m === "split") { setSplit(!split); return; }
+  if (split) setSplit(false);
+  if (mode === m) return;
+  mode = m;
+  document.body.dataset.mode = m;
+  syncTabs();
   setPlacing(false);
   closeAdd();
   document.body.classList.remove("sheet-open");
   // selection survives the switch, so you land on the same unit
-  if (m === "plan") { stopLoop(); renderSitePlan(); }
+  if (m === "plan") { if (!split) stopLoop(); renderSitePlan(); }
   else { markShadowDirty(); startLoop(); updateSelDims(); renderChrome(); }
 }
 for (const b of document.querySelectorAll("#tabbar button"))
@@ -1161,6 +1196,10 @@ function duplicateSelected() {
 document.getElementById("btn-dup").addEventListener("click", duplicateSelected);
 
 document.getElementById("btn-rotate").addEventListener("click", rotateSelected);
+document.getElementById("btn-measure").addEventListener("click", () => {
+  setMeasuring(!measuring);
+  if (measuring) { tapeKept = null; toast("Measure — drag between two points; Shift keeps it square"); }
+});
 document.getElementById("btn-multi").addEventListener("click", () => {
   setMultiPick(!multiPick);
   toast(multiPick ? "Select more — tap each unit; tap again to drop one"
@@ -1393,6 +1432,9 @@ addEventListener("keydown", (e) => {
   else if ((e.key === "Delete" || e.key === "Backspace") && selected && sheet) {
     e.preventDefault();
     deleteSelected();
+  } else if (sheet && !focusOwnsKeys() && (e.key === "m" || e.key === "M")) {
+    setMeasuring(!measuring);
+    if (measuring) { tapeKept = null; toast("Measure — drag between two points; Shift keeps it square"); }
   } else if (sheet && !focusOwnsKeys() && (e.key === "+" || e.key === "=")) {
     e.preventDefault(); zoomBy(1.25);
   } else if (sheet && !focusOwnsKeys() && (e.key === "-" || e.key === "_")) {
@@ -1418,6 +1460,8 @@ addEventListener("keydown", (e) => {
     // A drag in flight is the most urgent thing Escape can be about: it puts
     // the unit back where it started rather than leaving you to undo a move
     // you never meant to finish.
+    if (measuring) { setMeasuring(false); tapeKept = null; renderChrome(); return; }
+    if (tapeKept) { tapeKept = null; renderChrome(); return; }
     if (planDrag && planDrag.moved) { cancelPlanDrag(); toast("Move cancelled"); return; }
     if (pendingAdd || ghost) {
       pendingAdd = null; ghost = null; snapGuides = []; renderChrome();
@@ -1782,7 +1826,7 @@ let downPos = null;
 let moved = false;
 
 function itemAt(clientX, clientY) {
-  pointer.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
+  pointer.set(((clientX - paneX()) / paneW()) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
   let best = null, bestDist = Infinity;
   const inv = new THREE.Matrix4();
@@ -2316,6 +2360,7 @@ function chromeBand() {
   };
   const g = 12;
   const band = { top: g, bottom: g, left: g, right: g };
+  if (split) band.right = Math.max(band.right, paneW() + g);
   for (const id of ["topbar", "tabbar"]) {
     const r = box(id);
     if (r) band.top = Math.max(band.top, r.bottom + g);
@@ -2855,6 +2900,9 @@ function renderChrome() {
     s += `<rect x="${X(it.x - hw) - ss(5)}" y="${Y(it.z - hd) - ss(5)}" width="${hw * 2 * S + ss(10)}" height="${hd * 2 * S + ss(10)}" rx="${ss(3)}" fill="none" stroke="#b3542e" stroke-width="${ss(anchor ? 2.4 : 1.6)}"${anchor ? "" : ` stroke-dasharray="${dash(6, 4)}"`}/>`;
   }
 
+  const t = tape || tapeKept;
+  if (t) s += tapeSVG(t, !!tape);
+
   if (marquee) {
     const x0 = Math.min(marquee.x0, marquee.x1), x1 = Math.max(marquee.x0, marquee.x1);
     const z0 = Math.min(marquee.z0, marquee.z1), z1 = Math.max(marquee.z0, marquee.z1);
@@ -2879,6 +2927,34 @@ function renderChrome() {
   siteChromeEl.innerHTML =
     `<svg width="${SP_W}" height="${SP_H}" viewBox="0 0 ${SP_W} ${SP_H}" xmlns="http://www.w3.org/2000/svg"><defs>${HATCH_DEF}</defs>${s}</svg>`;
   siteApply();
+}
+
+// The tape: a dimension line with witness ticks and a reading in feet and
+// inches, drawn like the sheet's own dimensions rather than as a UI overlay,
+// because that is what it is measuring.
+function tapeSVG(t, live) {
+  const ax = spX(t.x0), ay = spY(t.z0), bx = spX(t.x1), by = spY(t.z1);
+  const dft = Math.hypot(t.x1 - t.x0, t.z1 - t.z0);
+  const whole = Math.floor(dft);
+  const inches = Math.round((dft - whole) * 12);
+  const txt = inches === 12 ? `${whole + 1}′-0″` : `${whole}′-${inches}″`;
+  const ang = Math.atan2(by - ay, bx - ax);
+  const nx = -Math.sin(ang), ny = Math.cos(ang);
+  const tk = ss(5);
+  let g = `<line x1="${nf(ax)}" y1="${nf(ay)}" x2="${nf(bx)}" y2="${nf(by)}" stroke="#b3542e" stroke-width="${ss(1.6)}"/>`;
+  for (const [x, y] of [[ax, ay], [bx, by]])
+    g += `<line x1="${nf(x - nx * tk)}" y1="${nf(y - ny * tk)}" x2="${nf(x + nx * tk)}" y2="${nf(y + ny * tk)}" stroke="#b3542e" stroke-width="${ss(1.6)}"/>`;
+  // horizontal and vertical legs, so a diagonal also reads as a run and a rise
+  if (Math.abs(t.x1 - t.x0) > 0.5 && Math.abs(t.z1 - t.z0) > 0.5) {
+    g += `<path d="M ${nf(ax)} ${nf(ay)} L ${nf(bx)} ${nf(ay)} L ${nf(bx)} ${nf(by)}" fill="none" stroke="#b3542e" stroke-width="${ss(0.9)}" stroke-dasharray="${dash(4, 4)}" opacity="0.6"/>`;
+  }
+  const mx = (ax + bx) / 2 + nx * ss(11), my = (ay + by) / 2 + ny * ss(11);
+  g += plate(mx, my - ss(4), txt.length * ss(7) + ss(10), ss(15));
+  g += `<text x="${nf(mx)}" y="${nf(my)}" text-anchor="middle" font-size="${ss(11)}" font-weight="700" fill="#b3542e" font-family="${FONT}">${esc(txt)}</text>`;
+  if (!live) {
+    g += `<text x="${nf(mx)}" y="${nf(my + ss(13))}" text-anchor="middle" font-size="${ss(8)}" fill="#8a867c" font-family="${FONT}">drag again to re-measure</text>`;
+  }
+  return g;
 }
 
 // snap guides, weighted so they read at any zoom
@@ -2953,6 +3029,29 @@ const SLOP = (e) => (e.pointerType === "touch" ? 10 : 3);
 // way" instead rotated or deleted something.
 // a shift-sweep over empty paper, in world feet
 let marquee = null;
+
+// ---- the measuring tape ---------------------------------------------------
+//
+// The sheet dimensions the overall extents and each setback, and a drag shows
+// the gaps it is opening, but there was no way to ask "how far is it from here
+// to there" — between two units, from a unit to the well, to the property
+// line. The tape is a mode: arm it, drag between two points, and the reading
+// stays on the drawing until you take another or turn it off. It is a
+// measurement, not an edit, so it is not on the undo stack and never exports.
+let measuring = false;
+let tape = null;      // the drag in flight
+let tapeKept = null;  // the last completed reading
+function setMeasuring(on) {
+  measuring = !!on;
+  if (!measuring) tape = null;
+  document.body.classList.toggle("measuring", measuring);
+  const b = document.getElementById("btn-measure");
+  if (b) {
+    b.classList.toggle("active", measuring);
+    b.setAttribute("aria-pressed", String(measuring));
+  }
+  renderChrome();
+}
 // the latched additive-pick mode, for pointers with no modifier keys
 let multiPick = false;
 function setMultiPick(on) {
@@ -3033,6 +3132,12 @@ sitePanelEl.addEventListener("pointerdown", (e) => {
   }
   const p = clientToWorld(e.clientX, e.clientY);
   pinching = false;
+  if (measuring) {
+    tape = { x0: p.x, z0: p.z, x1: p.x, z1: p.z };
+    tapeKept = null;
+    renderChrome();
+    return;
+  }
   const it = unitAtWorld(p);
   if (it) {
     // Shift or the platform accelerator adds to the selection rather than
@@ -3150,6 +3255,18 @@ sitePanelEl.addEventListener("pointermove", (e) => {
     return;
   }
 
+  if (tape) {
+    const p = clientToWorld(cur.x, cur.y);
+    // Shift locks the tape to the axis it is already closest to, which is how
+    // you measure a clear width rather than a diagonal.
+    if (e.shiftKey) {
+      if (Math.abs(p.x - tape.x0) >= Math.abs(p.z - tape.z0)) { tape.x1 = p.x; tape.z1 = tape.z0; }
+      else { tape.x1 = tape.x0; tape.z1 = p.z; }
+    } else { tape.x1 = p.x; tape.z1 = p.z; }
+    renderChrome();
+    return;
+  }
+
   if (marquee) {
     const p = clientToWorld(cur.x, cur.y);
     marquee.x1 = p.x; marquee.z1 = p.z;
@@ -3179,6 +3296,7 @@ function abortGestures() {
   sitePanning = false;
   pinching = false;
   marquee = null;
+  tape = null;
   ghost = null;
   pendingAdd = null;
   snapGuides = [];
@@ -3229,6 +3347,13 @@ sitePanelEl.addEventListener("pointerup", (e) => {
   }
   sitePtrs.delete(e.pointerId);
   clearTimeout(breakoutTimer);
+  if (tape) {
+    const t = tape;
+    tape = null;
+    tapeKept = Math.hypot(t.x1 - t.x0, t.z1 - t.z0) >= 0.5 ? t : null;
+    renderChrome();
+    return;
+  }
   if (marquee) {
     const m = marquee;
     marquee = null;
@@ -3668,10 +3793,16 @@ document.getElementById("visit-keep").addEventListener("click", () => {
 });
 
 let resizeTimer = null;
-addEventListener("resize", () => {
-  camera.aspect = innerWidth / innerHeight;
+function sizeView() {
+  camera.aspect = paneW() / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+  renderer.setSize(paneW(), innerHeight);
+}
+
+addEventListener("resize", () => {
+  // the split needs room for two drawings; below that it collapses back
+  if (split && innerWidth < SPLIT_MIN) setSplit(false);
+  sizeView();
   // The plan used to ignore resizing entirely — the one event that only
   // happens on a desktop. Snap a window or plug in a monitor and the drawing
   // kept a transform framed for the old viewport.
@@ -3696,7 +3827,7 @@ let lastAzimuth = null;
 // front of it, which is what made double-tap on the sheet unreachable.
 let looping = false;
 function startLoop() {
-  if (looping || mode !== "view" || document.hidden) return;
+  if (looping || (mode !== "view" && !split) || document.hidden) return;
   looping = true;
   clock.getDelta(); // drop the time spent stopped
   requestAnimationFrame(animate);

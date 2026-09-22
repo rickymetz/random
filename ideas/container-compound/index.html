@@ -138,6 +138,9 @@
   /* clears the add button, which now steps up rather than disappearing */
   body.has-selection[data-mode="plan"] #site-actions { bottom: calc(13.6rem + var(--sab)); }
   #site-actions button:active { border-color: var(--accent); color: var(--accent); }
+  #site-actions button.active {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
 
   /* ---- add-unit FAB + bottom sheet ---- */
   #fab {
@@ -230,6 +233,32 @@
   #toolstrip .align-only { display: none; }
   body.multi-selection #toolstrip .align-only { display: flex; }
   #align-tools { align-items: center; gap: 0.1rem; }
+  /* ---- split: the sheet on the left, the model on the right ----
+     Only offered where there is room for two drawings; below that the two
+     halves are each narrower than a phone. */
+  #tab-split { display: none; }
+  @media (min-width: 1200px) { #tab-split { display: block; } }
+  body.split canvas { position: fixed; top: 0; right: 0; left: auto; }
+  body.split #site-panel { display: block; right: 50%; }
+  /* the 3D chrome belongs to the right pane, the plan chrome to the left */
+  body.split[data-mode="plan"] #view-tools { display: flex; }
+  /* The plan's own controls belong to the plan's pane. The wide-screen block
+     below moves them for the details card, so these have to out-specify it
+     rather than merely follow it. */
+  body.split #site-actions,
+  body.split[data-mode="plan"] #site-actions,
+  body.split.has-selection[data-mode="plan"] #site-actions,
+  body.split.sheet-open[data-mode="plan"] #site-actions { right: calc(50% + 1rem); }
+  body.split.has-selection[data-mode="plan"] #site-actions { bottom: 1rem; }
+  body.split #info { right: calc(50% + 1rem); max-width: 17rem; }
+  body.split #fab { right: calc(50% + 1rem); }
+  body.split #toolstrip { left: 0; right: 50%; }
+  /* a hairline between the panes, so they read as two drawings not one */
+  body.split #site-panel { border-right: 1px solid var(--line); }
+
+  /* the measuring cursor: crosshairs, because the drag is not a move */
+  body.measuring #site-panel,
+  body.measuring #site-panel.over-object { cursor: crosshair; }
   /* With the align row in it the strip needs three rows on a phone, which is
      a third of the screen. Drop the dividers and tighten the gaps there: the
      groups still read, because the align glyphs are plainly one family. */
@@ -973,6 +1002,7 @@
 <div id="tabbar" role="tablist" aria-label="View">
   <button data-mode="plan" class="active" role="tab" aria-selected="true">Plan</button>
   <button data-mode="view" role="tab" aria-selected="false">3D</button>
+  <button data-mode="split" id="tab-split" role="tab" aria-selected="false">Both</button>
 </div>
 
 <div id="site-panel" tabindex="0" role="application"
@@ -1013,6 +1043,9 @@
 </div>
 
 <div id="site-actions">
+  <button id="btn-measure" aria-label="Measure a distance" aria-pressed="false" title="Measure — drag between two points (M)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15.5L15.5 3l5.5 5.5L8.5 21z"/><path d="M7.5 11l2 2M11 7.5l2 2M14.5 4l2 2"/></svg>
+  </button>
   <button id="site-zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
   <button id="site-zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
   <button id="site-fit" aria-label="Fit the compound on screen" title="Fit the compound on screen">⌖</button>
