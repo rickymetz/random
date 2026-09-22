@@ -4,6 +4,7 @@ import InlineField from '../components/InlineField'
 import TypeEditor from '../components/TypeEditor'
 import LabelText from '../components/LabelText'
 import { Link, useSearchParams } from 'react-router-dom'
+import { buildLabel, checkForUpdate, type UpdateCheck } from '../lib/appUpdate'
 import { destroyAllData } from '../lib/db'
 import {
   MAX_IMPORT_FILE_BYTES,
@@ -53,6 +54,7 @@ export default function SettingsPage() {
       <SecuritySection />
       <DisguiseSection />
       <SampleDataSection />
+      <UpdateSection />
       {dev && <StressSection />}
       <section className="danger-zone">
         <h2>Delete everything</h2>
@@ -796,6 +798,80 @@ function StressSection() {
       </div>
       <p className="hint status-slot" role="status">
         {message}
+      </p>
+    </section>
+  )
+}
+
+/**
+ * Which build this is, and a way to fetch a newer one now. An installed
+ * copy already updates on its own (hourly while open, reopening onto the
+ * new build); this is for "a fix just shipped — do I have it?", which
+ * used to mean deleting the app from the Home Screen and adding it back.
+ * The app's name stays out of it: a disguised copy must not say "Ledger".
+ */
+function UpdateSection() {
+  const [state, setState] = useState<UpdateCheck | 'checking' | 'stuck' | null>(null)
+  const [hasWorker, setHasWorker] = useState<boolean | null>(null)
+  useEffect(() => {
+    let live = true
+    if (!navigator.serviceWorker) setHasWorker(false)
+    else
+      navigator.serviceWorker
+        .getRegistration()
+        .then((r) => live && setHasWorker(Boolean(r)))
+        .catch(() => live && setHasWorker(false))
+    return () => {
+      live = false
+    }
+  }, [])
+  // The new build reloads the page itself once it takes over. If that
+  // hasn't happened after a while (a slow download, a browser that never
+  // said), offer to reopen by hand rather than leave "installing" forever.
+  useEffect(() => {
+    if (state !== 'updating') return
+    const t = window.setTimeout(() => setState('stuck'), 20_000)
+    return () => window.clearTimeout(t)
+  }, [state])
+
+  const check = async () => {
+    if (state === 'checking' || state === 'updating') return
+    setState('checking')
+    setState(await checkForUpdate())
+  }
+  const message: Record<Exclude<typeof state, null>, string> = {
+    checking: 'Checking…',
+    current: 'You have the latest version.',
+    updating: 'Found a new version — installing. The app will reopen on it, locked.',
+    stuck: 'The new version is ready. Reopen the app to start using it.',
+    offline: 'Couldn’t reach the server. Try again when you’re online.',
+    unavailable: 'This browser loads the latest version each time you open the app.',
+  }
+  return (
+    <section>
+      <h2>Updates</h2>
+      <p className="hint">
+        Version {buildLabel(__APP_VERSION__, __BUILD_ID__, __BUILD_TIME__)}. New versions
+        install on their own while the app is open; check to get one straight away.
+      </p>
+      {hasWorker !== false && (
+        <div className="row wrap">
+          <button
+            type="button"
+            onClick={() => void check()}
+            disabled={state === 'checking' || state === 'updating'}
+          >
+            Check for updates
+          </button>
+          {state === 'stuck' && (
+            <button type="button" className="primary" onClick={() => location.reload()}>
+              Reopen now
+            </button>
+          )}
+        </div>
+      )}
+      <p className="hint status-slot" role="status">
+        {state ? message[state] : hasWorker === false ? message.unavailable : ''}
       </p>
     </section>
   )
