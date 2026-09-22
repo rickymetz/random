@@ -31,9 +31,9 @@ const FINE_POINTER = matchMedia("(hover: hover) and (pointer: fine)").matches;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xdde7ee);
-scene.fog = new THREE.Fog(0xdde7ee, 320, 620);
+scene.fog = new THREE.Fog(0xdde7ee, 340, 900);
 
-const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 1, 1200);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 1, 2400);
 // portrait phones need to sit further back to frame the compound
 if (innerHeight > innerWidth) camera.position.set(115, 95, 170);
 else camera.position.set(85, 70, 125);
@@ -56,12 +56,18 @@ controls.minDistance = 25;
 controls.maxDistance = 420;
 controls.target.set(0, 4, 0);
 
-scene.add(new THREE.HemisphereLight(0xe8f0f8, 0x8a9a74, 0.85));
-// north is -z; the sun arcs east (+x) -> south (+z) -> west (-x)
+const hemi = new THREE.HemisphereLight(0xe8f0f8, 0x8a9a74, 0.85);
+scene.add(hemi);
+// north is -z; the sun arcs east (+x) -> south (+z) -> west (-x). The time of
+// day is not just a light direction: a low morning sun sits under a paler,
+// cooler sky, and an evening one under a warm haze that closes the distance.
 const SUNS = [
-  { name: "Morning", pos: [150, 55, 45], color: 0xffe4bd, intensity: 1.8 },
-  { name: "Midday", pos: [25, 170, 95], color: 0xfff3e0, intensity: 2.1 },
-  { name: "Evening", pos: [-150, 50, 45], color: 0xffd2a4, intensity: 1.6 },
+  { name: "Morning", pos: [150, 55, 45], color: 0xffe4bd, intensity: 1.8,
+    sky: 0xd7e6ee, hemiSky: 0xeaf2f8, hemiGround: 0x84956f, hemi: 0.8, fog: [300, 820] },
+  { name: "Midday", pos: [25, 170, 95], color: 0xfff3e0, intensity: 2.1,
+    sky: 0xdde7ee, hemiSky: 0xe8f0f8, hemiGround: 0x8a9a74, hemi: 0.85, fog: [340, 900] },
+  { name: "Evening", pos: [-150, 50, 45], color: 0xffd2a4, intensity: 1.6,
+    sky: 0xe8d2b4, hemiSky: 0xf2dcc2, hemiGround: 0x7d7a58, hemi: 0.7, fog: [220, 640] },
 ];
 let sunIdx = 1;
 const sun = new THREE.DirectionalLight(0xfff3e0, 2.0);
@@ -86,14 +92,23 @@ function applySun() {
   sun.position.set(...s.pos);
   sun.color.set(s.color);
   sun.intensity = s.intensity;
+  scene.background.set(s.sky);
+  scene.fog.color.set(s.sky);
+  scene.fog.near = s.fog[0];
+  scene.fog.far = s.fog[1];
+  hemi.color.set(s.hemiSky);
+  hemi.groundColor.set(s.hemiGround);
+  hemi.intensity = s.hemi;
   document.getElementById("btn-sun").title = s.name;
 }
 applySun();
 
 // The acre: ~209' square of grass, gravel drive, scattered trees.
+// The ground reaches past the far edge of the fog (900 ft) in every direction,
+// so the world fades into haze instead of ending at a visible corner.
 const ACRE = 209;
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(560, 560),
+  new THREE.PlaneGeometry(2600, 2600),
   new THREE.MeshLambertMaterial({ color: 0x7c9464 })
 );
 ground.rotation.x = -Math.PI / 2;
@@ -200,9 +215,19 @@ scene.add(sceneryRoot);
 
 const gravelMat = shared(new THREE.MeshLambertMaterial({ color: 0xb6ae9f }));
 
+// Every tree used to be the same tree, unrotated, so a ring of fifteen read as
+// one asset stamped fifteen times. The variation is hashed off the tree's own
+// position, so it is stable across rebuilds and across a reload.
+function treeHash(t) {
+  const n = Math.sin(t.x * 12.9898 + t.z * 78.233) * 43758.5453;
+  return n - Math.floor(n);
+}
+
 function buildTree(t) {
   const g = new THREE.Group();
   const s = t.s;
+  const h = treeHash(t);
+  const lean = (h - 0.5) * 0.14;
   const trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(0.5 * s, 0.7 * s, 7 * s, 6),
     new THREE.MeshLambertMaterial({ color: 0x7a5c3e })
@@ -210,17 +235,27 @@ function buildTree(t) {
   trunk.position.y = 3.5 * s;
   trunk.castShadow = true;
   g.add(trunk);
-  const tones = [0x5e7d4f, 0x6b8a55, 0x557246];
+  const tones = [0x5e7d4f, 0x6b8a55, 0x557246, 0x6f8f4a, 0x4f6b44];
   for (let i = 0; i < 3; i++) {
+    const j = (h * 7919 + i) | 0;
     const puff = new THREE.Mesh(
-      new THREE.IcosahedronGeometry((4.6 - i * 0.9) * s, 1),
-      new THREE.MeshLambertMaterial({ color: tones[i], flatShading: true })
+      new THREE.IcosahedronGeometry((4.6 - i * 0.9) * s * (0.85 + ((j % 7) / 7) * 0.35), 1),
+      new THREE.MeshLambertMaterial({
+        color: tones[(j + i) % tones.length], flatShading: true,
+      })
     );
-    puff.position.set((i - 1) * 1.6 * s, (8.5 + i * 2.6) * s, ((i % 2) - 0.5) * 1.8 * s);
+    puff.position.set(
+      ((i - 1) * 1.6 + ((j % 5) - 2) * 0.5) * s,
+      (8.5 + i * 2.6 + ((j % 3) - 1) * 0.7) * s,
+      (((i % 2) - 0.5) * 1.8 + (((j >> 3) % 5) - 2) * 0.5) * s
+    );
+    puff.rotation.set(h * 3.1, h * 6.2 + i, h * 1.7);
     puff.castShadow = true;
     g.add(puff);
   }
   g.position.set(t.x, 0, t.z);
+  g.rotation.y = h * Math.PI * 2;
+  g.rotation.z = lean;
   return g;
 }
 
@@ -255,7 +290,6 @@ function rebuildScenery() {
 
 // ------------------------------------------------------------ unit meshes
 
-const roofMat = shared(new THREE.MeshLambertMaterial({ color: 0xf5f3ee }));
 const floorMat = shared(new THREE.MeshLambertMaterial({ color: 0xd8cdbb }));
 const doorMat = shared(new THREE.MeshLambertMaterial({ color: 0x4f4a42 }));
 const glassWallMat = shared(new THREE.MeshLambertMaterial({
@@ -274,14 +308,14 @@ function buildUnit(type) {
     slab.position.y = 0.45;
     slab.castShadow = slab.receiveShadow = true;
     g.add(slab);
-    // plank lines
+    // plank lines, at the same 2 ft spacing the sheet draws them
     const lines = new THREE.Group();
-    for (let i = 1; i < 8; i++) {
+    for (let i = 1; i < 4; i++) {
       const li = new THREE.Mesh(
         new THREE.BoxGeometry(L - 0.2, 0.02, 0.06),
         new THREE.MeshBasicMaterial({ color: 0x9c744c })
       );
-      li.position.set(0, 0.92, -W / 2 + (W / 8) * i);
+      li.position.set(0, 0.92, -W / 2 + (W / 4) * i);
       lines.add(li);
     }
     g.add(lines);
@@ -292,12 +326,14 @@ function buildUnit(type) {
     return g;
   }
 
-  const wallMat = new THREE.MeshLambertMaterial({ color: type.color, transparent: true });
+  // The walls do not fade on peek. Ghosting every surface at once read as a
+  // rendering fault rather than a cutaway; lifting only the lid is what a
+  // dollhouse actually is, and it leaves the walls opaque enough to carry
+  // their own shading.
+  const wallMat = new THREE.MeshLambertMaterial({ color: type.color });
   const leafMat = new THREE.MeshLambertMaterial({
     color: new THREE.Color(type.color).multiplyScalar(0.86),
-    transparent: true,
   });
-  g.userData.wallMats = [wallMat, leafMat];
 
   // floor slab on low piers
   const slab = new THREE.Mesh(new THREE.BoxGeometry(L, 0.8, W), floorMat);
@@ -382,8 +418,7 @@ function buildUnit(type) {
   }
 
   // corrugation hint: vertical ribs on the solid steel faces only
-  const ribMat = new THREE.MeshLambertMaterial({ color: type.color, transparent: true });
-  g.userData.wallMats.push(ribMat);
+  const ribMat = new THREE.MeshLambertMaterial({ color: type.color });
   const ribs = Math.floor(L / 2);
   for (let i = 0; i <= ribs; i++) {
     const x = -L / 2 + (L / ribs) * i;
@@ -415,14 +450,36 @@ function buildUnit(type) {
     g.add(ring);
   }
 
-  // roof group — lifts on peek
+  // Roof group — lifts and fades on peek. The material is per unit and
+  // transparent, because a shared opaque one cannot fade: the roof used to
+  // wink out of existence at peek 0.98, still 6.9 ft in the air and fully
+  // solid. It also carries the unit's own tint, mixed most of the way to a
+  // pale membrane, so a unit is recognisable from directly above instead of
+  // reading as one more white cap.
   const roofG = new THREE.Group();
+  const roofMat = new THREE.MeshLambertMaterial({
+    color: new THREE.Color(type.color).lerp(new THREE.Color(0xf5f3ee), 0.62),
+    transparent: true,
+  });
+  g.userData.roofMat = roofMat;
   const roof = new THREE.Mesh(new THREE.BoxGeometry(L + 0.3, 0.6, W + 0.3), roofMat);
   roof.position.y = base + wallH + 0.3;
-  roof.castShadow = true;
   roofG.add(roof);
   g.add(roofG);
   g.userData.roof = roofG;
+
+  // The roof was the only thing casting the unit's footprint shadow, so a
+  // lifted roof left the building floating with no shade under it while every
+  // tree still cast one. This cap draws nothing and casts always, so the
+  // building stays planted whatever the roof is doing — which is how a
+  // cutaway is drawn: the volume is still there, you are just seeing into it.
+  const shadowCap = new THREE.Mesh(
+    new THREE.BoxGeometry(L + 0.3, 0.6, W + 0.3),
+    new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })
+  );
+  shadowCap.position.y = base + wallH + 0.3;
+  shadowCap.castShadow = true;
+  g.add(shadowCap);
 
   // interior furniture
   const inte = new THREE.Group();
@@ -3228,11 +3285,13 @@ function animate() {
       shadowDirty = true;
       const ud = it.group.userData;
       if (ud.roof) {
-        ud.roof.position.y = it.peek * 7;
-        ud.roof.children[0].material = roofMat; // shared; opacity via scale illusion
-        ud.roof.visible = it.peek < 0.98;
+        ud.roof.position.y = it.peek * 8;
+        // Fade the roof as it rises instead of switching it off midair at
+        // 0.98, which used to make it wink out 6.9 ft up and fully solid. It
+        // settles at a ghost rather than nothing, so the lid still reads as
+        // parked above the box it came off.
+        if (ud.roofMat) ud.roofMat.opacity = 1 - it.peek * 0.78;
       }
-      if (ud.wallMats) for (const m of ud.wallMats) m.opacity = 1 - it.peek * 0.72;
     }
   }
   if (shadowDirty) { sun.shadow.needsUpdate = true; shadowDirty = false; }
