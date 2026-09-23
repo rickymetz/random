@@ -3,7 +3,7 @@
 // release to launch yourself over the hill. Pop every enemy king to win;
 // after the shot limit, the team with more kings standing wins.
 
-import { W, H, text, outlined, rrect, circle, blob, tag, shade, shuffle } from "../gfx.js";
+import { W, H, INK, text, outlined, shout, rrect, panel, circle, halftone, sunburst, bomb, blob, tag, shuffle } from "../gfx.js";
 
 const GROUND = 930, B = 48, COLS = 5, GRAV = 1000, BALL = 28, SHOTS = 5, TURN = 15;
 const FORT = [ // columns, bottom-up: S stone (2 hits), W wood, K king
@@ -18,15 +18,15 @@ function makeFort(mirror) {
 }
 
 export default {
-  id: "sling", title: "Sling Siege", kind: "Teams", min: 2, max: 8,
+  id: "sling", title: "Sling Siege", command: "LAUNCH!", kind: "Teams", min: 2, max: 8,
   blurb: "Launch yourself at the enemy fort. Pop their kings!",
   controls: "Drag back on your phone, release to launch",
 
   create(ctx) {
     const shuffled = shuffle([...ctx.players]);
     const teams = [
-      { name: "Left", color: "#ff5a5f", side: -1, x0: 110, sling: 470, players: [], fort: makeFort(false), shots: 0, turn: 0 },
-      { name: "Right", color: "#3fa7ff", side: 1, x0: W - 110 - COLS * B, sling: W - 470, players: [], fort: makeFort(true), shots: 0, turn: 0 },
+      { name: "Left", color: "#ff2e63", side: -1, x0: 110, sling: 470, players: [], fort: makeFort(false), shots: 0, turn: 0 },
+      { name: "Right", color: "#00b7ff", side: 1, x0: W - 110 - COLS * B, sling: W - 470, players: [], fort: makeFort(true), shots: 0, turn: 0 },
     ];
     shuffled.forEach((p, i) => teams[i % 2].players.push(p));
     const shotsPer = Math.max(SHOTS, Math.max(teams[0].players.length, teams[1].players.length) * 2);
@@ -34,7 +34,7 @@ export default {
     const cellPos = (tm, ci, ri) => [tm.x0 + ci * B, GROUND - (ri + 1) * B];
 
     let t = -2, cur = 0, phase = "aim", aim = { x: 0.7, y: -0.7, p: 0 }, turnT = TURN, ball = null, settle = 0, endAt = null, debris = [];
-    let botPlan = null;
+    let botPlan = null, pows = [];
     const shooter = () => { const tm = teams[cur]; return tm.players[tm.turn % tm.players.length]; };
     const launchPt = (tm) => [tm.sling, GROUND - 170];
 
@@ -62,6 +62,7 @@ export default {
       const col = tm.fort[ci], c = col[ri];
       if (c.type === "K") {
         col.splice(ri, 1); ctx.sfx.pop(); ctx.stat(ball.p.pid, "kings", 1);
+        { const [px, py] = cellPos(tm, ci, ri); pows.push({ x: px, y: py, t: 0, word: ["POP!", "BONK!", "SPLAT!"][Math.floor(Math.random() * 3)] }); }
         burst(...cellPos(tm, ci, ri), "#ffd23f");
         return true;
       }
@@ -177,14 +178,13 @@ export default {
         }
       },
       draw(g) {
-        const sky = g.createLinearGradient(0, 0, 0, H);
-        sky.addColorStop(0, "#ffb07a"); sky.addColorStop(1, "#ffe7c2");
-        g.fillStyle = sky; g.fillRect(0, 0, W, H);
-        circle(g, W / 2, 240, 110, "rgba(255,255,255,.55)");
+        sunburst(g, W / 2, 260, "#ff8a00", "#ffa53a", t * 0.5, 20);
+        halftone(g, "#fff", 0.18, 36);
+        circle(g, W / 2, 260, 110, "#ffd400", INK, 8);
         g.beginPath(); g.moveTo(0, GROUND);
         for (let x = 0; x <= W; x += 10) g.lineTo(x, hillY(x));
         g.lineTo(W, H); g.lineTo(0, H); g.closePath();
-        g.fillStyle = "#6cc26a"; g.fill(); g.lineWidth = 8; g.strokeStyle = "#3f8f47"; g.stroke();
+        g.fillStyle = "#35e06b"; g.fill(); g.lineWidth = 10; g.strokeStyle = INK; g.stroke();
         for (const [ti, tm] of teams.entries()) {
           const enemy = teams[1 - ti];
           let kingIdx = 0;
@@ -194,17 +194,20 @@ export default {
               const who = enemy.players[kingIdx++ % enemy.players.length] || tm.players[0];
               blob(g, who, x + B / 2, y + B / 2 + 2, B * 0.48, { crown: true });
             } else {
-              const col2 = c.type === "S" ? (c.hp > 1 ? "#9aa3b5" : "#747c8e") : "#c98b4a";
-              rrect(g, x + 2, y + 2, B - 4, B - 4, 8, col2, shade(c.type === "S" ? "#9aa3b5" : "#c98b4a", -0.45), 4);
+              const col2 = c.type === "S" ? (c.hp > 1 ? "#b8c2d6" : "#7d879c") : "#ffb800";
+              rrect(g, x + 2, y + 2, B - 4, B - 4, 4, col2, INK, 5);
+              if (c.type === "S" && c.hp < 2) { g.lineWidth = 3; g.strokeStyle = INK; g.beginPath(); g.moveTo(x + 10, y + 12); g.lineTo(x + 24, y + 26); g.lineTo(x + 18, y + 38); g.stroke(); }
             }
           }));
           const [sx, sy] = launchPt(tm);
-          g.lineWidth = 16; g.strokeStyle = "#7a4a22"; g.lineCap = "round";
+          g.lineWidth = 22; g.strokeStyle = INK; g.lineCap = "round";
           g.beginPath(); g.moveTo(sx, GROUND); g.lineTo(sx, sy + 60); g.lineTo(sx - 36, sy); g.moveTo(sx, sy + 60); g.lineTo(sx + 36, sy); g.stroke();
-          rrect(g, tm.side < 0 ? 40 : W - 520, 20, 480, 100, 24, "rgba(10,12,30,.6)", tm.color, 5);
+          g.lineWidth = 12; g.strokeStyle = "#b14dff";
+          g.beginPath(); g.moveTo(sx, GROUND); g.lineTo(sx, sy + 60); g.lineTo(sx - 36, sy); g.moveTo(sx, sy + 60); g.lineTo(sx + 36, sy); g.stroke();
+          panel(g, tm.side < 0 ? 40 : W - 520, 24, 480, 104, tm.color, 14, 7);
           const hx = tm.side < 0 ? 280 : W - 280;
-          text(g, `${tm.name} team`, hx, 50, 30, tm.color);
-          text(g, `Kings ${kings(tm)}   Shots ${shotsPer - tm.shots}`, hx, 92, 30);
+          text(g, `${tm.name.toUpperCase()} TEAM`, hx, 56, 32, INK, "center", 900);
+          text(g, `♛ ${kings(tm)}   SHOTS ${shotsPer - tm.shots}`, hx, 98, 30, INK, "center", 900);
         }
         if (phase === "aim" && t >= 0) {
           const tm = teams[cur], [sx, sy] = launchPt(tm), s = shooter();
@@ -215,9 +218,10 @@ export default {
           blob(g, s, bx, by, BALL, { sx: 1 + aim.p * 0.2, sy: 1 - aim.p * 0.15 });
           if (aim.p > 0.05) {
             const pts = simulate(aim, tm).slice(0, 22);
-            pts.forEach(([x, y], i) => i % 3 === 0 && circle(g, x, y, 7 - i / 5, "rgba(255,255,255,.85)"));
+            pts.forEach(([x, y], i) => i % 3 === 0 && circle(g, x, y, 8 - i / 5, "#fff", INK, 3));
           }
-          tag(g, `${s.name}'s shot  ·  ${Math.ceil(turnT)}s`, sx, sy - 110, tm.color, 28);
+          tag(g, `${s.name.toUpperCase()}'S SHOT!`, sx, sy - 120, tm.color, 30);
+          bomb(g, W / 2 - 150, 70, 38, turnT / TURN);
         }
         if (ball) {
           ball.trail.forEach(([x, y], i) => circle(g, x, y, 4 + i / 6, "rgba(255,255,255,.4)"));
@@ -227,7 +231,8 @@ export default {
         }
         for (const d of debris) { g.globalAlpha = Math.max(0, d.life); g.fillStyle = d.color; g.fillRect(d.x - 7, d.y - 7, 14, 14); }
         g.globalAlpha = 1;
-        if (t < 0) outlined(g, "Siege!", W / 2, H / 2 - 120, 130, "#ffd23f");
+        for (const pw of pows) { pw.t += 1 / 60; if (pw.t < 1) shout(g, pw.word, pw.x + B / 2, pw.y - 40, 70, "#ff2e63", pw.t); }
+        if (t < 0) shout(g, "SIEGE!", W / 2, H / 2 - 120, 170, "#ffd400", t + 2);
       },
     };
     return inst;

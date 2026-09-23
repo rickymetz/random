@@ -1,12 +1,12 @@
 // Flap Frenzy — free-for-all. Everyone flaps through the same pillars on one
 // screen; placements are by elimination order, last blob flying wins.
 
-import { W, H, text, outlined, rrect, blob, tag, countdown } from "../gfx.js";
+import { W, H, INK, text, outlined, shout, rrect, panel, halftone, blob, tag, countdown } from "../gfx.js";
 
 const GROUND = H - 90, X = 560, R = 34, GRAV = 2300, FLAP = -760, PW = 130;
 
 export default {
-  id: "flap", title: "Flap Frenzy", kind: "Free-for-all", min: 1, max: 8,
+  id: "flap", title: "Flap Frenzy", command: "FLAP!", kind: "Free-for-all", min: 1, max: 8,
   blurb: "Flap through the pillars. Last blob flying wins.",
   controls: "Tap FLAP on your phone",
 
@@ -85,40 +85,43 @@ export default {
         }
       },
       draw(g) {
-        const sky = g.createLinearGradient(0, 0, 0, H);
-        sky.addColorStop(0, "#5ec8ff"); sky.addColorStop(1, "#c9f1ff");
-        g.fillStyle = sky; g.fillRect(0, 0, W, H);
-        g.fillStyle = "rgba(255,255,255,.8)";
+        g.fillStyle = "#00d1ff"; g.fillRect(0, 0, W, H);
+        halftone(g, "#fff", 0.35, 34);
         for (let i = 0; i < 6; i++) {
           const cx = ((i * 420 - dist * 0.2) % (W + 400) + W + 400) % (W + 400) - 200, cy = 120 + (i % 3) * 90;
-          g.beginPath(); g.ellipse(cx, cy, 110, 40, 0, 0, Math.PI * 2); g.ellipse(cx + 60, cy - 20, 70, 36, 0, 0, Math.PI * 2); g.fill();
+          g.beginPath(); g.ellipse(cx, cy, 110, 40, 0, 0, Math.PI * 2); g.ellipse(cx + 60, cy - 20, 70, 36, 0, 0, Math.PI * 2);
+          g.fillStyle = "#fff"; g.lineWidth = 6; g.strokeStyle = INK; g.stroke(); g.fill();
         }
-        g.fillStyle = "#7ed37a";
         for (let i = 0; i < 8; i++) {
           const hx = ((i * 330 - dist * 0.45) % (W + 330) + W + 330) % (W + 330) - 165;
-          g.beginPath(); g.ellipse(hx, GROUND, 220, 140, 0, Math.PI, 0); g.fill();
+          g.beginPath(); g.ellipse(hx, GROUND, 220, 140, 0, Math.PI, 0);
+          g.fillStyle = i % 2 ? "#7cff4f" : "#35e06b"; g.fill(); g.lineWidth = 6; g.strokeStyle = INK; g.stroke();
         }
         for (const q of pipes) {
           const px = q.x - dist, top = q.gapY - q.gap / 2, bot = q.gapY + q.gap / 2;
           for (const [y0, h] of [[-20, top + 20], [bot, GROUND - bot]]) {
-            rrect(g, px, y0, PW, h, 14, "#b86bff", "#5a2a8c", 6);
-            g.fillStyle = "rgba(255,255,255,.25)"; g.fillRect(px + 16, y0 + 10, 18, h - 20);
+            rrect(g, px, y0, PW, h, 0, "#ff2e63", INK, 8);
+            g.fillStyle = "rgba(255,255,255,.35)"; g.fillRect(px + 16, y0 + 10, 16, h - 20);
+            g.fillStyle = "rgba(0,0,0,.18)"; g.fillRect(px + PW - 30, y0 + 4, 24, h - 8);
           }
-          rrect(g, px - 12, top - 40, PW + 24, 40, 12, "#cf93ff", "#5a2a8c", 6);
-          rrect(g, px - 12, bot, PW + 24, 40, 12, "#cf93ff", "#5a2a8c", 6);
+          rrect(g, px - 14, top - 44, PW + 28, 44, 6, "#ffd400", INK, 8);
+          rrect(g, px - 14, bot, PW + 28, 44, 6, "#ffd400", INK, 8);
         }
-        g.fillStyle = "#f2c572"; g.fillRect(0, GROUND, W, H - GROUND);
-        g.fillStyle = "#5dbb4f"; g.fillRect(0, GROUND, W, 22);
+        g.fillStyle = "#ffb800"; g.fillRect(0, GROUND, W, H - GROUND);
+        g.fillStyle = INK; g.fillRect(0, GROUND, W, 8);
+        for (let x = -((dist) % 80); x < W; x += 80) { g.fillStyle = "#ff8a00"; g.beginPath(); g.moveTo(x, GROUND + 8); g.lineTo(x + 40, GROUND + 8); g.lineTo(x + 10, H); g.lineTo(x - 30, H); g.fill(); }
         for (const b of [...birds].sort((a, c) => a.alive - c.alive)) {
           const s = Math.min(0.25, Math.abs(b.vy) / 3000);
-          blob(g, b.p, b.x, b.y, R, { wings: b.phase, rot: Math.max(-0.5, Math.min(1.2, b.vy / 900)), sx: 1 - s, sy: 1 + s, alpha: b.alive ? 1 : 0.5 });
+          blob(g, b.p, b.x, b.y, R, { wings: b.phase, rot: b.alive ? Math.max(-0.5, Math.min(1.2, b.vy / 900)) : b.phase, sx: 1 - s, sy: 1 + s, alpha: b.alive ? 1 : 0.6 });
           if (b.alive) tag(g, b.p.name, b.x, b.y - R - 30, b.p.color, 22);
+          else if (t - b.diedAt < 0.8) outlined(g, "SPLAT!", b.x, b.y - 60, 46, "#ff2e63", "center", -0.2);
         }
         const alive = birds.filter((b) => b.alive).length;
-        rrect(g, 30, 24, 380, 70, 35, "rgba(10,12,30,.55)");
-        text(g, `Flying: ${alive}/${birds.length}   ${Math.max(0, t).toFixed(1)}s`, 220, 60, 32);
+        panel(g, 30, 24, 400, 76, "#fff", 12, 6);
+        text(g, `FLYING ${alive}/${birds.length} · ${Math.max(0, t).toFixed(1)}s`, 230, 63, 32, INK, "center", 900);
         countdown(g, -t);
-        if (t < 0) outlined(g, "Get ready to flap!", W / 2, H / 2 - 220, 70);
+        if (t < 0) outlined(g, "GET READY TO FLAP!", W / 2, H / 2 - 240, 70, "#ffd400", "center", -0.04);
+        if (t >= 0 && t < 0.6) shout(g, "GO!", W / 2, H / 2, 260, "#ffd400", t);
       },
     };
     return inst;

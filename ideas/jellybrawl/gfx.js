@@ -12,16 +12,105 @@ export function text(g, str, x, y, size, color = "#fff", align = "center", weigh
   g.fillText(str, x, y);
 }
 
-export function outlined(g, str, x, y, size, color = "#fff", align = "center") {
+// WarioWare-ish ink: flat loud colours, thick black outlines, hard offset
+// shadows, halftone dots, sunbursts. INK is the outline colour everywhere.
+export const INK = "#111";
+export const POP = ["#ff2e63", "#ffd400", "#00d1ff", "#7cff4f", "#b14dff", "#ff8a00"];
+
+export function outlined(g, str, x, y, size, color = "#fff", align = "center", rot = 0) {
+  g.save();
+  g.translate(x, y);
+  if (rot) g.rotate(rot);
   g.font = `900 ${size}px ${FONT}`;
   g.textAlign = align;
   g.textBaseline = "middle";
   g.lineJoin = "round";
-  g.lineWidth = size / 6;
-  g.strokeStyle = "rgba(10,12,30,.85)";
-  g.strokeText(str, x, y);
+  g.lineWidth = Math.max(4, size / 5);
+  g.strokeStyle = INK;
+  const d = Math.max(3, size / 14);
+  g.strokeText(str, d, d); g.fillStyle = INK; g.fillText(str, d, d); // hard shadow
+  g.strokeText(str, 0, 0);
   g.fillStyle = color;
-  g.fillText(str, x, y);
+  g.fillText(str, 0, 0);
+  g.restore();
+}
+
+/** Largest font size ≤ size at which str fits in maxW. */
+export function fit(g, str, size, maxW) {
+  g.font = `900 ${size}px ${FONT}`;
+  const w = g.measureText(str).width * 1.08 + size / 5;
+  return w > maxW ? Math.floor((size * maxW) / w) : size;
+}
+
+/** A slammed-in command word: overshoots, settles, then jitters. k = seconds since it appeared. */
+export function shout(g, str, x, y, size, color, k) {
+  const s = k < 0.18 ? 2.4 - (k / 0.18) * 1.55 : k < 0.3 ? 0.85 + ((k - 0.18) / 0.12) * 0.15 : 1;
+  const j = k > 0.3 ? 3 : 14;
+  g.save();
+  g.translate(x + (Math.random() - 0.5) * j, y + (Math.random() - 0.5) * j);
+  g.scale(s, s);
+  outlined(g, str, 0, 0, size, color, "center", -0.06 + Math.sin(k * 9) * 0.02);
+  g.restore();
+}
+
+/** Rotating rays in two colours, filling the whole screen. */
+export function sunburst(g, cx, cy, c1, c2, t, rays = 18) {
+  g.fillStyle = c1; g.fillRect(0, 0, W, H);
+  g.fillStyle = c2;
+  const R = 2400, a0 = t * 0.25;
+  for (let i = 0; i < rays; i++) {
+    const a = a0 + (i * Math.PI * 2) / rays, w = Math.PI / rays;
+    g.beginPath(); g.moveTo(cx, cy);
+    g.lineTo(cx + Math.cos(a - w / 2) * R, cy + Math.sin(a - w / 2) * R);
+    g.lineTo(cx + Math.cos(a + w / 2) * R, cy + Math.sin(a + w / 2) * R);
+    g.closePath(); g.fill();
+  }
+}
+
+const tones = new Map();
+/** Halftone dots growing toward the bottom of a full-screen layer (cached). */
+export function halftone(g, color, alpha = 0.25, gap = 26) {
+  const key = color + alpha + gap;
+  if (!tones.has(key)) {
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const cg = c.getContext("2d");
+    cg.fillStyle = color; cg.globalAlpha = alpha;
+    for (let y = 0, row = 0; y < H + gap; y += gap * 0.87, row++)
+      for (let x = row % 2 ? gap / 2 : 0; x < W + gap; x += gap) {
+        const r = (gap / 2) * Math.pow(y / H, 1.4);
+        if (r > 0.6) { cg.beginPath(); cg.arc(x, y, r, 0, Math.PI * 2); cg.fill(); }
+      }
+    tones.set(key, c);
+  }
+  g.drawImage(tones.get(key), 0, 0);
+}
+
+/** A sticker panel: flat fill, thick ink outline, hard shadow. */
+export function panel(g, x, y, w, h, fill, r = 26, lw = 7) {
+  rrect(g, x + 10, y + 10, w, h, r, INK);
+  rrect(g, x, y, w, h, r, fill, INK, lw);
+}
+
+/** A cartoon bomb whose fuse burns down as frac goes 1 → 0. */
+export function bomb(g, x, y, r, frac) {
+  frac = Math.max(0, Math.min(1, frac));
+  const len = 40 + 260 * frac;
+  g.lineCap = "round";
+  g.lineWidth = 12; g.strokeStyle = INK;
+  g.beginPath(); g.moveTo(x + r * 0.6, y - r * 0.6);
+  g.bezierCurveTo(x + r, y - r * 1.4, x + r * 0.4 + len * 0.5, y - r * 1.6, x + r * 0.4 + len, y - r * 1.1);
+  g.stroke();
+  g.lineWidth = 6; g.strokeStyle = "#e8d3a0"; g.stroke();
+  circle(g, x, y, r, "#26263a", INK, 8);
+  rrect(g, x + r * 0.4, y - r * 0.95, r * 0.5, r * 0.4, 6, "#44445c", INK, 5);
+  g.beginPath(); g.ellipse(x - r * 0.35, y - r * 0.35, r * 0.25, r * 0.14, -0.7, 0, Math.PI * 2); g.fillStyle = "rgba(255,255,255,.5)"; g.fill();
+  const sx = x + r * 0.4 + len, sy = y - r * 1.1;
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + performance.now() / 60, l = 16 + Math.random() * 16;
+    g.lineWidth = 5; g.strokeStyle = i % 2 ? "#ffd400" : "#ff2e63";
+    g.beginPath(); g.moveTo(sx, sy); g.lineTo(sx + Math.cos(a) * l, sy + Math.sin(a) * l); g.stroke();
+  }
 }
 
 export function rrect(g, x, y, w, h, r, fill, stroke, lw = 4) {
@@ -53,11 +142,8 @@ export function star(g, x, y, r, fill = "#ffd23f", stroke = "#a86b00") {
 /** Big 3-2-1 overlay for a countdown value in seconds (> 0 while counting). */
 export function countdown(g, t) {
   if (t <= 0) return;
-  const n = Math.ceil(t), f = t - Math.floor(t);
-  g.save();
-  g.globalAlpha = Math.min(1, f * 3);
-  outlined(g, String(n), W / 2, H / 2, 220 + (1 - f) * 60, "#ffd23f");
-  g.restore();
+  const n = Math.ceil(t), k = 1 - (t - Math.floor(t) || 1);
+  shout(g, String(n), W / 2, H / 2, 300, POP[n % POP.length], k);
 }
 
 export const shuffle = (a) => {
@@ -108,8 +194,8 @@ export function blob(g, p, x, y, r, o = {}) {
   grad.addColorStop(1, shade(body, -0.28));
   g.fillStyle = grad;
   g.fill();
-  g.lineWidth = r * 0.07;
-  g.strokeStyle = "rgba(0,0,0,.28)";
+  g.lineWidth = Math.max(3, r * 0.1);
+  g.strokeStyle = INK;
   g.stroke();
   // face
   const fr = r * 0.6, fy = -r * 0.08;
@@ -126,7 +212,7 @@ export function blob(g, p, x, y, r, o = {}) {
     g.beginPath(); g.arc(0, fy + fr * 0.2, fr * 0.35, 0.15 * Math.PI, 0.85 * Math.PI); g.lineWidth = fr * 0.1; g.strokeStyle = "#1b1b2b"; g.stroke();
   }
   g.restore();
-  g.beginPath(); g.arc(0, fy, fr, 0, Math.PI * 2); g.lineWidth = r * 0.06; g.strokeStyle = "rgba(255,255,255,.85)"; g.stroke();
+  g.beginPath(); g.arc(0, fy, fr, 0, Math.PI * 2); g.lineWidth = Math.max(2, r * 0.06); g.strokeStyle = INK; g.stroke();
   // glossy highlight
   g.beginPath(); g.ellipse(-r * 0.55, -r * 0.55, r * 0.2, r * 0.11, -0.7, 0, Math.PI * 2);
   g.fillStyle = "rgba(255,255,255,.55)"; g.fill();
@@ -142,7 +228,7 @@ export function blob(g, p, x, y, r, o = {}) {
     const cy = -r * 0.92, cw = r * 0.55;
     g.moveTo(-cw, cy); g.lineTo(-cw, cy - r * 0.35); g.lineTo(-cw / 2, cy - r * 0.15); g.lineTo(0, cy - r * 0.45);
     g.lineTo(cw / 2, cy - r * 0.15); g.lineTo(cw, cy - r * 0.35); g.lineTo(cw, cy); g.closePath();
-    g.fillStyle = "#ffd23f"; g.fill(); g.lineWidth = r * 0.06; g.strokeStyle = "#a86b00"; g.stroke();
+    g.fillStyle = "#ffd400"; g.fill(); g.lineWidth = Math.max(2, r * 0.08); g.strokeStyle = INK; g.stroke();
   }
   g.restore();
 }
@@ -154,10 +240,13 @@ export function shade(hex, amt) {
   return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
 
-/** Name label pill. */
+/** Name label: a tilted sticker. */
 export function tag(g, str, x, y, color = "#fff", size = 26) {
-  g.font = `800 ${size}px ${FONT}`;
+  g.font = `900 ${size}px ${FONT}`;
   const w = g.measureText(str).width + size;
-  rrect(g, x - w / 2, y - size * 0.7, w, size * 1.4, size * 0.7, "rgba(10,12,30,.7)");
-  text(g, str, x, y + 1, size, color);
+  g.save(); g.translate(x, y); g.rotate(-0.04);
+  rrect(g, -w / 2 + 4, -size * 0.7 + 4, w, size * 1.4, 8, INK);
+  rrect(g, -w / 2, -size * 0.7, w, size * 1.4, 8, color, INK, 4);
+  text(g, str, 0, 1, size, INK, "center", 900);
+  g.restore();
 }

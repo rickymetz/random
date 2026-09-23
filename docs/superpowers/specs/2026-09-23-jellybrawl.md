@@ -31,7 +31,7 @@ and splits the work into a **vertical slice** (built now, in
 | Phone role | Mixed: usually a controller, but some games put private info on the phone. |
 | Audience | Bet on minigame winners, and send emoji reactions that float up on the TV. |
 | Latency | Measure first: the lobby shows each phone's round-trip time. |
-| Art | Programmer art for now, with one shared cast. |
+| Art | **WarioWare attitude** (follow-up decision): loud flat colour, thick black ink outlines, hard offset shadows, halftone dots, rotating sunbursts, tilted sticker panels. |
 | Cast | **Jelly blobs** in each player's colour, with the player's selfie as the face. Everything is drawn in code, and squash and stretch come free. |
 | Customisation | A **selfie** at join. Anyone who skips it **draws** a face instead. Later, some games ask for a fresh selfie ("make your scariest face!"). |
 | TV control | Both: the VIP phone (first to join) and the keyboard / Siri Remote. |
@@ -40,6 +40,26 @@ and splits the work into a **vertical slice** (built now, in
 | Ending | A podium with awards, per-player stats, and a rematch button. |
 | Hosting | Local relay first, then a free cloud host. |
 | Name | **Jellybrawl** (working title). |
+
+## Style: WarioWare attitude
+
+Frantic, loud and a bit rude:
+
+- **Command words.** Every minigame is announced with a one-word imperative
+  (`FLAP!`, `LAUNCH!`, `CHOMP!`) that slams in (overshoot, settle, jitter),
+  on the TV and on every phone at once.
+- **Bomb timers.** Every countdown is a cartoon bomb with a burning fuse: the
+  intro, the loser's pick, the sling turn and the chomp clock.
+- **Ink and halftone.** 6–10 px black outlines, hard (unblurred) offset
+  shadows, halftone dot layers and rotating two-tone sunbursts. The palette is
+  `#ff2e63 #ffd400 #00d1ff #7cff4f #b14dff #ff8a00`.
+- **Wipes.** Scene changes are a diagonal striped wipe with a whoosh.
+- **Comic words.** Impacts pop up as "BONK!", "SPLAT!", "POP!", "CAUGHT!".
+- **Copy.** Snarky quips ("Phones out. Dignity optional.", "Dead last gets to
+  choose. Pity rules.").
+
+Helpers live in `gfx.js` (`outlined`, `shout`, `sunburst`, `halftone`,
+`panel`, `bomb`, `fit`). The phone CSS mirrors them.
 
 ## The cast: jelly blobs
 

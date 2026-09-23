@@ -148,7 +148,9 @@ function render(l) {
 }
 
 function wait(l) {
-  add(el("p", { className: "msg", textContent: l.text || "" }), l.sub && el("p", { className: "hint", textContent: l.sub }));
+  const msg = el("p", { className: "msg" + (l.shout ? " shout" : ""), textContent: l.text || "" });
+  if (l.shout) msg.style.fontSize = `min(120px, ${Math.floor(128 / Math.max(4, (l.text || "").length))}vw)`;
+  add(msg, l.sub && el("p", { className: "hint", textContent: l.sub }));
 }
 
 function menu(l) {
@@ -216,9 +218,9 @@ function sling(l) {
     const r = area.getBoundingClientRect();
     const dx = e.clientX - o[0], dy = e.clientY - o[1], len = Math.hypot(dx, dy);
     const p = Math.min(1, len / (Math.min(r.width, r.height) * 0.42));
-    svg.innerHTML = `<line x1="${o[0] - r.left}" y1="${o[1] - r.top}" x2="${e.clientX - r.left}" y2="${e.clientY - r.top}" stroke="white" stroke-width="6" stroke-linecap="round" stroke-dasharray="2 12"/>
-      <circle cx="${e.clientX - r.left}" cy="${e.clientY - r.top}" r="${24 + p * 16}" fill="${getComputedStyle(document.documentElement).getPropertyValue("--me")}" stroke="white" stroke-width="5"/>
-      <line x1="${o[0] - r.left}" y1="${o[1] - r.top}" x2="${o[0] - r.left - dx}" y2="${o[1] - r.top - dy}" stroke="#ffd23f" stroke-width="8" stroke-linecap="round" marker-end=""/>`;
+    svg.innerHTML = `<line x1="${o[0] - r.left}" y1="${o[1] - r.top}" x2="${e.clientX - r.left}" y2="${e.clientY - r.top}" stroke="#111" stroke-width="8" stroke-linecap="round" stroke-dasharray="2 14"/>
+      <circle cx="${e.clientX - r.left}" cy="${e.clientY - r.top}" r="${24 + p * 16}" fill="${getComputedStyle(document.documentElement).getPropertyValue("--me")}" stroke="#111" stroke-width="6"/>
+      <line x1="${o[0] - r.left}" y1="${o[1] - r.top}" x2="${o[0] - r.left - dx}" y2="${o[1] - r.top - dy}" stroke="#ff2e63" stroke-width="10" stroke-linecap="round"/>`;
     hint.textContent = `Power ${Math.round(p * 100)}%`;
     return len ? { x: -dx / len, y: -dy / len, p } : { x: 0, y: 0, p: 0 };
   };

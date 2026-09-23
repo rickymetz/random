@@ -35,6 +35,8 @@ function noise(dur, vol = 0.15) {
 }
 
 export const sfx = {
+  whoosh: () => { noise(0.25, 0.08); tone(300, 0.25, { type: "sawtooth", slide: 900, vol: 0.03 }); },
+  slam: () => { tone(90, 0.3, { type: "square", slide: -50, vol: 0.12 }); noise(0.15, 0.2); },
   join: () => { tone(523, 0.1, { type: "triangle" }); tone(784, 0.14, { type: "triangle", delay: 0.08 }); },
   flap: () => tone(380, 0.08, { type: "triangle", slide: 260, vol: 0.05 }),
   hit: () => { noise(0.18, 0.2); tone(180, 0.25, { type: "sawtooth", slide: -120, vol: 0.06 }); },

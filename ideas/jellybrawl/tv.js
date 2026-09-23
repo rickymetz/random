@@ -2,7 +2,7 @@
 // render the layouts we send them (see index.html / controller.js).
 
 import { hostRoom } from "./net.js";
-import { W, H, text, outlined, rrect, circle, blob, tag, star } from "./gfx.js";
+import { W, H, INK, POP, fit, text, outlined, rrect, shout, sunburst, halftone, panel, bomb, circle, blob, tag, star, shade } from "./gfx.js";
 import { qr } from "./qr.js";
 import { sfx, unlock } from "./sfx.js";
 import flap from "./games/flap.js";
@@ -10,7 +10,7 @@ import sling from "./games/sling.js";
 import chomp from "./games/chomp.js";
 
 const GAMES = [flap, sling, chomp];
-const COLORS = ["#ff5a5f", "#3fa7ff", "#ffd23f", "#3ddc84", "#b77dff", "#ff9f43", "#ff7eb6", "#3fe0d0"];
+const COLORS = ["#ff2e63", "#00b7ff", "#ffd400", "#35e06b", "#b14dff", "#ff8a00", "#ff6ec7", "#00e0c6"];
 const BOT_NAMES = ["Wobbles", "Gloop", "Jiggly", "Squish", "Blorp", "Mochi", "Puddin", "Boing"];
 const MAX = 8;
 const POINTS = [10, 6, 4, 2, 1, 1, 1, 1];
@@ -153,7 +153,7 @@ function finalLine(p) {
 
 /* ----------------------------------------------------------------- scenes */
 
-function go(scene) { S.scene = scene; S.t = 0; }
+function go(scene) { S.scene = scene; S.t = 0; if (scene !== "lobby") { S.wipe = performance.now(); sfx.whoosh?.(); } }
 
 function startSession() {
   for (const p of S.players) { p.score = 0; p.stats = {}; }
@@ -207,7 +207,8 @@ function startIntro() {
     },
   });
   go("intro");
-  layoutAll(() => ({ kind: "wait", text: S.def.title, sub: S.def.controls }));
+  layoutAll(() => ({ kind: "wait", text: S.def.command, sub: S.def.controls, shout: true }));
+  setTimeout(() => sfx.slam(), 120);
 }
 
 function finishGame() {
@@ -251,174 +252,207 @@ function tick(dt) {
 
 /* ---------------------------------------------------------------- drawing */
 
-function bg(c1 = "#2b1b5e", c2 = "#120c2e") {
-  const gr = g.createRadialGradient(W / 2, H * 0.3, 100, W / 2, H / 2, W * 0.7);
-  gr.addColorStop(0, c1); gr.addColorStop(1, c2);
-  g.fillStyle = gr; g.fillRect(0, 0, W, H);
-  g.fillStyle = "rgba(255,255,255,.04)";
-  for (let i = 0; i < 14; i++) { const x = (i * 173 + S.t * 20) % (W + 200) - 100; circle(g, x, (i * 97) % H, 40 + (i % 4) * 30, "rgba(255,255,255,.035)"); }
+const QUIPS = [
+  "Phones out. Dignity optional.", "Now with 40% more wobble.", "Tap fast. Think never.",
+  "Friendship not included.", "Blobs don't have bones. Or mercy.", "Warning: may contain jelly.",
+];
+
+function bg(c1, c2, cx = W / 2, cy = H / 2) {
+  sunburst(g, cx, cy, c1, c2, S.t);
+  halftone(g, "#000", 0.14);
 }
 
-function title(y = 130, size = 150) {
-  const letters = "JELLYBRAWL".split("");
+function title(y, size) {
   g.font = `900 ${size}px ui-rounded, system-ui, sans-serif`;
   const total = g.measureText("JELLYBRAWL").width;
   let x = W / 2 - total / 2;
-  letters.forEach((ch, i) => {
+  "JELLYBRAWL".split("").forEach((ch, i) => {
     const w = g.measureText(ch).width;
-    const dy = Math.sin(S.t * 3 + i * 0.6) * 10;
-    outlined(g, ch, x + w / 2, y + dy, size, COLORS[i % COLORS.length]);
+    const dy = Math.sin(S.t * 5 + i * 0.9) * 12;
+    outlined(g, ch, x + w / 2, y + dy, size, POP[i % POP.length], "center", Math.sin(S.t * 3 + i) * 0.12);
     x += w;
   });
 }
 
 function drawSeat(p, x, y, r = 70) {
-  const sq = Math.sin(p.bob * 4) * 0.06;
-  g.beginPath(); g.ellipse(x, y + r * 0.98, r * 0.75, r * 0.16, 0, 0, Math.PI * 2); g.fillStyle = "rgba(0,0,0,.3)"; g.fill();
-  blob(g, p, x, y, r, { sx: 1 + sq, sy: 1 - sq, alpha: p.connected || p.bot ? 1 : 0.35 });
-  text(g, p.name, x, y + r + 34, 34, p.color);
-  const sub = p.bot ? "🤖 bot" : !p.connected ? "reconnecting…" : p.rtt != null ? `${Math.round(p.rtt)} ms` : "…";
-  text(g, sub, x, y + r + 72, 24, p.rtt > 150 ? "#ff9f43" : "rgba(255,255,255,.6)", "center", 600);
-  if (p === vip() && S.scene === "lobby") tag(g, "VIP", x, y - r - 22, "#ffd23f", 24);
+  const sq = Math.sin(p.bob * 6) * 0.08;
+  g.beginPath(); g.ellipse(x, y + r * 0.98, r * 0.8, r * 0.17, 0, 0, Math.PI * 2); g.fillStyle = "rgba(0,0,0,.35)"; g.fill();
+  blob(g, p, x, y - Math.abs(Math.sin(p.bob * 3)) * 14, r, { sx: 1 + sq, sy: 1 - sq, alpha: p.connected || p.bot ? 1 : 0.35 });
+  tag(g, p.name, x, y + r + 34, p.color, 30);
+  const sub = p.bot ? "🤖 BOT" : !p.connected ? "reconnecting…" : p.rtt != null ? `${Math.round(p.rtt)} ms` : "…";
+  text(g, sub, x, y + r + 78, 24, p.rtt > 150 ? "#ff2e63" : INK, "center", 900);
+  if (p === vip() && S.scene === "lobby") { outlined(g, "VIP", x + r * 0.9, y - r * 0.9, 34, "#ffd400", "center", 0.3); }
 }
 
 function drawGate() {
-  bg();
-  title(380, 190);
-  text(g, "A party game for the big screen. Phones are the controllers.", W / 2, 560, 44, "#fff", "center", 600);
-  outlined(g, "Click or press any key to open a room", W / 2, 760 + Math.sin(S.t * 4) * 6, 60, "#ffd23f");
+  bg("#ffd400", "#ffb800");
+  title(380, 200);
+  panel(g, W / 2 - 560, 520, 1120, 90, "#fff", 20);
+  text(g, "Party games on the TV. Phones are the controllers.", W / 2, 566, 42, INK, "center", 900);
+  shout(g, "PRESS ANY KEY!", W / 2, 780, 90, "#ff2e63", (S.t % 1.2));
 }
 
 function drawLobby() {
-  bg();
-  title(110, 120);
+  bg("#ffd400", "#ffb800", 1300, 520);
+  title(105, 120);
+  outlined(g, QUIPS[Math.floor(S.t / 4) % QUIPS.length], W / 2 + 180, 190, 34, "#fff", "center", -0.03);
   // join panel
-  rrect(g, 60, 220, 620, 800, 40, "rgba(255,255,255,.08)", "rgba(255,255,255,.15)", 3);
+  g.save(); g.translate(370, 620); g.rotate(-0.025); g.translate(-370, -620);
+  panel(g, 70, 240, 600, 780, "#fff", 30);
   if (S.qr) {
-    const n = S.qr.length, size = 420, cell = size / (n + 8), x0 = 370 - size / 2, y0 = 260;
-    rrect(g, x0, y0, size, size, 20, "#fff");
-    g.fillStyle = "#16182b";
+    const n = S.qr.length, size = 400, cell = size / (n + 8), x0 = 370 - size / 2, y0 = 270;
+    g.fillStyle = INK;
     S.qr.forEach((row, y) => row.forEach((d, x) => d && g.fillRect(x0 + (x + 4) * cell, y0 + (y + 4) * cell, cell + 0.5, cell + 0.5)));
-    text(g, "Scan to join, or go to", 370, 730, 32, "rgba(255,255,255,.75)", "center", 600);
-    text(g, S.joinUrl.replace(/^https?:\/\//, "").replace(/\/$/, ""), 370, 780, 40);
+    text(g, "SCAN IT or go to", 370, 710, 30, INK, "center", 900);
+    text(g, S.joinUrl.replace(/^https?:\/\//, "").replace(/\/$/, ""), 370, 758, 40, "#ff2e63", "center", 900);
   } else {
-    text(g, "No relay server running", 370, 330, 38, "#ffd23f");
-    ["Controllers can be other tabs of", "this browser (button below), or run", "node server.mjs for real phones."].forEach((l, i) => text(g, l, 370, 410 + i * 50, 32, "rgba(255,255,255,.8)", "center", 600));
+    outlined(g, "NO RELAY!", 370, 340, 70, "#ff2e63", "center", -0.05);
+    ["Controllers = other tabs of this", "browser (button below). Real", "phones: node server.mjs"].forEach((l, i) => text(g, l, 370, 440 + i * 50, 32, INK, "center", 900));
   }
-  text(g, "Room code", 370, 860, 34, "rgba(255,255,255,.75)", "center", 600);
-  outlined(g, S.net?.code || "····", 370, 945, 120, "#fff");
-  // seats
-  const cols = 4;
+  text(g, "ROOM CODE", 370, 850, 32, INK, "center", 900);
+  outlined(g, S.net?.code || "····", 370, 935, 130, "#00d1ff", "center", 0.03);
+  g.restore();
   for (let i = 0; i < MAX; i++) {
-    const x = 860 + (i % cols) * 270, y = 370 + Math.floor(i / cols) * 360;
+    const x = 860 + (i % 4) * 270, y = 380 + Math.floor(i / 4) * 330;
     const p = S.players[i];
     if (p) drawSeat(p, x, y);
-    else { g.setLineDash([12, 12]); circle(g, x, y, 66, null, "rgba(255,255,255,.2)", 4); g.setLineDash([]); text(g, "join!", x, y, 30, "rgba(255,255,255,.3)"); }
+    else {
+      g.setLineDash([14, 12]); circle(g, x, y, 62, "rgba(255,255,255,.35)", INK, 5); g.setLineDash([]);
+      outlined(g, "?", x, y, 70, "#fff", "center", Math.sin(S.t * 4 + i) * 0.2);
+    }
   }
   const v = vip();
-  text(g, `${S.rounds} rounds · ${v ? `${v.name} (VIP) starts from their phone` : "first to join is the VIP"} · or press Enter`, 1300, 950, 30, "rgba(255,255,255,.65)", "center", 600);
+  panel(g, 820, 905, 960, 70, INK, 35, 0);
+  text(g, `${S.rounds} ROUNDS · ${v ? `${v.name.toUpperCase()} (VIP) STARTS FROM THEIR PHONE` : "FIRST ONE IN IS THE VIP"}`, 1300, 940, 30, "#ffd400", "center", 900);
 }
 
-function scoreStrip(y = 1010) {
+function scoreStrip(y = 1000) {
   const list = standings(), w = Math.min(230, 1800 / list.length);
+  panel(g, W / 2 - (list.length * w) / 2 - 20, y - 50, list.length * w + 40, 100, "#fff", 50);
   list.forEach((p, i) => {
     const x = W / 2 - (list.length * w) / 2 + i * w + w / 2;
-    blob(g, p, x - 50, y, 26);
-    text(g, String(p.score), x + 10, y, 34, p.color, "left");
+    blob(g, p, x - 45, y, 30);
+    text(g, String(p.score), x + 10, y + 2, 40, INK, "left", 900);
   });
 }
 
 function drawChoose() {
-  bg("#1b3a5e", "#0c1a2e");
-  outlined(g, `Round ${S.round + 1} of ${S.rounds}`, W / 2, 110, 80, "#fff");
+  bg("#ff2e63", "#ff5c85");
   const c = byPid(S.chooser);
-  text(g, c ? `${c.name} is in last place — they pick the next game!` : "Spinning the wheel…", W / 2, 200, 44, "#ffd23f");
-  const n = S.options.length, cw = 520, gap = 50;
-  const spin = !S.picked && !S.chooser ? Math.floor(S.t * 8) % n : -1;
+  shout(g, c ? `${c.name.toUpperCase()} PICKS!` : "SPIN IT!", W / 2, 110, 100, "#ffd400", S.t);
+  outlined(g, c ? `Dead last gets to choose. Pity rules. · Round ${S.round + 1}/${S.rounds}` : `Round ${S.round + 1} of ${S.rounds}`, W / 2, 205, 36, "#fff", "center", -0.02);
+  const n = S.options.length, cw = 500, gap = 60;
+  const spin = !S.picked && !S.chooser ? Math.floor(S.t * 10) % n : -1;
   S.options.forEach((d, i) => {
-    const x = W / 2 - (n * cw + (n - 1) * gap) / 2 + i * (cw + gap), y = 300;
-    const chosen = S.picked === d, lit = chosen || spin === i;
-    const s = chosen ? 1 + 0.05 * Math.sin(S.t * 10) : 1;
-    g.save(); g.translate(x + cw / 2, y + 280); g.scale(s, s); g.translate(-(x + cw / 2), -(y + 280));
-    rrect(g, x, y, cw, 560, 36, lit ? "rgba(255,210,63,.25)" : "rgba(255,255,255,.08)", lit ? "#ffd23f" : "rgba(255,255,255,.2)", lit ? 8 : 3);
-    outlined(g, d.title, x + cw / 2, y + 90, 54, "#fff");
-    tag(g, d.kind, x + cw / 2, y + 170, "#ffd23f", 30);
-    wrap(d.blurb, x + cw / 2, y + 260, cw - 80, 34);
-    wrap(d.controls, x + cw / 2, y + 470, cw - 80, 26, "rgba(255,255,255,.6)");
+    const x = W / 2 - (n * cw + (n - 1) * gap) / 2 + i * (cw + gap), y = 290;
+    const chosen = S.picked === d, lit = chosen || spin === i, dim = S.picked && !chosen;
+    const s = chosen ? 1.08 + 0.04 * Math.sin(S.t * 20) : lit ? 1.04 : 1;
+    g.save(); g.translate(x + cw / 2, y + 270); g.rotate((i - 1) * 0.05 + (chosen ? Math.sin(S.t * 30) * 0.03 : 0)); g.scale(s, s); g.translate(-(x + cw / 2), -(y + 270));
+    g.globalAlpha = dim ? 0.4 : 1;
+    panel(g, x, y, cw, 540, lit ? "#ffd400" : "#fff", 30, 8);
+    outlined(g, d.command, x + cw / 2, y + 110, fit(g, d.command, 110, cw - 60), POP[(i * 2) % POP.length], "center", -0.05);
+    text(g, d.title.toUpperCase(), x + cw / 2, y + 215, 40, INK, "center", 900);
+    tag(g, d.kind, x + cw / 2, y + 272, "#00d1ff", 28);
+    wrap(d.blurb, x + cw / 2, y + 340, cw - 70, 27, INK);
+    rrect(g, x + 30, y + 440, cw - 60, 70, 12, "#eee");
+    wrap(d.controls, x + cw / 2, y + (d.controls.length > 30 ? 460 : 475), cw - 90, 24, "#444");
     g.restore();
   });
+  if (S.chooser && !S.picked) bomb(g, 150, 950, 55, 1 - S.t / 15);
   scoreStrip();
 }
 
 function wrap(str, x, y, maxW, size, color = "#fff") {
-  g.font = `700 ${size}px ui-rounded, system-ui, sans-serif`;
+  g.font = `800 ${size}px ui-rounded, system-ui, sans-serif`;
   const words = str.split(" "), lines = [];
   let line = "";
   for (const w of words) { const t = line ? line + " " + w : w; if (g.measureText(t).width > maxW) { lines.push(line); line = w; } else line = t; }
   lines.push(line);
-  lines.forEach((l, i) => text(g, l, x, y + i * size * 1.3, size, color, "center", 700));
+  lines.forEach((l, i) => text(g, l, x, y + i * size * 1.3, size, color, "center", 800));
 }
 
 function drawIntro() {
-  S.game.draw(g);
-  g.fillStyle = "rgba(10,12,30,.75)"; g.fillRect(0, 0, W, H);
-  const k = Math.min(1, S.t * 3), y = 200 - (1 - k) * 200;
-  outlined(g, S.def.title, W / 2, y + 80, 140, "#ffd23f");
-  tag(g, S.def.kind, W / 2, y + 210, "#fff", 40);
-  wrap(S.def.blurb, W / 2, y + 330, 1200, 48);
-  S.game.describe().forEach((l, i) => text(g, l, W / 2, y + 480 + i * 60, 40, "#9fe3ff"));
-  text(g, "🎮 " + S.def.controls, W / 2, 900, 44);
-  g.fillStyle = "#ffd23f"; g.fillRect(W / 2 - 300, 980, 600 * Math.min(1, S.t / 4.5), 14);
+  const c = POP[(S.round * 2) % POP.length], c2 = POP[(S.round * 2 + 3) % POP.length];
+  bg(c, shade(c, 0.25));
+  halftone(g, "#fff", 0.12, 40);
+  outlined(g, `ROUND ${S.round + 1}`, 170, 70, 44, "#fff", "center", -0.08);
+  shout(g, S.def.command, W / 2, 310, fit(g, S.def.command, 300, W - 200), c2 === c ? "#fff" : c2, S.t);
+  if (S.t > 0.35) {
+    const lines = S.game.describe();
+    panel(g, W / 2 - 600, 500, 1200, 200 + lines.length * 44, "#fff", 30);
+    text(g, S.def.title.toUpperCase() + " · " + S.def.kind.toUpperCase(), W / 2, 550, 36, "#ff2e63", "center", 900);
+    text(g, S.def.blurb, W / 2, 610, fit(g, S.def.blurb, 40, 1120), INK, "center", 900);
+    lines.forEach((l, i) => text(g, l, W / 2, 670 + i * 44, 32, "#555", "center", 900));
+    tag(g, "🎮 " + S.def.controls, W / 2, 790 + lines.length * 44, "#ffd400", 36);
+  }
+  bomb(g, 160, 960, 60, 1 - S.t / 4.5);
 }
 
 function drawResults() {
-  bg("#3b1b5e", "#140c2e");
-  outlined(g, S.result.headline || "Results", W / 2, 110, 76, "#ffd23f");
-  const rows = S.deltas, rh = Math.min(100, 760 / rows.length);
+  bg("#00d1ff", "#4ee0ff");
+  shout(g, S.result.headline || "RESULTS!", W / 2, 105, 76, "#ffd400", S.t);
+  const rows = S.deltas, rh = Math.min(104, 760 / rows.length);
   const winners = S.result.tie ? [] : S.result.winners || S.result.ranking[0];
   rows.forEach(({ p, d }, i) => {
-    const y = 230 + i * rh, k = Math.min(1, Math.max(0, S.t * 2.5 - i * 0.25)), x = 420 - (1 - k) * 800;
-    rrect(g, x, y, 1080, rh - 16, (rh - 16) / 2, winners.includes(p.pid) ? "rgba(255,210,63,.25)" : "rgba(255,255,255,.08)");
-    blob(g, p, x + 60, y + (rh - 16) / 2, (rh - 16) * 0.42);
-    text(g, p.name, x + 130, y + (rh - 16) / 2, 40, p.color, "left");
-    text(g, `+${d}`, x + 820, y + (rh - 16) / 2, 44, "#ffd23f", "right");
-    text(g, `${p.score}`, x + 1030, y + (rh - 16) / 2, 44, "#fff", "right");
+    const y = 220 + i * rh, k = Math.min(1, Math.max(0, S.t * 3 - i * 0.3)), x = 420 - (1 - k) * 1600;
+    const h = rh - 18, won = winners.includes(p.pid);
+    g.save(); g.translate(x + 540, y + h / 2); g.rotate((i % 2 ? 1 : -1) * 0.012); g.translate(-(x + 540), -(y + h / 2));
+    panel(g, x, y, 1080, h, won ? "#ffd400" : "#fff", 16, 6);
+    blob(g, p, x + 60, y + h / 2, h * 0.4);
+    text(g, p.name, x + 125, y + h / 2, 42, INK, "left", 900);
+    text(g, `${p.score}`, x + 1040, y + h / 2, 44, INK, "right", 900);
+    g.restore();
+    if (k >= 1) {
+      const sk = S.t * 3 - i * 0.3 - 1;
+      if (sk > 0) shout(g, `+${d}`, x + 800, y + h / 2, 64, won ? "#ff2e63" : "#fff", sk);
+    }
+    if (won && k >= 1) outlined(g, "WIN!", x - 60, y + h / 2, 44, "#ff2e63", "center", -0.3);
   });
-  text(g, "this game", 420 + 740, 200, 24, "rgba(255,255,255,.5)", "center", 600);
-  text(g, "total", 420 + 990, 200, 24, "rgba(255,255,255,.5)", "center", 600);
-  text(g, S.round + 1 >= S.rounds ? "Final results next…" : `Next: round ${S.round + 2} of ${S.rounds}`, W / 2, 1030, 32, "rgba(255,255,255,.6)", "center", 600);
+  outlined(g, S.round + 1 >= S.rounds ? "FINAL RESULTS NEXT…" : `NEXT: ROUND ${S.round + 2} OF ${S.rounds}`, W / 2, 1020, 36, "#fff", "center", -0.02);
 }
 
 function drawFinal() {
-  bg("#5e3b1b", "#2e140c");
-  outlined(g, "And the winner is…", W / 2, 90, 70, "#fff");
+  bg("#b14dff", "#c878ff", 820, 700);
+  shout(g, "AND THE WINNER IS…", W / 2, 90, 80, "#ffd400", Math.min(S.t, 1));
   const list = standings();
-  const pods = [[1, 520, 300], [0, 820, 400], [2, 1120, 220]];
-  for (const [rank, x, h] of pods) {
+  for (const [rank, x, h] of [[1, 520, 300], [0, 820, 400], [2, 1120, 220]]) {
     const p = list[rank];
     if (!p) continue;
     const top = 900 - h;
-    rrect(g, x - 130, top, 260, h, 20, ["#ffd23f", "#c9d2e3", "#e0a370"][rank], "rgba(0,0,0,.3)", 5);
-    outlined(g, String(rank + 1), x, top + 70, 90, "#fff");
-    const jump = rank === 0 ? Math.abs(Math.sin(S.t * 4)) * 40 : 0;
-    blob(g, p, x, top - 90 - jump, rank === 0 ? 90 : 72, { crown: rank === 0 });
-    text(g, `${p.name} · ${p.score}`, x, top + 150, 36, "#16182b");
+    panel(g, x - 130, top, 260, h, ["#ffd400", "#dfe6f0", "#ff8a00"][rank], 12, 7);
+    outlined(g, String(rank + 1), x, top + 75, 100, "#fff", "center", -0.08);
+    const jump = rank === 0 ? Math.abs(Math.sin(S.t * 5)) * 50 : 0;
+    blob(g, p, x, top - 90 - jump, rank === 0 ? 95 : 72, { crown: rank === 0 });
+    text(g, p.name, x, top + 160, 38, INK, "center", 900);
+    text(g, `${p.score} pts`, x, top + 200, 30, INK, "center", 800);
   }
-  list.slice(3).forEach((p, i) => text(g, `${i + 4}. ${p.name} · ${p.score}`, 820, 950 + i * 36, 28, "rgba(255,255,255,.7)", "center", 600));
-  // awards
-  rrect(g, 1330, 170, 540, 760, 30, "rgba(255,255,255,.08)");
-  text(g, "Awards", 1600, 225, 44, "#ffd23f");
-  let y = 300;
+  list.slice(3).forEach((p, i) => outlined(g, `${i + 4}. ${p.name} · ${p.score}`, 820, 950 + i * 40, 30, "#fff"));
+  g.save(); g.translate(1600, 560); g.rotate(0.025); g.translate(-1600, -560);
+  panel(g, 1330, 170, 540, 760, "#fff", 26);
+  outlined(g, "AWARDS!", 1600, 225, 56, "#ff2e63", "center", -0.05);
+  let y = 305;
   for (const [key, name, unit] of AWARDS) {
     const best = [...S.players].sort((a, b) => (b.stats[key] || 0) - (a.stats[key] || 0))[0];
     if (!best || !best.stats[key]) continue;
-    star(g, 1375, y, 20);
-    text(g, name, 1410, y - 16, 30, "#fff", "left");
-    text(g, `${best.name} — ${best.stats[key]} ${unit}`, 1410, y + 20, 26, best.color, "left", 700);
+    star(g, 1380, y, 22, "#ffd400", INK);
+    text(g, name.toUpperCase(), 1415, y - 16, 28, INK, "left", 900);
+    text(g, `${best.name} — ${best.stats[key]} ${unit}`, 1415, y + 20, 26, "#555", "left", 800);
     y += 80;
     if (y > 880) break;
   }
-  text(g, "VIP: rematch or back to lobby from your phone · Enter to rematch", W / 2, 1000, 28, "rgba(255,255,255,.6)", "center", 600);
+  g.restore();
+  outlined(g, "VIP: REMATCH FROM YOUR PHONE · ENTER TO REMATCH", 700, 1030, 30, "#fff");
+}
+
+// scene change: a diagonal striped wipe slams across
+function drawWipe() {
+  if (S.wipe == null) return;
+  const k = (performance.now() - S.wipe) / 450;
+  if (k >= 1) { S.wipe = null; return; }
+  const x = -W * 0.6 + k * W * 2.2;
+  g.save(); g.translate(x, 0); g.rotate(0.25);
+  POP.forEach((c, i) => { g.fillStyle = i % 2 ? INK : c; g.fillRect(-900 + i * 110, -800, 110, H * 3); });
+  g.restore();
 }
 
 function draw() {
@@ -430,6 +464,7 @@ function draw() {
   else if (S.scene === "game") S.game.draw(g);
   else if (S.scene === "results") drawResults();
   else if (S.scene === "final") drawFinal();
+  drawWipe();
 }
 
 let last = performance.now();

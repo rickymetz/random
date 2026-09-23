@@ -3,7 +3,7 @@
 // hunters win with 3 catches. Power pellets turn the tables for a few seconds.
 // The chomper role rotates to whoever has been "the one" least.
 
-import { W, H, text, outlined, rrect, circle, blob, tag, countdown } from "../gfx.js";
+import { W, H, INK, text, outlined, shout, rrect, panel, circle, halftone, bomb, blob, tag, countdown } from "../gfx.js";
 
 const MAP = [
   "#####################",
@@ -28,7 +28,7 @@ const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const TIME = 60, LIVES = 3;
 
 export default {
-  id: "chomp", title: "Chomp Chase", kind: "1 vs rest", min: 2, max: 5,
+  id: "chomp", title: "Chomp Chase", command: "CHOMP!", kind: "1 vs rest", min: 2, max: 5,
   blurb: "One chomper eats dots. Everyone else hunts it down.",
   controls: "Swipe or use the d-pad",
 
@@ -169,31 +169,34 @@ export default {
         else if (t >= TIME) finish(true, `${chomper.p.name} survived!`);
       },
       draw(g) {
-        g.fillStyle = "#0d1030"; g.fillRect(0, 0, W, H);
+        g.fillStyle = "#1b0f3b"; g.fillRect(0, 0, W, H);
+        halftone(g, "#b14dff", 0.35, 30);
         for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
           const c = grid[y][x], px = OX + x * C, py = OY + y * C;
-          if (c === "#") rrect(g, px + 3, py + 3, C - 6, C - 6, 12, "#2a3ad6", "#6f86ff", 3);
-          else if (c === ".") circle(g, px + C / 2, py + C / 2, 6, "#ffe9a8");
-          else if (c === "o") circle(g, px + C / 2, py + C / 2, 13 + 3 * Math.sin(t * 8), "#ffd23f");
-          else if (c === "G") rrect(g, px + 4, py + 4, C - 8, C - 8, 10, "rgba(255,126,182,.15)");
+          if (c === "#") { rrect(g, px + 2, py + 2, C - 4, C - 4, 8, power > 0 && Math.floor(t * 8) % 2 ? "#ff2e63" : "#00d1ff", INK, 5); }
+          else if (c === ".") circle(g, px + C / 2, py + C / 2, 7, "#fff", INK, 3);
+          else if (c === "o") circle(g, px + C / 2, py + C / 2, 15 + 3 * Math.sin(t * 10), "#ffd400", INK, 4);
+          else if (c === "G") rrect(g, px + 4, py + 4, C - 8, C - 8, 8, "rgba(255,110,199,.3)");
         }
         const at = (e) => [OX + e.x * C + C / 2, OY + e.y * C + C / 2];
         for (const h of hunters) {
           const [x, y] = at(h);
           blob(g, h.p, x, y, C * 0.46, { skirt: t, tint: power > 0 ? "#3b56ff" : undefined, alpha: h.stun > 0 ? 0.35 : 1 });
-          tag(g, h.p.name, x, y - C * 0.7, h.p.color, 18);
+          tag(g, h.p.name, x, y - C * 0.72, h.p.color, 18);
         }
         const [cx, cy] = at(chomper);
         const d = chomper.dir[0] || chomper.dir[1] ? chomper.dir : chomper.want || [1, 0];
-        blob(g, chomper.p, cx, cy, C * 0.5, { mouth: Math.atan2(d[1], d[0]), alpha: invuln > 0 && Math.floor(t * 10) % 2 ? 0.4 : 1 });
-        tag(g, chomper.p.name + " (chomper)", cx, cy - C * 0.75, "#ffd23f", 18);
-        rrect(g, OX, 24, COLS * C, 76, 38, "rgba(255,255,255,.08)");
-        text(g, `⏱ ${Math.max(0, Math.ceil(TIME - Math.max(0, t)))}`, OX + 110, 62, 38);
-        text(g, "Lives " + "♥".repeat(lives) + "♡".repeat(LIVES - lives), W / 2, 62, 38, "#ff7eb6");
-        text(g, `Dots left ${dotsLeft}`, OX + COLS * C - 170, 62, 34, "#ffe9a8");
-        if (power > 0) outlined(g, "POWER!", W / 2, OY + 7 * C + C / 2, 60 + 6 * Math.sin(t * 12), "#ffd23f");
-        if (freeze > 0 && t > 0) outlined(g, "CAUGHT!", W / 2, H / 2, 110, "#ff5a5f");
+        blob(g, chomper.p, cx, cy, C * 0.52, { mouth: Math.atan2(d[1], d[0]), alpha: invuln > 0 && Math.floor(t * 10) % 2 ? 0.4 : 1 });
+        tag(g, "CHOMPER " + chomper.p.name, cx, cy - C * 0.78, "#ffd400", 18);
+        panel(g, OX, 18, COLS * C, 82, "#fff", 14, 6);
+        text(g, "LIVES " + "♥".repeat(lives) + "♡".repeat(LIVES - lives), W / 2, 60, 40, "#ff2e63", "center", 900);
+        text(g, `DOTS ${dotsLeft}`, OX + COLS * C - 150, 60, 36, INK, "center", 900);
+        bomb(g, OX + 60, 70, 34, 1 - Math.max(0, t) / TIME);
+        text(g, `${Math.max(0, Math.ceil(TIME - Math.max(0, t)))}`, OX + 60, 72, 30, "#fff", "center", 900);
+        if (power > 0) outlined(g, "POWER!", W / 2, OY + 7 * C + C / 2, 70 + 8 * Math.sin(t * 14), "#ffd400", "center", Math.sin(t * 9) * 0.1);
+        if (freeze > 0 && t > 0) shout(g, "CAUGHT!", W / 2, H / 2, 150, "#ff2e63", 1 - freeze);
         countdown(g, -t);
+        if (t >= 0 && t < 0.6) shout(g, "GO!", W / 2, H / 2, 260, "#ffd400", t);
       },
     };
     return inst;
