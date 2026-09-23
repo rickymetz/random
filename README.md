@@ -123,7 +123,7 @@ PLAYWRIGHT=/path/to/node_modules/playwright node scripts/test/hub-e2e.mjs
 ### Retro look
 
 The hub has an opt-in **Gingerbread-era Android launcher** look. The modern
-card grid is the default everywhere; the header's "Retro look" button
+front page is the default everywhere; the header's "Retro look" button
 switches to it, and Settings → Retro look (or ≡ → Modern look) switches
 back. The choice is remembered. Three swipeable home screens
 hold every idea as an era tile beside search, clock, new-ideas and
@@ -141,8 +141,7 @@ app. Spec: `docs/superpowers/specs/2026-09-23-hub-gingerbread-retro.md`.
 | `fonts/` | Droid Sans (Apache 2.0, AOSP), subset to WOFF2. |
 
 An idea's launcher tile takes its `"color"` (or a retro-only
-`"icon": "#hex"` override) and shows its icon in the chosen style;
-otherwise the colour is derived from the slug. `"private": true`
+`"icon": "#hex"` override) and shows its icon in the chosen style. `"private": true`
 keeps an idea out of recents (the tray, the recents dialog, the retro
 dock) — Ledger uses it.
 

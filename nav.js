@@ -146,6 +146,13 @@
       img.alt = '';
       img.decoding = 'async';
       img.setAttribute('data-random-art', JSON.stringify(idea.art));
+      // A page under another worker (Ledger's) may not reach icons/
+      // offline: the emoji, then, rather than a broken image.
+      img.onerror = function () {
+        if (!img.isConnected || img.parentNode !== target) return;
+        target.classList.remove('has-art');
+        target.textContent = idea.emoji || '✦';
+      };
       paintArt(img);
       target.appendChild(img);
       target.classList.add('has-art');
@@ -271,6 +278,7 @@
       if (!card || card.querySelector('.card-new')) return;
       var pill = document.createElement('span');
       pill.className = 'card-new';
+      pill.id = 'new-' + idea.slug; // part of the card's accessible name
       pill.textContent = 'New';
       var top = card.querySelector('.card-top') || card;
       top.insertBefore(pill, top.querySelector('time'));
@@ -818,8 +826,9 @@
   /* ----------------------------------------------------------- tiles */
 
   // An idea's launcher tile colour: idea.json's "icon" (a retro-only
-  // override) or "color", else a hue from a stable FNV-1a hash of its slug
-  // and a lightness step from other bits.
+  // override) or "color" (build.js always writes one). The hue from a
+  // stable FNV-1a hash of the slug is only a fallback for an older cached
+  // ideas.json without it.
   function tileVars(idea) {
     if (idea.icon) return { custom: idea.icon };
     if (idea.color) return { custom: idea.color };

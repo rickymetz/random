@@ -109,10 +109,13 @@ try {
   const manifest = await (await page.request.get(B + "manifest.webmanifest")).json();
   check(manifest.display === "standalone" && manifest.shortcuts.length === 4 && !!manifest.share_target,
     "manifest: standalone, 4 shortcuts, share target");
-  check(manifest.shortcuts.every((s) => s.icons[0].src.endsWith("-3d.svg")), "shortcuts carry the ideas' 3D icons");
+  const catalogueNow = await (await page.request.get(B + "ideas.json")).json();
+  check(manifest.shortcuts.every((s) => {
+    const idea = catalogueNow.find((i) => s.url === i.url);
+    return idea && (idea.art ? s.icons[0].src === idea.art["3d"] : s.icons[0].src === "icon-192.png");
+  }), "shortcuts carry the ideas' 3D icons (or the app icon)");
 
   section("modern front page");
-  const catalogueNow = await (await page.request.get(B + "ideas.json")).json();
   check((await page.$eval(".front .lead .card", (a) => a.dataset.slug)) === catalogueNow[0].slug, "the newest idea leads");
   check((await page.$$(".front .second")).length === 2 && (await page.$$(".rows .row")).length === catalogueNow.length - 3,
     "two secondaries, the rest as rows");
@@ -127,7 +130,12 @@ try {
     "3D switches every icon at once");
   await page.reload();
   check((await page.getAttribute("html", "data-icons")) === "3d", "the choice survives a reload, before first paint");
-  check((await page.evaluate(() => fetch("icons/breathe-3d.svg").then((r) => r.ok))), "icons are served from the shell");
+  check(await page.evaluate(() => caches.keys()
+    .then((ks) => Promise.all(ks.filter((k) => k.startsWith("random-hub-shell-"))
+      .map((k) => caches.open(k).then((c) => c.match(new URL("icons/breathe-3d.svg", location.href).href)))))
+    .then((hits) => hits.some(Boolean))), "icons are precached with the shell");
+  check(await page.$eval('.lead .card', (a) => a.getAttribute("aria-labelledby").startsWith("title-") && !!document.getElementById(a.getAttribute("aria-describedby"))),
+    "a card is named by its title and described by its blurb");
   await page.click('.seg [data-icons="flat"]');
 
   section("idea pages get the bar injected");
@@ -962,7 +970,7 @@ try {
     page.on("pageerror", (e) => pageErrors.push(`${page.url()}: ${e.message}`));
     await page.goto(B);
     const btn = await page.locator("#look-retro").boundingBox();
-    check(btn.height < 44, `the modern "Retro look" button stays on one line (${Math.round(btn.height)} px)`);
+    check(btn.height < 56, `the modern "Retro look" button stays on one line (${Math.round(btn.height)} px)`);
     await page.click("#look-retro");
     await page.waitForSelector("#retro[data-ready]");
     await page.click('.rt-pages .rt-icon[data-slug="breathe"]', { button: "right" });

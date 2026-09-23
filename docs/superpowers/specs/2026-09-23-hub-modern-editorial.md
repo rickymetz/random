@@ -23,7 +23,7 @@ Why: the old look read as generic, and the retro launcher had outshone it.
 | 6 | Font | **Self-hosted subset**: Archivo (OFL), pinned to a semi-expanded width (112) and weights 700–900, latin, WOFF2, ≈ 26 KB. |
 | 7 | Colour | **Per idea.** Each idea has its own colour. |
 | 8 | Colour strength | **Full colour blocks** for the lead and the secondaries. |
-| 9 | The rest | **Compact list rows**: an icon on a colour swatch, the title, a one-line description and the date, divided by rules. |
+| 9 | The rest | **Compact list rows**: an icon on a colour swatch, the title, the description and the date, divided by rules. |
 | 10 | Icons | **Hand-authored SVG per idea** in place of emoji. |
 | 11 | Icon styles | **Flat** and **3D soft clay**, switchable by the user. |
 | 12 | Toggle | In the **modern header** (Flat \| 3D) *and* in **retro Settings**. It is one shared preference. |
@@ -44,7 +44,7 @@ Why: the old look read as generic, and the retro launcher had outshone it.
   at hero size. The next two ideas are **secondaries**: medium blocks
   side by side. On a phone they stack, and the lead stays the largest.
 - **More ideas**: every other idea is a compact row with a swatch icon,
-  the title, a one-line description (clamped) and the date. Rows are
+  the title, the full description (never clamped) and the date. Rows are
   divided by hairline rules.
 - With fewer than three ideas the front shows only what exists. With
   none, the empty message stays.
@@ -56,7 +56,8 @@ Why: the old look read as generic, and the retro launcher had outshone it.
 ### E2. Colour
 
 - `idea.json` gains `"color": "#rrggbb"`. Without one, build.js derives a
-  colour from the slug, using the same FNV-1a hue the retro tiles use.
+  colour from an FNV-1a hash of the slug, darkened until white text on it
+  reaches 4.5:1.
 - Text on a block is white or ink (#141414), whichever contrasts more.
   build.js warns when neither reaches 4.5:1.
 - The paper is warm off-white (#f5f3ee) with #141414 ink in light mode,
@@ -106,7 +107,9 @@ Why: the old look read as generic, and the retro launcher had outshone it.
 - Blocks and rows lift slightly on hover and focus, and the icon nudges.
 - The front and the rows fade and slide in once on load, staggered by
   about 60 ms.
-- The lead's icon floats gently on a slow loop.
+- The lead's icon floats gently for three slow cycles, then rests. The
+  lead moves in without fading, so it paints at once (it holds the LCP).
+- Hover effects apply only where hover exists (`@media (hover: hover)`).
 - `prefers-reduced-motion: reduce` turns off all three. Content never
   depends on an animation to become visible.
 
@@ -117,3 +120,5 @@ Why: the old look read as generic, and the retro launcher had outshone it.
 - Icons are decorative (`alt=""`, and the wrapper is `aria-hidden`),
   because the title names the idea.
 - Targets are at least 44 px on touch.
+- A card link's name is its title (plus "New"); its blurb is the
+  description.

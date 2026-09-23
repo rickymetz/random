@@ -1112,7 +1112,7 @@
     body.textContent = '';
 
     sectionHead('Display', 'display');
-    row({ id: 'look', title: 'Retro look', summary: 'The Gingerbread launcher. Turn off for the modern card grid.', checked: true,
+    row({ id: 'look', title: 'Retro look', summary: 'The Gingerbread launcher. Turn off for the modern front page.', checked: true,
       run: function () { nav.setLook('modern'); } });
     row({ id: 'icons', title: 'Icon style', summary: iconSummary(), run: function (r) {
       nav.setIcons(nav.icons() === '3d' ? 'flat' : '3d');

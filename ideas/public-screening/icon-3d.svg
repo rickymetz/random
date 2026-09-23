@@ -19,7 +19,7 @@
     <filter id="public-screening-3d-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.4"/></filter>
   </defs>
   <ellipse cx="66" cy="109" rx="44" ry="6" fill="#4e0a0e" opacity=".6" filter="url(#public-screening-3d-blur)"/>
-  <g transform="rotate(-10 64 64)">
+  <g transform="rotate(-4 64 64)">
     <use href="#public-screening-3d-shape" transform="translate(1 4)" fill="#c9a882"/>
     <use href="#public-screening-3d-shape" fill="url(#public-screening-3d-paper)"/>
     <path d="M26 39 H76" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity=".9" filter="url(#public-screening-3d-soft)"/>

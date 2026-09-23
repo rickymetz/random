@@ -1,12 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
   <!-- Breathe: soap bubble holding a box-breathing square, flat -->
+  <g transform="translate(6 0)">
   <ellipse cx="58" cy="116" rx="26" ry="4" fill="#5aa6c9"/>
   <circle cx="58" cy="66" r="40" fill="#c6e8f6" stroke="#ffffff" stroke-width="5"/>
   <path d="M30.9 58.8 A28 28 0 0 1 44 41.8" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
   <circle cx="51" cy="37" r="2.8" fill="#ffffff"/>
-  <rect x="42" y="50" width="32" height="32" rx="10" fill="none" stroke="#1f5f7e" stroke-width="5"/>
+  <rect x="42" y="50" width="32" height="32" rx="10" fill="#1f5f7e"/>
   <circle cx="44.9" cy="52.9" r="4.2" fill="#fff8ec"/>
   <circle cx="100" cy="26" r="11" fill="#c6e8f6" stroke="#ffffff" stroke-width="4"/>
   <path d="M94 23 A7 7 0 0 1 98 19.5" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
   <circle cx="106" cy="50" r="5" fill="#c6e8f6" stroke="#ffffff" stroke-width="3"/>
+  </g>
 </svg>

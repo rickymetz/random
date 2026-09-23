@@ -7,8 +7,8 @@
       <stop offset="1" stop-color="#0d0c0b"/>
     </radialGradient>
     <linearGradient id="cadence-3d-handle" x1="0" y1="10" x2="0" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#5b534e"/>
-      <stop offset="1" stop-color="#161413"/>
+      <stop offset="0" stop-color="#3a3431"/>
+      <stop offset="1" stop-color="#0d0c0b"/>
     </linearGradient>
     <linearGradient id="cadence-3d-badge" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#ffa27c"/>

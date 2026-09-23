@@ -6,6 +6,8 @@
 //     ideas.json (the catalogue nav.js and the offline page read) and sw.js
 //     (from scripts/sw.template.js, version-stamped so each deploy that
 //     changes the shell or the idea list is offered as an update)
+//   - mirrors each idea's icon-flat.svg / icon-3d.svg to icons/<slug>-<style>.svg
+//     (generated and committed, like the files above; part of the shell)
 //
 // Per-idea metadata (all optional), resolved in this order:
 //   1. ideas/<slug>/idea.json  -> { "title", "description", "emoji", "color", "hidden" }
@@ -46,12 +48,15 @@ function extractTag(html, regex) {
 const INK = "#141414";
 const ICON_STYLES = ["flat", "3d"];
 
-// No "color" in idea.json: a hue from the same FNV-1a hash of the slug the
-// retro tiles use (nav.js tileVars), at a lightness that carries white text.
+// No "color" in idea.json: a hue from an FNV-1a hash of the slug (the same
+// hash nav.js tileVars falls back to), darkened until white text on it
+// reaches 4.5:1.
 function slugColor(slug) {
   let h = 0x811c9dc5;
   for (let i = 0; i < slug.length; i++) { h ^= slug.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
-  return hslHex(h % 360, 52, 40);
+  let l = 42;
+  while (l > 10 && contrast(hslHex(h % 360, 52, l), "#ffffff") < 4.5) l -= 2;
+  return hslHex(h % 360, 52, l);
 }
 function hslHex(h, s, l) {
   s /= 100; l /= 100;
@@ -136,10 +141,16 @@ function collectIdeas() {
 
     // The idea's colour (its block on the homepage, its launcher tile)
     // and the hand-drawn icons that sit on it, when it ships them.
+    if (meta.color && !/^#[0-9a-f]{6}$/i.test(meta.color)) {
+      console.warn(`warning: ideas/${slug}/idea.json "color" must be #rrggbb, ignoring ${JSON.stringify(meta.color)}`);
+    }
     const color = /^#[0-9a-f]{6}$/i.test(meta.color || "") ? meta.color.toLowerCase() : slugColor(slug);
     const art = {};
     for (const style of ICON_STYLES) {
       if (fs.existsSync(path.join(dir, `icon-${style}.svg`))) art[style] = `icons/${slug}-${style}.svg`;
+    }
+    if (Object.keys(art).length === 1) {
+      console.warn(`warning: ideas/${slug} ships only ${Object.values(art)[0].split("-").pop()}; icons need both icon-flat.svg and icon-3d.svg, using the emoji`);
     }
 
     ideas.push({
@@ -166,14 +177,16 @@ function collectIdeas() {
   return ideas;
 }
 
-// The hand-drawn icon in both styles (CSS shows the chosen one; lazy, so
-// the hidden style isn't fetched until someone switches), or the emoji.
-function renderArt(idea) {
+// The hand-drawn icon in both styles, or the emoji. CSS shows the chosen
+// style; the other is lazy (display: none), so the page itself doesn't
+// fetch it, though the worker precaches both for a switch offline. The
+// lead's icon is the likely LCP element, so it isn't lazy.
+function renderArt(idea, eager) {
   if (!idea.art) {
     return `<span class="art art-emoji" aria-hidden="true">${escapeHtml(idea.emoji || "✦")}</span>`;
   }
   const img = (style) =>
-    `<img class="art-${style}" src="${escapeHtml(idea.art[style])}" alt="" width="128" height="128" loading="lazy" decoding="async">`;
+    `<img class="art-${style}" src="${escapeHtml(idea.art[style])}" alt="" width="128" height="128" loading="${eager ? "eager" : "lazy"}" decoding="async">`;
   return `<span class="art" aria-hidden="true">${ICON_STYLES.map(img).join("")}</span>`;
 }
 
@@ -195,13 +208,16 @@ function renderCard(idea, kind, i) {
     ? `\n        <button type="button" class="save" data-slug="${slug}" hidden>Save offline</button>`
     : "";
   const kicker = kind === "lead" ? `<span class="kicker">Latest</span>` : "";
+  // A screen reader hears the title (and "New", which nav.js adds with the
+  // id new-<slug>), then the blurb as the description, not the whole card.
+  const describe = idea.description ? ` aria-describedby="about-${slug}"` : "";
   return `      <${tag} class="card-wrap ${kind}${idea.saveable ? " saveable" : ""}" style="--c: ${idea.color}; --on: ${idea.ink}; --i: ${Math.min(i, 9)}">
-        <a class="card" href="ideas/${slug}/" data-slug="${slug}">
-          ${renderArt(idea)}
+        <a class="card" href="ideas/${slug}/" data-slug="${slug}" aria-labelledby="title-${slug} new-${slug}"${describe}>
+          ${renderArt(idea, kind === "lead")}
           <span class="card-body">
             <span class="card-top">${kicker}<time datetime="${date}">${prettyDate(idea.date)}</time></span>
-            <${heading}>${escapeHtml(idea.title)}</${heading}>
-            ${idea.description ? `<p>${escapeHtml(idea.description)}</p>` : ""}
+            <${heading} id="title-${slug}">${escapeHtml(idea.title)}</${heading}>
+            ${idea.description ? `<p id="about-${slug}">${escapeHtml(idea.description)}</p>` : ""}
           </span>
         </a>${save}
       </${tag}>`;
@@ -234,7 +250,6 @@ ${rows}
 <meta name="theme-color" content="${THEME.dark}" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="preload" href="fonts/Archivo-Heavy.woff2" as="font" type="font/woff2" crossorigin>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="random">
@@ -254,6 +269,8 @@ ${rows}
     // The launcher's styles only for people who use it (nav.js loads its
     // script, and both on the switch to retro).
     if (look === "retro") document.write('<link rel="stylesheet" href="retro.css" data-retro-css>');
+    // The display face only for the modern look, which uses it.
+    else document.write('<link rel="preload" href="fonts/Archivo-Heavy.woff2" as="font" type="font/woff2" crossorigin>');
   })();
 </script>
 <style>
@@ -269,7 +286,8 @@ ${rows}
     --muted: #5e5a53;
     --line: #dcd7cc;
     --hover: #ece8df;
-    --accent: #b3542e;
+    --accent: #a14826;
+    --on-accent: #ffffff;
     --display: "Archivo Heavy", "Arial Black", ui-sans-serif, system-ui, sans-serif;
     --radius: 1.25rem;
   }
@@ -278,9 +296,10 @@ ${rows}
       --bg: ${THEME.dark};
       --ink: #eeebe4;
       --muted: #a39f97;
-      --line: #2e2c29;
+      --line: #3a3733;
       --hover: #1c1b19;
       --accent: #e08554;
+      --on-accent: #111111;
     }
   }
   * { box-sizing: border-box; margin: 0; }
@@ -289,7 +308,7 @@ ${rows}
     background: var(--bg);
     color: var(--ink);
     font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    padding: max(1.25rem, env(safe-area-inset-top)) 1rem 5rem;
+    padding: max(1.25rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 1.5rem max(1rem, env(safe-area-inset-left));
   }
   main { max-width: 64rem; margin: 0 auto; }
 
@@ -324,7 +343,7 @@ ${rows}
   .dek b { color: var(--ink); font-weight: 600; }
   .hub-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
   .hub-actions > button, .seg button {
-    min-height: 2.5rem;
+    min-height: 2.75rem;
     white-space: nowrap;
     border: 1.5px solid var(--ink);
     border-radius: 999px;
@@ -336,17 +355,22 @@ ${rows}
     font-weight: 600;
     cursor: pointer;
   }
-  .hub-actions > button:hover { background: var(--hover); }
+  @media (hover: hover) { .hub-actions > button:hover { background: var(--hover); } }
   .hub-actions #install { background: var(--ink); color: var(--bg); }
   .seg { display: inline-flex; }
   .seg button { border-radius: 0; }
   .seg button:first-child { border-radius: 999px 0 0 999px; }
   .seg button + button { border-left: 0; border-radius: 0 999px 999px 0; }
-  .seg button:hover { background: var(--hover); }
+  @media (hover: hover) { .seg button:hover { background: var(--hover); } }
   /* The chosen style reads from <html data-icons>, so it's right before
      hub.js runs; hub.js keeps aria-pressed in step. */
   html[data-icons="flat"] .seg [data-icons="flat"],
   html[data-icons="3d"] .seg [data-icons="3d"] { background: var(--ink); color: var(--bg); }
+  @media (max-width: 30rem) {
+    header h1 { font-size: 1.6rem; }
+    .hub-actions { gap: 0.35rem; }
+    .hub-actions > button, .seg button { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+  }
   .hint {
     display: flex;
     align-items: center;
@@ -399,7 +423,7 @@ ${rows}
     padding: 0.1rem 0.55rem;
     border-radius: 999px;
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 0.04em;
@@ -411,6 +435,9 @@ ${rows}
     font-weight: 900;
     letter-spacing: -0.025em;
     line-height: 0.98;
+    text-wrap: balance;
+    overflow-wrap: break-word;
+    hyphens: auto;
   }
   .art { display: grid; place-items: center; flex: none; }
   .art img { display: block; width: 100%; height: auto; transition: transform 220ms cubic-bezier(.2, .7, .2, 1); }
@@ -418,7 +445,8 @@ ${rows}
   html[data-icons="3d"] .art .art-3d { display: block; }
   html[data-icons="3d"] .art .art-flat { display: none; }
   .art-emoji { line-height: 1; }
-  .card:hover .art img, .card:focus-visible .art img { transform: rotate(-5deg) scale(1.05); }
+  .card:focus-visible .art img { transform: rotate(-5deg) scale(1.05); }
+  @media (hover: hover) { .card:hover .art img { transform: rotate(-5deg) scale(1.05); } }
 
   /* The front: the lead and two secondaries as full-colour blocks */
   .front { display: grid; gap: 1rem; }
@@ -436,26 +464,36 @@ ${rows}
     background: var(--c);
     color: var(--on);
   }
-  .front .card:hover, .front .card:focus-visible {
-    transform: translateY(-4px);
-    box-shadow: 0 18px 32px -18px var(--c);
+  .front .card:focus-visible { transform: translateY(-4px); box-shadow: 0 18px 32px -18px var(--c); }
+  @media (hover: hover) {
+    .front .card:hover { transform: translateY(-4px); box-shadow: 0 18px 32px -18px var(--c); }
   }
   .front .card p { margin-top: 0.6rem; font-size: 0.95rem; max-width: 34rem; }
   .front .card-new { background: var(--on); color: var(--c); }
   .front time { font-weight: 600; }
   .lead .card { min-height: 22rem; }
-  .lead h2 { margin-top: 0.8rem; font-size: clamp(2.6rem, 11vw, 5.25rem); }
-  .lead .art { width: clamp(8rem, 38vw, 15rem); align-self: flex-end; order: -1; margin: -0.4rem -0.4rem -1.2rem 0; }
-  .lead .card-body { flex: 1; justify-content: flex-end; }
+  .lead h2 { margin-top: 0.8rem; font-size: clamp(2.1rem, 10vw, 5.25rem); line-height: 0.9; letter-spacing: -0.035em; }
+  .lead .card-top .kicker { margin-right: 0; }
+  .lead .card-top .kicker::after { content: "·"; margin-left: 0.6rem; }
+  .lead .card-top time { margin-left: 0; }
+  .lead .art { width: clamp(8rem, 38vw, 20rem); align-self: flex-end; order: -1; margin: -0.4rem -0.4rem -1.2rem 0; }
+  .lead .card-body { flex: 1; justify-content: flex-end; max-width: 40rem; }
   @media (min-width: 44rem) {
     .lead .card { flex-direction: row; align-items: stretch; padding: 2rem 2rem 2.2rem; }
     .lead .art { order: 1; align-self: center; margin: 0; }
     .lead .card p { font-size: 1.05rem; }
   }
-  .second .card { min-height: 17rem; }
+  .second .card { min-height: 13rem; }
   .second .card-body { flex: 1; justify-content: flex-end; }
-  .second h2 { margin-top: 0.5rem; font-size: clamp(1.9rem, 6vw, 2.5rem); }
-  .second .art { width: 8.5rem; order: -1; align-self: flex-end; margin: -0.6rem -0.6rem 0 0; }
+  .second .card-top time { margin-left: 0; }
+  .second h2 { margin-top: 0.5rem; font-size: clamp(1.7rem, 6vw, 2.5rem); }
+  .second .art { width: 6rem; order: -1; align-self: flex-end; margin: -0.6rem -0.6rem 0 0; }
+  /* Side by side, the secondaries set text left and the icon top right. */
+  @media (min-width: 44rem) {
+    .second .card { flex-direction: row; align-items: flex-end; }
+    .second .card-body { align-self: stretch; }
+    .second .art { order: 1; width: clamp(5.5rem, 12vw, 8rem); align-self: flex-start; }
+  }
   .front .art-emoji { font-size: 4.5rem; }
   .lead .art-emoji { font-size: 7rem; }
 
@@ -479,7 +517,8 @@ ${rows}
     padding: 0.9rem 0.5rem;
     border-radius: 0.75rem;
   }
-  .row .card:hover, .row .card:focus-visible { background: var(--hover); transform: translateX(4px); }
+  .row .card:focus-visible { background: var(--hover); transform: translateX(4px); }
+  @media (hover: hover) { .row .card:hover { background: var(--hover); transform: translateX(4px); } }
   .row .art {
     width: 3.75rem;
     height: 3.75rem;
@@ -492,20 +531,13 @@ ${rows}
   .row .card-top { order: -1; color: var(--muted); }
   .row .card-top time { margin-left: 0; order: -1; }
   .row .card-new { margin-left: 0; }
-  .row h3 { font-size: 1.3rem; margin-top: 0.15rem; }
-  .row p {
-    margin-top: 0.2rem;
-    color: var(--muted);
-    font-size: 0.88rem;
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 1;
-    -webkit-box-orient: vertical;
-  }
+  .row h3 { font-size: 1.3rem; margin-top: 0.15rem; letter-spacing: -0.005em; }
+  @media (max-width: 24rem) { .row h3 { font-size: 1.1rem; } }
+  .row p { margin-top: 0.2rem; color: var(--muted); font-size: 0.88rem; }
 
   /* Save offline: a sibling of the link, at the foot of its block or row */
   .card-wrap.has-save > .card { padding-bottom: 4rem; }
-  .row.has-save > .card { padding-bottom: 3.1rem; }
+  .row.has-save > .card { padding-bottom: 3.9rem; }
   .save {
     position: absolute;
     left: 1.4rem;
@@ -513,7 +545,7 @@ ${rows}
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    min-height: 2rem;
+    min-height: 2.75rem;
     border: 1.5px solid currentColor;
     border-radius: 999px;
     padding: 0.2rem 0.8rem;
@@ -528,8 +560,10 @@ ${rows}
   @media (max-width: 43.99rem) { .lead .save { left: 1.4rem; } }
   .row .save { left: calc(0.5rem + 3.75rem + 1rem); bottom: 0.8rem; color: var(--muted); }
   .save::before { content: "⤓"; }
-  .save:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
-  .row .save:hover { color: var(--ink); }
+  @media (hover: hover) {
+    .save:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
+    .row .save:hover { color: var(--ink); }
+  }
   .save[aria-pressed="true"]::before { content: "✓"; }
   .row .save[aria-pressed="true"] { color: var(--accent); }
   .save[aria-busy="true"] { opacity: 0.6; cursor: progress; }
@@ -544,7 +578,7 @@ ${rows}
     color: var(--muted);
     font-size: 0.85rem;
   }
-  footer a { color: var(--ink); font-weight: 600; }
+  footer a { display: inline-block; padding: 0.7rem 0; color: var(--ink); font-weight: 600; }
 
   /* Motion: a staggered entrance, the lead's icon floating. Nothing waits
      on an animation to be visible. */
@@ -553,17 +587,21 @@ ${rows}
       animation: rise 520ms cubic-bezier(.2, .7, .2, 1) both;
       animation-delay: calc(var(--i, 0) * 60ms);
     }
-    .lead .art { animation: float 6s ease-in-out infinite; }
+    /* The lead holds the LCP: it moves in but never paints transparent. */
+    .front > .lead { animation-name: lift; }
+    /* A few slow breaths, then still (WCAG 2.2.2, and the battery). */
+    .lead .art { animation: float 6s ease-in-out 3; }
   }
   @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+  @keyframes lift { from { transform: translateY(14px); } }
   @keyframes float {
     0%, 100% { transform: translateY(0) rotate(0); }
     50% { transform: translateY(-8px) rotate(2deg); }
   }
   @media (prefers-reduced-motion: reduce) {
     .card, .art img { transition: none; }
-    .front .card:hover, .front .card:focus-visible, .row .card:hover, .row .card:focus-visible { transform: none; }
-    .card:hover .art img, .card:focus-visible .art img { transform: none; }
+    .front .card:hover, .front .card:focus-visible, .row .card:hover, .row .card:focus-visible { transform: none !important; }
+    .card:hover .art img, .card:focus-visible .art img { transform: none !important; }
   }
 </style>
 </head>
@@ -677,16 +715,18 @@ function renderIdeasJson(ideas) {
 }
 
 // Ideas this small are saved whole when the app installs, so they work
-// offline before anyone has opened them.
+// offline before anyone has opened them. (Not their icons: the shell
+// already precaches those, as icons/.)
 const AUTO_SAVE_BYTES = 150 * 1024;
+const NOT_SAVED = /^(idea\.json|README\.md|icon-(flat|3d)\.svg)$/;
 function autoSaveList(ideas) {
   return ideas
     .filter((idea) => idea.saveable)
+    .map((idea) => ({ ...idea, files: idea.files.filter((f) => !NOT_SAVED.test(f.rel)) }))
     .filter((idea) => idea.files.reduce((n, f) => n + f.bytes, 0) <= AUTO_SAVE_BYTES)
     .map((idea) => ({
       slug: idea.slug,
       paths: idea.files
-        .filter((f) => !/^(idea\.json|README\.md)$/.test(f.rel))
         .map((f) => `ideas/${idea.slug}/${f.rel === "index.html" ? "" : f.rel}`),
     }));
 }
@@ -695,12 +735,13 @@ function autoSaveList(ideas) {
 // icons/<slug>-<style>.svg: part of the hub shell, so they show offline on
 // every surface (the hub, the tray, the launcher), even for ideas the hub
 // worker keeps its hands off (Cadence).
-function artFiles(ideas) {
-  return ideas.flatMap((idea) => (idea.art ? ICON_STYLES.map((style) => idea.art[style]) : []));
+function artCopies(ideas) {
+  return ideas.flatMap((idea) => (idea.art
+    ? ICON_STYLES.map((style) => ({ dest: idea.art[style], src: path.join(ideasDir, idea.slug, `icon-${style}.svg`) }))
+    : []));
 }
-function artSource(rel) {
-  const [, slug, style] = rel.match(/^icons\/(.+)-(flat|3d)\.svg$/);
-  return path.join(ideasDir, slug, `icon-${style}.svg`);
+function artFiles(ideas) {
+  return artCopies(ideas).map((c) => c.dest);
 }
 
 function renderServiceWorker(files, ideas) {
@@ -735,9 +776,9 @@ function renderServiceWorker(files, ideas) {
 // preview of exactly what Pages serves.
 const ideas = collectIdeas();
 fs.rmSync(path.join(root, "icons"), { recursive: true, force: true });
-for (const rel of artFiles(ideas)) {
-  fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
-  fs.copyFileSync(artSource(rel), path.join(root, rel));
+for (const { dest, src } of artCopies(ideas)) {
+  fs.mkdirSync(path.dirname(path.join(root, dest)), { recursive: true });
+  fs.copyFileSync(src, path.join(root, dest));
 }
 const generated = {
   "index.html": renderHome(ideas),
