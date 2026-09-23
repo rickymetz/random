@@ -14,6 +14,19 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="random">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<script>
+  // The look (modern cards / retro launcher) is decided before first paint,
+  // so there's no flash of the wrong one. nav.js makes the same call later.
+  (function () {
+    var look;
+    try { look = JSON.parse(localStorage.getItem("random-hub:look")); } catch (e) {}
+    // Modern unless someone has chosen retro.
+    document.documentElement.setAttribute("data-look", look === "retro" ? "retro" : "modern");
+    // The launcher's styles only for people who use it (nav.js loads its
+    // script, and both on the switch to retro).
+    if (look === "retro") document.write('<link rel="stylesheet" href="retro.css" data-retro-css>');
+  })();
+</script>
 <style>
   :root {
     --bg: #faf9f7;
@@ -50,6 +63,7 @@
   }
   .hub-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; }
   .hub-actions button {
+    white-space: nowrap;
     border: 1px solid var(--line);
     border-radius: 999px;
     padding: 0.4rem 0.95rem;
@@ -177,6 +191,7 @@
         </div>
         <div class="hub-actions">
           <button type="button" id="install" hidden>Install</button>
+          <button type="button" id="look-retro">Retro look</button>
           <button type="button" id="badge-toggle" hidden>Badge new ideas</button>
         </div>
       </div>
@@ -207,10 +222,32 @@
       </a>
       </div>
       <div class="card-wrap saveable">
+      <a class="card" href="ideas/breathe/" data-slug="breathe">
+        <div class="card-top">
+          <span class="card-emoji">🫧</span>
+          <time datetime="2026-09-01">2026-09-01</time>
+        </div>
+        <h2>Breathe</h2>
+        <p>A one-minute box-breathing circle.</p>
+      </a>
+      <button type="button" class="save" data-slug="breathe" hidden>Save offline</button>
+      </div>
+      <div class="card-wrap saveable">
+      <a class="card" href="ideas/container-compound/" data-slug="container-compound">
+        <div class="card-top">
+          <span class="card-emoji">📦</span>
+          <time datetime="2026-09-01">2026-09-01</time>
+        </div>
+        <h2>Container Compound</h2>
+        <p>Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.</p>
+      </a>
+      <button type="button" class="save" data-slug="container-compound" hidden>Save offline</button>
+      </div>
+      <div class="card-wrap saveable">
       <a class="card" href="ideas/ephemera/" data-slug="ephemera">
         <div class="card-top">
           <span class="card-emoji">📽️</span>
-          <time datetime="2026-08-31">2026-08-31</time>
+          <time datetime="2026-09-01">2026-09-01</time>
         </div>
         <h2>Ephemera</h2>
         <p>Browse 8,038 industrial, educational and advertising films from the Prelinger Archives, and watch them in the page.</p>
@@ -221,40 +258,19 @@
       <a class="card" href="ideas/public-screening/" data-slug="public-screening">
         <div class="card-top">
           <span class="card-emoji">🎞️</span>
-          <time datetime="2026-08-27">2026-08-27</time>
+          <time datetime="2026-09-01">2026-09-01</time>
         </div>
         <h2>Public Screening</h2>
         <p>Browse 1,186 public domain films and watch hundreds of them in the page.</p>
       </a>
       <button type="button" class="save" data-slug="public-screening" hidden>Save offline</button>
       </div>
-      <div class="card-wrap saveable">
-      <a class="card" href="ideas/container-compound/" data-slug="container-compound">
-        <div class="card-top">
-          <span class="card-emoji">📦</span>
-          <time datetime="2026-08-13">2026-08-13</time>
-        </div>
-        <h2>Container Compound</h2>
-        <p>Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.</p>
-      </a>
-      <button type="button" class="save" data-slug="container-compound" hidden>Save offline</button>
-      </div>
-      <div class="card-wrap saveable">
-      <a class="card" href="ideas/breathe/" data-slug="breathe">
-        <div class="card-top">
-          <span class="card-emoji">🫧</span>
-          <time datetime="2026-08-13">2026-08-13</time>
-        </div>
-        <h2>Breathe</h2>
-        <p>A one-minute box-breathing circle.</p>
-      </a>
-      <button type="button" class="save" data-slug="breathe" hidden>Save offline</button>
-      </div>
     </div>
     <footer>
       <a href="https://github.com/rickymetz/random">source</a>
     </footer>
   </main>
+  <div id="retro" hidden></div>
   <script src="nav.js" defer></script>
   <script src="hub.js" defer></script>
 </body>

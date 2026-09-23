@@ -98,6 +98,31 @@ node scripts/build.js
 PLAYWRIGHT=/path/to/node_modules/playwright node scripts/test/hub-e2e.mjs
 ```
 
+### Retro look
+
+The hub has an opt-in **Gingerbread-era Android launcher** look. The modern
+card grid is the default everywhere; the header's "Retro look" button
+switches to it, and Settings → Retro look (or ≡ → Modern look) switches
+back. The choice is remembered. Three swipeable home screens
+hold every idea as an era tile beside search, clock, new-ideas and
+power-control widgets over a live wallpaper; a dock holds the app drawer
+and two favourites; a real-data status bar pulls down into a notification
+shade; the bar gains ≡ Menu, and long-press ● opens recent ideas.
+Long-press an icon for Open / dock / Save offline / Share / About. A boot
+animation plays once per launch, icons zoom into their idea, and keys
+tick (haptics on, synthesised sounds off by default) — all in a Settings
+app. Spec: `docs/superpowers/specs/2026-09-23-hub-gingerbread-retro.md`.
+
+| File | Role |
+| --- | --- |
+| `retro.js`, `retro.css` | The launcher (only drawn in the retro look). |
+| `fonts/` | Droid Sans (Apache 2.0, AOSP), subset to WOFF2. |
+
+An idea can set its launcher tile colour with `"icon": "#hex"` in
+`idea.json`; otherwise it's derived from the slug. `"private": true`
+keeps an idea out of recents (the tray, the recents dialog, the retro
+dock) — Ledger uses it.
+
 ## How it works
 
 - GitHub Pages serves the `main` branch directly (Settings → Pages →

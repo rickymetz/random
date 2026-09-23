@@ -102,6 +102,12 @@ function collectIdeas() {
       title,
       description,
       emoji: meta.emoji || "",
+      // Optional retro launcher tile colour (a hex colour); else it's
+      // picked from the slug.
+      icon: /^#[0-9a-f]{3,8}$/i.test(meta.icon || "") ? meta.icon : "",
+      // A private idea (Ledger) is never recorded in recents, so it can't
+      // surface in the tray, the recents dialog or the retro dock.
+      private: meta.private === true,
       date: firstCommitDate(path.join("ideas", slug)),
       saveable,
       files: saveable ? listFiles(dir) : [],
@@ -151,6 +157,19 @@ function renderHome(ideas) {
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="random">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<script>
+  // The look (modern cards / retro launcher) is decided before first paint,
+  // so there's no flash of the wrong one. nav.js makes the same call later.
+  (function () {
+    var look;
+    try { look = JSON.parse(localStorage.getItem("random-hub:look")); } catch (e) {}
+    // Modern unless someone has chosen retro.
+    document.documentElement.setAttribute("data-look", look === "retro" ? "retro" : "modern");
+    // The launcher's styles only for people who use it (nav.js loads its
+    // script, and both on the switch to retro).
+    if (look === "retro") document.write('<link rel="stylesheet" href="retro.css" data-retro-css>');
+  })();
+</script>
 <style>
   :root {
     --bg: #faf9f7;
@@ -187,6 +206,7 @@ function renderHome(ideas) {
   }
   .hub-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; }
   .hub-actions button {
+    white-space: nowrap;
     border: 1px solid var(--line);
     border-radius: 999px;
     padding: 0.4rem 0.95rem;
@@ -314,6 +334,7 @@ function renderHome(ideas) {
         </div>
         <div class="hub-actions">
           <button type="button" id="install" hidden>Install</button>
+          <button type="button" id="look-retro">Retro look</button>
           <button type="button" id="badge-toggle" hidden>Badge new ideas</button>
         </div>
       </div>
@@ -329,6 +350,7 @@ ${ideas.length ? cards : empty}
       <a href="https://github.com/rickymetz/random">source</a>
     </footer>
   </main>
+  <div id="retro" hidden></div>
   <script src="nav.js" defer></script>
   <script src="hub.js" defer></script>
 </body>
@@ -344,6 +366,10 @@ const THEME = { light: "#faf9f7", dark: "#141414" };
 const STATIC_SHELL = [
   "nav.js",
   "hub.js",
+  "retro.js",
+  "retro.css",
+  "fonts/DroidSans.woff2",
+  "fonts/DroidSans-Bold.woff2",
   "offline.html",
   "icon.svg",
   "icon-192.png",
@@ -395,6 +421,8 @@ function renderIdeasJson(ideas) {
     date: idea.date.toISOString(),
     url: `ideas/${idea.slug}/`,
     saveable: idea.saveable,
+    ...(idea.icon ? { icon: idea.icon } : {}),
+    ...(idea.private ? { private: true } : {}),
   })), null, 2) + "\n";
 }
 
@@ -424,8 +452,16 @@ function renderServiceWorker(files, ideas) {
   for (const [name, content] of Object.entries(files)) hash.update(name).update(content);
   for (const name of STATIC_SHELL) hash.update(name).update(fs.readFileSync(path.join(root, name)));
   const version = hash.digest("hex").slice(0, 12);
+  // Per-file hashes, so an update reuses the files that didn't change.
+  const fileHash = (buf) => crypto.createHash("sha256").update(buf).digest("hex").slice(0, 16);
+  const shellHash = {};
+  for (const p of shell) {
+    const name = p === "./" ? "index.html" : p;
+    shellHash[p] = fileHash(files[name] != null ? files[name] : fs.readFileSync(path.join(root, name)));
+  }
   return template
     .replace("'__VERSION__'", JSON.stringify(version))
+    .replace("__SHELL_HASH__", JSON.stringify(shellHash))
     .replace("__SHELL__", JSON.stringify(shell))
     .replace("__AUTO_SAVE__", JSON.stringify(autoSaveList(ideas)));
 }
@@ -460,6 +496,7 @@ for (const [name, content] of Object.entries(generated)) {
   fs.writeFileSync(path.join(outDir, name), content);
 }
 for (const name of STATIC_SHELL) {
+  fs.mkdirSync(path.dirname(path.join(outDir, name)), { recursive: true });
   fs.copyFileSync(path.join(root, name), path.join(outDir, name));
 }
 fs.writeFileSync(path.join(outDir, ".nojekyll"), "");
