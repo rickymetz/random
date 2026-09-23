@@ -21,7 +21,7 @@
  */
 'use strict';
 
-var VERSION = "0cae66510b89";
+var VERSION = "cb228faa648a";
 var SHELL = ["./","manifest.webmanifest","ideas.json","nav.js","hub.js","offline.html","icon.svg","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png"];
 // Ideas small enough to save whole at install: [{ slug, paths }], where
 // "ideas/<slug>/" stands for its index.html (the URL a visit requests).
