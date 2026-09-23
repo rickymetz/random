@@ -4,6 +4,11 @@
     "title": "Cadence",
     "description": "A weekly calisthenics and mobility tracker — guided sessions with timers, set-by-set logging, and progress over time. Installable, offline, on your device only.",
     "emoji": "🏋️",
+    "color": "#e08554",
+    "art": {
+      "flat": "icons/cadence-flat.svg",
+      "3d": "icons/cadence-3d.svg"
+    },
     "date": "2026-09-16T03:50:15.000Z",
     "url": "ideas/cadence/",
     "saveable": false
@@ -13,6 +18,11 @@
     "title": "Ledger",
     "description": "An encrypted personal notebook with a relationship graph — installable, offline, nothing leaves your device.",
     "emoji": "📒",
+    "color": "#d8a657",
+    "art": {
+      "flat": "icons/ledger-flat.svg",
+      "3d": "icons/ledger-3d.svg"
+    },
     "date": "2026-09-10T02:24:36.000Z",
     "url": "ideas/ledger/",
     "saveable": false,
@@ -23,6 +33,11 @@
     "title": "Ephemera",
     "description": "Browse 8,038 industrial, educational and advertising films from the Prelinger Archives, and watch them in the page.",
     "emoji": "📽️",
+    "color": "#5fb3a1",
+    "art": {
+      "flat": "icons/ephemera-flat.svg",
+      "3d": "icons/ephemera-3d.svg"
+    },
     "date": "2026-08-31T19:19:09.000Z",
     "url": "ideas/ephemera/",
     "saveable": true
@@ -32,6 +47,11 @@
     "title": "Public Screening",
     "description": "Browse 1,186 public domain films and watch hundreds of them in the page.",
     "emoji": "🎞️",
+    "color": "#e5a00d",
+    "art": {
+      "flat": "icons/public-screening-flat.svg",
+      "3d": "icons/public-screening-3d.svg"
+    },
     "date": "2026-08-27T02:30:33.000Z",
     "url": "ideas/public-screening/",
     "saveable": true
@@ -41,6 +61,11 @@
     "title": "Container Compound",
     "description": "Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.",
     "emoji": "📦",
+    "color": "#8c3b2e",
+    "art": {
+      "flat": "icons/container-compound-flat.svg",
+      "3d": "icons/container-compound-3d.svg"
+    },
     "date": "2026-08-13T05:59:34.000Z",
     "url": "ideas/container-compound/",
     "saveable": true
@@ -50,6 +75,11 @@
     "title": "Breathe",
     "description": "A breathing circle: box, 4-7-8, coherent, physiological sigh and more.",
     "emoji": "🫧",
+    "color": "#2b6ca8",
+    "art": {
+      "flat": "icons/breathe-flat.svg",
+      "3d": "icons/breathe-3d.svg"
+    },
     "date": "2026-08-13T04:03:58.000Z",
     "url": "ideas/breathe/",
     "saveable": true

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Breathe: soap bubble holding a box-breathing square, soft clay -->
+  <defs>
+    <radialGradient id="breathe-3d-bubble" cx=".36" cy=".3" r=".75">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".5" stop-color="#b7d5f2"/>
+      <stop offset=".85" stop-color="#62a1dc"/>
+      <stop offset="1" stop-color="#e9f7fd"/>
+    </radialGradient>
+    <linearGradient id="breathe-3d-rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".6" stop-color="#f1e6ff"/>
+      <stop offset="1" stop-color="#fff1d6"/>
+    </linearGradient>
+    <linearGradient id="breathe-3d-box" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#254463"/>
+      <stop offset="1" stop-color="#0f2338"/>
+    </linearGradient>
+    <radialGradient id="breathe-3d-bead" cx=".35" cy=".3" r=".75">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e6d7bd"/>
+    </radialGradient>
+    <filter id="breathe-3d-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+    <filter id="breathe-3d-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.4"/></filter>
+  </defs>
+  <g transform="translate(6 0)">
+  <ellipse cx="60" cy="115" rx="26" ry="5" fill="#1d3c5a" opacity=".55" filter="url(#breathe-3d-blur)"/>
+  <circle cx="58" cy="66" r="40" fill="url(#breathe-3d-bubble)" stroke="url(#breathe-3d-rim)" stroke-width="4.5"/>
+  <path d="M30.9 58.8 A28 28 0 0 1 44 41.8" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" filter="url(#breathe-3d-soft)"/>
+  <circle cx="51" cy="37" r="3" fill="#ffffff"/>
+  <path d="M88 82 A34 34 0 0 1 70 98" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity=".7" filter="url(#breathe-3d-soft)"/>
+  <rect x="44" y="53" width="32" height="32" rx="10" fill="#142c46" opacity=".35" filter="url(#breathe-3d-soft)"/>
+  <rect x="42" y="50" width="32" height="32" rx="10" fill="url(#breathe-3d-box)"/>
+  <path d="M50 49 H62" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" opacity=".55"/>
+  <circle cx="45.9" cy="54.4" r="4.4" fill="#0f2338" opacity=".35" filter="url(#breathe-3d-soft)"/>
+  <circle cx="44.9" cy="52.9" r="4.4" fill="url(#breathe-3d-bead)"/>
+  <circle cx="100" cy="26" r="11" fill="url(#breathe-3d-bubble)" stroke="url(#breathe-3d-rim)" stroke-width="3.5"/>
+  <path d="M94 23 A7 7 0 0 1 98 19.5" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="106" cy="50" r="5" fill="url(#breathe-3d-bubble)" stroke="url(#breathe-3d-rim)" stroke-width="2.5"/>
+  </g>
+</svg>

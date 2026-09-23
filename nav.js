@@ -19,6 +19,9 @@
  *   window.randomNav.look() / .setLook('retro'|'modern'): the hub's two
  *                                     looks (a 'randomlook' event fires on
  *                                     window when it changes)
+ *   window.randomNav.icons() / .setIcons('flat'|'3d'): the style of the
+ *                                     ideas' icons (a 'randomicons' event
+ *                                     fires on window when it changes)
  *   window.randomNav.hide() / .show() tuck the bar away for an immersive
  *                                     moment (a handle or an edge swipe
  *                                     brings it back); full screen hides
@@ -46,6 +49,7 @@
     since: 'random-hub:since',
     trail: 'random-hub:trail',
     look: 'random-hub:look',
+    icons: 'random-hub:icons',
     events: 'random-hub:events',
     dismissed: 'random-hub:shade-dismissed',
     sounds: 'random-hub:sounds',
@@ -104,6 +108,65 @@
     applyLook();
     if (look === 'retro') loadRetro();
     try { window.dispatchEvent(new CustomEvent('randomlook', { detail: { look: look } })); } catch (e) {}
+  }
+
+  /* ------------------------------------------------------------- icons */
+
+  // Each idea's hand-drawn icon comes in two styles, 'flat' (the default)
+  // and '3d' (soft clay). The hub's inline head script sets data-icons
+  // before first paint; everything else asks here.
+  function currentIcons() {
+    return lget(KEY.icons, null) === '3d' ? '3d' : 'flat';
+  }
+  var icons = currentIcons();
+  document.documentElement.setAttribute('data-icons', icons);
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted && currentIcons() !== icons) setIcons(currentIcons());
+  });
+
+  function setIcons(next) {
+    if (next !== 'flat' && next !== '3d') return;
+    lset(KEY.icons, next);
+    if (next === icons) return;
+    icons = next;
+    document.documentElement.setAttribute('data-icons', icons);
+    // Tiles nav.js drew (the tray, dialogs) follow at once.
+    Array.prototype.forEach.call(document.querySelectorAll('img[data-random-art]'), paintArt);
+    if (ui.root) Array.prototype.forEach.call(ui.root.querySelectorAll('img[data-random-art]'), paintArt);
+    try { window.dispatchEvent(new CustomEvent('randomicons', { detail: { icons: icons } })); } catch (e) {}
+  }
+
+  // Fill a tile with the idea's icon in the current style, or its emoji
+  // when it ships no icons. The <img> remembers its idea so a style switch
+  // can repaint it.
+  function art(target, idea) {
+    target.textContent = '';
+    if (idea && idea.art && idea.art.flat && idea.art['3d']) {
+      var img = document.createElement('img');
+      img.alt = '';
+      img.decoding = 'async';
+      img.setAttribute('data-random-art', JSON.stringify(idea.art));
+      // A page under another worker (Ledger's) may not reach icons/
+      // offline: the emoji, then, rather than a broken image.
+      img.onerror = function () {
+        if (!img.isConnected || img.parentNode !== target) return;
+        target.classList.remove('has-art');
+        target.textContent = idea.emoji || '✦';
+      };
+      paintArt(img);
+      target.appendChild(img);
+      target.classList.add('has-art');
+    } else {
+      target.classList.remove('has-art');
+      target.textContent = (idea && idea.emoji) || '✦';
+    }
+    return target;
+  }
+  function paintArt(img) {
+    try {
+      var urls = JSON.parse(img.getAttribute('data-random-art'));
+      img.src = new URL(urls[icons], HUB).href;
+    } catch (e) { /* not ours */ }
   }
 
   /* ---------------------------------------------------- where are we? */
@@ -215,6 +278,7 @@
       if (!card || card.querySelector('.card-new')) return;
       var pill = document.createElement('span');
       pill.className = 'card-new';
+      pill.id = 'new-' + idea.slug; // part of the card's accessible name
       pill.textContent = 'New';
       var top = card.querySelector('.card-top') || card;
       top.insertBefore(pill, top.querySelector('time'));
@@ -251,7 +315,7 @@
     '* { box-sizing: border-box; }',
     '.wrap {',
     '  --ink: #1a1a1a; --muted: #6b6b6b; --line: rgba(0,0,0,.09);',
-    '  --bar: rgba(250,249,247,.84); --sheet: #faf9f7; --card: #fff; --accent: #b3542e;',
+    '  --bar: rgba(250,249,247,.84); --sheet: #faf9f7; --card: #fff; --accent: #6a3fd0; --on-accent: #fff;',
     '  font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;',
     '  color: var(--ink);',
     '}',
@@ -259,7 +323,7 @@
     // merely when the system is: plenty of ideas are dark in a light OS.
     '.wrap.dark {',
     '  --ink: #eceae6; --muted: #9a9a9a; --line: rgba(255,255,255,.1);',
-    '  --bar: rgba(20,20,20,.84); --sheet: #1a1a1a; --card: #242424; --accent: #e08554;',
+    '  --bar: rgba(20,20,20,.84); --sheet: #1a1a1a; --card: #242424; --accent: #a98cf5; --on-accent: #111;',
     '}',
     '.bar {',
     '  position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483000;',
@@ -308,6 +372,10 @@
     '  border: 1px solid var(--line); border-radius: 12px; background: var(--card);',
     '  color: inherit; text-decoration: none; }',
     '.card .emoji { font-size: 22px; line-height: 1; }',
+    '.card .emoji.has-art { display: grid; place-items: center; width: 36px; height: 36px; padding: 3px;',
+    '  border-radius: 9px; background: var(--c, var(--line)); }',
+    '.card .emoji img, .tile img { display: block; width: 100%; height: 100%; }',
+    '.tile.has-art { padding: 5px; }',
     '.card .title { font-weight: 600; font-size: 13px; overflow: hidden; display: -webkit-box;',
     '  -webkit-line-clamp: 2; -webkit-box-orient: vertical; }',
     '.card .when { color: var(--muted); font-size: 12px; margin-top: auto; }',
@@ -322,7 +390,7 @@
     '  box-shadow: 0 6px 24px rgba(0,0,0,.22); }',
     '.toast span { white-space: nowrap; }',
     '.toast[hidden] { display: none; }',
-    '.toast button { border: 0; border-radius: 999px; padding: 6px 12px; background: var(--accent); color: #fff;',
+    '.toast button { border: 0; border-radius: 999px; padding: 6px 12px; background: var(--accent); color: var(--on-accent);',
     '  font: inherit; font-weight: 600; cursor: pointer; }',
     '.nobar .bar { display: none; }',
     '.nobar .toast, .tucked .toast { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }',
@@ -683,6 +751,10 @@
     share: share,
     look: function () { return look; },
     setLook: setLook,
+    icons: function () { return icons; },
+    setIcons: setIcons,
+    // Fill a tile with an idea's icon (current style) or its emoji.
+    art: art,
     // For the launcher: the idea catalogue, and what this device knows.
     ideas: function () { return ideasReady; },
     isNew: function (idea) { return isNew(idea); },
@@ -753,10 +825,13 @@
 
   /* ----------------------------------------------------------- tiles */
 
-  // An idea's launcher tile colour: a hue from a stable FNV-1a hash of its
-  // slug and a lightness step from other bits (or idea.json's "icon").
+  // An idea's launcher tile colour: idea.json's "icon" (a retro-only
+  // override) or "color" (build.js always writes one). The hue from a
+  // stable FNV-1a hash of the slug is only a fallback for an older cached
+  // ideas.json without it.
   function tileVars(idea) {
     if (idea.icon) return { custom: idea.icon };
+    if (idea.color) return { custom: idea.color };
     var h = 0x811c9dc5;
     for (var i = 0; i < idea.slug.length; i++) { h ^= idea.slug.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
     return { h: String(h % 360), dl: [0, -7, 6][(h >>> 9) % 3] + '%' };
@@ -766,8 +841,7 @@
     var v = tileVars(idea);
     if (v.custom) { t.classList.add('custom'); t.style.setProperty('--tile', v.custom); }
     else { t.style.setProperty('--h', v.h); t.style.setProperty('--dl', v.dl); }
-    t.textContent = idea.emoji || '✦';
-    return t;
+    return art(t, idea);
   }
 
   var fontsAdded = false;
@@ -1164,8 +1238,8 @@
       var href = new URL(known && known.url ? known.url : 'ideas/' + r.slug + '/', HUB).href;
       var item = el('div', { 'class': 'item' });
       var card = el('a', { 'class': 'card', href: href });
-      var emoji = el('span', { 'class': 'emoji', 'aria-hidden': 'true' });
-      emoji.textContent = (known && known.emoji) || '✦';
+      var emoji = art(el('span', { 'class': 'emoji', 'aria-hidden': 'true' }), known);
+      if (known && known.color) emoji.style.setProperty('--c', known.color);
       var title = el('span', { 'class': 'title' });
       title.textContent = (known && known.title) || r.title || r.slug;
       var when = el('span', { 'class': 'when' });

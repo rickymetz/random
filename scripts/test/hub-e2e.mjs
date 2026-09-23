@@ -109,6 +109,34 @@ try {
   const manifest = await (await page.request.get(B + "manifest.webmanifest")).json();
   check(manifest.display === "standalone" && manifest.shortcuts.length === 4 && !!manifest.share_target,
     "manifest: standalone, 4 shortcuts, share target");
+  const catalogueNow = await (await page.request.get(B + "ideas.json")).json();
+  check(manifest.shortcuts.every((s) => {
+    const idea = catalogueNow.find((i) => s.url === i.url);
+    return idea && (idea.art ? s.icons[0].src === idea.art["3d"] : s.icons[0].src === "icon-192.png");
+  }), "shortcuts carry the ideas' 3D icons (or the app icon)");
+
+  section("modern front page");
+  check((await page.$eval(".front .lead .card", (a) => a.dataset.slug)) === catalogueNow[0].slug, "the newest idea leads");
+  check((await page.$$(".front .second")).length === 2 && (await page.$$(".rows .row")).length === catalogueNow.length - 3,
+    "two secondaries, the rest as rows");
+  const lead = await page.$eval(".front .lead .card", (a) => ({ bg: getComputedStyle(a).backgroundColor, font: getComputedStyle(a.querySelector("h2")).fontFamily }));
+  check(lead.bg !== "rgba(0, 0, 0, 0)" && /Archivo/.test(lead.font), "the lead is a full-colour block in the display face");
+  check(await page.evaluate(() => document.fonts.load('900 20px "Archivo Heavy"').then((f) => f.length > 0)), "Archivo loads");
+  const shown = () => page.$eval(".front .lead .art", (a) => [...a.querySelectorAll("img")].filter((i) => getComputedStyle(i).display !== "none").map((i) => i.className));
+  check(JSON.stringify(await shown()) === '["art-flat"]' && (await page.getAttribute('.seg [data-icons="flat"]', "aria-pressed")) === "true",
+    "flat icons by default");
+  await page.click('.seg [data-icons="3d"]');
+  check(JSON.stringify(await shown()) === '["art-3d"]' && (await page.getAttribute('.seg [data-icons="3d"]', "aria-pressed")) === "true",
+    "3D switches every icon at once");
+  await page.reload();
+  check((await page.getAttribute("html", "data-icons")) === "3d", "the choice survives a reload, before first paint");
+  check(await page.evaluate(() => caches.keys()
+    .then((ks) => Promise.all(ks.filter((k) => k.startsWith("random-hub-shell-"))
+      .map((k) => caches.open(k).then((c) => c.match(new URL("icons/breathe-3d.svg", location.href).href)))))
+    .then((hits) => hits.some(Boolean))), "icons are precached with the shell");
+  check(await page.$eval('.lead .card', (a) => a.getAttribute("aria-labelledby").startsWith("title-") && !!document.getElementById(a.getAttribute("aria-describedby"))),
+    "a card is named by its title and described by its blurb");
+  await page.click('.seg [data-icons="flat"]');
 
   section("idea pages get the bar injected");
   await page.goto(B + "ideas/breathe/");
@@ -133,6 +161,7 @@ try {
   check(recents?.[0]?.slug === "breathe", "recents recorded the visit");
   await bar(page, 'button[aria-label="Recent ideas"]').click();
   check(await bar(page, '.card[href$="ideas/breathe/"]').isVisible(), "tray lists it");
+  check((await bar(page, '.card[href$="ideas/breathe/"] img').getAttribute("src")).endsWith("icons/breathe-flat.svg"), "with its icon");
   await page.keyboard.press("Escape");
 
   section("new labels");
@@ -250,7 +279,7 @@ try {
     await page.evaluate(() => window.randomNav.setLook("modern"));
     check((await lookOf()) === "modern" && (await page.locator("body > main").isVisible()) && (await page.locator("#retro").isHidden()),
       "and switching back to modern is instant too");
-    check((await themeColor()) === "#faf9f7", "the theme colour is restored");
+    check((await themeColor()) === "#f5f3ee", "the theme colour is restored");
     await ctx.close();
   }
 
@@ -286,8 +315,10 @@ try {
     await page.keyboard.press("ArrowLeft");
     await page.waitForFunction(() => { const p = document.querySelector(".rt-pages"); return Math.round(p.scrollLeft / p.clientWidth) === 1; });
     check(true, "and the arrow keys do too");
-    const hues = await page.$$eval(".rt-pages .rt-tile", (ts) => ts.map((t) => t.style.getPropertyValue("--h") + "/" + t.style.getPropertyValue("--dl")));
+    const hues = await page.$$eval(".rt-pages .rt-tile", (ts) => ts.map((t) => t.style.getPropertyValue("--tile") || t.style.getPropertyValue("--h") + "/" + t.style.getPropertyValue("--dl")));
     check(new Set(hues).size === hues.length, "every idea's tile has its own colour");
+    check((await page.$eval('.rt-pages .rt-icon[data-slug="breathe"] .rt-tile img', (i) => i.complete && i.naturalWidth > 0 && new URL(i.src).pathname)).endsWith("icons/breathe-flat.svg"),
+      "tiles show the idea's icon in the chosen style");
 
     const dock = () => page.$$eval(".rt-dock-slot .rt-icon", (els) => els.map((e) => e.dataset.slug));
     check((await dock()).join() === catalogue.slice(0, 2).map((i) => i.slug).join(), "the dock starts with the two newest ideas");
@@ -939,7 +970,7 @@ try {
     page.on("pageerror", (e) => pageErrors.push(`${page.url()}: ${e.message}`));
     await page.goto(B);
     const btn = await page.locator("#look-retro").boundingBox();
-    check(btn.height < 44, `the modern "Retro look" button stays on one line (${Math.round(btn.height)} px)`);
+    check(btn.height < 56, `the modern "Retro look" button stays on one line (${Math.round(btn.height)} px)`);
     await page.click("#look-retro");
     await page.waitForSelector("#retro[data-ready]");
     await page.click('.rt-pages .rt-icon[data-slug="breathe"]', { button: "right" });

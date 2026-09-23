@@ -6,8 +6,8 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#faf9f7",
-  "theme_color": "#faf9f7",
+  "background_color": "#f5f3ee",
+  "theme_color": "#f5f3ee",
   "icons": [
     {
       "src": "icon-192.png",
@@ -49,6 +49,11 @@
       "url": "ideas/cadence/",
       "icons": [
         {
+          "src": "icons/cadence-3d.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        },
+        {
           "src": "icon-192.png",
           "sizes": "192x192",
           "type": "image/png"
@@ -59,6 +64,11 @@
       "name": "Ledger",
       "url": "ideas/ledger/",
       "icons": [
+        {
+          "src": "icons/ledger-3d.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        },
         {
           "src": "icon-192.png",
           "sizes": "192x192",
@@ -71,6 +81,11 @@
       "url": "ideas/ephemera/",
       "icons": [
         {
+          "src": "icons/ephemera-3d.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        },
+        {
           "src": "icon-192.png",
           "sizes": "192x192",
           "type": "image/png"
@@ -81,6 +96,11 @@
       "name": "Public Screening",
       "url": "ideas/public-screening/",
       "icons": [
+        {
+          "src": "icons/public-screening-3d.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        },
         {
           "src": "icon-192.png",
           "sizes": "192x192",
