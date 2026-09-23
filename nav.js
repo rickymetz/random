@@ -6,15 +6,20 @@
  *   - ideas that ship their own service worker (Cadence, Ledger) are out of
  *     the hub worker's reach, so they carry a <script> tag for it themselves.
  *
- * It draws an Android-style ◀ ● ■ bar (Back, Home, Recents) in a closed
- * shadow root, keeps the recents / "new idea" bookkeeping in localStorage,
- * sets the app-icon badge, and offers hub updates as a toast.
+ * It draws an Android-style ◀ ● ■ bar (Back, Home, Recents) in a shadow
+ * root (so idea CSS can't reach it, nor its CSS the idea), keeps the
+ * recents / "new idea" bookkeeping in localStorage, sets the app-icon
+ * badge, and offers hub updates as a toast.
  *
  * Ideas talk to it through a small, documented surface (README):
  *   --random-nav-h                    set on <html>; offset bottom UI by it
  *   <meta name="random-nav" content="off">      no bar on this page
  *   <meta name="random-nav" content="overlay">  bar, but no bottom spacer
  *   <a data-random-keep>              keep this "← random" link visible
+ *   window.randomNav.hide() / .show() tuck the bar away for an immersive
+ *                                     moment (a handle or an edge swipe
+ *                                     brings it back); full screen hides
+ *                                     it automatically
  *
  * Storage is best-effort: every read and write is wrapped, and the bar
  * works (without recents) when storage is unavailable.
@@ -24,6 +29,9 @@
 
   if (window.__randomNav) return; // injected *and* script-tagged: draw once
   window.__randomNav = true;
+  // Framed, this is the hub saving an idea for offline in a hidden iframe
+  // (hub.js): no bar, and the visit must not count as the idea being opened.
+  if (window.top !== window.self) return;
 
   var script = document.currentScript;
   var HUB = new URL('./', script ? script.src : location.href);
@@ -179,6 +187,7 @@
     back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 5.5v13L6.5 12z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
     home: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
     recents: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
+    share: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4M6 12v6.5A1.5 1.5 0 0 0 7.5 20h9a1.5 1.5 0 0 0 1.5-1.5V12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
   };
 
@@ -199,6 +208,7 @@
     '}',
     '.bar {',
     '  position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483000;',
+    '  transition: transform .25s cubic-bezier(.32,.72,0,1);',
     '  display: flex; justify-content: space-around; align-items: center;',
     '  height: calc(' + BAR_H + 'px + env(safe-area-inset-bottom, 0px));',
     '  padding: 0 max(8px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(8px, env(safe-area-inset-left, 0px));',
@@ -231,8 +241,10 @@
     '.open .scrim { opacity: 1; pointer-events: auto; }',
     '.open .sheet { transform: none; }',
     '.head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 16px 10px; }',
-    '.head h2 { margin: 0; font-size: 15px; font-weight: 600; }',
+    '.head h2 { margin: 0; font-size: 15px; font-weight: 600; flex: 1; }',
     '.head button { border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; padding: 6px; }',
+    '.head .share { display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; }',
+    '.head .share svg { width: 16px; height: 16px; }',
     '.strip { display: flex; gap: 10px; overflow-x: auto; padding: 2px 16px 4px; scroll-snap-type: x mandatory;',
     '  scrollbar-width: none; overscroll-behavior-x: contain; }',
     '.strip::-webkit-scrollbar { display: none; }',
@@ -258,8 +270,15 @@
     '.toast button { border: 0; border-radius: 999px; padding: 6px 12px; background: var(--accent); color: #fff;',
     '  font: inherit; font-weight: 600; cursor: pointer; }',
     '.nobar .bar { display: none; }',
-    '.nobar .toast { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }',
-    '@media (prefers-reduced-motion: reduce) { .sheet, .scrim { transition: none; } }'
+    '.nobar .toast, .tucked .toast { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }',
+    '.tucked .bar { transform: translateY(100%); pointer-events: none; }',
+    '.handle { position: fixed; left: 50%; bottom: 0; z-index: 2147483000; transform: translateX(-50%);',
+    '  display: none; width: 96px; height: calc(28px + env(safe-area-inset-bottom, 0px)); padding: 0 0 env(safe-area-inset-bottom, 0px);',
+    '  border: 0; background: none; cursor: pointer; place-items: center; -webkit-tap-highlight-color: transparent; }',
+    '.handle::before { content: ""; width: 44px; height: 5px; border-radius: 3px; background: var(--ink); opacity: .35; }',
+    '.tucked .handle { display: grid; }',
+    '.handle:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 8px; }',
+    '@media (prefers-reduced-motion: reduce) { .sheet, .scrim, .bar { transition: none; } }'
   ].join('\n');
 
   var host, ui = {};
@@ -274,7 +293,7 @@
   function mount() {
     host = document.createElement('random-nav');
     host.style.cssText = 'all: initial; position: static;';
-    var root = host.attachShadow({ mode: 'closed' });
+    var root = host.attachShadow({ mode: 'open' }); // open: tests reach in
     var style = document.createElement('style');
     style.textContent = CSS_TEXT;
     root.appendChild(style);
@@ -285,7 +304,9 @@
     ui.scrim = el('div', { 'class': 'scrim' });
     ui.sheet = el('div', { 'class': 'sheet', role: 'dialog', 'aria-label': 'Recent ideas', 'aria-hidden': 'true' });
     ui.sheet.appendChild(el('div', { 'class': 'head' },
-      '<h2>Recent</h2><button type="button" data-act="clear">Clear all</button>'));
+      '<h2>Recent</h2>' +
+      (slug ? '<button type="button" class="share" data-act="share">' + ICON.share + 'Share</button>' : '') +
+      '<button type="button" data-act="clear">Clear all</button>'));
     ui.strip = el('div', { 'class': 'strip' });
     ui.sheet.appendChild(ui.strip);
 
@@ -298,13 +319,14 @@
     ui.bar.appendChild(ui.home);
     ui.bar.appendChild(ui.recents);
 
-    ui.toast = el('div', { 'class': 'toast', role: 'status', hidden: '' },
-      '<span>New ideas available</span><button type="button">Refresh</button>');
+    ui.toast = el('div', { 'class': 'toast', role: 'status', hidden: '' }, '<span></span><button type="button"></button>');
+    ui.handle = el('button', { type: 'button', 'class': 'handle', 'aria-label': 'Show navigation' });
 
     wrap.appendChild(ui.scrim);
     wrap.appendChild(ui.sheet);
     wrap.appendChild(ui.toast);
     wrap.appendChild(ui.bar);
+    wrap.appendChild(ui.handle);
     root.appendChild(wrap);
     ui.wrap = wrap;
     matchPage();
@@ -320,7 +342,14 @@
       if (canGoBack()) history.back();
       else location.href = HUB.href;
     });
-    ui.home.addEventListener('click', function () { location.href = HUB.href; });
+    ui.home.addEventListener('click', function () {
+      if (longPressed) { longPressed = false; return; }
+      location.href = HUB.href;
+    });
+    onLongPress(ui.home, share);
+    var shareBtn = ui.sheet.querySelector('[data-act="share"]');
+    if (shareBtn) shareBtn.addEventListener('click', function () { toggleTray(false); share(); });
+    ui.handle.addEventListener('click', function () { show(); });
     ui.recents.addEventListener('click', function () { toggleTray(); });
     ui.scrim.addEventListener('click', function () { toggleTray(false); });
     ui.sheet.querySelector('[data-act="clear"]').addEventListener('click', function () {
@@ -329,6 +358,12 @@
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && wrap.classList.contains('open')) toggleTray(false);
+    });
+
+    // The bar is its own UI: a tap on it must not also reach the page (on
+    // Breathe, a tap anywhere starts the exercise).
+    ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'click'].forEach(function (type) {
+      host.addEventListener(type, function (e) { e.stopPropagation(); });
     });
 
     document.body.appendChild(host);
@@ -347,8 +382,100 @@
         document.body.appendChild(spacer);
       }
       hideOwnHubLinks();
+      watchImmersive();
     }
   }
+
+  /* ------------------------------------------------- immersive moments */
+
+  // An idea tucks the bar away (window.randomNav.hide()) for something
+  // immersive — Breathe's exercise — and full screen tucks it too. A small
+  // handle stays at the bottom edge: tap it, or swipe up from the edge, and
+  // the bar is back. --random-nav-h drops to the bare safe area meanwhile,
+  // so ideas' bottom UI settles down with it.
+  var tucked = false;
+  var tuckedBeforeFullscreen = false;
+  function setTucked(on) {
+    if (!ui.wrap || navMode === 'off' || tucked === on) return;
+    tucked = on;
+    ui.wrap.classList.toggle('tucked', on);
+    if (on) toggleTray(false);
+    document.documentElement.style.setProperty('--random-nav-h', on
+      ? 'env(safe-area-inset-bottom, 0px)'
+      : 'calc(' + BAR_H + 'px + env(safe-area-inset-bottom, 0px))');
+  }
+  function hide() { setTucked(true); }
+  function show() { setTucked(false); }
+
+  function watchImmersive() {
+    function onFullscreen() {
+      var fs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      if (fs) { tuckedBeforeFullscreen = tucked; hide(); }
+      else if (!tuckedBeforeFullscreen) show();
+    }
+    document.addEventListener('fullscreenchange', onFullscreen);
+    document.addEventListener('webkitfullscreenchange', onFullscreen);
+
+    // Swipe up from the bottom edge, as on Android.
+    var startY = null;
+    document.addEventListener('touchstart', function (e) {
+      var t = e.touches[0];
+      startY = tucked && t && t.clientY > window.innerHeight - 32 ? t.clientY : null;
+    }, { passive: true });
+    document.addEventListener('touchmove', function (e) {
+      var t = e.touches[0];
+      if (startY != null && t && startY - t.clientY > 36) { startY = null; show(); }
+    }, { passive: true });
+  }
+
+  /* ------------------------------------------------------------ share */
+
+  // Long-press ● (or "Share" in the tray): the system share sheet with this
+  // idea's link, or the clipboard where there is no share sheet.
+  var longPressed = false;
+  function onLongPress(node, fn) {
+    var timer = null;
+    function cancel() { clearTimeout(timer); timer = null; }
+    node.addEventListener('pointerdown', function () {
+      longPressed = false;
+      cancel();
+      timer = setTimeout(function () { longPressed = true; timer = null; fn(); }, 500);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (t) { node.addEventListener(t, cancel); });
+    node.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+
+  function share() {
+    var known = slug && ideaBySlug(slug);
+    var url = known && known.url ? new URL(known.url, HUB).href : (isHub ? HUB.href : location.href);
+    var title = known ? known.title : document.title;
+    if (navigator.share) {
+      navigator.share({ title: title, url: url }).catch(function () { /* dismissed */ });
+      return;
+    }
+    var copied = navigator.clipboard && navigator.clipboard.writeText
+      ? navigator.clipboard.writeText(url) : Promise.reject();
+    copied.then(function () { toast('Link copied', null, 2200); },
+      function () { toast(url, null, 5000); });
+  }
+
+  /* ------------------------------------------------------------ toast */
+
+  var toastTimer = null;
+  function toast(text, action, ms) {
+    clearTimeout(toastTimer);
+    ui.toast.querySelector('span').textContent = text;
+    var btn = ui.toast.querySelector('button');
+    btn.hidden = !action;
+    if (action) {
+      btn.textContent = action.label;
+      btn.onclick = function () { ui.toast.hidden = true; action.run(); };
+    }
+    ui.toast.hidden = false;
+    if (ms) toastTimer = setTimeout(function () { ui.toast.hidden = true; }, ms);
+  }
+
+  window.randomNav = { hide: hide, show: show, share: share };
 
   // Ideas that predate the bar carry their own link home: "← random", or an
   // icon-only arrow with just an aria-label. While the bar is up it is
@@ -503,14 +630,12 @@
     var refreshing = false;
     navigator.serviceWorker.register(new URL('sw.js', HUB).href, { scope: HUB.href }).then(function (reg) {
       function offer(worker) {
-        ui.toast.hidden = false;
-        ui.toast.querySelector('button').onclick = function () {
-          ui.toast.hidden = true;
+        toast('New ideas available', { label: 'Refresh', run: function () {
           worker.addEventListener('statechange', function () {
             if (worker.state === 'activated' && !refreshing) { refreshing = true; location.reload(); }
           });
           worker.postMessage({ type: 'SKIP_WAITING' });
-        };
+        } });
       }
       // Only an *update* is news: the very first install has no older
       // version to replace.

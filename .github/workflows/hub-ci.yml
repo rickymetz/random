@@ -1,0 +1,42 @@
+name: Hub CI
+
+# End-to-end checks for the hub PWA (scripts/test/hub-e2e.mjs): the service
+# worker, the bottom navbar, offline, updates, eviction, save-for-offline
+# and sharing, in a real Chromium. The hub ships no dependencies, so
+# Playwright is installed into a temp dir rather than a package.json.
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'dossier/**'
+      - 'docs/**'
+      - '**.md'
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'dossier/**'
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # build.js dates ideas by their first commit
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright (outside the repo)
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" --no-save --no-audit --no-fund playwright@1.56.1
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Build the hub
+        run: node scripts/build.js
+      - name: End-to-end
+        env:
+          PLAYWRIGHT: ${{ runner.temp }}/pw/node_modules/playwright
+        run: node scripts/test/hub-e2e.mjs

@@ -104,8 +104,8 @@ every open question).
 
 ### R4. Bottom navbar (`nav.js`)
 
-- A self-contained script that injects a fixed bottom bar in a closed
-  shadow root (so idea CSS can't leak in either direction), styled as the
+- A self-contained script that injects a fixed bottom bar in a shadow
+  root (open, so tests can reach in) (so idea CSS can't leak in either direction), styled as the
   **classic Android 3-button bar**: ◀ ● ■ glyphs on a thin translucent
   bar (backdrop blur) that follows `prefers-color-scheme`.
   - **Back (◀)**: `history.back()` when there is in-app history
@@ -245,6 +245,37 @@ every open question).
   - Relative URLs matter for offline caching too.
   - An idea that ships its own service worker must add the `nav.js`
     script tag itself.
+
+## Follow-ups (2026-09-23)
+
+Four of five suggested improvements were chosen after the first build:
+
+- **F1. Immersive moments.** `window.randomNav.hide()` / `.show()` tuck
+  the bar away. While it's tucked, `--random-nav-h` drops to the bare
+  safe area, and a handle at the bottom edge (tap it, or swipe up from
+  the edge) brings the bar back. Full screen tucks it automatically, so a
+  film playing full screen in Ephemera or Public Screening is covered.
+  Breathe tucks it when the exercise starts. Taps on the bar never reach
+  the page.
+- **F2. Save for offline.** Each saveable card (not Cadence or the Ledger
+  stub, which keep themselves offline) has a Save offline button.
+  - `hub.js` loads the idea in a hidden iframe, so the worker caches
+    exactly what a visit would load. `nav.js` stays out of frames, so
+    saving doesn't count as opening.
+  - `hub.js` then asks the worker to pin the idea. Pinned ideas are never
+    evicted, and tapping again unpins.
+  - Ideas under 150 KB (`build.js` lists them for the worker) are saved
+    and pinned at install.
+- **F3. Hub CI.** `scripts/test/hub-e2e.mjs` covers the acceptance checks
+  below plus F1, F2 and F5 in Chromium. It has its own Pages-like server
+  that can go offline, ship an update or shrink the cache cap.
+  `.github/workflows/hub-ci.yml` runs it on pull requests and on `main`.
+- **F5. Share.** Long-press ● (or Share in the recents tray) opens the
+  system share sheet with the idea's link, or copies it where there's
+  none. The manifest's `share_target` lets Android share a link to the
+  app, and `hub.js` opens it when it points at an idea.
+
+(F4, a "Continue" row and search on the homepage, was not taken up.)
 
 ## Acceptance checks
 

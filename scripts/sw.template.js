@@ -11,6 +11,8 @@
  *     stale-while-revalidate for the rest), capped at ~50 MB with the least
  *     recently used idea evicted first;
  *   - injects nav.js into idea pages, so every idea gets the bottom navbar;
+ *   - keeps ideas saved for offline ("pinned", from the hub's Save button,
+ *     or tiny ideas saved at install) out of eviction;
  *   - leaves apps with their own worker (Cadence, Ledger) strictly alone.
  *
  * CacheStorage is per origin, not per worker scope: this worker only ever
@@ -21,6 +23,9 @@
 
 var VERSION = '__VERSION__';
 var SHELL = __SHELL__;
+// Ideas small enough to save whole at install: [{ slug, paths }], where
+// "ideas/<slug>/" stands for its index.html (the URL a visit requests).
+var AUTO_SAVE = __AUTO_SAVE__;
 
 var PREFIX = 'random-hub-';
 var SHELL_CACHE = PREFIX + 'shell-' + VERSION;
@@ -41,7 +46,7 @@ self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(SHELL_CACHE).then(function (cache) {
       return cache.addAll(SHELL.map(reload));
-    })
+    }).then(autoSave)
     // No skipWaiting here: the page offers the update as a toast and sends
     // SKIP_WAITING when the person taps Refresh.
   );
@@ -62,8 +67,51 @@ self.addEventListener('activate', function (event) {
 });
 
 self.addEventListener('message', function (event) {
-  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+  var msg = event.data || {};
+  var port = event.ports && event.ports[0];
+  if (msg.type === 'SKIP_WAITING') self.skipWaiting();
+  else if (msg.type === 'STATUS' && port) event.waitUntil(status().then(function (s) { port.postMessage(s); }));
+  else if (msg.type === 'PIN' && msg.slug) {
+    event.waitUntil(pin(msg.slug, !!msg.on).then(status).then(function (s) { if (port) port.postMessage(s); }));
+  }
 });
+
+/* ------------------------------------------------------ saved for offline */
+
+// Which ideas are pinned (kept out of eviction) and which have any copy.
+function status() {
+  return caches.open(IDEAS_CACHE).then(loadIndex).then(function (index) {
+    var cached = {};
+    Object.keys(index.entries).forEach(function (u) { cached[index.entries[u].slug] = true; });
+    return { type: 'STATUS', saved: Object.keys(index.pinned || {}), cached: Object.keys(cached) };
+  });
+}
+
+function pin(slug, on) {
+  return serial(function () {
+    return caches.open(IDEAS_CACHE).then(function (cache) {
+      return loadIndex(cache).then(function (index) {
+        index.pinned = index.pinned || {};
+        if (on) index.pinned[slug] = true;
+        else delete index.pinned[slug];
+        index.used[slug] = Date.now();
+        return saveIndex(cache, index);
+      });
+    });
+  });
+}
+
+// Best effort: an install never fails over an idea it merely hoped to save.
+function autoSave() {
+  return Promise.all(AUTO_SAVE.map(function (idea) {
+    return Promise.all(idea.paths.map(function (path) {
+      var request = reload(path);
+      return fetch(request).then(function (response) {
+        if (cacheable(response)) return store(new Request(at(path)), response, idea.slug);
+      }).catch(function () {});
+    })).then(function () { return pin(idea.slug, true); });
+  })).catch(function () {});
+}
 
 /* ------------------------------------------------------------------ fetch */
 
@@ -191,7 +239,11 @@ function serial(task) {
 function loadIndex(cache) {
   return cache.match(at(INDEX_KEY)).then(function (r) { return r ? r.json() : null; })
     .catch(function () { return null; })
-    .then(function (index) { return index || { entries: {}, used: {} }; });
+    .then(function (index) {
+      index = index || { entries: {}, used: {} };
+      index.pinned = index.pinned || {};
+      return index;
+    });
 }
 function saveIndex(cache, index) {
   return cache.put(at(INDEX_KEY), new Response(JSON.stringify(index), {
@@ -227,7 +279,7 @@ function touch(slug) {
 }
 
 // Drop whole ideas, least recently used first, until under the cap. The idea
-// being stored right now is never the one evicted.
+// being stored right now, and ideas saved for offline, are never evicted.
 function evict(cache, index, keep) {
   var total = 0;
   var bySlug = {};
@@ -239,7 +291,7 @@ function evict(cache, index, keep) {
   if (total <= CAP_BYTES) return Promise.resolve();
 
   var order = Object.keys(bySlug)
-    .filter(function (s) { return s !== keep; })
+    .filter(function (s) { return s !== keep && !index.pinned[s]; })
     .sort(function (a, b) { return (index.used[a] || 0) - (index.used[b] || 0); });
   var doomed = [];
   for (var i = 0; i < order.length && total > CAP_BYTES; i++) {

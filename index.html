@@ -111,6 +111,31 @@
     border-color: var(--accent);
     transform: translateY(-2px);
   }
+  .card-wrap { position: relative; display: flex; }
+  .card-wrap > .card { flex: 1; }
+  .card-wrap.has-save > .card { padding-bottom: 3.3rem; }
+  .save {
+    position: absolute;
+    left: 1.2rem;
+    bottom: 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 0.2rem 0.7rem;
+    background: var(--bg);
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .save::before { content: "⤓"; }
+  .save:hover { border-color: var(--accent); color: var(--ink); }
+  .save[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+  .save[aria-pressed="true"]::before { content: "✓"; }
+  .save[aria-busy="true"] { opacity: 0.6; cursor: progress; }
+  .save[aria-busy="true"]::before { content: "…"; }
   .card-top {
     display: flex;
     justify-content: space-between;
@@ -161,6 +186,7 @@
       </p>
     </header>
     <div class="grid">
+      <div class="card-wrap">
       <a class="card" href="ideas/cadence/" data-slug="cadence">
         <div class="card-top">
           <span class="card-emoji">🏋️</span>
@@ -169,6 +195,8 @@
         <h2>Cadence</h2>
         <p>A weekly calisthenics and mobility tracker — guided sessions with timers, set-by-set logging, and progress over time. Installable, offline, on your device only.</p>
       </a>
+      </div>
+      <div class="card-wrap">
       <a class="card" href="ideas/ledger/" data-slug="ledger">
         <div class="card-top">
           <span class="card-emoji">📒</span>
@@ -177,6 +205,8 @@
         <h2>Ledger</h2>
         <p>An encrypted personal notebook with a relationship graph — installable, offline, nothing leaves your device.</p>
       </a>
+      </div>
+      <div class="card-wrap saveable">
       <a class="card" href="ideas/breathe/" data-slug="breathe">
         <div class="card-top">
           <span class="card-emoji">🫧</span>
@@ -185,6 +215,9 @@
         <h2>Breathe</h2>
         <p>A one-minute box-breathing circle.</p>
       </a>
+      <button type="button" class="save" data-slug="breathe" hidden>Save offline</button>
+      </div>
+      <div class="card-wrap saveable">
       <a class="card" href="ideas/container-compound/" data-slug="container-compound">
         <div class="card-top">
           <span class="card-emoji">📦</span>
@@ -193,6 +226,9 @@
         <h2>Container Compound</h2>
         <p>Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.</p>
       </a>
+      <button type="button" class="save" data-slug="container-compound" hidden>Save offline</button>
+      </div>
+      <div class="card-wrap saveable">
       <a class="card" href="ideas/ephemera/" data-slug="ephemera">
         <div class="card-top">
           <span class="card-emoji">📽️</span>
@@ -201,6 +237,9 @@
         <h2>Ephemera</h2>
         <p>Browse 8,038 industrial, educational and advertising films from the Prelinger Archives, and watch them in the page.</p>
       </a>
+      <button type="button" class="save" data-slug="ephemera" hidden>Save offline</button>
+      </div>
+      <div class="card-wrap saveable">
       <a class="card" href="ideas/public-screening/" data-slug="public-screening">
         <div class="card-top">
           <span class="card-emoji">🎞️</span>
@@ -209,6 +248,8 @@
         <h2>Public Screening</h2>
         <p>Browse 1,186 public domain films and watch hundreds of them in the page.</p>
       </a>
+      <button type="button" class="save" data-slug="public-screening" hidden>Save offline</button>
+      </div>
     </div>
     <footer>
       <a href="https://github.com/rickymetz/random">source</a>

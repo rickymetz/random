@@ -55,6 +55,10 @@ that touched their folder.
 - Use relative URLs only; the site is served under `/random/`, so absolute
   paths like `/foo.png` will break. (Relative URLs are also what makes an
   idea work offline once it has been opened.)
+- **Immersive moments** (an exercise, a slideshow) can tuck the bar away
+  with `window.randomNav?.hide()` and bring it back with `.show()`; a
+  handle at the bottom edge (or a swipe up) lets people bring it back
+  themselves. Full screen hides it automatically.
 - An idea that registers **its own service worker** is outside the hub
   worker's reach: add `<script src="../../nav.js" defer></script>` yourself,
   and don't let your worker cache files outside your folder (see
@@ -68,6 +72,11 @@ standalone, works offline for the homepage and every idea you've opened
 (about 50 MB, least recently used idea evicted first), marks ideas added
 since your first visit as **New** until you open them (and counts them on
 the app icon), and offers each deploy as a "New ideas available" toast.
+Each card has a **Save offline** button that saves the whole idea ahead
+of time and keeps it from being evicted (ideas under 150 KB are saved at
+install anyway). Long-press ● — or **Share** in the recents tray — to
+share the idea you're on; on Android, links shared *to* the app open the
+idea they point at.
 The requirements live in
 `docs/superpowers/specs/2026-09-22-hub-pwa-requirements.md`.
 
@@ -79,6 +88,15 @@ The requirements live in
 | `scripts/sw.template.js` | The service worker. `build.js` stamps it into `sw.js`. |
 | `icon*.png`, `icon.svg`, `apple-touch-icon.png` | The "r" monogram. |
 | `manifest.webmanifest`, `ideas.json`, `sw.js` | **Generated** by `build.js`; don't edit. |
+| `scripts/test/hub-e2e.mjs` | End-to-end checks in Chromium; run by `.github/workflows/hub-ci.yml`. |
+
+Run the checks locally with an installed Playwright (the hub keeps no
+dependency manifest, so point at one):
+
+```sh
+node scripts/build.js
+PLAYWRIGHT=/path/to/node_modules/playwright node scripts/test/hub-e2e.mjs
+```
 
 ## How it works
 

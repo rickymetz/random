@@ -48,6 +48,19 @@ function escapeHtml(s) {
   })[c]);
 }
 
+// Every file an idea deploys (dotfiles never deploy), with its size.
+function listFiles(dir, prefix = "") {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith(".")) continue;
+    const rel = prefix + entry.name;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...listFiles(full, rel + "/"));
+    else out.push({ rel, bytes: fs.statSync(full).size });
+  }
+  return out;
+}
+
 function collectIdeas() {
   if (!fs.existsSync(ideasDir)) return [];
   const ideas = [];
@@ -78,12 +91,20 @@ function collectIdeas() {
       extractTag(html, /<meta\s+name=["']description["']\s+content=["']([^"']*)["']/i) ||
       "";
 
+    // An idea that ships its own service worker (Cadence), or only
+    // redirects to an app that does (the Ledger stub), keeps itself offline;
+    // the hub doesn't offer to save it.
+    const saveable =
+      !fs.existsSync(path.join(dir, "sw.js")) && !/http-equiv=["']refresh/i.test(html);
+
     ideas.push({
       slug,
       title,
       description,
       emoji: meta.emoji || "",
       date: firstCommitDate(path.join("ideas", slug)),
+      saveable,
+      files: saveable ? listFiles(dir) : [],
     });
   }
   // newest first
@@ -93,14 +114,22 @@ function collectIdeas() {
 
 function renderCard(idea) {
   const date = idea.date.toISOString().slice(0, 10);
-  return `      <a class="card" href="ideas/${escapeHtml(idea.slug)}/" data-slug="${escapeHtml(idea.slug)}">
+  const slug = escapeHtml(idea.slug);
+  // The Save button is a sibling of the card link (a button can't live
+  // inside a link); hub.js reveals it once the hub worker is in control.
+  const save = idea.saveable
+    ? `\n      <button type="button" class="save" data-slug="${slug}" hidden>Save offline</button>`
+    : "";
+  return `      <div class="card-wrap${idea.saveable ? " saveable" : ""}">
+      <a class="card" href="ideas/${slug}/" data-slug="${slug}">
         <div class="card-top">
           <span class="card-emoji">${escapeHtml(idea.emoji || "✦")}</span>
           <time datetime="${date}">${date}</time>
         </div>
         <h2>${escapeHtml(idea.title)}</h2>
         ${idea.description ? `<p>${escapeHtml(idea.description)}</p>` : ""}
-      </a>`;
+      </a>${save}
+      </div>`;
 }
 
 function renderHome(ideas) {
@@ -219,6 +248,31 @@ function renderHome(ideas) {
     border-color: var(--accent);
     transform: translateY(-2px);
   }
+  .card-wrap { position: relative; display: flex; }
+  .card-wrap > .card { flex: 1; }
+  .card-wrap.has-save > .card { padding-bottom: 3.3rem; }
+  .save {
+    position: absolute;
+    left: 1.2rem;
+    bottom: 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 0.2rem 0.7rem;
+    background: var(--bg);
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .save::before { content: "⤓"; }
+  .save:hover { border-color: var(--accent); color: var(--ink); }
+  .save[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+  .save[aria-pressed="true"]::before { content: "✓"; }
+  .save[aria-busy="true"] { opacity: 0.6; cursor: progress; }
+  .save[aria-busy="true"]::before { content: "…"; }
   .card-top {
     display: flex;
     justify-content: space-between;
@@ -316,6 +370,13 @@ function renderManifest(ideas) {
       { src: "icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
       { src: "icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
     ],
+    // Share a link to the installed app (Android): hub.js opens it when it
+    // points at an idea.
+    share_target: {
+      action: "./",
+      method: "GET",
+      params: { title: "title", text: "text", url: "url" },
+    },
     // Long-press the app icon: the four newest ideas.
     shortcuts: ideas.slice(0, 4).map((idea) => ({
       name: idea.title,
@@ -333,22 +394,40 @@ function renderIdeasJson(ideas) {
     emoji: idea.emoji,
     date: idea.date.toISOString(),
     url: `ideas/${idea.slug}/`,
+    saveable: idea.saveable,
   })), null, 2) + "\n";
 }
 
-function renderServiceWorker(files) {
+// Ideas this small are saved whole when the app installs, so they work
+// offline before anyone has opened them.
+const AUTO_SAVE_BYTES = 150 * 1024;
+function autoSaveList(ideas) {
+  return ideas
+    .filter((idea) => idea.saveable)
+    .filter((idea) => idea.files.reduce((n, f) => n + f.bytes, 0) <= AUTO_SAVE_BYTES)
+    .map((idea) => ({
+      slug: idea.slug,
+      paths: idea.files
+        .filter((f) => !/^(idea\.json|README\.md)$/.test(f.rel))
+        .map((f) => `ideas/${idea.slug}/${f.rel === "index.html" ? "" : f.rel}`),
+    }));
+}
+
+function renderServiceWorker(files, ideas) {
   const template = fs.readFileSync(path.join(__dirname, "sw.template.js"), "utf8");
   const shell = ["./", ...GENERATED.filter((f) => f !== "index.html"), ...STATIC_SHELL];
   // The version changes whenever anything the shell serves changes, so the
   // browser sees a byte-different worker and the page offers the update.
   const hash = crypto.createHash("sha256");
   hash.update(template);
+  hash.update(JSON.stringify(autoSaveList(ideas)));
   for (const [name, content] of Object.entries(files)) hash.update(name).update(content);
   for (const name of STATIC_SHELL) hash.update(name).update(fs.readFileSync(path.join(root, name)));
   const version = hash.digest("hex").slice(0, 12);
   return template
     .replace("'__VERSION__'", JSON.stringify(version))
-    .replace("__SHELL__", JSON.stringify(shell));
+    .replace("__SHELL__", JSON.stringify(shell))
+    .replace("__AUTO_SAVE__", JSON.stringify(autoSaveList(ideas)));
 }
 
 // --- build ---
@@ -361,7 +440,7 @@ const generated = {
   "manifest.webmanifest": renderManifest(ideas),
   "ideas.json": renderIdeasJson(ideas),
 };
-generated["sw.js"] = renderServiceWorker(generated);
+generated["sw.js"] = renderServiceWorker(generated, ideas);
 for (const [name, content] of Object.entries(generated)) {
   fs.writeFileSync(path.join(root, name), content);
 }
