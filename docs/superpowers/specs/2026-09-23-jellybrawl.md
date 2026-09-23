@@ -123,6 +123,12 @@ A hide-in-the-crowd sniper game, decided in a short Q&A on 2026-09-23.
   the colours of the players in the game, with a plain face. Runners get a
   random one too, not their own, so colour is never a tell. NPCs walk
   to random spots, pause, and do small emote bounces.
+- **Solid blobs.** Blobs can't overlap or pass behind one another. Overlapping
+  pairs are pushed apart and bounce (restitution 0.7) into a knockback that
+  fades quickly, with a squash wobble on impact. At walking pace the crowd
+  just jostles, but a runner barrelling through visibly shoves blobs aside,
+  which is a tell. A bumped NPC sometimes picks a new destination, so
+  crowds don't grind against each other.
 - **Finding yourself.** Your phone shows a private radar with only your dot
   (and the coins). The sniper can't see it.
 - **Runners.** A thumbstick (top speed equals the fastest NPC, so speed

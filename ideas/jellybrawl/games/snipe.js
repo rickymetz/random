@@ -9,6 +9,7 @@
 
 import { W, H, INK, text, outlined, shout, rrect, circle, blob, tag, countdown, makeSplat, drawSplat } from "../gfx.js";
 
+const BOUNCE = 0.7, KNOCK_DAMP = 5; // solid blobs: restitution, and how fast a shove fades (1/s)
 const TIME = 75, R = 26, SPEED = 150, PANIC_SPEED = 260, RELOAD = 1.5, MISFIRE = 4, PANIC = 3, SCOPE = 120, ZOOM = 1.6;
 const F = { x0: 120, y0: 170, x1: W - 120, y1: H - 90 };               // the plaza
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -29,7 +30,7 @@ export default {
     // everyone's disguise: a random colour from the players in this game, no selfie
     const pool = [...new Set(ctx.players.map((q) => q.color))];
     const look = () => ({ color: pool[Math.floor(Math.random() * pool.length)], face: null, name: "" });
-    const mk = (p) => { const [x, y] = spot(); return { p, look: look(), x, y, vx: 0, vy: 0, goal: spot(), wait: rnd(0, 2), emote: 0, emoteCool: 0, dead: false, mx: 0, my: 0, loot: 0, pace: rnd(0.55, 1), bot: { goal: null, think: 0 } }; };
+    const mk = (p) => { const [x, y] = spot(); return { p, look: look(), x, y, vx: 0, vy: 0, goal: spot(), wait: rnd(0, 2), emote: 0, emoteCool: 0, dead: false, mx: 0, my: 0, loot: 0, pace: rnd(0.55, 1), kx: 0, ky: 0, bump: 0, bot: { goal: null, think: 0 } }; };
     const runners = runnersP.map(mk);
     const npcs = Array.from({ length: Math.min(45 - runners.length, 12 * runners.length + 6) }, () => mk(null));
     const everyone = [...runners, ...npcs];
@@ -89,6 +90,31 @@ export default {
       b.vx = (dx / d) * sp; b.vy = (dy / d) * sp;
     }
 
+    // Blobs are solid: overlapping pairs are pushed apart and bounce. The
+    // bounce goes into a fading knockback (kx, ky) on top of each blob's own
+    // walk, so a runner barrelling through a crowd visibly shoves it around.
+    function collide() {
+      const live = everyone.filter((b) => !b.dead);
+      for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
+        const a = live[i], b = live[j];
+        let dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy);
+        if (d >= 2 * R) continue;
+        if (d < 0.01) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d = Math.hypot(dx, dy); }
+        const nx = dx / d, ny = dy / d, push = (2 * R - d) / 2;
+        a.x = clampX(a.x + nx * push); a.y = clampY(a.y + ny * push);
+        b.x = clampX(b.x - nx * push); b.y = clampY(b.y - ny * push);
+        const rv = (a.vx + a.kx - b.vx - b.kx) * nx + (a.vy + a.ky - b.vy - b.ky) * ny;
+        if (rv >= 0) continue; // already separating
+        const imp = (-rv * (1 + BOUNCE)) / 2;
+        a.kx += imp * nx; a.ky += imp * ny;
+        b.kx -= imp * nx; b.ky -= imp * ny;
+        // a bumped NPC sometimes gives up on where it was going
+        for (const n of [a, b]) if (!n.p && -rv > 40 && Math.random() < 0.3) { n.goal = spot(); n.wait = 0; }
+        const hit = Math.min(0.3, -rv / 600);
+        a.bump = Math.max(a.bump, hit); b.bump = Math.max(b.bump, hit);
+      }
+    }
+
     function drawField(g) {
       g.fillStyle = "#120726"; g.fillRect(F.x0, F.y0, F.x1 - F.x0, F.y1 - F.y0);
       g.strokeStyle = "rgba(5,217,232,.22)"; g.lineWidth = 2;
@@ -104,13 +130,15 @@ export default {
       }
       for (const b of [...everyone].filter((b) => !b.dead).sort((a, c) => a.y - c.y)) {
         const e = b.emote > 0 ? Math.sin((0.6 - b.emote) * 16) : 0, bob = Math.hypot(b.vx, b.vy) > 1 ? Math.abs(Math.sin(t * 12 + b.x)) * 5 : 0;
-        blob(g, b.look, b.x, b.y - bob - Math.abs(e) * 14, R, { sx: 1 + e * 0.15, sy: 1 - e * 0.15 });
+        const q = b.bump > 0 ? Math.sin(b.bump * 40) * b.bump : 0; // wobble after a collision
+        blob(g, b.look, b.x, b.y - bob - Math.abs(e) * 14, R, { sx: 1 + e * 0.15 + q, sy: 1 - e * 0.15 - q });
       }
     }
 
     const inst = {
       result: null,
-      state: () => ({ sniper: sniper.pid, scope: { x: scope.x, y: scope.y, cool: scope.cool }, stolen, panic, runners: runners.map((r) => ({ pid: r.p.pid, x: r.x, y: r.y, dead: r.dead, loot: r.loot })) }), // read-only, for tests
+      state: () => ({ sniper: sniper.pid, scope: { x: scope.x, y: scope.y, cool: scope.cool }, stolen, panic, runners: runners.map((r) => ({ pid: r.p.pid, x: r.x, y: r.y, dead: r.dead, loot: r.loot })),
+        minGap: (() => { const l = everyone.filter((b) => !b.dead); let m = Infinity; for (let i = 0; i < l.length; i++) for (let j = i + 1; j < l.length; j++) m = Math.min(m, Math.hypot(l[i].x - l[j].x, l[i].y - l[j].y)); return m; })() }), // read-only, for tests
       describe: () => [`Sniper: ${sniper.name}`, `Runners: ${runnersP.map((p) => p.name).join(", ")} · steal ${target} coins`],
       start() {
         sendScope();
@@ -174,7 +202,12 @@ export default {
         for (const n of npcs) if (!n.dead) wander(n, dt);
         const cap = panic > 0 ? PANIC_SPEED : SPEED;
         for (const r of runners) if (!r.dead) { r.emote = Math.max(0, r.emote - dt); r.emoteCool -= dt; r.vx = r.mx * cap; r.vy = r.my * cap; }
-        for (const b of everyone) if (!b.dead) { b.x = clampX(b.x + b.vx * dt); b.y = clampY(b.y + b.vy * dt); }
+        const damp = Math.exp(-KNOCK_DAMP * dt);
+        for (const b of everyone) if (!b.dead) {
+          b.x = clampX(b.x + (b.vx + b.kx) * dt); b.y = clampY(b.y + (b.vy + b.ky) * dt);
+          b.kx *= damp; b.ky *= damp; b.bump = Math.max(0, b.bump - dt);
+        }
+        collide();
         coinClock -= dt;
         if (coinClock <= 0) { spawnCoin(); coinClock = rnd(1.5, 3.5); }
         for (const c of coins) c.t += dt;
