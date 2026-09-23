@@ -3,14 +3,33 @@
 
 export const W = 1920, H = 1080;
 export const FONT = 'ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif'; // body copy
-export const DISPLAY = '"Anton", Impact, "Arial Narrow", sans-serif';   // headings, labels, command words
-export const SCRIPT = '"Mr Dafoe", "Brush Script MT", cursive';        // the neon title
-// fonts/: Anton and Mr Dafoe, SIL OFL 1.1 (fonts/OFL.txt). Loaded by tv.html / controller.css.
+// fonts/: every face is SIL OFL 1.1 (fonts/OFL.txt), declared in fonts/fonts.css.
+
+// Type sets: title = the neon sign, display = command words and headings,
+// label = small caps UI. Scales even out the faces' very different widths.
+// Pick one with ?type=P1 (TV and phones) or T in the lobby.
+export const TYPES = {
+  A: { name: "Neon script", title: '"Mr Dafoe"', display: '"Anton"', label: '"Anton"' },
+  P1: { name: "Punk brush", title: '"Knewave"', display: '"Knewave"', label: '"League Gothic"', labelScale: 1.15, displayScale: 0.9, titleScale: 0.8 },
+  P2: { name: "Occult arcade", title: '"Ouroboros"', display: '"Le Murmure"', label: '"VG5000"', labelScale: 0.8, displayScale: 1.15, titleScale: 0.85 },
+  P3: { name: "VHS arcade", title: '"Le Jerk"', titleCaps: true, display: '"Acidente"', label: '"Le Jerk"', displayScale: 0.8, titleScale: 0.8, labelScale: 1.1 },
+  P4: { name: "Tarot grime", title: '"Basteleur"', display: '"Basteleur"', label: '"Format 1452"', displayScale: 0.85, titleScale: 0.8, labelScale: 1.05 },
+  P5: { name: "Sharp condensed", title: '"Le Murmure"', display: '"League Gothic"', label: '"VG5000"', labelScale: 0.8, displayScale: 1.1, titleScale: 1.05 },
+  P6: { name: "Brush + glyphic", title: '"Knewave"', display: '"BackOut"', label: '"VG5000"', labelScale: 0.8, displayScale: 1.05, titleScale: 0.8 },
+};
+const FALLBACK = 'Impact, "Arial Narrow", sans-serif';
+export const T = {};
+export function setType(id) {
+  if (!TYPES[id]) id = "A";
+  Object.assign(T, { titleScale: 1, displayScale: 1, labelScale: 1, titleCaps: false }, TYPES[id], { id });
+}
+setType("A");
+const DISPLAY = () => `${T.display}, ${FALLBACK}`;
 
 /** Body text; weight 900 means a display label (Anton, tracked out). */
 export function text(g, str, x, y, size, color = "#fff", align = "center", weight = 800) {
   const display = weight >= 900;
-  g.font = display ? `${size}px ${DISPLAY}` : `${weight} ${size}px ${FONT}`;
+  g.font = display ? `${Math.round(size * T.labelScale)}px ${T.label}, ${FALLBACK}` : `${weight} ${size}px ${FONT}`;
   g.letterSpacing = display ? `${Math.round(size * 0.06)}px` : "0px";
   g.textAlign = align;
   g.textBaseline = "middle";
@@ -31,7 +50,8 @@ export function outlined(g, str, x, y, size, color = "#fff", align = "center", r
   g.save();
   g.translate(x, y);
   if (rot) g.rotate(rot);
-  g.font = `${size}px ${DISPLAY}`;
+  size = Math.round(size * T.displayScale);
+  g.font = `${size}px ${DISPLAY()}`;
   g.letterSpacing = `${Math.round(size * 0.04)}px`;
   g.textAlign = align;
   g.textBaseline = "middle";
@@ -48,7 +68,9 @@ export function neon(g, str, x, y, size, color = "#ff2a6d", rot = -0.1, t = 0) {
   const flick = Math.sin(t * 37) > 0.97 || Math.sin(t * 13.3) > 0.985 ? 0.35 : 1;
   g.save();
   g.translate(x, y); g.rotate(rot);
-  g.font = `${size}px ${SCRIPT}`;
+  size = Math.round(size * T.titleScale);
+  if (T.titleCaps) str = str.toUpperCase();
+  g.font = `${size}px ${T.title}, ${FALLBACK}`;
   g.textAlign = "center"; g.textBaseline = "middle";
   g.fillStyle = INK; g.fillText(str, size * 0.05, size * 0.06);
   g.globalAlpha = flick;
@@ -99,9 +121,10 @@ export function drawSplat(g, s, dx = 0) {
 
 /** Largest font size ≤ size at which str fits in maxW. */
 export function fit(g, str, size, maxW) {
-  g.font = `${size}px ${DISPLAY}`;
-  g.letterSpacing = `${Math.round(size * 0.04)}px`;
-  const w = g.measureText(String(str).toUpperCase()).width * 1.04 + size / 10;
+  const s2 = size * T.displayScale;
+  g.font = `${s2}px ${DISPLAY()}`;
+  g.letterSpacing = `${Math.round(s2 * 0.04)}px`;
+  const w = (g.measureText(String(str).toUpperCase()).width * 1.04 + s2 / 10) / T.displayScale;
   g.letterSpacing = "0px";
   return w > maxW ? Math.floor((size * maxW) / w) : size;
 }
@@ -307,7 +330,7 @@ export function shade(hex, amt) {
 
 /** Name label: a tilted tape strip. */
 export function tag(g, str, x, y, color = "#fff", size = 26) {
-  g.font = `${size}px ${DISPLAY}`;
+  g.font = `${Math.round(size * T.labelScale)}px ${T.label}, ${FALLBACK}`;
   g.letterSpacing = `${Math.round(size * 0.06)}px`;
   const w = g.measureText(String(str).toUpperCase()).width + size;
   g.letterSpacing = "0px";

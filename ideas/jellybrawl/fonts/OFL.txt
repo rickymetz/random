@@ -1,11 +1,19 @@
-anton.woff2 (Anton, Latin subset from Google Fonts):
-Copyright 2020 The Anton Project Authors (https://github.com/googlefonts/AntonFont.git)
+Every font in this folder is licensed under the SIL Open Font License 1.1.
 
-mr-dafoe.woff2 (Mr Dafoe, Latin subset from Google Fonts):
-Copyright (c) 2004 Alejandro Paul (sudtipos@sudtipos.com), with Reserved Font Name "Mr Dafoe"
+anton.woff2 — Anton. Copyright 2020 The Anton Project Authors (https://github.com/googlefonts/AntonFont.git)
+mr-dafoe.woff2 — Mr Dafoe. Copyright (c) 2004 Alejandro Paul (sudtipos@sudtipos.com), with Reserved Font Name "Mr Dafoe"
+knewave.woff2 — Knewave, The League of Moveable Type. Copyright (c) 2011 by Tyler Finck.
+league-gothic.woff2 — League Gothic, The League of Moveable Type. Copyright 2020 The League Gothic Project Authors (https://github.com/theleagueof/league-gothic)
+ouroboros.woff2 — Ouroboros, Velvetyne. Ariel Martín Pérez, 2018.
+le-murmure.woff2 — Le Murmure, Velvetyne. Jérémy Landes (Studio Triple), 2020.
+vg5000.woff2 — VG5000, Velvetyne. Justin Bihan.
+basteleur-bold.woff2 — Basteleur, Velvetyne. Keussel.
+format-1452.woff2 — Format 1452, Velvetyne. Frank Adebiaye.
+backout.woff2 — BackOut, Velvetyne. Frank Adebiaye, edited by Ariel Martín Pérez.
+le-jerk.woff2 — Le Jerk, Manufactura Independente. Copyright (c) 2013 Frank Adebiaye, with Reserved Font Names "Le Jerk". (Converted TTF → WOFF2, unmodified glyphs.)
+acidente.woff2 — Acidente, Manufactura Independente. Copyright (c) 2013 Luis Camanho, with Reserved Font Names "Acidente". (Converted OTF → WOFF2, unmodified glyphs.)
 
-Both are licensed under the SIL Open Font License, Version 1.1.
-This license is copied below, and is also available with a FAQ at:
+The license text is copied below, and is also available with a FAQ at:
 https://openfontlicense.org
 
 -----------------------------------------------------------

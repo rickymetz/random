@@ -1,11 +1,17 @@
 /* Grit: neon on near-black (Hotline Miami 2 / Nidhogg 2), scanlines, a
    neon script title (Mr Dafoe), one-colour condensed caps (Anton) with a
    hard pink shadow. Fonts: fonts/, SIL OFL 1.1. */
-@font-face { font-family: "Anton"; src: url(fonts/anton.woff2) format("woff2"); font-display: swap; }
-@font-face { font-family: "Mr Dafoe"; src: url(fonts/mr-dafoe.woff2) format("woff2"); font-display: swap; }
+/* type sets mirror TYPES in gfx.js; the TV sends the active one with every layout */
+:root { --title: "Mr Dafoe"; --display-face: "Anton"; --label-face: "Anton"; --title-case: none; --ls: 1; --ts: 1; }
+html[data-type="P1"] { --ts: .8; --title: "Knewave"; --display-face: "Knewave"; --label-face: "League Gothic"; }
+html[data-type="P2"] { --ts: .62; --title: "Ouroboros"; --display-face: "Le Murmure"; --label-face: "VG5000"; --ls: .8; }
+html[data-type="P3"] { --ts: .6; --title: "Le Jerk"; --display-face: "Acidente"; --label-face: "Le Jerk"; --title-case: uppercase; }
+html[data-type="P4"] { --ts: .66; --title: "Basteleur"; --display-face: "Basteleur"; --label-face: "Format 1452"; }
+html[data-type="P5"] { --title: "Le Murmure"; --display-face: "League Gothic"; --label-face: "VG5000"; --ls: .8; }
+html[data-type="P6"] { --ts: .8; --title: "Knewave"; --display-face: "BackOut"; --label-face: "VG5000"; --ls: .8; }
 :root { --ink: #0b0710; --bg: #0d0221; --paper: #efe6d2; --pink: #ff2a6d; --cyan: #05d9e8; --acid: #f9f002; --me: #ff2a6d; color-scheme: dark; }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; color: #fff; font: 700 17px/1.3 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif; --display: "Anton", Impact, "Arial Narrow", sans-serif; overscroll-behavior: none; }
+html, body { margin: 0; height: 100%; color: #fff; font: 700 17px/1.3 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif; --display: var(--display-face), Impact, "Arial Narrow", sans-serif; --label: var(--label-face), Impact, "Arial Narrow", sans-serif; overscroll-behavior: none; }
 body {
   background: linear-gradient(180deg, #0d0221 0%, #2a0845 60%, #5a0a3e 100%) fixed;
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
@@ -18,14 +24,14 @@ body::after {
 }
 [hidden] { display: none !important; }
 .screen { position: relative; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); text-align: center; }
-.logo { font: clamp(64px, 22vw, 110px)/1 "Mr Dafoe", "Brush Script MT", cursive; color: #ff2a6d; margin: 0 0 10px; transform: rotate(-7deg); white-space: nowrap;
+.logo { font: calc(clamp(56px, 19vw, 100px) * var(--ts))/1.2 var(--title), "Brush Script MT", cursive; text-transform: var(--title-case); color: #ff2a6d; margin: 0 0 10px; transform: rotate(-7deg); white-space: nowrap;
   text-shadow: 0 0 12px #ff2a6d, 0 0 34px rgba(255,42,109,.6), 4px 5px 0 var(--ink); animation: flicker 5s steps(1) infinite; }
 @keyframes flicker { 0%, 90%, 94%, 100% { opacity: 1; } 91%, 93% { opacity: .45; } }
 form { display: flex; flex-direction: column; gap: 14px; width: min(360px, 100%); }
-label { display: flex; flex-direction: column; gap: 6px; text-align: left; font: 16px var(--display); text-transform: uppercase; color: var(--cyan); letter-spacing: 3px; }
-input { font: 26px var(--display); letter-spacing: 2px; padding: 12px 14px; border-radius: 2px; border: 3px solid var(--cyan); background: rgba(0,0,0,.55); color: #fff; box-shadow: 5px 5px 0 var(--pink); -webkit-user-select: text; user-select: text; }
+label { display: flex; flex-direction: column; gap: 6px; text-align: left; font: calc(16px * var(--ls)) var(--label); text-transform: uppercase; color: var(--cyan); letter-spacing: 3px; }
+input { font: calc(26px * var(--ls)) var(--label); letter-spacing: 2px; padding: 12px 14px; border-radius: 2px; border: 3px solid var(--cyan); background: rgba(0,0,0,.55); color: #fff; box-shadow: 5px 5px 0 var(--pink); -webkit-user-select: text; user-select: text; }
 #code { text-transform: uppercase; letter-spacing: 10px; text-align: center; font-size: 36px; color: var(--acid); }
-button, .btn { font: 20px var(--display); color: #fff; background: rgba(0,0,0,.6); border: 3px solid #fff; border-radius: 2px; padding: 12px 18px; cursor: pointer; touch-action: manipulation; box-shadow: 5px 5px 0 var(--pink); text-transform: uppercase; letter-spacing: 3px; }
+button, .btn { font: calc(20px * var(--ls)) var(--label); color: #fff; background: rgba(0,0,0,.6); border: 3px solid #fff; border-radius: 2px; padding: 12px 18px; cursor: pointer; touch-action: manipulation; box-shadow: 5px 5px 0 var(--pink); text-transform: uppercase; letter-spacing: 3px; }
 button:active, .btn:active { transform: translate(4px, 4px); box-shadow: 1px 1px 0 var(--pink); }
 .big { font-size: 28px; padding: 14px 22px; background: var(--pink); color: #fff; border-color: var(--ink); box-shadow: 6px 6px 0 var(--ink); }
 .btn.big { background: rgba(0,0,0,.6); border-color: #fff; box-shadow: 5px 5px 0 var(--pink); }
@@ -41,7 +47,7 @@ h2 { margin: 0; font: 48px var(--display); letter-spacing: 3px; color: #fff; tex
 .swatches button.on { outline: 3px solid var(--acid); outline-offset: 2px; }
 
 #pad { justify-content: flex-start; padding: 0; gap: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--me) 30%, #0d0221), #0d0221 75%); }
-#me { width: 100%; display: flex; align-items: center; gap: 10px; padding: max(10px, env(safe-area-inset-top)) 16px 10px; font: 24px var(--display); letter-spacing: 3px; background: rgba(0,0,0,.7); border-bottom: 3px solid var(--me); text-transform: uppercase; }
+#me { width: 100%; display: flex; align-items: center; gap: 10px; padding: max(10px, env(safe-area-inset-top)) 16px 10px; font: calc(24px * var(--ls)) var(--label); letter-spacing: 3px; background: rgba(0,0,0,.7); border-bottom: 3px solid var(--me); text-transform: uppercase; }
 #me i { width: 24px; height: 24px; background: var(--me); border: 3px solid #fff; transform: rotate(45deg); }
 #me span { margin-left: auto; color: var(--ink); background: var(--cyan); padding: 1px 8px; font-size: 16px; }
 #me span:empty { display: none; }
@@ -55,7 +61,7 @@ h2 { margin: 0; font: 48px var(--display); letter-spacing: 3px; color: #fff; tex
 .cards button { text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; text-transform: none; background: rgba(0,0,0,.65); border-color: var(--cyan); }
 .cards button:nth-child(odd) { transform: rotate(-1.5deg); } .cards button:nth-child(even) { transform: rotate(1.5deg); }
 .cards b { font: 34px var(--display); letter-spacing: 2px; color: #fff; text-shadow: 3px 3px 0 var(--pink); }
-.cards small { font: 14px var(--display); letter-spacing: 2px; text-transform: uppercase; background: var(--cyan); color: var(--ink); padding: 0 6px; align-self: flex-start; }
+.cards small { font: calc(14px * var(--ls)) var(--label); letter-spacing: 2px; text-transform: uppercase; background: var(--cyan); color: var(--ink); padding: 0 6px; align-self: flex-start; }
 .cards span { font-weight: 700; font-size: 15px; color: #ddd; }
 .hit { width: min(72vw, 340px); aspect-ratio: 1; border-radius: 50%; font: clamp(44px, 14vw, 72px) var(--display); letter-spacing: 4px; color: #fff; text-shadow: 3px 3px 0 var(--ink); background: radial-gradient(circle at 35% 30%, #fff6 0 10%, transparent 11%), var(--me); border: 6px solid #fff; box-shadow: 0 14px 0 var(--ink), 10px 20px 0 var(--pink); transition: transform .05s; }
 .hit.down { transform: translateY(12px) scale(.97); box-shadow: 0 2px 0 var(--ink), 4px 6px 0 var(--pink); }

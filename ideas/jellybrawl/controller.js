@@ -17,6 +17,7 @@ if (!pid) { pid = Math.random().toString(36).slice(2) + Date.now().toString(36);
 let conn = null, code = "", name = "", joined = false, current = { kind: "wait", text: "Connecting…" }, faceDone = false;
 
 const params = new URLSearchParams(location.search);
+if (params.get("type")) document.documentElement.dataset.type = params.get("type");
 $("code").value = (params.get("room") || store.get("jb-code") || "").toUpperCase();
 $("name").value = store.get("jb-name") || "";
 if (location.pathname.includes("/ideas/")) $("home").hidden = false;
@@ -135,6 +136,7 @@ function el(tag, props = {}, ...kids) {
 }
 
 function render(l) {
+  if (l.type) document.documentElement.dataset.type = l.type;
   if (l.you) {
     document.documentElement.style.setProperty("--me", l.you.color);
     $("me").querySelector("b").textContent = l.you.name;

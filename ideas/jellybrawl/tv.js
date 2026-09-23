@@ -2,7 +2,7 @@
 // render the layouts we send them (see index.html / controller.js).
 
 import { hostRoom } from "./net.js";
-import { W, H, INK, POP, fit, grid, neon, text, outlined, rrect, shout, sunburst, halftone, panel, bomb, circle, blob, tag, star, shade } from "./gfx.js";
+import { W, H, INK, POP, T, TYPES, setType, fit, grid, neon, text, outlined, rrect, shout, sunburst, halftone, panel, bomb, circle, blob, tag, star, shade } from "./gfx.js";
 import { qr } from "./qr.js";
 import { sfx, unlock } from "./sfx.js";
 import flap from "./games/flap.js";
@@ -10,8 +10,9 @@ import sling from "./games/sling.js";
 import chomp from "./games/chomp.js";
 
 const GAMES = [flap, sling, chomp];
-// canvas text only uses a web font once it's loaded; ask for both up front
-for (const f of ['40px "Anton"', '40px "Mr Dafoe"']) document.fonts?.load(f).catch(() => {});
+// canvas text only uses a web font once it's loaded; ask for every face up front
+setType(new URLSearchParams(location.search).get("type") || "A");
+for (const t of Object.values(TYPES)) for (const f of [t.title, t.display, t.label]) document.fonts?.load(`40px ${f}`).catch(() => {});
 const COLORS = ["#ff2e63", "#00b7ff", "#ffd400", "#35e06b", "#b14dff", "#ff8a00", "#ff6ec7", "#00e0c6"];
 const BOT_NAMES = ["Wobbles", "Gloop", "Jiggly", "Squish", "Blorp", "Mochi", "Puddin", "Boing"];
 const MAX = 8;
@@ -48,7 +49,7 @@ function send(p, m) { if (p && !p.bot && p.connected) S.net.send(p.pid, m); }
 function layout(pid, obj) {
   const p = byPid(pid);
   if (!p) return;
-  const l = { t: "layout", ...obj, you: { name: p.name, color: p.color } };
+  const l = { t: "layout", ...obj, you: { name: p.name, color: p.color }, type: T.id };
   S.layouts.set(pid, l);
   send(p, l);
 }
@@ -324,6 +325,7 @@ function drawLobby() {
       outlined(g, "?", x, y, 70, "#fff", "center", Math.sin(S.t * 4 + i) * 0.2);
     }
   }
+  text(g, `TYPE ${T.id} · ${T.name} (T to switch)`, 70, 1058, 22, "rgba(255,255,255,.55)", "left", 900);
   const v = vip();
   panel(g, 820, 905, 960, 70, INK, 35, 0);
   text(g, `${S.rounds} ROUNDS · ${v ? `${v.name.toUpperCase()} (VIP) STARTS FROM THEIR PHONE` : "FIRST ONE IN IS THE VIP"}`, 1300, 940, 30, "#ffd400", "center", 900);
@@ -552,6 +554,11 @@ addEventListener("keydown", (e) => {
   else if (k === "b") act("addbot");
   else if (k === "n") act("rmbot");
   else if (k === "r") act("rounds");
+  else if (k === "t" && S.scene === "lobby") {
+    const ids = Object.keys(TYPES);
+    setType(ids[(ids.indexOf(T.id) + 1) % ids.length]);
+    refreshMenus();
+  }
   else if (S.scene === "choose" && ["1", "2", "3"].includes(k) && !S.picked && S.options[+k - 1]) pick(S.options[+k - 1].id);
 });
 
