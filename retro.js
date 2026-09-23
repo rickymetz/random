@@ -40,9 +40,6 @@
     lset(KEY[name], !!on);
     try { window.dispatchEvent(new CustomEvent('randomsetting', { detail: { name: name, on: !!on } })); } catch (e) {}
   }
-  // Tile colour: a hue from a stable hash of the slug, and one of three
-  // lightness steps from other bits of it, so neighbours stay distinct.
-  var LIGHT_STEPS = [0, -7, 6];
 
   function lget(k, f) {
     try { var v = localStorage.getItem(k); return v == null ? f : JSON.parse(v); } catch (e) { return f; }
@@ -56,11 +53,6 @@
     for (var k in attrs || {}) n.setAttribute(k, attrs[k]);
     return n;
   }
-  function hash(s) { // FNV-1a, 32-bit
-    var h = 0x811c9dc5;
-    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
-    return h;
-  }
 
   var ideas = [];
   var ui = {};
@@ -73,13 +65,13 @@
   function icon(idea, opts) {
     var a = el('a', 'rt-icon', { href: idea.url, 'data-slug': idea.slug });
     var tile = el('span', 'rt-tile', { 'aria-hidden': 'true' });
-    if (idea.icon) {
+    var v = nav.tileVars(idea); // shared with nav.js's dialogs
+    if (v.custom) {
       tile.classList.add('rt-custom');
-      tile.style.setProperty('--tile', idea.icon);
+      tile.style.setProperty('--tile', v.custom);
     } else {
-      var h = hash(idea.slug);
-      tile.style.setProperty('--h', String(h % 360));
-      tile.style.setProperty('--dl', LIGHT_STEPS[(h >>> 9) % 3] + '%');
+      tile.style.setProperty('--h', v.h);
+      tile.style.setProperty('--dl', v.dl);
     }
     tile.textContent = idea.emoji || '✦';
     var label = el('span', 'rt-label');
@@ -464,21 +456,13 @@
   // Events the shade lists that aren't derived from live state: things that
   // happened (an idea saved for offline). Newest first, a dozen at most.
   function events() { return lget(KEY.events, []); }
-  function notify(ev) {
-    var list = events().filter(function (e) { return e.id !== ev.id; });
-    ev.at = ev.at || new Date().toISOString();
-    list.unshift(ev);
-    lset(KEY.events, list.slice(0, 12));
-    undismiss(ev.id);
-    refreshShade();
-  }
+  function notify(ev) { nav.addEvent(ev); } // nav.js stores it and fires 'randomevent'
   function dismissed() { return lget(KEY.dismissed, []); }
   function dismiss(ids) {
     var d = dismissed();
     ids.forEach(function (id) { if (d.indexOf(id) === -1) d.push(id); });
     lset(KEY.dismissed, d.slice(-200));
   }
-  function undismiss(id) { lset(KEY.dismissed, dismissed().filter(function (d) { return d !== id; })); }
 
   // Everything the shade shows right now: ongoing state (offline, an update
   // waiting) and notifications (new ideas, events), minus dismissed ones.
@@ -758,6 +742,95 @@
     });
   }
 
+  /* ------------------------------------------------- icon context menu */
+
+  // Long-press an icon (or right-click it) for Gingerbread's context menu.
+  // A long-press never also opens the idea.
+  var press = { timer: 0, x: 0, y: 0, icon: null, swallow: false };
+  function iconAt(target) { return target && target.closest ? target.closest('#retro .rt-icon') : null; }
+  function cancelPress() {
+    clearTimeout(press.timer);
+    if (press.icon) press.icon.classList.remove('rt-pressed');
+    press.icon = null;
+  }
+  root.addEventListener('pointerdown', function (e) {
+    // Every new press starts clean (a menu opened by the last one took its
+    // release, so nothing reset this).
+    press.swallow = false;
+    var ic = iconAt(e.target);
+    if (!ic || e.button > 0) return;
+    cancelPress();
+    press.icon = ic;
+    press.x = e.clientX;
+    press.y = e.clientY;
+    press.timer = setTimeout(function () {
+      var target = press.icon;
+      cancelPress();
+      press.swallow = true; // the click that ends this press
+      if (target) iconMenu(target.getAttribute('data-slug'));
+    }, 500);
+  });
+  root.addEventListener('pointermove', function (e) {
+    if (press.icon && Math.abs(e.clientX - press.x) + Math.abs(e.clientY - press.y) > 12) cancelPress();
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (t) { root.addEventListener(t, cancelPress); });
+  root.addEventListener('contextmenu', function (e) {
+    var ic = iconAt(e.target);
+    if (!ic) return;
+    e.preventDefault();
+    // Android fires contextmenu for the same long-press the timer already
+    // answered: one menu per press.
+    if (press.swallow) return;
+    cancelPress();
+    iconMenu(ic.getAttribute('data-slug'));
+  });
+  // Swallow the click that ends a long-press, however long it was held.
+  root.addEventListener('click', function (e) {
+    if (press.swallow && iconAt(e.target)) { e.preventDefault(); e.stopPropagation(); }
+    press.swallow = false;
+  }, true);
+
+  function iconMenu(slug) {
+    var idea = ideas.filter(function (i) { return i.slug === slug; })[0];
+    if (!idea) return;
+    var inDock = dockSlugs().indexOf(slug) !== -1;
+    var status = idea.saveable === false ? Promise.resolve(null) : nav.offlineStatus().catch(function () { return null; });
+    status.then(function (st) {
+      var saved = !!(st && st.saved.indexOf(slug) !== -1);
+      nav.menu(idea.title, [
+        { id: 'open', label: 'Open', run: function () { location.href = new URL(idea.url, location.href).href; } },
+        inDock
+          ? { id: 'dock', label: 'Remove from dock', run: function () { setDock(dockSlugs().filter(function (s) { return s !== slug; })); } }
+          : { id: 'dock', label: 'Add to dock', run: function () { addToDock(slug); } },
+        idea.saveable === false || !st ? null : saved
+          ? { id: 'save', label: 'Saved ✓ (tap to unsave)', run: function () { save(idea, false); } }
+          : { id: 'save', label: 'Save offline', run: function () { save(idea, true); } },
+        { id: 'share', label: 'Share', run: function () { nav.share(idea); } },
+        { id: 'about', label: 'About this idea', run: function () { nav.aboutIdea(idea); } }
+      ], { idea: idea });
+    });
+  }
+
+  function setDock(slugs) {
+    lset(KEY.dock, slugs.slice(0, 2));
+    if (ui.slot) fillDock();
+  }
+  // Adding to a full dock replaces the older of the two.
+  function addToDock(slug) {
+    var cur = dockSlugs().filter(function (s) { return s !== slug; });
+    if (cur.length >= 2) cur = cur.slice(1);
+    cur.push(slug);
+    setDock(cur);
+    nav.toast('Added to dock');
+  }
+
+  function save(idea, on) {
+    nav.toast(on ? 'Saving ' + idea.title + '…' : 'Removing…', 0);
+    nav.saveOffline(idea.slug, on).then(function () {
+      nav.toast(on ? 'Saved for offline' : 'No longer saved');
+    }, function () { nav.toast("Couldn't reach offline storage"); });
+  }
+
   /* ------------------------------------------------------ mount, look */
 
   // The device's own status bar is painted black under the retro look, so
@@ -827,6 +900,13 @@
   }
   window.addEventListener('randomlook', onLook);
   window.addEventListener('randomupdate', function () { refreshShade(); });
+  window.addEventListener('randomevent', function () { refreshShade(); });
+  // ≡ → Search: to the centre screen, into the search box.
+  window.addEventListener('randomsearch', function () {
+    if (!mounted || !ui.search) return;
+    goTo(CENTRE, false);
+    ui.search.focus();
+  });
   window.addEventListener('online', function () { paintNet(); refreshShade(); });
   window.addEventListener('offline', function () { paintNet(); refreshShade(); });
   window.addEventListener('resize', sizeWallpaper);

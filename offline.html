@@ -10,6 +10,20 @@
 <meta name="theme-color" content="#faf9f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<script>
+  // Same look decision as the hub (a saved choice, else retro when installed).
+  (function () {
+    var look;
+    try { look = JSON.parse(localStorage.getItem("random-hub:look")); } catch (e) {}
+    if (look !== "retro" && look !== "modern") {
+      var installed = false;
+      try { installed = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; } catch (e) {}
+      look = installed ? "retro" : "modern";
+    }
+    document.documentElement.setAttribute("data-look", look);
+  })();
+</script>
+<link rel="stylesheet" href="retro.css">
 <style>
   :root {
     --bg: #faf9f7;
@@ -71,11 +85,37 @@
   .card h3 { font-size: 1.05rem; letter-spacing: -0.01em; }
   .card p { color: var(--muted); font-size: 0.88rem; margin-top: 0.4rem; }
   .none { color: var(--muted); }
+  .signal, .card .tile { display: none; }
+
+  /* Retro: Gingerbread's "No connection" screen, cached ideas as tiles. */
+  html[data-look="retro"] body { overflow: auto; padding: 2.5rem 1rem 5rem; background: var(--rt-bg); color: var(--rt-ink); }
+  html[data-look="retro"] body > main { display: block; max-width: 30rem; }
+  html[data-look="retro"] header { text-align: center; }
+  html[data-look="retro"] .signal { display: block; width: 72px; height: 72px; margin: 0 auto 1rem; color: var(--rt-ink-2); }
+  html[data-look="retro"] h1 { font-size: 1.3rem; }
+  html[data-look="retro"] header p, html[data-look="retro"] .none { color: var(--rt-ink-2); }
+  html[data-look="retro"] .retry {
+    border-radius: 4px; border: 1px solid #666; color: #111; font-weight: 400;
+    background: linear-gradient(180deg, #f2f2f2, #c9c9c9); min-width: 9rem; min-height: 44px;
+  }
+  html[data-look="retro"] .retry:active { background: var(--rt-hl); }
+  html[data-look="retro"] h2 { font-size: 0.9rem; color: var(--rt-hl); border-bottom: 1px solid var(--rt-line); padding-bottom: 0.4rem; }
+  html[data-look="retro"] .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px 4px; }
+  html[data-look="retro"] .card {
+    background: none; border: 0; padding: 4px 2px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  html[data-look="retro"] .card .tile { display: grid; }
+  html[data-look="retro"] .card-emoji, html[data-look="retro"] .card p { display: none; }
+  html[data-look="retro"] .card h3 {
+    font-size: 12px; font-weight: 400; max-width: 100%; text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--rt-label);
+  }
 </style>
 </head>
 <body>
   <main>
     <header>
+      <svg class="signal" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20h3v2H2zM7 16h3v6H7zM12 12h3v10h-3zM17 7h3v15h-3z" fill="currentColor" opacity=".3"/><path d="M3 3l18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <h1>You're offline</h1>
       <p>This idea hasn't been saved on this device yet. It will be once you open it with a connection.</p>
       <button class="retry" type="button" onclick="location.reload()">Retry</button>
@@ -121,6 +161,15 @@
         var emoji = document.createElement('span');
         emoji.className = 'card-emoji';
         emoji.textContent = idea.emoji || '✦';
+        // The retro look's era tile (nav.js has the colours).
+        var tile = document.createElement('span');
+        tile.className = 'tile rt-tile';
+        tile.setAttribute('aria-hidden', 'true');
+        tile.textContent = idea.emoji || '✦';
+        var v = window.randomNav && window.randomNav.tileVars ? window.randomNav.tileVars(idea) : null;
+        if (v && v.custom) { tile.classList.add('rt-custom'); tile.style.setProperty('--tile', v.custom); }
+        else if (v) { tile.style.setProperty('--h', v.h); tile.style.setProperty('--dl', v.dl); }
+        a.appendChild(tile);
         var h = document.createElement('h3');
         h.textContent = idea.title;
         a.appendChild(emoji);

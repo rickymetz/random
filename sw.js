@@ -21,7 +21,7 @@
  */
 'use strict';
 
-var VERSION = "09ef5f5727db";
+var VERSION = "034fd61432c1";
 var SHELL = ["./","manifest.webmanifest","ideas.json","nav.js","hub.js","retro.js","retro.css","fonts/DroidSans.woff2","fonts/DroidSans-Bold.woff2","offline.html","icon.svg","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png"];
 // Ideas small enough to save whole at install: [{ slug, paths }], where
 // "ideas/<slug>/" stands for its index.html (the URL a visit requests).
@@ -83,7 +83,7 @@ function status() {
   return caches.open(IDEAS_CACHE).then(loadIndex).then(function (index) {
     var cached = {};
     Object.keys(index.entries).forEach(function (u) { cached[index.entries[u].slug] = true; });
-    return { type: 'STATUS', saved: Object.keys(index.pinned || {}), cached: Object.keys(cached) };
+    return { type: 'STATUS', saved: Object.keys(index.pinned || {}), cached: Object.keys(cached), version: VERSION };
   });
 }
 

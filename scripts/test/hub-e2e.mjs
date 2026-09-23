@@ -469,6 +469,123 @@ try {
     await ctx.close();
   }
 
+  /* ------------------------------------------ retro chrome (stage 3) */
+
+  section("retro chrome: ≡ menu, dialogs");
+  {
+    const { ctx, page } = await freshPage();
+    await ctx.addInitScript(() => { if (!localStorage.getItem("random-hub:look")) localStorage.setItem("random-hub:look", '"retro"'); });
+    await installHub(page);
+    await page.waitForSelector("#retro[data-ready]");
+    const menuKey = bar(page, "button.menu");
+    const layerKind = () => page.evaluate(() => {
+      const r = document.querySelector("random-nav").shadowRoot;
+      const n = r.querySelector(".opts, .dlg");
+      return n ? (n.classList.contains("opts") ? "options" : n.dataset.kind || "menu") : null;
+    });
+    check(await menuKey.isVisible(), "retro adds a ≡ key");
+    await menuKey.click();
+    const opts = await page.$$eval("random-nav >> .opt", (els) => els.map((e) => e.dataset.opt));
+    check(opts.join() === "wallpaper,search,settings,look,share,about", `≡ on the hub: ${opts.join(", ")}`);
+    await bar(page, 'button[aria-label="Back"]').click();
+    check((await layerKind()) === null && page.url() === B, "◀ closes the panel without leaving");
+    await menuKey.click();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    check((await page.evaluate(() => document.querySelector("random-nav").shadowRoot.activeElement?.dataset.opt)) === "settings", "Tab moves within the panel");
+    await page.keyboard.press("Escape");
+    check((await layerKind()) === null, "Escape closes it");
+    await menuKey.click();
+    await bar(page, '.opt[data-opt="search"]').click();
+    check(await page.evaluate(() => document.activeElement === document.querySelector(".rt-search input")), "≡ → Search focuses the search box");
+    await menuKey.click();
+    await bar(page, '.opt[data-opt="about"]').click();
+    await page.waitForFunction(() => /version [0-9a-f]{12}/.test(document.querySelector("random-nav").shadowRoot.querySelector(".dlg-meta")?.textContent || ""));
+    check(true, "About shows the idea count and version");
+    await page.keyboard.press("Escape");
+
+    // The icon context menu: right-click (desktop) and long-press (touch).
+    await page.click('.rt-pages .rt-icon[data-slug="container-compound"]', { button: "right" });
+    await bar(page, ".dlg-item").first().waitFor(); // opens once the offline status is in
+    const items = await page.$$eval("random-nav >> .dlg-item", (els) => els.map((e) => e.dataset.act));
+    check(items.join() === "open,dock,save,share,about", `right-click an icon: ${items.join(", ")}`);
+    await bar(page, '.dlg-item[data-act="dock"]').click();
+    const dock = await page.$$eval(".rt-dock-slot .rt-icon", (els) => els.map((e) => e.dataset.slug));
+    check(dock.includes("container-compound") && dock.length === 2, `Add to dock replaces the older slot (${dock.join(", ")})`);
+    const icon = page.locator('.rt-pages .rt-icon[data-slug="public-screening"]');
+    const box = await icon.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
+    await page.mouse.down();
+    await page.waitForTimeout(1200);
+    await page.mouse.up();
+    await bar(page, ".dlg-item").first().waitFor();
+    await page.waitForTimeout(300);
+    check((await layerKind()) === "menu" && page.url() === B, "a long hold opens the menu, not the idea");
+    await bar(page, '.dlg-item[data-act="save"]').click();
+    await page.waitForFunction(() => window.randomNav.offlineStatus().then((s) => s.saved.includes("public-screening")), null, { timeout: 30000, polling: 1000 });
+    check(true, "Save offline from the menu pins it");
+    const landed = await page.waitForFunction(() => (JSON.parse(localStorage.getItem("random-hub:events") || "[]")[0] || {}).id === "saved:public-screening"
+      && Number(document.querySelector(".rt-status").dataset.unread) >= 1, null, { timeout: 5000 }).then(() => true, () => false);
+    check(landed, "and it lands in the shade");
+    await page.click('.rt-pages .rt-icon[data-slug="public-screening"]', { button: "right" });
+    await bar(page, '.dlg-item[data-act="about"]').click(); // (the locator waits for the menu)
+    await page.waitForFunction(() => document.querySelector("random-nav").shadowRoot.querySelector(".dlg-meta")?.dataset.offline);
+    check((await page.evaluate(() => document.querySelector("random-nav").shadowRoot.querySelector(".dlg-meta").dataset.offline)) === "Saved for offline",
+      "About this idea shows its offline status");
+    await page.keyboard.press("Escape");
+
+    // Long-press ●: the recents dialog (retro).
+    await page.goto(B + "ideas/breathe/");
+    await page.waitForSelector("random-nav", { state: "attached" });
+    await page.goto(B);
+    await page.waitForSelector("#retro[data-ready]");
+    const home = await bar(page, 'button[aria-label^="Home"]').boundingBox();
+    await page.mouse.move(home.x + home.width / 2, home.y + home.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(650);
+    await page.mouse.up();
+    check((await layerKind()) === "recents" && (await page.$$eval("random-nav >> .gtile", (els) => els.map((e) => e.dataset.slug)))[0] === "breathe",
+      "long-press ● opens the recents dialog");
+    await page.keyboard.press("Escape");
+    await ctx.close();
+  }
+
+  section("retro chrome on idea pages");
+  {
+    const { ctx, page } = await freshPage();
+    await ctx.addInitScript(() => { if (!localStorage.getItem("random-hub:look")) localStorage.setItem("random-hub:look", '"retro"'); });
+    await installHub(page);
+    await page.goto(B + "ideas/public-screening/");
+    await page.waitForSelector("random-nav", { state: "attached" });
+    check(await page.evaluate(() => document.querySelector("random-nav").shadowRoot.querySelector(".wrap").classList.contains("retro")), "ideas get the retro bar too");
+    await bar(page, "button.menu").click();
+    const opts = await page.$$eval("random-nav >> .opt", (els) => els.map((e) => e.dataset.opt));
+    check(opts.join() === "share,save,about,settings,home,look", `≡ on an idea: ${opts.join(", ")}`);
+    await bar(page, '.opt[data-opt="save"]').click();
+    await page.waitForFunction(() => window.randomNav.offlineStatus().then((s) => s.saved.includes("public-screening")), null, { timeout: 15000, polling: 500 });
+    await bar(page, "button.menu").click();
+    await page.waitForFunction(() => document.querySelector("random-nav").shadowRoot.querySelector('.opt[data-opt="save"]').getAttribute("aria-pressed") === "true");
+    check(true, "Save offline pins this idea, and ≡ then shows it saved");
+    await page.keyboard.press("Escape");
+    await page.goto(B + "ideas/cadence/");
+    await page.waitForSelector("random-nav", { state: "attached" });
+    await bar(page, "button.menu").click();
+    check(await bar(page, '.opt[data-opt="save"]').isDisabled(), "an idea that keeps itself offline can't be saved again");
+    await bar(page, '.opt[data-opt="look"]').click();
+    check(!(await page.evaluate(() => document.querySelector("random-nav").shadowRoot.querySelector(".wrap").classList.contains("retro")))
+      && (await bar(page, "button.menu").isHidden()), "Modern look from an idea page switches the bar back");
+    await page.evaluate(() => window.randomNav.setLook("retro"));
+
+    // Retro offline page: truly offline, an idea not yet cached.
+    server.offline = true;
+    await page.goto(B + "ideas/ephemera/");
+    await page.waitForSelector("#cached .card");
+    check((await page.locator(".signal").isVisible()) && (await page.locator("#cached .card .rt-tile").first().isVisible()),
+      "offline, the retro 'no connection' screen lists cached ideas as tiles");
+    server.offline = false;
+    await ctx.close();
+  }
+
   check(pageErrors.length === 0, `no page errors${pageErrors.length ? ": " + pageErrors.join(" | ") : ""}`);
 } catch (e) {
   failures++;

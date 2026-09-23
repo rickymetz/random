@@ -83,23 +83,12 @@
     });
   }
 
-  /* Save offline: open the idea in a hidden frame, so the hub worker sees —
-   * and caches — every file it loads, exactly as a visit would; then pin it
-   * so eviction leaves it alone. (nav.js stays out of frames, so this
-   * doesn't count as opening the idea.) Tapping a saved idea unpins it. */
+  /* Save offline (nav.js does the work: a hidden frame so the worker caches
+   * what a visit would, then a pin so eviction leaves it). Tapping a saved
+   * idea unpins it. */
+  var nav = window.randomNav;
   var buttons = document.querySelectorAll('.save[data-slug]');
-  if (!buttons.length || !('serviceWorker' in navigator)) return;
-
-  function ask(msg) {
-    var worker = navigator.serviceWorker.controller;
-    if (!worker) return Promise.reject(new Error('no worker'));
-    return new Promise(function (resolve, reject) {
-      var channel = new MessageChannel();
-      var timer = setTimeout(function () { reject(new Error('timeout')); }, 10000);
-      channel.port1.onmessage = function (e) { clearTimeout(timer); resolve(e.data); };
-      worker.postMessage(msg, [channel.port2]);
-    });
-  }
+  if (!buttons.length || !nav || !('serviceWorker' in navigator)) return;
 
   function paint(state) {
     Array.prototype.forEach.call(buttons, function (btn) {
@@ -113,28 +102,8 @@
     });
   }
 
-  function loadHidden(url) {
-    return new Promise(function (resolve) {
-      var frame = document.createElement('iframe');
-      frame.setAttribute('aria-hidden', 'true');
-      frame.tabIndex = -1;
-      frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:390px;height:844px;border:0;visibility:hidden;';
-      var done = false;
-      function finish() {
-        if (done) return;
-        done = true;
-        // Give the idea a moment for what it fetches after load (data files).
-        setTimeout(function () { frame.remove(); resolve(); }, 2500);
-      }
-      frame.addEventListener('load', finish);
-      setTimeout(finish, 20000);
-      frame.src = url;
-      document.body.appendChild(frame);
-    });
-  }
-
   function start() {
-    ask({ type: 'STATUS' }).then(paint).catch(function () { /* worker not ready: no buttons */ });
+    nav.offlineStatus().then(paint).catch(function () { /* worker not ready: no buttons */ });
   }
 
   Array.prototype.forEach.call(buttons, function (btn) {
@@ -144,8 +113,7 @@
       var saved = btn.getAttribute('aria-pressed') === 'true';
       btn.setAttribute('aria-busy', 'true');
       btn.textContent = saved ? 'Removing…' : 'Saving…';
-      var work = saved ? Promise.resolve() : loadHidden(new URL('ideas/' + slug + '/', location.href).href);
-      work.then(function () { return ask({ type: 'PIN', slug: slug, on: !saved }); })
+      nav.saveOffline(slug, !saved)
         .then(paint)
         .catch(function () { btn.removeAttribute('aria-busy'); btn.textContent = 'Try again'; });
     });

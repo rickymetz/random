@@ -83,7 +83,7 @@ function status() {
   return caches.open(IDEAS_CACHE).then(loadIndex).then(function (index) {
     var cached = {};
     Object.keys(index.entries).forEach(function (u) { cached[index.entries[u].slug] = true; });
-    return { type: 'STATUS', saved: Object.keys(index.pinned || {}), cached: Object.keys(cached) };
+    return { type: 'STATUS', saved: Object.keys(index.pinned || {}), cached: Object.keys(cached), version: VERSION };
   });
 }
 
