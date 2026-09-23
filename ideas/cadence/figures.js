@@ -33,12 +33,31 @@
  * from the front.
  *
  * `d3` holds what only the 3D figure (figure3d.js) uses, blended like the
- * rest: `sign` picks which way a foreshortened bone points out of the
- * picture ({ arms, legs: [[upper, lower], [upper, lower]], spine }, +1 or
- * -1); `abd` swings whole limbs out to the side ({ arms, legs: [a, a] },
- * degrees); `twist` turns the upper body about the spine; `roll` turns the
- * whole body about its long axis (lying on your side). A figure's `view`
- * says which plane the 2D drawing is in: 'side' (default) or 'front'.
+ * rest. Per side ([near, far]):
+ *   sign    which way a foreshortened bone points out of the picture,
+ *           { arms, legs: [[upper, lower], ...], spine }, +1 or -1
+ *   abd     swing a limb out to its side, degrees — a number moves the
+ *           whole limb, [upper, lower] swings the lower part separately
+ *           (happy baby: thigh out, shin back to vertical)
+ *   flare   turn the elbow or knee out about the line to the hand or foot,
+ *           which stays planted (push-up elbows, squat knees)
+ *   toeOut  turn the feet out, degrees; `handOut` the same for the hands
+ *   wide    move the hand or foot out to its side by this much (a wider
+ *           stance, hands wider than the shoulders); `reach` moves it by a
+ *           vector [x, y, z]; `at` puts it at a point, and must then be in
+ *           every keyframe. The elbow or knee is solved again in 3D.
+ * and for the body:
+ *   shift   move the weight sideways: the pelvis, or [pelvis, chest,
+ *           hands] (the hands go with the chest unless planted: 0); the
+ *           feet stay where they are
+ *   twist   turn the upper body about the spine (`twistArms` [1, 1] says
+ *           which arms go with it — a hand left behind stays put); `roll` turn the whole body about its
+ *           long axis (lying on your side); `tilt` tip the head toward a
+ *           shoulder; `faceZ` -1 turns a sideways-looking face the other way
+ * A figure's `view` says which plane the 2D drawing is in: 'side' (default)
+ * or 'front'. `keys3d` (with `view3d`, `still3d`) replace the keyframes for
+ * 3D where the 2D drawing is a trick that can't be lifted; `props3d`
+ * replaces the props.
  * `armLen` and `legLen` ([[upper, lower], [upper, lower]], default 1) draw a
  * bone shorter when it points toward you — a leg out to the side, seen from
  * the side, is mostly foreshortened.
@@ -132,9 +151,16 @@
     var face = dir(neckA + 90);                 // front of the face
     var turn = p.turn == null ? 1 : p.turn;
     var root = armRoot(shoulder, sp[1], p);
+    // Two eyes: together at the front of the face in profile, drawing apart
+    // as the face turns toward you, level across it when it faces you.
+    var spread = 2.3 * Math.sqrt(Math.max(0, 1 - turn * turn));
+    var eyeAt = function (k) {
+      var along = Math.max(-5.2, Math.min(5.2, 3.2 * turn + k * spread));
+      return [head[0] + face[0] * along + dir(neckA)[0] * 1.2, head[1] + face[1] * along + dir(neckA)[1] * 1.2];
+    };
     var out = { hip: hip, waist: waist, shoulder: shoulder, root: root, neckTop: neckTop, head: head, turn: turn, d3: p.d3 || null,
-      eye: [head[0] + face[0] * 3.2 * turn + dir(neckA)[0] * 1.2, head[1] + face[1] * 3.2 * turn + dir(neckA)[1] * 1.2],
-      arms: [], legs: [] };
+      eyes: [eyeAt(1), eyeAt(-1)], arms: [], legs: [] };
+    out.eye = out.eyes[0];
     for (var i = 0; i < 2; i++) {
       var al = scaleOf(p.armLen, i), ll = scaleOf(p.legLen, i);
       var ua = p.arms[i][0], fa = p.arms[i][1];
@@ -191,8 +217,10 @@
   }
   function lerpPt(a, b, u) { return [lerp(a[0], b[0], u), lerp(a[1], b[1], u)]; }
 
-  /* The 3D extras, blended leaf by leaf; a missing value is its neutral
-   * (1 for a sign, 0 for an angle). */
+  /* The 3D extras, blended leaf by leaf, whatever their shape; a value
+   * missing on one side blends from its neutral (1 for `sign`, `faceZ` and
+   * `twistArms`; 0 otherwise). figure3d.js reads them with defaults. */
+  var D3_ONE = { sign: 1, faceZ: 1, twistArms: 1 };
   function blendD3(a, b, u) {
     if (!a && !b) return null;
     function walk(x, y, neutral) {
@@ -201,21 +229,20 @@
         for (var i = 0; i < n; i++) out[i] = walk(x ? x[i] : undefined, y ? y[i] : undefined, neutral);
         return out;
       }
+      if ((x && typeof x === 'object') || (y && typeof y === 'object')) {
+        var o = {};
+        Object.keys(x || {}).concat(Object.keys(y || {})).forEach(function (k) {
+          if (!(k in o)) o[k] = walk(x ? x[k] : undefined, y ? y[k] : undefined, neutral);
+        });
+        return o;
+      }
       var p = x == null ? neutral : x, q = y == null ? neutral : y;
       return p + (q - p) * u;
     }
     var out = {};
-    ['sign', 'abd'].forEach(function (key) {
-      var neutral = key === 'sign' ? 1 : 0;
-      var x = a && a[key] || {}, y = b && b[key] || {};
-      out[key] = {};
-      ['arms', 'legs'].forEach(function (part) {
-        out[key][part] = walk(x[part] || (key === 'sign' ? [[1, 1], [1, 1]] : [0, 0]), y[part] || (key === 'sign' ? [[1, 1], [1, 1]] : [0, 0]), neutral);
-      });
-      if (key === 'sign') out.sign.spine = walk(x.spine, y.spine, 1);
+    Object.keys(a || {}).concat(Object.keys(b || {})).forEach(function (k) {
+      if (!(k in out)) out[k] = walk(a ? a[k] : undefined, b ? b[k] : undefined, D3_ONE[k] != null ? D3_ONE[k] : 0);
     });
-    out.twist = walk(a && a.twist, b && b.twist, 0);
-    out.roll = walk(a && a.roll, b && b.roll, 0);
     return out;
   }
 
@@ -291,9 +318,16 @@
    * that can't be lifted — open book is drawn from above. */
   function def3(id) {
     var def = FIGURES[id] || FIGURES._default;
-    if (!def.keys3d) return def;
-    return { keys: def.keys3d, cycle: def.cycle, view: def.view3d || 'side', props: def.props,
+    if (!def.keys3d) return def.props3d ? merge3(def, { props: def.props3d }) : def;
+    return { keys: def.keys3d, cycle: def.cycle, view: def.view3d || 'side', props: def.props3d || def.props,
       floor: true, still: def.still3d, yaw: def.yaw };
+  }
+
+  function merge3(a, b) {
+    var o = {};
+    Object.keys(a).forEach(function (k) { o[k] = a[k]; });
+    Object.keys(b).forEach(function (k) { o[k] = b[k]; });
+    return o;
   }
 
   /* The loop phase at which keyframe `i` is reached (after its hold). */
@@ -425,13 +459,13 @@
     var torso = svgEl('path', { class: 'fig-limb', 'stroke-width': WIDTH.torso });
     var neck = svgEl('path', { class: 'fig-limb', 'stroke-width': WIDTH.neck });
     var head = svgEl('circle', { class: 'fig-head', r: LEN.headR });
-    var eye = svgEl('circle', { class: 'fig-eye', r: 1.1 });
+    var eyes = [svgEl('circle', { class: 'fig-eye', r: 1.1 }), svgEl('circle', { class: 'fig-eye', r: 1.1 })];
     // Far limbs behind the body, near limbs in front of it.
     g.appendChild(far.g);
     g.appendChild(torso);
     g.appendChild(neck);
     g.appendChild(head);
-    g.appendChild(eye);
+    eyes.forEach(function (e) { g.appendChild(e); });
     g.appendChild(near.g);
 
     function paintLimbs(set, sk, i) {
@@ -452,8 +486,10 @@
       neck.setAttribute('d', seg(sk.shoulder, sk.neckTop));
       head.setAttribute('cx', sk.head[0].toFixed(2));
       head.setAttribute('cy', (-sk.head[1]).toFixed(2));
-      eye.setAttribute('cx', sk.eye[0].toFixed(2));
-      eye.setAttribute('cy', (-sk.eye[1]).toFixed(2));
+      sk.eyes.forEach(function (p, i) {
+        eyes[i].setAttribute('cx', p[0].toFixed(2));
+        eyes[i].setAttribute('cy', (-p[1]).toFixed(2));
+      });
     }
 
     /* ~20fps. These are eases of a few seconds, so the extra 40 frames a
@@ -528,14 +564,14 @@
   }
 
   var CUES = {
-    warmup: "March and circle the arms, then rehearse today’s first two moves at half effort.",
+    warmup: "March on the spot, swinging the arms, then rehearse today’s first two moves at half effort.",
     pushups: "One straight line from head to heels, elbows close in.",
     "table-rows": "Body straight from heels to head — pull your chest to the bar, shoulders away from your ears.",
     squats: "Sit down between your heels — knees point the same way as your toes.",
     "reverse-lunges": "Step back, drop the back knee, stay tall.",
     plank: "Elbows under shoulders, ribs down, glutes tight — breathe.",
     cooldown: "Walk it off, breathe slow, stretch whatever you just worked.",
-    "pike-pushups": "Hips stacked over your hands — lower until your head is just off the floor, weight in the hands.",
+    "pike-pushups": "Hips high, feet walked in — lower until your head is just off the floor, weight in the hands.",
     "prone-ytw": "Thumbs up, arms light — lift from between the shoulder blades, not the neck.",
     "glute-bridges": "Ribs down, squeeze the glutes, lift from the hips.",
     "split-squats": "Weight through the front heel, back knee straight down.",
@@ -646,12 +682,19 @@
   var PU_HAND = puTop.shoulder[0];
   var PU_LEGS = [onToes(PU_ANKLE, '+y', PU_FOOT), onToes([PU_ANKLE[0] - 1, PU_ANKLE[1]], '+y', PU_FOOT)];
   var PU_ARMS = [ik(PU_HAND, WRIST, '+y'), ik(PU_HAND + 1, WRIST, '+y')];
+  // In 3D: hands a little wider than the shoulders; at the bottom the
+  // elbows point back at about 35° from the body, not out to the sides.
+  var PU_3D = { wide: { arms: [2.5, 2.5] } };
+  var PU_3D_LOW = { wide: { arms: [2.5, 2.5] }, flare: { arms: [35, 35] } };
   function pushTop(extra) {
-    return merge({ hip: puTop.hip, spine: PU_ANGLE, head: 12, arms: PU_ARMS, hands: PALMS, legs: PU_LEGS }, extra);
+    return merge({ hip: puTop.hip, spine: PU_ANGLE, head: 12, arms: PU_ARMS, hands: PALMS, legs: PU_LEGS, d3: PU_3D }, extra);
   }
   function pushLow(extra) {
-    return merge({ hip: puLow.hip, spine: 88, head: 8, arms: PU_ARMS, hands: PALMS, legs: PU_LEGS }, extra);
+    return merge({ hip: puLow.hip, spine: 88, head: 8, arms: PU_ARMS, hands: PALMS, legs: PU_LEGS, d3: PU_3D_LOW }, extra);
   }
+
+  // The 3D figure's shoulder joints sit this far either side of the spine.
+  var SHOULDER_3D = 9.5;
 
   /* All fours: knees under hips, hands under shoulders. */
   var Q_HIP = [0, KNEE + LEN.thigh];
@@ -696,14 +739,34 @@
   /* Kneeling up tall, shins flat behind. */
   var KNEELING_LEGS = [ik(-LEN.shin, KNEE + 0.5, '-y'), ik(-LEN.shin - 1, KNEE + 0.5, '-y')];
 
+  /* The edge of a table to row from. */
+  var TABLE = 45;
+
   /* Hanging from a bar at BAR_Y. */
-  var BAR_Y = 128;
+  var BAR_Y = 140;
   var BAR_ARMS = [ik(1, BAR_Y - 1, '+x'), ik(-1, BAR_Y - 1, '+x')];
   var HANG_HIP = [0, BAR_Y - 1 - LEN.upperArm - LEN.foreArm - LEN.spineLow - LEN.spineHigh - 0.1];
+  /* Chin over the bar: leaning back a little, so the head is behind the bar
+   * and the chin clears it in front. */
+  var OVER_BAR = { hip: [3, HANG_HIP[1] + 31], spine: -12, head: -14, legs: [[176, 184], [174, 182]], feet: [140, 140] };
   function hanging(extra) {
     return merge({ hip: HANG_HIP, spine: 0, head: -4, arms: BAR_ARMS, hands: [0, 0],
       legs: [[182, 180], [178, 180]], feet: [120, 120] }, extra);
   }
+
+  /* In 3D: heels a little wider than the hips, toes turned out. */
+  var SQUAT_3D = { wide: { legs: [5, 5] }, toeOut: [22, 22] };
+
+  var MALASANA_3D = { wide: { legs: [7, 7] }, toeOut: [38, 38], flare: { legs: [38, 38], arms: [30, 30] },
+    reach: { arms: [[0, 0, -SHOULDER_3D + 1], [0, 0, SHOULDER_3D - 1]] } };
+
+  // Focus stretch, in 3D: the bent leg's foot against the long leg's inner
+  // thigh, its knee dropped out to the side.
+  var FOCUS_3D = { at: { legs: [0, [15, 5.2, 1]] }, flare: { legs: [0, 57] } };
+
+  // World's greatest, in 3D: the front foot out wide, so both hands are
+  // inside it.
+  var WG_3D = { wide: { legs: [12, 0] } };
 
   /* Seen from the front: the eye sits in the middle of the face. */
   var FRONT = { turn: 0 };
@@ -718,9 +781,9 @@
       // at the midpoint, standing on nothing.
       cycle: 2,
       keys: [
-        standing({ spine: 2, arms: [[205, 160], [150, 120]], legs: [ik(12, 32, '+x'), flat(-1)] }),
+        standing({ spine: 2, arms: [[205, 160], [150, 120]], legs: [ik(12, 32, '+x'), flat(-1)], d3: { shift: -2.5 } }),
         standing({ spine: 1, arms: [[182, 176], [178, 184]], legs: [flat(0), flat(-1)] }),
-        standing({ spine: 2, arms: [[150, 120], [205, 160]], legs: [flat(0), ik(11, 32, '+x')] }),
+        standing({ spine: 2, arms: [[150, 120], [205, 160]], legs: [flat(0), ik(11, 32, '+x')], d3: { shift: 2.5 } }),
         standing({ spine: 1, arms: [[182, 176], [178, 184]], legs: [flat(0), flat(-1)] })
       ]
     },
@@ -744,25 +807,33 @@
       keys: [pushTop(), pushLow()]
     },
     'table-rows': {
-      // Under a table, heels down, body one line; pull the chest up to the edge.
+      // Under a sturdy table, heels down, body one line. Hanging below the
+      // edge the arms are straight and square to the body; pull until the
+      // chest meets the edge, elbows back at about 45°.
       cycle: 2.8,
-      props: [{ bar: [-40, 60] }],
+      props: [{ bar: [-40, TABLE] }],
       keys: (function () {
-        var ank = [40, 4.5];
-        var low = line(ank, 284), high = line(ank, 296);
+        var L = LEN.thigh + LEN.shin + LEN.spineLow + LEN.spineHigh;
+        var sLow = [-41, TABLE - 0.5 - LEN.upperArm - LEN.foreArm + 0.3];
+        var ank = [sLow[0] + Math.sqrt(L * L - Math.pow(sLow[1] - 4.5, 2)), 4.5];
+        var yHigh = TABLE - 7.5;
+        var sHigh = [ank[0] - Math.sqrt(L * L - Math.pow(yHigh - 4.5, 2)), yHigh];
+        var aLow = angleOf(sLow[0] - ank[0], sLow[1] - ank[1]), aHigh = angleOf(sHigh[0] - ank[0], sHigh[1] - ank[1]);
+        var low = line(ank, aLow), high = line(ank, aHigh);
         var legs = [ik(ank[0], ank[1], '+y'), ik(ank[0] + 1, ank[1], '+y')];
-        var arms = [ik(-39, 59, '-y'), ik(-38, 59, '-y')];
+        var arms = [ik(-40, TABLE - 0.5, '-y'), ik(-40, TABLE - 0.5, '-y')];
         return [
-          { hip: low.hip, spine: 284, head: 14, arms: arms, hands: [0, 0], legs: legs, feet: [0, 0] },
-          { hip: high.hip, spine: 296, head: 22, arms: arms, hands: [0, 0], legs: legs, feet: [0, 0], hold: 0.1 }
+          { hip: low.hip, spine: aLow, head: 10, arms: arms, hands: [270, 270], legs: legs, feet: [0, 0] },
+          { hip: high.hip, spine: aHigh, head: 16, arms: arms, hands: [270, 270], legs: legs, feet: [0, 0], d3: { flare: { arms: [45, 45] } }, hold: 0.1 }
         ];
       })()
     },
     squats: {
       cycle: 3,
       keys: [
-        standing({ arms: [[176, 176], [184, 184]], legs: [flat(0), flat(-1)] }),
-        { hip: [-13, 29], spine: [34, 40], head: -32, arms: [[82, 88], [86, 92]], legs: [flat(0), flat(-1)] }
+        standing({ arms: [[176, 176], [184, 184]], legs: [flat(0), flat(-1)], d3: SQUAT_3D }),
+        { hip: [-13, 29], spine: [34, 40], head: -32, arms: [[82, 88], [86, 92]], legs: [flat(0), flat(-1)],
+          d3: merge(SQUAT_3D, { flare: { legs: [22, 22] } }) }
       ]
     },
     'reverse-lunges': {
@@ -789,8 +860,8 @@
     /* ---------- Calisthenics B ---------- */
 
     'pike-pushups': {
-      // Feet walked in, hips high; bend the elbows and lower the head to the
-      // floor just in front of the hands — a tripod.
+      // Feet walked in, hips high; bend the elbows and lower the head until
+      // it's just off the floor in front of the hands — a tripod.
       cycle: 3.2,
       keys: (function () {
         var legs = [toes(-8, 0, 150, '+x'), toes(-9, 0, 150, '+x')];
@@ -806,8 +877,8 @@
       // sides, toward you), then a W (elbows pulled to the ribs).
       cycle: 7.5,
       keys: [
-        prone({ arms: [[82, 84], [84, 86]], hands: [84, 86] }),
-        prone({ spine: [91, 82], head: -8, arms: [[62, 56], [64, 58]], hands: [56, 58], hold: 0.08 }),
+        prone({ arms: [[82, 84], [84, 86]], hands: [84, 86], d3: { abd: { arms: [35, 35] } } }),
+        prone({ spine: [91, 82], head: -8, arms: [[62, 56], [64, 58]], hands: [56, 58], d3: { abd: { arms: [35, 35] } }, hold: 0.08 }),
         prone({ arms: [[100, 100], [104, 104]], armLen: [[0.28, 0.28], [0.25, 0.25]], hands: [100, 104] }),
         prone({ spine: [91, 82], head: -8, arms: [[62, 62], [66, 66]], armLen: [[0.28, 0.28], [0.25, 0.25]], hands: [62, 66], hold: 0.08 }),
         prone({ spine: [91, 82], head: -8, arms: [[284, 58], [288, 62]], armLen: [[0.8, 0.5], [0.75, 0.45]], hands: [58, 62], hold: 0.08 })
@@ -845,20 +916,22 @@
       cycle: 2.8,
       props: [{ box: [-32, -6, 42] }],
       keys: [
-        { hip: [2, 42], spine: 4, head: -4, arms: [ik(-9, 44, '-x'), ik(-10, 44, '-x')], hands: [270, 270], legs: [flat(32), flat(30)] },
-        { hip: [4, 26], spine: 10, head: -8, arms: [ik(-9, 44, '-x'), ik(-10, 44, '-x')], hands: [270, 270], legs: [flat(32), flat(30)] }
+        { hip: [-0.5, 42], spine: 4, head: -4, arms: [ik(-10, 44, '-x'), ik(-11, 44, '-x')], hands: [118, 118], legs: [flat(32), flat(30)] },
+        { hip: [0.5, 26], spine: 10, head: -8, arms: [ik(-10, 44, '-x'), ik(-11, 44, '-x')], hands: [118, 118], legs: [flat(32), flat(30)], d3: { flare: { arms: [-12, -12] } } }
       ]
     },
     'shoulder-taps': {
-      // High plank; one hand taps the other shoulder, then the other.
+      // High plank, feet wide; one hand taps the other shoulder, then the
+      // other, hips staying level.
       cycle: 3,
       keys: (function () {
+        var TAP_3D = { wide: { arms: [2.5, 2.5], legs: [11, 11] } };
         var tap = ik(puTop.shoulder[0] + 3, puTop.shoulder[1] - 5, '-y');
         return [
-          pushTop(),
-          pushTop({ arms: [tap, PU_ARMS[1]], hands: [300, 90] }),
-          pushTop(),
-          pushTop({ arms: [PU_ARMS[0], tap], hands: [90, 300] })
+          pushTop({ d3: TAP_3D }),
+          pushTop({ arms: [tap, PU_ARMS[1]], hands: [300, 90], d3: merge(TAP_3D, { reach: { arms: [[0, 0, -2 * SHOULDER_3D - 1], [0, 0, 0]] } }) }),
+          pushTop({ d3: TAP_3D }),
+          pushTop({ arms: [PU_ARMS[0], tap], hands: [90, 300], d3: merge(TAP_3D, { reach: { arms: [[0, 0, 0], [0, 0, 2 * SHOULDER_3D + 1]] } }) })
         ];
       })()
     },
@@ -894,8 +967,8 @@
       cycle: 3.2,
       props: [{ box: [16, 46, 22] }],
       keys: [
-        standing({ hip: [-2, STAND], spine: 6, arms: [[160, 150], [200, 190]], legs: [flat(26, 22, '+y'), flat(-2)] }),
-        standing({ hip: [26, STAND + 22], spine: 0, arms: [[200, 190], [160, 150]], legs: [flat(27, 22), arced(ik(40, 44, '+x'), 18)] })
+        standing({ hip: [-2, STAND], spine: 6, arms: [[160, 150], [200, 190]], legs: [flat(26, 22, '+y'), flat(-2)], d3: { shift: -3 } }),
+        standing({ hip: [26, STAND + 22], spine: 0, arms: [[200, 190], [160, 150]], legs: [flat(27, 22), arced(ik(40, 44, '+x'), 18)], d3: { shift: 4 } })
       ]
     },
     'wall-sit': {
@@ -903,8 +976,8 @@
       cycle: 6,
       props: [{ wall: -12 }],
       keys: [
-        { hip: [-5.5, 30], spine: 0, head: -2, arms: [[182, 180], [178, 180]], legs: [flat(20, 0, '+y'), flat(19, 0, '+y')] },
-        { hip: [-5.5, 29], spine: 0, head: -2, arms: [[182, 180], [178, 180]], legs: [flat(20, 0, '+y'), flat(19, 0, '+y')] }
+        { hip: [-5.5, 30], spine: 0, head: -2, arms: [ik(8, 36.5, '-x'), ik(7, 36.5, '-x')], hands: [95, 95], legs: [flat(20, 0, '+y'), flat(19, 0, '+y')] },
+        { hip: [-5.5, 29], spine: 0, head: -2, arms: [ik(8, 35.5, '-x'), ik(7, 35.5, '-x')], hands: [95, 95], legs: [flat(20, 0, '+y'), flat(19, 0, '+y')] }
       ]
     },
     'calf-raises': {
@@ -916,7 +989,7 @@
         var bx = 8;
         var at = function (fa, extra) {
           var a = ankleOnToes(bx, 12, fa);
-          return standing(merge({ hip: [a[0] - 0.5, a[1] + LEN.thigh + LEN.shin - 0.05], legs: [toes(bx, 12, fa), [192, 240]], feet: [null, 150] }, extra));
+          return standing(merge({ hip: [a[0] - 0.5, a[1] + LEN.thigh + LEN.shin - 0.05], legs: [toes(bx, 12, fa), [192, 240]], feet: [null, 150], d3: { shift: 4 } }, extra));
         };
         return [at(64, { hold: 0.08 }), at(142, { hold: 0.12 })];
       })()
@@ -942,9 +1015,9 @@
       cycle: 5,
       keys: [
         { hip: [0, LYING], spine: [276, 292], head: 10, arms: [[296, 292], [298, 294]], hands: [292, 294],
-          legs: [[80, 80], [81, 81]], feet: [84, 84] },
+          legs: [[68, 68], [69, 69]], feet: [72, 72] },
         { hip: [0, LYING], spine: [277, 295], head: 10, arms: [[300, 296], [302, 298]], hands: [296, 298],
-          legs: [[77, 77], [78, 78]], feet: [81, 81] }
+          legs: [[65, 65], [66, 66]], feet: [69, 69] }
       ]
     },
     'side-plank': {
@@ -961,6 +1034,20 @@
           { hip: top.hip, spine: 76, head: 12, turn: 0, arms: [elbowArm, [0, 0]], hands: [90, 0], legs: legs, feet: [84, 84], hold: 0.3 },
           { hip: low.hip, spine: 77, head: 12, turn: 0, arms: [elbowArm, [0, 0]], hands: [90, 0], legs: legs, feet: [84, 84], hold: 0.3 }
         ];
+      })(),
+      // In 3D the hips and shoulders stack, so the drawing's midline sits
+      // half a body-width up: the lower foot and elbow on the floor, the
+      // upper arm straight down from the shoulder, forearm pointing forward.
+      view3d: 'front',
+      keys3d: (function () {
+        var ank = [-47, 9.8], L = LEN.thigh + LEN.shin + LEN.spineLow + LEN.spineHigh;
+        var at = function (rootY) {
+          var ang = Math.acos((rootY + SHOULDER_3D * 0.97 - ank[1]) / L) * 180 / Math.PI;
+          return { hip: line(ank, ang).hip, spine: ang, head: 12, turn: 0,
+            arms: [[180, 90], [0, 0]], armLen: [[(rootY - 2.6) / LEN.upperArm, 0.05], [1, 1]], hands: [90, 0],
+            legs: [ik(ank[0], ank[1], '+y'), ik(ank[0] + 1, ank[1], '+y')], feet: [84, 84] };
+        };
+        return [merge(at(LEN.upperArm + 2.6), { hold: 0.3 }), merge(at(LEN.upperArm + 2.2), { hold: 0.3 })];
       })()
     },
     'reverse-crunch': {
@@ -991,6 +1078,19 @@
           pushTop({ arms: [wide, PU_ARMS[1]], armLen: [[sTop, sTop], [1, 1]], hands: [90, 90] }),
           merge(low, { arms: [wide, PU_ARMS[1]], armLen: [[sLow, sLow], [1, 1]], hands: [90, 90], hold: 0.08 })
         ];
+      })(),
+      // In 3D both hands are planted wide, and the chest travels over the
+      // hand that bends while the other arm stays long.
+      keys3d: (function () {
+        var wide = { wide: { arms: [14.5, 14.5] } };
+        var ang = lineForShoulderAt(PU_ANKLE, WRIST + 30.5);
+        var top = { hip: line(PU_ANKLE, ang).hip, spine: ang, head: 12, arms: PU_ARMS, hands: PALMS, legs: PU_LEGS, d3: wide };
+        return [
+          top,
+          pushLow({ d3: merge(wide, { shift: [5, 16, 0] }), hold: 0.08 }),
+          top,
+          pushLow({ d3: merge(wide, { shift: [-5, -16, 0] }), hold: 0.08 })
+        ];
       })()
     },
     'box-pistols': {
@@ -998,8 +1098,8 @@
       cycle: 3.6,
       props: [{ box: [-38, -10, 25] }],
       keys: [
-        standing({ arms: [[92, 92], [94, 94]], legs: [flat(1), [98, 98]], feet: [null, 30] }),
-        { hip: [-17, 32], spine: [34, 38], head: -26, arms: [[80, 82], [82, 84]], legs: [flat(4, 0, '+x'), [84, 86]], feet: [null, 20] }
+        standing({ arms: [[92, 92], [94, 94]], legs: [flat(1), [98, 98]], feet: [null, 30], d3: { shift: 4 } }),
+        { hip: [-17, 32], spine: [34, 38], head: -26, arms: [[80, 82], [82, 84]], legs: [flat(4, 0, '+x'), [84, 86]], feet: [null, 20], d3: { shift: 3.5 } }
       ]
     },
     'planche-lean': {
@@ -1015,8 +1115,8 @@
         var ank = step(hip, ang + 180, LEN.thigh + LEN.shin);
         var arms = [ik(PU_HAND, WRIST, '+y'), ik(PU_HAND + 1, WRIST, '+y')];
         return [
-          pushTop({ hands: [70, 70] }),
-          { hip: hip, spine: ang, head: 10, arms: arms, hands: [70, 70], legs: [onToes(ank, '+y', 190), onToes([ank[0] - 1, ank[1]], '+y', 190)], hold: 0.3 }
+          pushTop({ hands: [70, 70], d3: { handOut: [60, 60] } }),
+          { hip: hip, spine: ang, head: 10, arms: arms, hands: [70, 70], legs: [onToes(ank, '+y', 190), onToes([ank[0] - 1, ank[1]], '+y', 190)], d3: { handOut: [60, 60] }, hold: 0.3 }
         ];
       })()
     },
@@ -1050,6 +1150,18 @@
           { hip: hip, spine: -2, head: -4, shrug: 2, arms: arms, hands: [270, 270], legs: [flat(20, 0, '+y'), flat(19, 0, '+y')] },
           { hip: [hip[0], hip[1] + 2], spine: -4, head: -4, shrug: -1, arms: arms, hands: [270, 270], legs: [[56, 176], [58, 178]], feet: [130, 130], hold: 0.35 }
         ];
+      })(),
+      // In 3D there's room for the truth: a chair either side of the hips,
+      // hands beside them, arms straight down.
+      props3d: [{ box: [-6, 6, 30], pair: 14.5 }],
+      keys3d: (function () {
+        var hand = [0, 30.5], out = { abd: { arms: [8, 8] } };
+        var hip = [0, hand[1] + LEN.upperArm + LEN.foreArm - 0.3 - LEN.spineLow - LEN.spineHigh];
+        var arms = [ik(0, hand[1], '-x'), ik(0, hand[1], '-x')];
+        return [
+          { hip: hip, spine: 0, head: -4, shrug: 2, arms: arms, hands: [90, 90], legs: [flat(20, 0, '+y'), flat(19, 0, '+y')], d3: out },
+          { hip: [hip[0], hip[1] + 2], spine: -2, head: -4, shrug: -1, arms: arms, hands: [90, 90], legs: [[40, 176], [42, 178]], feet: [130, 130], d3: out, hold: 0.35 }
+        ];
       })()
     },
 
@@ -1066,20 +1178,20 @@
       cycle: 2.8,
       props: [{ rod: [0, BAR_Y] }],
       keys: [
-        hanging({ hip: [0, HANG_HIP[1] - 3], shrug: 3 }),
-        hanging({ hip: [0, HANG_HIP[1] + 1.5], shrug: -1.5, head: -8, hold: 0.1 })
+        hanging({ hip: [0, HANG_HIP[1] - 4], shrug: 4 }),
+        hanging({ hip: [0, HANG_HIP[1] + 3.5], shrug: -3.5, head: -8, hold: 0.1 })
       ]
     },
     'pullup-negatives': {
       // Chin over the bar, lower as slowly as you can to a full hang, then
-      // step back up to the top from a box.
+      // step up from a box in front of the bar back to the top.
       cycle: 6,
       still: 0,
-      props: [{ rod: [0, BAR_Y] }, { box: [-10, 14, 30] }],
+      props: [{ rod: [0, BAR_Y] }, { box: [8, 32, 26] }],
       keys: [
-        hanging({ hip: [-5, HANG_HIP[1] + 24], spine: 6, head: -16, legs: [[176, 196], [174, 194]], feet: [140, 140], hold: 0.12 }),
+        hanging(merge(OVER_BAR, { hold: 0.12 })),
         hanging({ legs: [[178, 190], [176, 188]], feet: [140, 140] }),
-        hanging({ legs: [flat(4, 30, '+x'), flat(2, 30, '+x')], hip: [-2, HANG_HIP[1] + 8], spine: 4, head: -10 })
+        hanging({ legs: [flat(18, 26, '+x'), flat(16, 26, '+x')], hip: [1, HANG_HIP[1] + 9], spine: -4, head: -10 })
       ]
     },
     'chin-ups': {
@@ -1087,7 +1199,7 @@
       props: [{ rod: [0, BAR_Y] }],
       keys: [
         hanging({ legs: [[176, 178], [174, 178]] }),
-        hanging({ hip: [-5, HANG_HIP[1] + 24], spine: 8, head: -18, legs: [[170, 176], [168, 176]], hold: 0.1 })
+        hanging(merge(OVER_BAR, { hold: 0.1 }))
       ]
     },
     'hanging-knee-raises': {
@@ -1108,8 +1220,8 @@
       // comes through, as they do for real.
       cycle: 1.4,
       keys: [
-        pushTop({ hip: [puTop.hip[0] + 1, puTop.hip[1] + 5], spine: PU_ANGLE + 3, legs: [arced(ik(puTop.hip[0] + 2, 20, '+x'), 10), onToes([PU_ANKLE[0] - 1, PU_ANKLE[1]], '+x', PU_FOOT)], feet: [150, null] }),
-        pushTop({ hip: [puTop.hip[0] + 1, puTop.hip[1] + 5], spine: PU_ANGLE + 3, legs: [onToes(PU_ANKLE, '+x', PU_FOOT), arced(ik(puTop.hip[0] + 1, 20, '+x'), 10)], feet: [null, 150] })
+        pushTop({ hip: [puTop.hip[0] + 1, puTop.hip[1] + 6], spine: PU_ANGLE + 4, legs: [arced(ik(puTop.hip[0] + 11, 17, '+x'), 10), onToes([PU_ANKLE[0] - 1, PU_ANKLE[1]], '+x', PU_FOOT)], feet: [150, null] }),
+        pushTop({ hip: [puTop.hip[0] + 1, puTop.hip[1] + 6], spine: PU_ANGLE + 4, legs: [onToes(PU_ANKLE, '+x', PU_FOOT), arced(ik(puTop.hip[0] + 10, 17, '+x'), 10)], feet: [null, 150] })
       ]
     },
 
@@ -1133,6 +1245,19 @@
         var t1 = merge(base, { legs: [[62, 95], [290, 20]], legLen: [[1, 0.7], [0.7, 1]], feet: [60, 20], d3: backNear });
         var t2 = merge(base, { legs: [[80, 20], [300, 270]], legLen: [[0.7, 1], [1, 0.7]], feet: [20, 270], d3: backFar });
         return [A, t1, up, t2, B, t2, up, t1];
+      })(),
+      // In 3D: feet planted wide in front, and both knees swing over
+      // together about the line from hip to foot, like windscreen wipers.
+      view3d: 'front',
+      keys3d: (function () {
+        var base = merge(FRONT, { hip: [0, 9], spine: 0, head: 0,
+          arms: [[172, 180], [188, 180]], armLen: [[0.88, 0.88], [0.88, 0.88]], hands: [180, 180],
+          legs: [[32.7, 156], [327.3, 204]], legLen: [[0.664, 0.82], [0.664, 0.82]], feet: [90, 270] });
+        var arms = { sign: { arms: [[-1, -1], [-1, -1]] }, toeOut: [70, 70] };
+        return [
+          merge(base, { d3: merge(arms, { flare: { legs: [78, -78] }, twist: -12 }), hold: 0.2 }),
+          merge(base, { d3: merge(arms, { flare: { legs: [-78, 78] }, twist: 12 }), hold: 0.2 })
+        ];
       })()
     },
     'hip-flexor': {
@@ -1147,10 +1272,15 @@
       // All fours with one leg straight out to the side (toward you, so it
       // looks short), foot flat; rock the hips back toward the heel.
       cycle: 4,
-      keys: [
-        fours({ legs: [[160, 160], Q_LEGS[1]], legLen: [[0.55, 0.55], [1, 1]], feet: [66, 270] }),
-        fours({ hip: step([0, KNEE], 322, LEN.thigh), spine: 62, head: 18, legs: [[130, 130], [142, 270]], legLen: [[0.46, 0.46], [1, 1]], feet: [78, 270], hold: 0.15 })
-      ]
+      keys: (function () {
+        // How short the straight leg is drawn so its foot is on the floor.
+        var sideLeg = function (hip, a) { return (hip[1] - ANKLE - 1.2) / (-Math.cos(a * Math.PI / 180) * (LEN.thigh + LEN.shin)); };
+        var back = step([0, KNEE], 318, LEN.thigh);
+        return [
+        fours({ legs: [[160, 160], Q_LEGS[1]], legLen: [[sideLeg(Q_HIP, 160), sideLeg(Q_HIP, 160)], [1, 1]], feet: [66, 270] }),
+        fours({ hip: back, spine: 58, head: 18, legs: [[130, 130], [142, 270]], legLen: [[sideLeg(back, 130), sideLeg(back, 130)], [1, 1]], feet: [78, 270], hold: 0.15 })
+        ];
+      })()
     },
     straddle: {
       // Seen from the front: legs wide in a V, then hinge forward from the
@@ -1158,7 +1288,9 @@
       view: 'front',
       cycle: 5,
       keys: (function () {
-        var base = merge(FRONT, { hip: [0, 7.5], legs: [[93, 93], [267, 267]], feet: [4, 356],
+        // The legs are a ~110° V: out to the sides and forward, toward you,
+        // so drawn a little short.
+        var base = merge(FRONT, { hip: [0, 7.5], legs: [[93, 93], [267, 267]], legLen: [[0.82, 0.82], [0.82, 0.82]], feet: [4, 356],
           arms: [ik(14, WRIST, '+y'), ik(-14, WRIST, '+y')], hands: [90, 270] });
         return [
           merge(base, { spine: 0 }),
@@ -1171,16 +1303,16 @@
       cycle: 2.6,
       props: [{ wall: 42 }],
       keys: [
-        { hip: [2, 29.5], spine: 8, arms: [ik(41, 50, '-y'), ik(41, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+y'), ik(-22, KNEE + 0.5, '-y')], feet: [null, 270] },
-        { hip: [11, 29], spine: 12, arms: [ik(41, 50, '-y'), ik(41, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+x'), ik(-14, KNEE + 0.5, '-y')], feet: [null, 270] }
+        { hip: [2, 29.5], spine: 8, arms: [ik(39.5, 50, '-y'), ik(39.5, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+y'), ik(-22, KNEE + 0.5, '-y')], feet: [null, 270] },
+        { hip: [11, 29], spine: 12, arms: [ik(39.5, 50, '-y'), ik(39.5, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+x'), ik(-14, KNEE + 0.5, '-y')], feet: [null, 270] }
       ]
     },
     'knee-to-wall-hold': {
       cycle: 6,
       props: [{ wall: 42 }],
       keys: [
-        { hip: [11, 29], spine: 12, arms: [ik(41, 50, '-y'), ik(41, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+x'), ik(-14, KNEE + 0.5, '-y')], feet: [null, 270] },
-        { hip: [12, 28.7], spine: 13, arms: [ik(41, 50, '-y'), ik(41, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+x'), ik(-13, KNEE + 0.5, '-y')], feet: [null, 270] }
+        { hip: [11, 29], spine: 12, arms: [ik(39.5, 50, '-y'), ik(39.5, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+x'), ik(-14, KNEE + 0.5, '-y')], feet: [null, 270] },
+        { hip: [12, 28.7], spine: 13, arms: [ik(39.5, 50, '-y'), ik(39.5, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+x'), ik(-13, KNEE + 0.5, '-y')], feet: [null, 270] }
       ]
     },
     'calf-stretch': {
@@ -1216,9 +1348,9 @@
       keys3d: (function () {
         var base = onBack({ legs: [[0, 90], [0, 90]], feet: [0, 0], arms: [[0, 0], [0, 0]], hands: [0, 0], head: 0 });
         return [
-          merge(base, { turn: 1, d3: { roll: 90 } }),
-          merge(base, { turn: 0.4, d3: { roll: 90, abd: { arms: [0, 90] }, twist: 30 } }),
-          merge(base, { turn: -0.3, d3: { roll: 90, abd: { arms: [0, 165] }, twist: 60 }, hold: 0.15 })
+          merge(base, { turn: 1, d3: { roll: 90, twistArms: [0, 1] } }),
+          merge(base, { turn: 0.4, d3: { roll: 90, abd: { arms: [0, 50] }, twist: 45, twistArms: [0, 1] } }),
+          merge(base, { turn: -0.3, d3: { roll: 90, abd: { arms: [0, 95] }, twist: 88, twistArms: [0, 1] }, hold: 0.15 })
         ];
       })()
     },
@@ -1241,8 +1373,8 @@
       // over the long leg, back long, hands to the shin.
       cycle: 5,
       keys: [
-        seated({ legs: [[90, 90], [68, 248]], feet: [5, 110], arms: [ik(22, 12, '-y'), ik(10, WRIST, '-x')], hands: [90, 90] }),
-        seated({ spine: [46, 52], head: 6, legs: [[90, 90], [68, 248]], feet: [5, 110], arms: [ik(34, 10, '+y'), ik(33, 10, '+y')], hands: [95, 95], hold: 0.25 })
+        seated({ legs: [[90, 90], [68, 248]], feet: [5, 96], arms: [ik(22, 12, '-y'), ik(10, WRIST, '-x')], hands: [90, 90], d3: FOCUS_3D }),
+        seated({ spine: [46, 52], head: 6, legs: [[90, 90], [68, 248]], feet: [5, 96], arms: [ik(34, 10, '+y'), ik(33, 10, '+y')], hands: [95, 95], d3: FOCUS_3D, hold: 0.25 })
       ]
     },
 
@@ -1258,16 +1390,26 @@
         standing({ head: 16, turn: 0.35 }),
         standing({ head: 0, turn: 0 }),
         standing({ head: 16, turn: -0.35 })
-      ]
+      ],
+      // The drawing turns the head to show the roll; in 3D it really rolls:
+      // chin to chest, ear toward one shoulder, back through the chin, the
+      // other ear — face forward throughout.
+      keys3d: [
+        standing({ head: 40, hold: 0.1 }),
+        standing({ head: 10, d3: { tilt: 36 } }),
+        standing({ head: 40 }),
+        standing({ head: 10, d3: { tilt: -36 } })
+      ],
+      still3d: 1
     },
     'shoulder-rolls': {
       // Up to the ears, back, and down.
       cycle: 2.6,
       keys: [
-        standing({ roll: 4, arms: [[176, 172], [182, 178]] }),
-        standing({ shrug: 6, roll: 1 }),
-        standing({ roll: -4, arms: [[188, 184], [194, 190]] }),
-        standing({ shrug: -1.5 })
+        standing({ roll: 5.5, arms: [[174, 170], [180, 176]] }),
+        standing({ shrug: 8, roll: 1 }),
+        standing({ roll: -5.5, arms: [[190, 186], [196, 192]] }),
+        standing({ shrug: -2.5 })
       ]
     },
     'reach-side-bend': {
@@ -1281,9 +1423,9 @@
         return [
           merge(base, { arms: [[172, 176], [188, 184]] }),
           up,
-          merge(up, { spine: [352, 332], head: -8, arms: [[334, 322], [316, 306]], hands: [322, 306], hold: 0.12 }),
+          merge(up, { spine: [352, 332], head: -8, arms: [[322, 312], [322, 312]], hands: [312, 312], hold: 0.12 }),
           up,
-          merge(up, { spine: [8, 28], head: 8, arms: [[44, 54], [26, 38]], hands: [54, 38], hold: 0.12 })
+          merge(up, { spine: [8, 28], head: 8, arms: [[38, 48], [38, 48]], hands: [48, 48], hold: 0.12 })
         ];
       })()
     },
@@ -1294,9 +1436,9 @@
         var arms = function (hx) { return [ik(hx + 4, 57, '-x'), ik(hx + 3, 57, '-x')]; };
         return [
           { hip: [5, 53], spine: -5, arms: arms(5), legs: [flat(1), flat(-1)] },
-          { hip: [0, 51.5], spine: 0, arms: arms(0), legs: [flat(1), flat(-1)] },
+          { hip: [0, 51.5], spine: 0, arms: arms(0), legs: [flat(1), flat(-1)], d3: { shift: [6, 1.5] } },
           { hip: [-5, 53], spine: 6, arms: arms(-5), legs: [flat(1), flat(-1)] },
-          { hip: [0, 54], spine: 0, arms: arms(0), legs: [flat(1), flat(-1)] }
+          { hip: [0, 54], spine: 0, arms: arms(0), legs: [flat(1), flat(-1)], d3: { shift: [-6, -1.5] } }
         ];
       })()
     },
@@ -1306,8 +1448,8 @@
       // of the thighs; head toward the shins, holding the elbows; sway.
       cycle: 5,
       keys: [
-        { hip: [-6, 52], spine: [115, 172], head: 5, arms: [[178, 92], [182, 268]], armLen: [[1, 0.35], [1, 0.35]], hands: [92, 268], legs: [flat(-1), flat(-3)], d3: { sign: { arms: [[1, -1], [1, -1]] } } },
-        { hip: [-5, 51.5], spine: [118, 180], head: 6, arms: [[186, 92], [190, 268]], armLen: [[1, 0.35], [1, 0.35]], hands: [92, 268], legs: [flat(-1), flat(-3)], d3: { sign: { arms: [[1, -1], [1, -1]] } } }
+        { hip: [-6, 52], spine: [115, 172], head: 5, arms: [[178, 92], [182, 268]], armLen: [[1, 0.35], [1, 0.35]], hands: [92, 268], legs: [flat(-1), flat(-3)], d3: { sign: { arms: [[1, -1], [1, -1]] }, shift: [0.5, 4] } },
+        { hip: [-5, 51.5], spine: [118, 180], head: 6, arms: [[186, 92], [190, 268]], armLen: [[1, 0.35], [1, 0.35]], hands: [92, 268], legs: [flat(-1), flat(-3)], d3: { sign: { arms: [[1, -1], [1, -1]] }, shift: [-0.5, -4] } }
       ]
     },
     'worlds-greatest': {
@@ -1320,9 +1462,9 @@
         var legs = [flat(26, 0, '+y'), toes(-46, 0, 150, '+y')];
         var far = ik(24, WRIST, '+x');
         return [
-          { hip: [0, 26], spine: 72, head: 10, arms: [ik(20, WRIST, '+x'), far], hands: PALMS, legs: legs },
-          { hip: [0, 24], spine: [78, 98], head: 28, arms: [ik(24, 12, '-y'), far], hands: [150, 90], legs: legs, hold: 0.1 },
-          { hip: [0, 26], spine: 64, head: -40, turn: 0.1, arms: [[4, 0], far], hands: [0, 90], legs: legs, d3: { twist: -45 }, hold: 0.15 }
+          { hip: [0, 26], spine: 72, head: 10, arms: [ik(20, WRIST, '+x'), far], hands: PALMS, legs: legs, d3: WG_3D },
+          { hip: [0, 24], spine: [78, 98], head: 28, arms: [ik(24, 12, '-y'), far], hands: [150, 90], legs: legs, d3: WG_3D, hold: 0.1 },
+          { hip: [0, 26], spine: 64, head: -40, turn: 0.1, arms: [[4, 0], far], hands: [0, 90], legs: legs, d3: merge(WG_3D, { twist: -85, twistArms: [0, 0] }), hold: 0.15 }
         ];
       })()
     },
@@ -1340,12 +1482,14 @@
           var dx = knee[0] - hip[0], dy = knee[1] - hip[1];
           var thigh = Math.sqrt(dx * dx + dy * dy) / LEN.thigh;
           var th = angleOf(dx, dy);
-          var sh = step(hip, 77, LEN.spineLow + LEN.spineHigh);
+          // The spine slopes so the elbows stay on the floor however far back the hips go.
+          var sa = Math.acos((WRIST + LEN.upperArm + 0.4 - hip[1]) / (LEN.spineLow + LEN.spineHigh)) * 180 / Math.PI;
+          var sh = step(hip, sa, LEN.spineLow + LEN.spineHigh);
           var fore = [ik(sh[0] + LEN.foreArm, WRIST, '-y'), ik(sh[0] + LEN.foreArm + 1, WRIST, '-y')];
-          return merge({ hip: hip, spine: 77, head: 16, arms: fore, hands: PALMS,
+          return merge({ hip: hip, spine: sa, head: 16, arms: fore, hands: PALMS,
             legs: [[th, 270], [th, 270]], legLen: [[thigh, 1], [thigh, 1]], feet: [270, 270] }, extra);
         };
-        return [at([0, KNEE + 10.5]), at([-7, KNEE + 8.5], { hold: 0.2 })];
+        return [at([1, KNEE + 10.5]), at([-11, KNEE + 7.5], { hold: 0.2 })];
       })()
     },
     'pigeon': {
@@ -1369,17 +1513,19 @@
           var ankle = step(step(hip, th, LEN.thigh), 0, LEN.shin);
           return merge({ hip: hip, spine: 270, head: 4,
             arms: [ik(ankle[0] - 1, ankle[1] - 3, '+y'), ik(ankle[0], ankle[1] - 3, '+y')], hands: [5, 5],
-            legs: [[th, 0], [th + 1, 1]], feet: [270, 271], d3: { abd: { legs: [28, 28], arms: [18, 18] } } }, extra);
+            legs: [[th, 0], [th + 1, 1]], feet: [270, 271], d3: { abd: { legs: [[42, 0], [42, 0]], arms: [21, 21] } } }, extra);
         };
-        return [pose(302), pose(298, { hip: [0.6, LYING] })];
+        return [pose(292), pose(288, { hip: [0.6, LYING] })];
       })()
     },
     malasana: {
       // Deep squat, heels down, elbows pressing the knees apart.
       cycle: 5,
+      // (In 3D: feet wider and turned out, knees over the toes, palms
+      // together in the middle with the elbows inside the knees.)
       keys: [
-        { hip: [-7, 17], spine: [14, 6], head: -6, arms: [[150, 20], [152, 22]], hands: [10, 12], legs: [flat(4, 0, '+x'), flat(3, 0, '+x')], d3: { abd: { legs: [24, 24], arms: [-10, -10] } } },
-        { hip: [-7, 15], spine: [16, 8], head: -6, arms: [[152, 20], [154, 22]], hands: [10, 12], legs: [flat(4, 0, '+x'), flat(3, 0, '+x')], d3: { abd: { legs: [26, 26], arms: [-10, -10] } } }
+        { hip: [-7, 17], spine: [14, 6], head: -6, arms: [[150, 20], [152, 22]], hands: [10, 12], legs: [flat(4, 0, '+x'), flat(3, 0, '+x')], d3: MALASANA_3D },
+        { hip: [-7, 15], spine: [16, 8], head: -6, arms: [[152, 20], [154, 22]], hands: [10, 12], legs: [flat(4, 0, '+x'), flat(3, 0, '+x')], d3: MALASANA_3D }
       ]
     },
     'seated-fold': {
@@ -1403,7 +1549,21 @@
           merge(base, { spine: 0 }),
           merge(base, { spine: 0, spineLen: 0.65, head: 0, hold: 0.25 })
         ];
-      })()
+      })(),
+      // In 3D: knees wide and a little forward, feet together in front of
+      // the hips; the hands hold the feet, elbows inside the knees, and the
+      // chest walks forward toward them.
+      keys3d: (function () {
+        var feet = [[4.5, 5.5, 18.5], [-4.5, 5.5, 18.5]];
+        var base = merge(FRONT, { hip: [0, 9], legs: [[95.2, 265], [264.8, 95]], legLen: [[0.876, 0.962], [0.876, 0.962]], feet: [270, 90],
+          arms: [ik(-4.5, 12, '-x'), ik(4.5, 12, '+x')], hands: [180, 180] });
+        var hold = { toeOut: [90, 90], at: { arms: [[6.5, 10, 21], [-6.5, 10, 21]] } };
+        return [
+          merge(base, { spine: 0, spineLen: 0.97, d3: hold }),
+          merge(base, { spine: 0, spineLen: 0.68, head: 0, d3: hold, hold: 0.25 })
+        ];
+      })(),
+      view3d: 'front'
     },
     'half-splits': {
       // Back knee down, front leg long, heel down; hips back, then fold.
@@ -1436,6 +1596,18 @@
           merge(base, { spine: 0 }),
           merge(base, { spine: 0, spineLen: 0.85, head: 0, hold: 0.25 })
         ];
+      })(),
+      // In 3D: the top foot really rests in the lap on the other thigh,
+      // the lower foot tucked in under the top shin, hands on the knees.
+      view3d: 'front',
+      keys3d: (function () {
+        var base = merge(FRONT, { hip: [0, 9], legs: [[109.4, 270], [254.9, 90]], legLen: [[0.36, 1], [0.613, 1]], feet: [270, 90],
+          arms: [ik(4, 16, '-y'), ik(-4, 16, '-y')], hands: [180, 180] });
+        var d3 = { at: { legs: [[-6, 13.5, 8], [5, 4.5, 20]], arms: [[13, 10, 20], [-18, 9, 17]] }, toeOut: [0, 60] };
+        return [
+          merge(base, { spine: 0, spineLen: 0.96, d3: d3 }),
+          merge(base, { spine: 0, spineLen: 0.85, head: 0, d3: d3, hold: 0.25 })
+        ];
       })()
     },
     'thread-needle': {
@@ -1445,7 +1617,7 @@
       keys: [
         fours(),
         fours({ spine: [Q_SPINE + 8, 124], head: 34, turn: 0, arms: [arced(ik(Q_HAND - 8, WRIST + 1.5, '+x'), 6), ik(Q_HAND + 1, WRIST, '+x')],
-          armLen: [[0.55, 0.55], [1, 1]], hands: [255, 90], d3: { sign: { arms: [[-1, -1], [1, 1]] }, twist: 35 }, hold: 0.25 })
+          armLen: [[0.55, 0.55], [1, 1]], hands: [255, 90], d3: { sign: { arms: [[-1, -1], [1, 1]] }, twist: 35, faceZ: -1 }, hold: 0.25 })
       ]
     },
     'cobra': {
@@ -1471,7 +1643,7 @@
         var heel = [ank[0] + 2, ank[1] + 3];
         return [
           { hip: [0, KNEE + LEN.thigh], spine: 0, head: -4, arms: [ik(-7, 34, '-y'), ik(-6, 33, '-y')], hands: [0, 0], legs: legs, hold: 0.1 },
-          { hip: [5, KNEE + LEN.thigh - 0.6], spine: [334, 292], head: -18, arms: [ik(heel[0] + 1, heel[1] + 2, '-x'), ik(heel[0] + 2, heel[1] + 2, '-x')], hands: [180, 180], legs: legs, hold: 0.25 }
+          { hip: [5, KNEE + LEN.thigh - 0.6], spine: [334, 292], head: -6, arms: [ik(heel[0] + 1, heel[1] + 2, '-x'), ik(heel[0] + 2, heel[1] + 2, '-x')], hands: [180, 180], legs: legs, hold: 0.25 }
         ];
       })()
     },
@@ -1505,6 +1677,17 @@
   };
 
   /* The same moves, timed, in Express 15 — and the straddle fold. */
+  /* Seated twist: the drawing shows the look over the shoulder by turning
+   * the eye; in 3D the chest and head really turn toward the raised knee,
+   * the head a little further, and the other elbow hooks the outside of
+   * the knee, forearm upright. */
+  (function (d) {
+    var hand = [[21, 26, -6], [13, 43.5, 9.5]];
+    d.keys3d = d.keys.map(function (k, i) {
+      return merge(k, { turn: i ? 0.93 : 1, d3: { twist: i ? -55 : -10, twistArms: [1, 0], at: { arms: [0, hand[i]] } } });
+    });
+  })(FIGURES['seated-twist']);
+
   FIGURES['express-squats'] = FIGURES.squats;
   FIGURES['express-pushups'] = FIGURES.pushups;
   FIGURES['express-lunges'] = FIGURES['reverse-lunges'];

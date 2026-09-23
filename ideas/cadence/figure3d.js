@@ -10,9 +10,12 @@
  *   plane, and by exactly how much: a bone drawn at 40% of its length has
  *   √(1 − 0.4²) of it pointing toward or away from you. So those poses come
  *   back into 3D on their own; `d3.sign` says toward or away.
- * - What the drawing can't say at all comes from `d3`: limbs swung out to
- *   the side (`abd`), the upper body twisted about the spine (`twist`), the
- *   whole body rolled onto its side (`roll`).
+ * - What the drawing can't say at all comes from `d3` (see figures.js):
+ *   limbs swung out to the side (`abd`), elbows and knees turned out
+ *   (`flare`), feet turned out (`toeOut`), a hand or foot put somewhere
+ *   the drawing can't show (`wide`, `reach`, `at` — the limb is solved again
+ *   in 3D), the weight shifted sideways (`shift`), the upper body twisted about the spine (`twist`), the head
+ *   tipped (`tilt`), the whole body rolled onto its side (`roll`).
  *
  * three.js (vendor/, a subset, MIT) is loaded only when a 3D figure is first
  * shown. Until it arrives, and anywhere WebGL isn't available, the 2D figure
@@ -85,9 +88,37 @@
     upperArm: 2.7, foreArm: 2.2, hand: 1.9
   };
 
+  /* A `d3` value that may be missing, a number, or per side / per bone. */
+  function pick(v, i, dflt) {
+    if (v == null) return dflt;
+    if (typeof v === 'number') return v;
+    return v[i] == null ? dflt : v[i];
+  }
+  function across(a2, b2) {
+    var dx = b2[0] - a2[0], dy = b2[1] - a2[1], l = Math.sqrt(dx * dx + dy * dy);
+    return l > 3 ? [dy / l, -dx / l, 0] : [1, 0, 0];
+  }
+
+  /* Two-bone reach in 3D: from `o` toward `target`, the middle joint on the
+   * side of `pole`. Out of reach, the limb points straight at the target. */
+  function solve(o, target, l1, l2, pole, fallback) {
+    var d = sub(target, o), dn = norm(d);
+    var dist = Math.max(Math.abs(l1 - l2) + 0.01, Math.min(l1 + l2 - 0.001, len(d)));
+    var a = (l1 * l1 - l2 * l2 + dist * dist) / (2 * dist);
+    var h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+    var pv = sub(sub(pole, o), mul(dn, dot(sub(pole, o), dn)));
+    if (len(pv) < 1e-3) pv = cross(dn, fallback);
+    return { mid: add(add(o, mul(dn, a)), mul(norm(pv), h)), end: add(o, mul(dn, dist)) };
+  }
+
   function lift(sk, view, LEN) {
-    var d3 = sk.d3;
-    var lateral = view === 'front' ? [1, 0, 0] : [0, 0, 1];
+    var d3 = sk.d3 || {};
+    // Across the body. From the side, that's straight out of the picture;
+    // from the front, it's square to the spine in the picture, so a body
+    // lying on its side (side plank) has its hips and shoulders stacked.
+    var front = view === 'front';
+    var hipAcross = front ? across(sk.hip, sk.waist) : [0, 0, 1];
+    var shoulderAcross = front ? across(sk.waist, sk.shoulder) : [0, 0, 1];
     var SIDES = [1, -1];                        // near, far
     function P(p) { return [p[0], p[1], 0]; }
 
@@ -101,78 +132,166 @@
     }
     // Out of the plane defaults to "outward" for a limb seen from the side,
     // and "forward" (toward you) for one drawn from the front.
-    function outSign(i) { return view === 'front' ? 1 : SIDES[i]; }
+    function outSign(i) { return front ? 1 : SIDES[i]; }
+    function sign(part, i, j) { return pick(pick(d3.sign && d3.sign[part], i, 1), j, 1); }
 
+    var spineSign = pick(d3.sign && d3.sign.spine, 0, 1);
     var hip = P(sk.hip);
-    var waist = bone(hip, sk.hip, sk.waist, LEN.spineLow, d3.sign.spine);
-    var shoulder = bone(waist, sk.waist, sk.shoulder, LEN.spineHigh, d3.sign.spine);
+    var waist = bone(hip, sk.hip, sk.waist, LEN.spineLow, spineSign);
+    var shoulder = bone(waist, sk.waist, sk.shoulder, LEN.spineHigh, spineSign);
     var neckTop = bone(shoulder, sk.shoulder, sk.neckTop, LEN.neck, 1);
     var head = bone(neckTop, sk.neckTop, sk.head, LEN.headR, 1);
 
     // Where the face points: in the drawing's plane, square to the neck,
-    // turned toward you as `turn` goes from 1 to 0.
+    // turned toward you as `turn` goes from 1 to 0 (away with faceZ -1).
     var n2 = norm([sk.head[0] - sk.neckTop[0], sk.head[1] - sk.neckTop[1], 0]);
     var turn = sk.turn == null ? 1 : sk.turn;
-    var face = norm(add(mul([n2[1], -n2[0], 0], turn), mul([0, 0, 1], Math.sqrt(Math.max(0, 1 - turn * turn)))));
+    var faceZ = pick(d3.faceZ, 0, 1);
+    var face = norm(add(mul([n2[1], -n2[0], 0], turn), mul([0, 0, faceZ], Math.sqrt(Math.max(0, 1 - turn * turn)))));
     var up = norm(sub(head, neckTop));
+
+    // The head tipped toward a shoulder, about the line of the face.
+    var tilt = pick(d3.tilt, 0, 0);
+    if (tilt) {
+      var tl = function (p) { return turnAbout(p, shoulder, face, tilt); };
+      neckTop = tl(neckTop); head = tl(head);
+      up = norm(sub(head, neckTop));
+    }
+
+    // Weight shifted sideways: `shift` moves the pelvis, or [pelvis, chest,
+    // hands] — the hands go with the chest unless they're planted; the feet
+    // always stay where they are.
+    var sp = pick(d3.shift, 0, 0), sc = pick(d3.shift, 1, sp), sh = pick(d3.shift, 2, sc);
+    function mv(p, d, across3) { return d ? add(p, mul(across3 || hipAcross, d)) : p; }
+    var hip0 = hip;
+    hip = mv(hip, sp);
+    waist = mv(waist, (sp + sc) / 2);
+    shoulder = mv(shoulder, sc, shoulderAcross); neckTop = mv(neckTop, sc, shoulderAcross); head = mv(head, sc, shoulderAcross);
 
     var rootOff = [sk.root[0] - sk.shoulder[0], sk.root[1] - sk.shoulder[1], 0];
     var arms = [], legs = [];
     for (var i = 0; i < 2; i++) {
       var a2 = sk.arms[i], l2 = sk.legs[i];
-      var as = d3.sign.arms[i], ls = d3.sign.legs[i];
+      var outA = mul(shoulderAcross, SIDES[i]), outL = mul(hipAcross, SIDES[i]);
 
-      var root = add(add(shoulder, rootOff), mul(lateral, SHOULDER_W * SIDES[i]));
-      var elbow = bone(root, sk.root, a2.elbow, LEN.upperArm, as[0] * outSign(i));
-      var wrist = bone(elbow, a2.elbow, a2.wrist, LEN.foreArm, as[1] * outSign(i));
-      var fingers = bone(wrist, a2.wrist, a2.fingers, LEN.hand, as[1] * outSign(i));
+      var root = add(add(shoulder, rootOff), mul(shoulderAcross, SHOULDER_W * SIDES[i]));
+      var elbow = bone(root, sk.root, a2.elbow, LEN.upperArm, sign('arms', i, 0) * outSign(i));
+      var wrist = bone(elbow, a2.elbow, a2.wrist, LEN.foreArm, sign('arms', i, 1) * outSign(i));
+      var fingers = bone(wrist, a2.wrist, a2.fingers, LEN.hand, sign('arms', i, 1) * outSign(i));
       var arm = { root: root, elbow: elbow, wrist: wrist, fingers: fingers };
+      retarget(arm, 'root', 'elbow', 'wrist', ['fingers'], LEN.upperArm, LEN.foreArm, outA, 'arms', i, mv(wrist, sh - sc, shoulderAcross), elbow);
 
-      var hj = add(hip, mul(lateral, HIP_W * SIDES[i]));
-      var knee = bone(hj, sk.hip, l2.knee, LEN.thigh, ls[0] * outSign(i));
-      var ankle = bone(knee, l2.knee, l2.ankle, LEN.shin, ls[1] * outSign(i));
-      var shift = sub(ankle, P(l2.ankle));
-      var leg = { hip: hj, knee: knee, ankle: ankle,
-        heel: add(P(l2.heel), shift), ball: add(P(l2.ball), shift), toe: add(P(l2.toe), shift) };
+      var hj0 = add(hip0, mul(hipAcross, HIP_W * SIDES[i]));
+      var knee = bone(hj0, sk.hip, l2.knee, LEN.thigh, sign('legs', i, 0) * outSign(i));
+      var ankle = bone(knee, l2.knee, l2.ankle, LEN.shin, sign('legs', i, 1) * outSign(i));
+      var drop = sub(ankle, P(l2.ankle));
+      var leg = { hip: mv(hj0, sp), knee: knee, ankle: ankle,
+        heel: add(P(l2.heel), drop), ball: add(P(l2.ball), drop), toe: add(P(l2.toe), drop) };
+      retarget(leg, 'hip', 'knee', 'ankle', ['heel', 'ball', 'toe'], LEN.thigh, LEN.shin, outL, 'legs', i, ankle, mv(knee, sp / 2));
 
-      // A whole limb swung out to its side.
-      var out = mul(lateral, SIDES[i]);
-      [[arm, 'root', ['elbow', 'wrist', 'fingers'], d3.abd.arms[i]], [leg, 'hip', ['knee', 'ankle', 'heel', 'ball', 'toe'], d3.abd.legs[i]]].forEach(function (job) {
-        var limb = job[0], pivot = limb[job[1]], deg = job[3];
-        if (!deg) return;
-        var first = norm(sub(limb[job[2][0]], pivot));
-        var axis = cross(first, out);
-        if (len(axis) < 1e-3) return;
-        job[2].forEach(function (k) { limb[k] = turnAbout(limb[k], pivot, axis, deg); });
-      });
+      limb3(arm, 'root', 'elbow', 'wrist', ['fingers'], outA, 'arms', i);
+      limb3(leg, 'hip', 'knee', 'ankle', ['heel', 'ball', 'toe'], outL, 'legs', i);
+
+      // Feet and hands turned out, about the upright through the ankle or wrist.
+      turnOut(leg, 'ankle', ['heel', 'ball', 'toe'], 'heel', 'ball', pick(d3.toeOut, i, 0), outL, i);
+      turnOut(arm, 'wrist', ['fingers'], 'wrist', 'fingers', pick(d3.handOut, i, 0), outA, i);
       arms.push(arm);
       legs.push(leg);
     }
 
-    var body = { hip: hip, waist: waist, shoulder: shoulder, neckTop: neckTop, head: head, face: face, up: up, arms: arms, legs: legs };
-
-    // The upper body twisted about the spine.
-    if (d3.twist) {
-      var axis = sub(shoulder, hip);
-      var tw = function (p) { return turnAbout(p, hip, axis, d3.twist); };
-      body.neckTop = tw(neckTop);
-      body.head = tw(head);
-      body.face = sub(tw(add(hip, face)), hip);
-      body.up = sub(tw(add(hip, up)), hip);
-      arms.forEach(function (a) { ['root', 'elbow', 'wrist', 'fingers'].forEach(function (k) { a[k] = tw(a[k]); }); });
+    /* Where the hand or foot ends up, if not where the drawing put it: moved
+     * out to its side (`wide`), moved by a vector (`reach`), or put at a
+     * point (`at`, in the figure's own frame). The elbow or knee is solved
+     * again in 3D, on the side it was on. */
+    function retarget(limb, rootK, midK, endK, tail, l1, l2, out, part, i, end, pole) {
+      var at = d3.at && d3.at[part] && d3.at[part][i];
+      var w = pick(d3.wide && d3.wide[part], i, 0);
+      var r = d3.reach && d3.reach[part] && d3.reach[part][i];
+      var target = at && at.length === 3 ? at.slice() : add(add(end, mul(out, w)), r && r.length === 3 ? r : [0, 0, 0]);
+      var moved = len(sub(target, limb[endK])) > 1e-3;
+      var rootMoved = len(sub(pole, limb[midK])) > 1e-3;
+      if (!moved && !rootMoved) return;
+      var m = solve(limb[rootK], target, l1, l2, pole, out);
+      var dEnd = sub(m.end, limb[endK]);
+      tail.forEach(function (k) { limb[k] = add(limb[k], dEnd); });
+      limb[midK] = m.mid;
+      limb[endK] = m.end;
     }
+
+    function turnOut(limb, pivotK, keys, fromK, toK, deg, out, i) {
+      if (!deg) return;
+      var fwd = sub(limb[toK], limb[fromK]);
+      var t = dot(cross([0, 1, 0], norm(fwd)), out);
+      var k = Math.abs(t) > 0.2 ? (t > 0 ? 1 : -1) : front ? SIDES[i] : -SIDES[i];
+      keys.forEach(function (key) { limb[key] = turnAbout(limb[key], limb[pivotK], [0, 1, 0], deg * k); });
+    }
+
+    /* A limb swung out to its side (`abd`: the whole limb, or [upper,
+     * lower] with the lower part swung on its own about the elbow or knee),
+     * then its middle joint turned out about the line to its end (`flare`),
+     * which stays where it is. */
+    function limb3(limb, rootK, midK, endK, tail, out, part, i) {
+      var ab = d3.abd && d3.abd[part] ? pick(d3.abd[part], i, 0) : 0;
+      var up = pick(ab, 0, 0), lo = pick(ab, 1, up);
+      var below = [midK, endK].concat(tail), lower = [endK].concat(tail);
+      var axis = cross(norm(sub(limb[midK], limb[rootK])), out);
+      if (len(axis) > 1e-3) {
+        if (up) below.forEach(function (k) { limb[k] = turnAbout(limb[k], limb[rootK], axis, up); });
+        if (lo - up) lower.forEach(function (k) { limb[k] = turnAbout(limb[k], limb[midK], axis, lo - up); });
+      }
+      var fl = pick(d3.flare && d3.flare[part], i, 0);
+      if (fl) {
+        var ax = sub(limb[endK], limb[rootK]);
+        var v = sub(limb[midK], limb[rootK]);
+        var perp = sub(v, mul(norm(ax), dot(v, norm(ax))));
+        if (len(perp) > 0.5 && len(ax) > 1e-3) {
+          var s = dot(cross(norm(ax), perp), out) >= 0 ? 1 : -1;
+          limb[midK] = turnAbout(limb[midK], limb[rootK], ax, fl * s);
+        }
+      }
+    }
+
+    var body = { hip: hip, waist: waist, shoulder: shoulder, neckTop: neckTop, head: head, face: face, up: up, arms: arms, legs: legs };
 
     // The whole body rolled onto its side, about its long axis (x), then set
     // back down on the floor.
-    if (d3.roll) {
-      var X = [1, 0, 0];
-      var roll = function (p) { return turnAbout(p, hip, X, d3.roll); };
+    var rollDeg = pick(d3.roll, 0, 0);
+    if (rollDeg) {
+      var X = [1, 0, 0], pivot = body.hip;
+      var roll = function (p) { return turnAbout(p, pivot, X, rollDeg); };
       eachPoint(body, roll);
-      body.face = sub(roll(add(hip, body.face)), hip);
-      body.up = sub(roll(add(hip, body.up)), hip);
+      body.face = sub(roll(add(pivot, body.face)), pivot);
+      body.up = sub(roll(add(pivot, body.up)), pivot);
       var low = Infinity;
       segments(body).forEach(function (s) { low = Math.min(low, s[0][1] - s[2], s[1][1] - s[2]); });
       if (isFinite(low)) eachPoint(body, function (p) { return [p[0], p[1] - low, p[2]]; });
+    }
+
+    // The upper body twisted about the spine, after the body is set down,
+    // so a twist never lifts it off the floor. `twistArms` says how much
+    // each arm goes with it.
+    var twist = pick(d3.twist, 0, 0);
+    if (twist) {
+      var h0 = body.hip, axis = sub(body.shoulder, body.hip);
+      var tw = function (p, deg) { return turnAbout(p, h0, axis, deg == null ? twist : deg); };
+      var f0 = body.face, u0 = body.up;
+      body.neckTop = tw(body.neckTop);
+      body.head = tw(body.head);
+      body.face = sub(tw(add(h0, f0)), h0);
+      body.up = sub(tw(add(h0, u0)), h0);
+      // An arm that stays behind (a planted hand) still has its shoulder
+      // carried round; its elbow is solved again to reach the hand.
+      arms.forEach(function (a, j) {
+        var w = pick(d3.twistArms, j, 1);
+        a.root = tw(a.root);
+        ['elbow', 'wrist', 'fingers'].forEach(function (k) { a[k] = tw(a[k], twist * w); });
+        if (w !== 1) {
+          // (the elbow lifted a little, so it bends up off the floor)
+          var m = solve(a.root, a.wrist, LEN.upperArm, LEN.foreArm, add(a.elbow, [0, 6, 0]), [0, 1, 0]);
+          var d = sub(m.end, a.wrist);
+          a.elbow = m.mid; a.wrist = m.end; a.fingers = add(a.fingers, d);
+        }
+      });
     }
     return body;
   }
@@ -291,8 +410,9 @@
     info.props.forEach(function (pr) {
       var m;
       if (pr.box) {
-        var depth = pr.pair ? 6 : 26;
-        (pr.pair ? [-SHOULDER_W, SHOULDER_W] : [0]).forEach(function (z) {
+        // `pair`: one either side of the body (at ±pair, or the shoulders).
+        var depth = pr.pair ? 6 : 26, pz = typeof pr.pair === 'number' ? pr.pair : SHOULDER_W;
+        (pr.pair ? [-pz, pz] : [0]).forEach(function (z) {
           m = new T.Mesh(boxGeo, propMat);
           m.scale.set(pr.box[1] - pr.box[0], pr.box[2], depth);
           m.position.set((pr.box[0] + pr.box[1]) / 2, pr.box[2] / 2, z);
@@ -363,8 +483,9 @@
       camera.updateProjectionMatrix();
     }
 
-    var still = opts.still || (global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches);
-    var stillPhase = F.stillPhase(id);
+    var still = opts.still || typeof opts.phase === 'number' || (global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    // A still shows the working end of the movement, unless a phase is asked for.
+    var stillPhase = typeof opts.phase === 'number' ? opts.phase : F.stillPhase(id);
     var cycle = info.cycle * 1000;
     var started = 0, raf = 0, dirty = true;
 
