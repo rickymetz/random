@@ -109,7 +109,7 @@
   .game .controls { color: var(--dim); font-size: 14px; }
   .game .controls::before { content: "🎮 "; }
   .shots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, .42fr); gap: 8px; margin-top: 12px; align-items: start; }
-  @media (max-width: 520px) { .shots { grid-template-columns: 1fr 1fr; } .shots .ph { grid-column: span 2; max-width: 50%; margin: 0 auto; } }
+
   .shots img, .modes img { width: 100%; display: block; border: 1px solid var(--line); cursor: zoom-in; background: #000; }
   .shots img:hover, .modes img:hover { border-color: var(--cyan); }
 
@@ -126,7 +126,17 @@
   .night img { height: 150px; width: auto; display: block; border: 1px solid var(--line); cursor: zoom-in; background: #000; }
   .night img:hover { border-color: var(--cyan); }
   .night figcaption { font-size: 12.5px; line-height: 1.35; color: var(--dim); margin-top: 4px; }
-  @media (max-width: 520px) { .night img { height: 110px; } .night figure { width: 196px; } .night figure.ph { width: 110px; } }
+
+  /* phones: landscape (TV) pictures one per row, full width; portrait
+     (phone) pictures two to a row */
+  @media (max-width: 600px) {
+    .shots, .modes .row, .night { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .shots > img, .modes .row img:not(.phone), .night figure:not(.ph) { grid-column: 1 / -1; }
+    .shots .ph { grid-column: auto; }
+    .modes .row img.phone { max-height: none; width: 100%; order: 1; }
+    .night figure, .night figure.ph { width: auto; }
+    .night img { width: 100%; height: auto; }
+  }
 
   aside.details h2 { margin-top: 0; }
   aside.details table { font-size: 14px; }
