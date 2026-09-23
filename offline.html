@@ -17,9 +17,9 @@
     try { look = JSON.parse(localStorage.getItem("random-hub:look")); } catch (e) {}
     // Modern unless someone has chosen retro.
     document.documentElement.setAttribute("data-look", look === "retro" ? "retro" : "modern");
+    if (look === "retro") document.write('<link rel="stylesheet" href="retro.css">');
   })();
 </script>
-<link rel="stylesheet" href="retro.css">
 <style>
   :root {
     --bg: #faf9f7;
@@ -140,7 +140,13 @@
     }, Promise.resolve(false));
   }
 
-  fetch(at('ideas.json'))
+  // The worker's injected nav.js (deferred) brings the retro tile colours:
+  // render once it has run, i.e. by DOMContentLoaded.
+  var ready = new Promise(function (resolve) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', resolve);
+    else resolve();
+  });
+  ready.then(function () { return fetch(at('ideas.json')); })
     .then(function (r) { return r.json(); })
     .then(function (ideas) {
       return Promise.all(ideas.map(available)).then(function (flags) {

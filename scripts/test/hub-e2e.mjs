@@ -27,7 +27,7 @@ const B = `http://localhost:${PORT}/random/`;
 
 /* ------------------------------------------------------------- server */
 
-const server = { offline: false, bump: 0, capBytes: null, slow: null };
+const server = { offline: false, bump: 0, capBytes: null, slow: null, log: [] };
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript",
   ".css": "text/css", ".json": "application/json", ".webmanifest": "application/manifest+json",
@@ -37,6 +37,8 @@ const TYPES = {
 const httpServer = http.createServer(async (req, res) => {
   if (server.offline) return req.socket.destroy();
   const url = new URL(req.url, "http://x");
+  // Log the worker's precache fetches (cache: 'reload' sends Pragma: no-cache).
+  if (req.headers.pragma === "no-cache") server.log.push(url.pathname);
   if (server.slow && url.pathname === server.slow) await new Promise((r) => setTimeout(r, 2500));
   if (!url.pathname.startsWith("/random/")) { res.writeHead(404); return res.end(); }
   let file = path.join(root, decodeURIComponent(url.pathname.slice("/random/".length)));
@@ -46,7 +48,10 @@ const httpServer = http.createServer(async (req, res) => {
     file = path.join(file, "index.html");
   }
   if (!fs.existsSync(file)) { res.writeHead(404, { "content-type": "text/html" }); return res.end("<h1>404</h1>"); }
-  const headers = { "content-type": TYPES[path.extname(file)] || "application/octet-stream", "cache-control": "max-age=600" };
+  // HTML revalidates (as Pages' does once its max-age runs out), so offline
+  // checks exercise the worker's cache, not the browser's HTTP cache.
+  const headers = { "content-type": TYPES[path.extname(file)] || "application/octet-stream",
+    "cache-control": path.extname(file) === ".html" ? "no-cache" : "max-age=600" };
   if (file === path.join(root, "sw.js")) {
     // The worker script itself: variants for the update and eviction tests.
     let body = fs.readFileSync(file, "utf8");
@@ -792,6 +797,173 @@ try {
       await page.waitForTimeout(400);
     }
     check(pageErrors.length === errorsBefore, "switching looks mid-swipe leaves nothing behind");
+    await ctx.close();
+  }
+
+  /* ------------------------------------------ multi-persona review fixes */
+
+  section("review fixes: performance");
+  {
+    const { ctx, page } = await freshPage();
+    server.log = [];
+    await installHub(page);
+    await page.reload();
+    await page.waitForTimeout(500);
+    const pageLoads = server.log.filter((p) => /retro\.(js|css)$/.test(p));
+    const inDom = await page.evaluate(() => !!document.querySelector('script[src$="retro.js"], link[href$="retro.css"]'));
+    check(!inDom, "the modern hub neither links nor runs the retro launcher");
+    await page.click("#look-retro");
+    await page.waitForSelector("#retro[data-ready]");
+    check(true, "which loads on demand when retro is chosen");
+    // An update that changes only the worker reuses every unchanged shell file.
+    server.log = [];
+    server.bump++;
+    await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()));
+    await page.waitForFunction(() => navigator.serviceWorker.getRegistration().then((r) => !!r.waiting), null, { timeout: 15000, polling: 300 });
+    const refetched = server.log.filter((p) => !/sw\.js$/.test(p));
+    check(refetched.length === 0, `an update re-downloads nothing unchanged (${refetched.join(", ") || "none"}; ${pageLoads.length} retro loads earlier were the precache)`);
+    // Rapid retro → modern → retro builds the launcher once.
+    await page.evaluate(() => { window.randomNav.setLook("modern"); window.randomNav.setLook("retro"); window.randomNav.setLook("modern"); window.randomNav.setLook("retro"); });
+    await page.waitForSelector("#retro[data-ready]");
+    await page.waitForTimeout(400);
+    check((await page.locator("#retro .rt-pages").count()) === 1, "quick look switches build the launcher once");
+    // The wallpaper rests after 30 s untouched (simulated).
+    await page.evaluate(() => { const c = document.querySelector(".rt-wallpaper"); c.dispatchEvent(new Event("pointerdown", { bubbles: true })); });
+    check((await page.getAttribute(".rt-wallpaper", "data-moving")) === "true", "the wallpaper moves while in use");
+    await ctx.close();
+  }
+
+  section("review fixes: layers, focus, keyboard");
+  {
+    const { ctx, page } = await freshPage();
+    await ctx.addInitScript(() => { if (!localStorage.getItem("random-hub:look")) localStorage.setItem("random-hub:look", '"retro"'); });
+    await installHub(page);
+    await page.waitForSelector("#retro[data-ready]");
+    const inert = (sel) => page.evaluate((s) => document.querySelector(s).inert, sel);
+
+    await page.fill(".rt-search input", "zq");
+    await page.press(".rt-search input", "ArrowLeft");
+    check((await page.$eval(".rt-pages", (p) => Math.round(p.scrollLeft / p.clientWidth))) === 1, "arrow keys in search move the cursor, not the screens");
+    check((await page.textContent(".rt-search .rt-sr")) === "No ideas match", "the match count is announced");
+    await page.press(".rt-search input", "Escape");
+    check(await page.evaluate(() => document.activeElement === document.querySelector(".rt-search input")), "Escape clears search and keeps focus there");
+
+    await page.click(".rt-launcher");
+    await page.waitForSelector(".rt-drawer.rt-open");
+    check((await inert(".rt-dots")) && (await inert(".rt-dock")), "the page dots and dock are inert behind the drawer");
+    await page.evaluate(() => window.randomRetro.openSettings());
+    await page.waitForSelector(".rt-settings.rt-open");
+    check(await inert(".rt-drawer"), "the drawer is inert behind Settings");
+    await page.click(".rt-status");
+    await page.waitForSelector(".rt-shade.rt-open");
+    check(await inert(".rt-settings"), "and Settings behind the shade");
+    await page.click(".rt-shade-handle");
+    await page.waitForSelector(".rt-shade:not(.rt-open)");
+    check((await inert(".rt-pages")) && (await page.getAttribute(".rt-wallpaper", "data-moving")) === "false",
+      "closing the shade over Settings keeps the home screen inert and the wallpaper paused");
+    await page.click(".rt-settings .rt-close");
+    await page.waitForSelector(".rt-settings:not(.rt-open)");
+    check(true, "Settings has its own close button");
+    await page.click(".rt-drawer .rt-close");
+    await page.waitForSelector(".rt-drawer:not(.rt-open)");
+    check(!(await inert(".rt-pages")), "so does the drawer, and the home screen comes back");
+
+    await page.click(".rt-dots button:nth-child(3)");
+    await page.waitForTimeout(500);
+    await page.focus('.rt-power-key[data-power="storage"]');
+    await page.keyboard.press("Enter");
+    await page.waitForSelector(".rt-settings.rt-open");
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".rt-settings:not(.rt-open)");
+    check((await page.evaluate(() => document.activeElement?.dataset.power)) === "storage", "closing Settings returns focus to what opened it");
+
+    await page.click(".rt-launcher");
+    await page.waitForSelector(".rt-drawer.rt-open");
+    await bar(page, "button.menu").click();
+    await bar(page, '.opt[data-opt="search"]').click();
+    await page.waitForFunction(() => document.activeElement === document.querySelector(".rt-search input"), null, { timeout: 3000 });
+    check(!(await page.locator(".rt-drawer.rt-open").count()), "≡ → Search closes the drawer and focuses search");
+
+    await page.click(".rt-launcher");
+    await page.waitForSelector(".rt-drawer.rt-open");
+    await page.evaluate(() => window.randomRetro.openSettings());
+    await page.waitForSelector(".rt-settings.rt-open");
+    await page.click('.rt-set-row[data-row="look"]');
+    await page.waitForTimeout(600);
+    check(await page.evaluate(() => !(history.state && history.state.rt)), "switching to modern leaves no launcher history behind");
+    await page.evaluate(() => window.randomNav.setLook("retro"));
+    await page.waitForSelector("#retro[data-ready]");
+    check(!(await page.locator(".rt-drawer.rt-open, .rt-settings.rt-open").count()), "and coming back to retro doesn't reopen them");
+
+    // A look chosen elsewhere is picked up when Back restores the page from the bfcache.
+    await page.evaluate(() => {
+      localStorage.setItem("random-hub:look", '"modern"');
+      window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+    });
+    check((await page.evaluate(() => document.documentElement.dataset.look)) === "modern" && (await page.locator("#retro").isHidden()),
+      "a look changed on another page wins when Back restores the hub");
+    await ctx.close();
+  }
+
+  section("review fixes: privacy, offline");
+  {
+    const { ctx, page } = await freshPage();
+    await ctx.addInitScript(() => { if (!localStorage.getItem("random-hub:look")) localStorage.setItem("random-hub:look", '"retro"'); });
+    await installHub(page);
+    await page.evaluate(() => localStorage.setItem("random-hub:recents", JSON.stringify([
+      { slug: "ledger", title: "Ledger", visitedAt: new Date().toISOString() },
+      { slug: "breathe", title: "Breathe", visitedAt: new Date().toISOString() },
+      { slug: "ephemera", title: "Ephemera", visitedAt: new Date().toISOString() }])));
+    await page.reload();
+    await page.waitForSelector("#retro[data-ready]");
+    const dock = await page.$$eval(".rt-dock-slot .rt-icon", (els) => els.map((e) => e.dataset.slug));
+    check(!dock.includes("ledger") && (await page.evaluate(() => !window.randomNav.recents().some((r) => r.slug === "ledger"))),
+      `the private notebook never surfaces in recents or the dock (${dock.join(", ")})`);
+
+    await page.goto(B + "ideas/breathe/");
+    await page.waitForSelector("random-nav", { state: "attached" });
+    await page.waitForTimeout(800);
+    server.offline = true;
+    await page.reload();
+    await page.waitForSelector("random-nav", { state: "attached", timeout: 5000 }).catch(() => {});
+    check(await hasBar(page), "an idea served from the worker's cache still gets the bar");
+    server.offline = false;
+    await ctx.close();
+  }
+
+  section("review fixes: design");
+  {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: "light", hasTouch: true });
+    await ctx.addInitScript(() => { if (!sessionStorage.getItem("seeded")) { sessionStorage.setItem("seeded", "1"); localStorage.setItem("random-hub:look", '"modern"'); } });
+    const page = await ctx.newPage();
+    page.on("pageerror", (e) => pageErrors.push(`${page.url()}: ${e.message}`));
+    await page.goto(B);
+    const btn = await page.locator("#look-retro").boundingBox();
+    check(btn.height < 44, `the modern "Retro look" button stays on one line (${Math.round(btn.height)} px)`);
+    await page.click("#look-retro");
+    await page.waitForSelector("#retro[data-ready]");
+    await page.click('.rt-pages .rt-icon[data-slug="breathe"]', { button: "right" });
+    await bar(page, ".dlg-item").first().waitFor();
+    const dlgBg = await page.evaluate(() => getComputedStyle(document.querySelector("random-nav").shadowRoot.querySelector(".dlg")).backgroundColor);
+    check(dlgBg === "rgb(244, 242, 238)", `paper light mode reaches the dialogs (${dlgBg})`);
+    await page.keyboard.press("Escape");
+    await bar(page, "button.menu").click();
+    const wp = await page.evaluate(() => document.querySelector("random-nav").shadowRoot.querySelector('.opt[data-opt="wallpaper"]'));
+    check((await bar(page, '.opt[data-opt="wallpaper"]').getAttribute("aria-pressed")) === "true"
+      && (await bar(page, '.opt[data-opt="wallpaper"] span').textContent()) === "Wallpaper motion", "≡ Wallpaper motion says what it does, and shows its state");
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => localStorage.setItem("random-hub:shade-dismissed", JSON.stringify(
+      JSON.parse(localStorage.getItem("random-hub:events") || "[]").map((e) => e.id))));
+    await page.evaluate(() => localStorage.setItem("random-hub:since", JSON.stringify(new Date().toISOString())));
+    await page.reload();
+    await page.waitForSelector("#retro[data-ready]");
+    await page.focus(".rt-status");
+    await page.keyboard.press("Enter");
+    await page.waitForSelector(".rt-shade.rt-open");
+    check(await page.evaluate(() => document.querySelector(".rt-shade").contains(document.activeElement)), "an empty shade still takes focus");
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".rt-shade:not(.rt-open)");
+    check(true, "and Escape closes it");
     await ctx.close();
   }
 

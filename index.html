@@ -22,9 +22,11 @@
     try { look = JSON.parse(localStorage.getItem("random-hub:look")); } catch (e) {}
     // Modern unless someone has chosen retro.
     document.documentElement.setAttribute("data-look", look === "retro" ? "retro" : "modern");
+    // The launcher's styles only for people who use it (nav.js loads its
+    // script, and both on the switch to retro).
+    if (look === "retro") document.write('<link rel="stylesheet" href="retro.css" data-retro-css>');
   })();
 </script>
-<link rel="stylesheet" href="retro.css">
 <style>
   :root {
     --bg: #faf9f7;
@@ -61,6 +63,7 @@
   }
   .hub-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; }
   .hub-actions button {
+    white-space: nowrap;
     border: 1px solid var(--line);
     border-radius: 999px;
     padding: 0.4rem 0.95rem;
@@ -269,7 +272,6 @@
   </main>
   <div id="retro" hidden></div>
   <script src="nav.js" defer></script>
-  <script src="retro.js" defer></script>
   <script src="hub.js" defer></script>
 </body>
 </html>

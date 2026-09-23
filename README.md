@@ -119,7 +119,9 @@ app. Spec: `docs/superpowers/specs/2026-09-23-hub-gingerbread-retro.md`.
 | `fonts/` | Droid Sans (Apache 2.0, AOSP), subset to WOFF2. |
 
 An idea can set its launcher tile colour with `"icon": "#hex"` in
-`idea.json`; otherwise it's derived from the slug.
+`idea.json`; otherwise it's derived from the slug. `"private": true`
+keeps an idea out of recents (the tray, the recents dialog, the retro
+dock) — Ledger uses it.
 
 ## How it works
 

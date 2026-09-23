@@ -15,7 +15,8 @@
     "emoji": "📒",
     "date": "2026-09-10T02:24:36.000Z",
     "url": "ideas/ledger/",
-    "saveable": false
+    "saveable": false,
+    "private": true
   },
   {
     "slug": "breathe",

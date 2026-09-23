@@ -89,6 +89,11 @@
   }
   var look = currentLook();
   document.documentElement.setAttribute('data-look', look);
+  // Back can restore a page from the back/forward cache after the look was
+  // changed elsewhere (≡ → Modern look on an idea page): catch up.
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted && currentLook() !== look) setLook(currentLook());
+  });
 
   function setLook(next) {
     if (next !== 'retro' && next !== 'modern') return;
@@ -97,6 +102,7 @@
     look = next;
     document.documentElement.setAttribute('data-look', look);
     applyLook();
+    if (look === 'retro') loadRetro();
     try { window.dispatchEvent(new CustomEvent('randomlook', { detail: { look: look } })); } catch (e) {}
   }
 
@@ -162,6 +168,13 @@
     var known = ideaBySlug(slug);
     // Outside ideas/ only listed slugs count (so /random/docs/ is not an idea).
     if (!known && location.pathname.indexOf(HUB_PATH + 'ideas/') !== 0) return;
+    var opened = lget(KEY.opened, []);
+    if (opened.indexOf(slug) === -1) { opened.push(slug); lset(KEY.opened, opened); }
+    // A private idea (Ledger) leaves no trace in recents.
+    if (known && known.private) {
+      lset(KEY.recents, lget(KEY.recents, []).filter(function (r) { return r && r.slug !== slug; }));
+      return;
+    }
 
     var recents = lget(KEY.recents, []).filter(function (r) { return r && r.slug !== slug; });
     recents.unshift({
@@ -170,9 +183,13 @@
       visitedAt: new Date().toISOString()
     });
     lset(KEY.recents, recents.slice(0, MAX_RECENTS));
-
-    var opened = lget(KEY.opened, []);
-    if (opened.indexOf(slug) === -1) { opened.push(slug); lset(KEY.opened, opened); }
+  }
+  // Recents without private ideas (older entries may predate the flag).
+  function recentList() {
+    return lget(KEY.recents, []).filter(function (r) {
+      var k = r && r.slug && ideaBySlug(r.slug);
+      return r && r.slug && !(k && k.private);
+    });
   }
 
   function isNew(idea) {
@@ -391,6 +408,34 @@
     '.opt:hover, .opt:focus-visible { background: rgba(159,208,29,.25); outline: none; }',
     '.opt:active { background: #9fd01d; color: #000; }',
     '.opt[disabled] { opacity: .45; cursor: default; background: none; }',
+    '.opt[aria-pressed="true"] svg { color: #9fd01d; filter: drop-shadow(0 0 4px rgba(159,208,29,.7)); }',
+
+    /* ---- retro, light: "Paper Gingerbread" panels; the bar and the toast
+       stay black, like hardware ---- */
+    '@media (prefers-color-scheme: light) {',
+    '  .retro .sheet { background: linear-gradient(180deg, #faf9f7, #ece8e0); color: #1a1a1a; border-top-color: #bdb8ae; }',
+    '  .retro .head h2 { color: #1a1a1a; }',
+    '  .retro .head button { color: #4d7a00; }',
+    '  .retro .card { background: #fff; border-color: #d8d3c9; color: #1a1a1a; }',
+    '  .retro .card .when { color: #5d5d5d; }',
+    '  .retro .card:active { background: #4d7a00; color: #fff; }',
+    '  .dlg { background: #f4f2ee; color: #1a1a1a; border-color: #b8b3a9; box-shadow: 0 10px 40px rgba(0,0,0,.3); }',
+    '  .dlg-title { background: linear-gradient(180deg, #ffffff, #e9e6df); border-bottom-color: #4d7a00; }',
+    '  .dlg-text { color: #333; }',
+    '  .dlg-meta, .none { color: #5d5d5d; }',
+    '  .dlg-item { color: #1a1a1a; border-bottom-color: #ddd8ce; }',
+    '  .dlg-item:hover, .dlg-item:focus-visible { background: #4d7a00; color: #fff; }',
+    '  .dlg-buttons { background: #e9e6df; border-top-color: #d0cbc1; }',
+    '  .dlg-buttons button:active, .dlg-buttons a:active { background: #4d7a00; color: #fff; }',
+    '  .gtile { color: #1a1a1a; }',
+    '  .gtile:focus-visible { outline-color: #4d7a00; }',
+    '  .gtile:active .tile { box-shadow: 0 0 0 3px #4d7a00; }',
+    '  .opts { background: linear-gradient(180deg, #fbfaf7, #e6e2da); border-top-color: #b8b3a9; box-shadow: 0 -6px 24px rgba(0,0,0,.18); }',
+    '  .opt { color: #1a1a1a; border-right-color: #cfcac0; border-bottom-color: #cfcac0; box-shadow: inset 1px 1px 0 rgba(255,255,255,.8); }',
+    '  .opt:hover, .opt:focus-visible { background: rgba(77,122,0,.16); }',
+    '  .opt:active { background: #4d7a00; color: #fff; }',
+    '  .opt[aria-pressed="true"] svg { color: #4d7a00; filter: none; }',
+    '}',
     '@media (prefers-reduced-motion: reduce) { .sheet, .scrim, .bar { transition: none; } }'
   ].join('\n');
 
@@ -641,7 +686,7 @@
     // For the launcher: the idea catalogue, and what this device knows.
     ideas: function () { return ideasReady; },
     isNew: function (idea) { return isNew(idea); },
-    recents: function () { return lget(KEY.recents, []); },
+    recents: function () { return recentList(); },
     toast: function (text, ms) { if (ui.toast) toast(text, null, ms || 2200); },
     // The launcher pushes history entries (the drawer); Back's visibility
     // on the hub follows whether there is anywhere to go back to.
@@ -807,12 +852,12 @@
 
   // Long-press ● (retro): the recent-ideas dialog, a 4 × 2 grid.
   function recentsDialog() {
-    var list = lget(KEY.recents, []).filter(function (r) { return r && r.slug && r.slug !== slug; }).slice(0, 8);
+    var list = recentList().filter(function (r) { return r.slug !== slug; }).slice(0, 8);
     var dl = dialog('Recent', {});
     dl.node.setAttribute('data-kind', 'recents');
     if (!list.length) {
       var none = el('p', { 'class': 'none' });
-      none.textContent = 'No recent ideas';
+      none.textContent = 'Ideas you open will show up here.';
       dl.body.appendChild(none);
     } else {
       var grid = el('div', { 'class': 'grid4' });
@@ -885,7 +930,8 @@
     var known = slug && ideaBySlug(slug);
     var retro = window.randomRetro;
     var items = isHub ? [
-      { id: 'wallpaper', label: 'Wallpaper', icon: ICON.wallpaper, run: function () {
+      { id: 'wallpaper', label: 'Wallpaper motion', icon: ICON.wallpaper,
+        pressed: !!(retro && retro.setting('motion')), run: function () {
         if (!retro) return;
         var on = !retro.setting('motion');
         retro.setSetting('motion', on);
@@ -913,6 +959,7 @@
       l.textContent = it.label;
       b.appendChild(l);
       if (it.disabled) b.disabled = true;
+      if (it.pressed != null) b.setAttribute('aria-pressed', it.pressed ? 'true' : 'false');
       b.addEventListener('click', function () { closeLayer(); if (it.run) it.run(); });
       panel.appendChild(b);
     });
@@ -1104,7 +1151,7 @@
   }
 
   function renderTray() {
-    var list = lget(KEY.recents, []).filter(function (r) { return r && r.slug && r.slug !== slug; });
+    var list = recentList().filter(function (r) { return r.slug !== slug; });
     ui.strip.textContent = '';
     ui.sheet.querySelector('[data-act="clear"]').hidden = !list.length;
     if (!list.length) {
@@ -1187,7 +1234,28 @@
     }).catch(function () { /* unsupported or blocked: the bar still works */ });
   }
 
+  // The launcher's files load only for people who use it: on the hub, when
+  // the look is (or becomes) retro. Styles first, then the script.
+  var retroRequested = false;
+  function loadRetro() {
+    if (!isHub || retroRequested || window.randomRetro) return;
+    retroRequested = true;
+    function addScript() {
+      var sc = document.createElement('script');
+      sc.src = new URL('retro.js', HUB).href;
+      document.body.appendChild(sc);
+    }
+    if (document.querySelector('link[data-retro-css]')) { addScript(); return; }
+    var css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = new URL('retro.css', HUB).href;
+    css.setAttribute('data-retro-css', '');
+    css.onload = css.onerror = addScript;
+    document.head.appendChild(css);
+  }
+
   function start() {
+    if (look === 'retro') loadRetro();
     mount();
     watchUpdates();
   }

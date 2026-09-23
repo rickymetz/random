@@ -23,6 +23,8 @@
 
 var VERSION = '__VERSION__';
 var SHELL = __SHELL__;
+// Each shell file's content hash: an update re-downloads only what changed.
+var SHELL_HASH = __SHELL_HASH__;
 // Ideas small enough to save whole at install: [{ slug, paths }], where
 // "ideas/<slug>/" stands for its index.html (the URL a visit requests).
 var AUTO_SAVE = __AUTO_SAVE__;
@@ -44,9 +46,7 @@ function reload(url) { return new Request(at(url), { cache: 'reload' }); }
 
 self.addEventListener('install', function (event) {
   event.waitUntil(
-    caches.open(SHELL_CACHE).then(function (cache) {
-      return cache.addAll(SHELL.map(reload));
-    }).then(autoSave)
+    installShell().then(autoSave)
     // No skipWaiting here: the page offers the update as a toast and sends
     // SKIP_WAITING when the person taps Refresh.
   );
@@ -102,6 +102,44 @@ function pin(slug, on) {
       });
     });
   });
+}
+
+// The shell, all-or-nothing: a file whose hash matches a copy in an older
+// shell cache is reused from there; everything else is fetched past the
+// HTTP cache. (A deploy that only adds an idea re-downloads the homepage and
+// ideas.json, not the fonts and the launcher.)
+function installShell() {
+  return caches.keys().then(function (keys) {
+    // Any shell cache may hold an identical file, this version's included
+    // (a re-install after a failed attempt, or a worker-only change).
+    var olds = keys.filter(function (k) { return k.indexOf(PREFIX + 'shell-') === 0; });
+    return caches.open(SHELL_CACHE).then(function (cache) {
+      return Promise.all(SHELL.map(function (path) {
+        var hash = SHELL_HASH[path];
+        return reusable(olds, path, hash).then(function (hit) {
+          if (hit) return cache.put(at(path), hit);
+          return fetch(reload(path)).then(function (res) {
+            if (!res.ok) throw new Error('precache failed: ' + path + ' ' + res.status);
+            return res.blob().then(function (body) {
+              var headers = new Headers(res.headers);
+              headers.set('x-random-hash', hash);
+              return cache.put(at(path), new Response(body, { status: res.status, statusText: res.statusText, headers: headers }));
+            });
+          });
+        });
+      }));
+    });
+  });
+}
+function reusable(olds, path, hash) {
+  return olds.reduce(function (found, name) {
+    return found.then(function (hit) {
+      if (hit) return hit;
+      return caches.open(name).then(function (c) { return c.match(at(path)); }).then(function (r) {
+        return r && r.headers.get('x-random-hash') === hash ? r : null;
+      });
+    });
+  }, Promise.resolve(null));
 }
 
 // Settings → Storage → "Clear cached ideas": drop every idea not saved for
@@ -228,7 +266,9 @@ function cacheable(response) {
 // Redirects, opaque and non-HTML responses pass through untouched.
 function withNav(response, offline) {
   var type = response.headers.get('content-type') || '';
-  if (response.type !== 'basic' || response.redirected || type.indexOf('text/html') === -1) {
+  // (A cached copy we stored ourselves reads back as type 'default', not
+  // 'basic': only opaque responses are off limits.)
+  if (/^opaque/.test(response.type) || response.type === 'error' || response.redirected || type.indexOf('text/html') === -1) {
     return response;
   }
   return response.text().then(function (html) {

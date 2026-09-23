@@ -60,6 +60,17 @@
   var mounted = false;
   var themeMetas = [];
   var clockTimer = 0;
+  // Clocks tick at the top of each minute, and not at all while hidden.
+  function scheduleClock() {
+    clearTimeout(clockTimer);
+    if (!mounted || document.hidden) return;
+    var now = new Date();
+    clockTimer = setTimeout(function () {
+      paintStatusClock();
+      paintClock();
+      scheduleClock();
+    }, (60 - now.getSeconds()) * 1000 - now.getMilliseconds() + 50);
+  }
 
   /* ------------------------------------------------------------ icons */
 
@@ -115,6 +126,8 @@
 
     ui.pages.addEventListener('scroll', onScroll, { passive: true });
     ui.pages.addEventListener('keydown', function (e) {
+      // Arrow keys in the search box move its cursor, not the screens.
+      if (e.defaultPrevented || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
       if (e.key === 'ArrowRight') { goTo(Math.min(PAGES - 1, currentPage() + 1), true); e.preventDefault(); }
       if (e.key === 'ArrowLeft') { goTo(Math.max(0, currentPage() - 1), true); e.preventDefault(); }
     });
@@ -177,9 +190,13 @@
     var input = el('input', '', { type: 'search', placeholder: 'Search ideas', 'aria-label': 'Search ideas',
       autocomplete: 'off', spellcheck: 'false', enterkeyhint: 'go' });
     form.appendChild(input);
-    var results = el('div', 'rt-results', { role: 'listbox', 'aria-label': 'Matching ideas', hidden: '' });
+    // A plain list of links (no listbox: there's no arrow-key model), and a
+    // polite count for screen readers.
+    var results = el('div', 'rt-results', { 'aria-label': 'Matching ideas', hidden: '' });
+    var count = el('span', 'rt-sr', { role: 'status', 'aria-live': 'polite' });
     w.appendChild(form);
     w.appendChild(results);
+    w.appendChild(count);
     ui.search = input;
 
     function matches(q) {
@@ -193,6 +210,7 @@
       var list = matches(input.value);
       results.textContent = '';
       results.hidden = !input.value.trim();
+      count.textContent = input.value.trim() ? (list.length ? list.length + (list.length === 1 ? ' idea matches' : ' ideas match') : 'No ideas match') : '';
       if (!list.length) {
         var none = el('p', 'rt-results-none');
         none.textContent = 'No ideas match';
@@ -200,7 +218,7 @@
         return;
       }
       list.forEach(function (idea) {
-        var a = el('a', 'rt-result', { href: idea.url, role: 'option', 'data-slug': idea.slug });
+        var a = el('a', 'rt-result', { href: idea.url, 'data-slug': idea.slug });
         var e = el('span', 'rt-result-emoji', { 'aria-hidden': 'true' });
         e.textContent = idea.emoji || '✦';
         var t = el('span', 'rt-result-title');
@@ -212,7 +230,7 @@
     }
     input.addEventListener('input', render);
     input.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { input.value = ''; render(); input.blur(); }
+      if (e.key === 'Escape') { e.preventDefault(); input.value = ''; render(); } // focus stays put
     });
     form.addEventListener('submit', function (e) {
       e.preventDefault();
@@ -370,6 +388,8 @@
   function buildDrawer() {
     ui.drawer = el('div', 'rt-drawer', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'All ideas', 'aria-hidden': 'true' });
     var head = el('div', 'rt-drawer-head');
+    ui.drawerClose = closeButton('Close all ideas', closeDrawer);
+    head.appendChild(ui.drawerClose);
     var h = el('h2');
     h.textContent = 'All ideas';
     var sort = el('div', 'rt-sort', { role: 'group', 'aria-label': 'Sort' });
@@ -404,7 +424,16 @@
     list.forEach(function (idea) { ui.drawerGrid.appendChild(icon(idea)); });
   }
 
-  function drawerOpen() { return ui.drawer && ui.drawer.classList.contains('rt-open'); }
+  function drawerOpen() { return !!(ui.drawer && ui.drawer.classList.contains('rt-open')); }
+
+  // A layer's own way out (Escape and the bar's Back aren't reachable by
+  // every assistive technology from inside an aria-modal dialog).
+  function closeButton(label, run) {
+    var b = el('button', 'rt-close', { type: 'button', 'aria-label': label });
+    b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    b.addEventListener('click', run);
+    return b;
+  }
 
   // The drawer is a history entry, so the bar's Back (and the system's)
   // closes it, as on a phone.
@@ -422,16 +451,63 @@
     ui.drawer.classList.toggle('rt-open', on);
     ui.drawer.setAttribute('aria-hidden', on ? 'false' : 'true');
     ui.launcher.setAttribute('aria-expanded', on ? 'true' : 'false');
-    ui.pages.inert = on;
-    ui.dock.inert = on;
+    layerFocus(ui.drawer, on, function () { return ui.drawerGrid.querySelector('.rt-icon') || ui.drawerClose; }, ui.launcher);
+  }
+
+  /* ------------------------------------------------------------ layers */
+
+  // Three launcher layers stack: drawer, then Settings, then the shade on
+  // top. Whatever is open makes everything beneath it inert (hidden from
+  // Tab and screen readers), pauses the wallpaper, and shows the bar's Back.
+  function syncLayers() {
+    if (!ui.drawer || !ui.settings || !ui.shade) return;
+    var d = drawerOpen(), st = settingsOpen(), sh = shadeOpen();
+    var any = d || st || sh;
+    ui.pages.inert = any;
+    ui.dots.inert = any;
+    ui.dock.inert = any;
+    ui.drawer.inert = d && (st || sh);
+    ui.settings.inert = st && sh;
+    wallpaperPaused(any);
     if (nav.refreshBack) nav.refreshBack();
-    wallpaperPaused(on);
+  }
+  // Focus moves into a layer as it opens and back to what opened it (or a
+  // fallback) as it closes.
+  function layerFocus(layer, on, first, fallback) {
+    syncLayers();
     if (on) {
-      var first = ui.drawerGrid.querySelector('.rt-icon');
-      (first || ui.drawer).focus({ preventScroll: true });
-    } else if (ui.drawer.contains(document.activeElement)) {
-      ui.launcher.focus({ preventScroll: true });
+      layer._opener = document.activeElement;
+      var f = first();
+      if (f) f.focus({ preventScroll: true });
+      return;
     }
+    if (layer.contains(document.activeElement) || document.activeElement === document.body) {
+      var back = layer._opener && layer._opener.isConnected && !layer._opener.closest('[inert]') ? layer._opener : fallback;
+      if (back) back.focus({ preventScroll: true });
+    }
+  }
+  function openLayers() {
+    return (shadeOpen() ? 1 : 0) + (settingsOpen() ? 1 : 0) + (drawerOpen() ? 1 : 0);
+  }
+  // Close every open layer through history (each is an entry), then run then().
+  function unwind(then) {
+    var steps = openLayers();
+    if (!steps) { if (then) then(); return; }
+    if (!(history.state && history.state.rt)) { // not ours to rewind: just close them
+      if (shadeOpen()) showShade(false);
+      if (settingsOpen()) showSettings(false);
+      if (drawerOpen()) showDrawer(false);
+      if (then) then();
+      return;
+    }
+    if (then) {
+      var done = false;
+      var finish = function () { if (done) return; done = true; window.removeEventListener('popstate', after); setTimeout(then, 0); };
+      var after = function () { if (!openLayers()) finish(); };
+      window.addEventListener('popstate', after);
+      setTimeout(finish, 600);
+    }
+    history.go(-steps);
   }
   window.addEventListener('popstate', function () {
     if (!mounted || !ui.drawer) return;
@@ -444,13 +520,7 @@
   // The bar's ● on the launcher: close whatever is open, back to centre.
   window.addEventListener('randomhome', function () {
     if (!mounted || !ui.drawer) return;
-    // Unwind every launcher layer in one go (shade over drawer is two
-    // history entries).
-    var steps = 0;
-    if (shadeOpen()) { if (history.state && history.state.rt === 'shade') steps++; else showShade(false); }
-    if (settingsOpen()) steps++;
-    if (drawerOpen()) steps++;
-    if (steps) history.go(-steps);
+    unwind();
     if (ui.search) { ui.search.value = ''; ui.search.dispatchEvent(new Event('input')); }
     goTo(CENTRE, true);
   });
@@ -576,6 +646,7 @@
     head.appendChild(ui.shadeClear);
     ui.shadeBody = el('div', 'rt-shade-body');
     var handle = el('button', 'rt-shade-handle', { type: 'button', 'aria-label': 'Close notifications' });
+    ui.shadeClose = handle;
     handle.addEventListener('click', function () { closeShade(); });
     // Drag the handle up to close.
     var startY = null;
@@ -641,7 +712,7 @@
     }
   }
 
-  function shadeOpen() { return ui.shade && ui.shade.classList.contains('rt-open'); }
+  function shadeOpen() { return !!(ui.shade && ui.shade.classList.contains('rt-open')); }
   function openShade() {
     if (shadeOpen()) return;
     history.pushState({ rt: 'shade' }, '');
@@ -657,12 +728,7 @@
     ui.shade.classList.toggle('rt-open', on);
     ui.shade.setAttribute('aria-hidden', on ? 'false' : 'true');
     ui.status.setAttribute('aria-expanded', on ? 'true' : 'false');
-    ui.pages.inert = on || drawerOpen();
-    ui.dock.inert = on || drawerOpen();
-    if (nav.refreshBack) nav.refreshBack();
-    wallpaperPaused(on);
-    if (on) (ui.shadeBody.querySelector('a, button') || ui.shadeClear).focus({ preventScroll: true });
-    else if (ui.shade.contains(document.activeElement)) ui.status.focus({ preventScroll: true });
+    layerFocus(ui.shade, on, function () { return ui.shadeBody.querySelector('a, button:not([hidden])') || ui.shadeClose; }, ui.status);
   }
 
   /* ------------------------------------------------------ live wallpaper */
@@ -671,7 +737,9 @@
   // parallax as the home screens swipe. Paused when hidden or covered,
   // capped near 30 fps, and a single still frame with reduced motion or
   // when "Wallpaper motion" is off.
-  var wall = { raf: 0, last: 0, motes: [], paused: false };
+  var wall = { raf: 0, last: 0, motes: [], paused: false, idle: 0, sprites: null, scheme: '' };
+  var WALL_FPS_MS = 50;          // ~20 fps: slow motes don't need more
+  var WALL_IDLE_MS = 30000;      // and none at all after 30 s untouched
 
   function buildWallpaper() {
     ui.wall = el('canvas', 'rt-wallpaper', { 'aria-hidden': 'true' });
@@ -685,65 +753,94 @@
         tw: Math.random() * Math.PI * 2
       });
     }
+    wall.idle = Date.now();
   }
 
+  // One soft glow per tint, drawn once; each frame only stamps them.
+  function sprites(light) {
+    var scheme = light ? 'light' : 'dark';
+    if (wall.sprites && wall.scheme === scheme) return wall.sprites;
+    var tints = light ? ['90,110,80', '120,150,40', '179,84,46'] : ['235,230,220', '159,208,29', '224,133,84'];
+    wall.scheme = scheme;
+    wall.sprites = tints.map(function (t) {
+      var c = document.createElement('canvas');
+      c.width = c.height = 32;
+      var g = c.getContext('2d');
+      var grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+      grad.addColorStop(0, 'rgba(' + t + ',1)');
+      grad.addColorStop(1, 'rgba(' + t + ',0)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 32, 32);
+      return c;
+    });
+    return wall.sprites;
+  }
+
+  // Soft blurs need no device pixels: the canvas is drawn at 1× and scaled.
+  var sizing = 0;
   function sizeWallpaper() {
-    if (!ui.wall) return;
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    var r = root.getBoundingClientRect();
-    ui.wall.width = Math.max(1, Math.round(r.width * dpr));
-    ui.wall.height = Math.max(1, Math.round(r.height * dpr));
-    wall.dpr = dpr;
-    drawWallpaper(0);
+    if (!ui.wall || sizing) return;
+    sizing = requestAnimationFrame(function () {
+      sizing = 0;
+      if (!ui.wall) return;
+      var r = root.getBoundingClientRect();
+      var w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+      if (ui.wall.width === w && ui.wall.height === h) return;
+      ui.wall.width = w;
+      ui.wall.height = h;
+      drawWallpaper(0);
+    });
   }
 
   function moving() {
     return setting('motion') && !matchMedia('(prefers-reduced-motion: reduce)').matches &&
-      !document.hidden && !wall.paused && mounted;
+      !document.hidden && !wall.paused && mounted && Date.now() - wall.idle < WALL_IDLE_MS;
   }
-  function wallpaperPaused(on) { wall.paused = on || drawerOpen() || shadeOpen(); tickControl(); }
+  function wallpaperPaused(on) { wall.paused = on || drawerOpen() || shadeOpen() || settingsOpen(); tickControl(); }
   function tickControl() {
     cancelAnimationFrame(wall.raf);
     wall.raf = 0;
     if (!ui.wall) return;
     ui.wall.setAttribute('data-moving', moving() ? 'true' : 'false');
-    if (moving()) wall.raf = requestAnimationFrame(tick);
+    if (moving()) { wall.last = 0; wall.raf = requestAnimationFrame(tick); }
     else drawWallpaper(0);
   }
   function tick(t) {
+    if (!moving()) { tickControl(); return; } // idle for 30 s: rest
     wall.raf = requestAnimationFrame(tick);
-    if (t - wall.last < 33) return; // ~30 fps
-    var dt = Math.min(0.1, (t - (wall.last || t)) / 1000);
+    if (wall.last && t - wall.last < WALL_FPS_MS) return;
+    var dt = wall.last ? Math.min(0.1, (t - wall.last) / 1000) : 0;
     wall.last = t;
     drawWallpaper(dt);
+  }
+  // Any touch or key wakes a resting wallpaper.
+  function wake() {
+    var resting = ui.wall && ui.wall.getAttribute('data-moving') === 'false';
+    wall.idle = Date.now();
+    if (resting && moving()) tickControl();
   }
 
   function drawWallpaper(dt) {
     var c = wall.ctx;
-    if (!c) return;
-    var w = ui.wall.width, h = ui.wall.height, dpr = wall.dpr || 1;
+    if (!c || !ui.wall) return;
+    var w = ui.wall.width, h = ui.wall.height;
     var light = matchMedia('(prefers-color-scheme: light)').matches;
+    var sp = sprites(light);
     c.clearRect(0, 0, w, h);
     var parallax = ui.pages ? ui.pages.scrollLeft / Math.max(1, ui.pages.clientWidth) : CENTRE;
-    var tints = light
-      ? ['rgba(90,110,80,', 'rgba(120,150,40,', 'rgba(179,84,46,']
-      : ['rgba(235,230,220,', 'rgba(159,208,29,', 'rgba(224,133,84,'];
-    wall.motes.forEach(function (m) {
+    var base = light ? 0.28 : 0.55;
+    for (var i = 0; i < wall.motes.length; i++) {
+      var m = wall.motes[i];
       m.y -= dt * 0.012 * m.z;
       m.tw += dt * 1.3;
       if (m.y < -0.05) { m.y = 1.05; m.x = Math.random(); }
       var x = ((m.x - parallax * 0.06 * m.z) % 1 + 1) % 1 * w;
       var y = m.y * h;
-      var r = m.r * dpr * (0.8 + m.z);
-      var a = (light ? 0.28 : 0.55) * (0.55 + 0.45 * Math.sin(m.tw)) * m.z;
-      var g = c.createRadialGradient(x, y, 0, x, y, r * 4);
-      g.addColorStop(0, tints[m.tint] + a.toFixed(3) + ')');
-      g.addColorStop(1, tints[m.tint] + '0)');
-      c.fillStyle = g;
-      c.beginPath();
-      c.arc(x, y, r * 4, 0, Math.PI * 2);
-      c.fill();
-    });
+      var size = m.r * (0.8 + m.z) * 8;
+      c.globalAlpha = base * (0.55 + 0.45 * Math.sin(m.tw)) * m.z;
+      c.drawImage(sp[m.tint], x - size / 2, y - size / 2, size, size);
+    }
+    c.globalAlpha = 1;
   }
 
   /* ------------------------------------------------- icon context menu */
@@ -863,10 +960,15 @@
     z.style.background = getComputedStyle(tile).backgroundImage;
     z.textContent = tile.textContent;
     root.appendChild(z);
+    // Compositor-only: transform on the tile, opacity on its emoji.
+    var glyph = el('span', 'rt-zoom-glyph');
+    glyph.textContent = z.textContent;
+    z.textContent = '';
+    z.appendChild(glyph);
+    glyph.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, fill: 'forwards' });
     var anim = z.animate([
-      { transform: 'none', borderRadius: '13px', fontSize: '30px' },
-      { transform: 'translate(' + -r.left + 'px,' + -r.top + 'px) scale(' + window.innerWidth / r.width + ',' + window.innerHeight / r.height + ')',
-        borderRadius: '0px', fontSize: '0px' }
+      { transform: 'none' },
+      { transform: 'translate(' + -r.left + 'px,' + -r.top + 'px) scale(' + window.innerWidth / r.width + ',' + window.innerHeight / r.height + ')' }
     ], { duration: 240, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)', fill: 'forwards' });
     var go = function () {
       location.href = href;
@@ -923,7 +1025,7 @@
 
   // The in-hub Settings app, Gingerbread list style. A history entry, like
   // the drawer: Back closes it.
-  function settingsOpen() { return ui.settings && ui.settings.classList.contains('rt-open'); }
+  function settingsOpen() { return !!(ui.settings && ui.settings.classList.contains('rt-open')); }
   var pendingSettings = null;
 
   function openSettings(section) {
@@ -944,6 +1046,8 @@
   function buildSettings() {
     ui.settings = el('div', 'rt-settings', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Settings', 'aria-hidden': 'true' });
     var head = el('div', 'rt-settings-head');
+    ui.settingsClose = closeButton('Close Settings', closeSettings);
+    head.appendChild(ui.settingsClose);
     var h = el('h2');
     h.textContent = 'Settings';
     head.appendChild(h);
@@ -957,11 +1061,7 @@
     if (on) renderSettings();
     ui.settings.classList.toggle('rt-open', on);
     ui.settings.setAttribute('aria-hidden', on ? 'false' : 'true');
-    ui.pages.inert = on || drawerOpen() || shadeOpen();
-    ui.dock.inert = on || drawerOpen() || shadeOpen();
-    if (nav.refreshBack) nav.refreshBack();
-    wallpaperPaused(on);
-    if (on) { var first = ui.settingsBody.querySelector('button, a'); if (first) first.focus({ preventScroll: true }); }
+    layerFocus(ui.settings, on, function () { return ui.settingsBody.querySelector('button:not(:disabled), a') || ui.settingsClose; }, ui.launcher);
   }
 
   function sectionHead(title, id) {
@@ -1083,14 +1183,16 @@
     themeMetas.forEach(function (t) { t.meta.setAttribute('content', retro ? '#000000' : t.content); });
   }
 
+  var mountGen = 0;
   function mount() {
     if (mounted) return;
     mounted = true;
+    var gen = ++mountGen; // a quick retro → modern → retro must build once
     root.hidden = false;
     boot();
     paintSystemBar(true);
     nav.ideas().then(function (list) {
-      if (!mounted) return;
+      if (!mounted || gen !== mountGen) return;
       ideas = (list || []).slice();
       root.textContent = '';
       buildWallpaper();
@@ -1127,7 +1229,7 @@
       if (pendingSettings) { var sec = pendingSettings; pendingSettings = null; openSettings(sec === 'top' ? null : sec); }
       // Clocks tick on the minute; the shade's live items follow events.
       paintStatusClock();
-      clockTimer = setInterval(function () { paintStatusClock(); paintClock(); }, 15000);
+      scheduleClock();
       root.setAttribute('data-ready', '');
     });
   }
@@ -1137,12 +1239,20 @@
   function unmount(keepLayers) {
     if (!mounted) return;
     mounted = false;
-    if (!keepLayers && history.state && history.state.rt) history.replaceState(null, '');
+    // Rewind the launcher's own history entries (drawer, Settings, shade),
+    // so none is left behind for modern's Back to stumble over.
+    if (!keepLayers && history.state && history.state.rt) {
+      var steps = openLayers();
+      if (steps) history.go(-steps);
+      else history.replaceState(null, '');
+    }
     root.hidden = true;
     root.removeAttribute('data-ready');
-    clearInterval(clockTimer);
+    clearTimeout(clockTimer);
     clearTimeout(scrollTimer);
     cancelAnimationFrame(wall.raf);
+    wall.ctx = null; // let the detached canvas's backing store go
+    wall.motes = [];
     root.textContent = '';
     ui = {};
     paintSystemBar(false);
@@ -1165,18 +1275,26 @@
   // ≡ → Search: to the centre screen, into the search box.
   window.addEventListener('randomsearch', function () {
     if (!mounted || !ui.search) return;
-    goTo(CENTRE, false);
-    ui.search.focus();
+    unwind(function () {
+      if (!ui.search) return;
+      goTo(CENTRE, false);
+      ui.search.focus();
+    });
   });
   window.addEventListener('online', function () { paintNet(); refreshShade(); });
   window.addEventListener('offline', function () { paintNet(); refreshShade(); });
   window.addEventListener('resize', sizeWallpaper);
-  document.addEventListener('visibilitychange', tickControl);
+  document.addEventListener('visibilitychange', function () {
+    tickControl();
+    if (mounted && ui.clock && !document.hidden) { paintStatusClock(); paintClock(); }
+    scheduleClock();
+  });
+  ['pointerdown', 'keydown', 'wheel'].forEach(function (t) { root.addEventListener(t, wake, { passive: true }); });
   window.addEventListener('randomsetting', function (e) { if (e.detail && e.detail.name === 'motion') tickControl(); });
   // Back from an idea can restore this page from the back/forward cache:
   // redraw, so New dots, the dock and the widgets reflect the visit.
   window.addEventListener('pageshow', function (e) {
-    if (e.persisted && mounted) { unmount(true); mount(); }
+    if (e.persisted && mounted && nav.look() === 'retro') { unmount(true); mount(); }
   });
   onLook();
 

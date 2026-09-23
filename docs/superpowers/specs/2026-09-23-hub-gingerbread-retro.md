@@ -63,9 +63,8 @@ copied system artwork. Everything is drawn fresh in the era's style.
   in. Switching applies at once: no reload, no flash of the wrong
   look on the next start. `<html data-look>` is set by an inline
   head script before first paint.
-- Retro is always the look **inside the installed app shell**. Idea page
-  *content* is never restyled (only the bar, dialogs and toasts `nav.js`
-  draws).
+- Retro restyles only the hub's shell (the launcher, the bar, dialogs,
+  toasts, the offline page). Idea page *content* is never restyled.
 
 ### G2. Palette and type
 
@@ -339,6 +338,47 @@ Where the build deviated from, or refined, the requirements:
 - Cadence treated its first install as an update (the hub worker already
   controlled its page) and reloaded once. It now only counts its own
   worker (`cadence-v5`).
+
+## Multi-persona review (before merge)
+
+Five reviews ran over the finished PR: correctness, accessibility,
+security/privacy, mobile performance and design fidelity. They were fixed
+before merge, each with an e2e check:
+
+- **Correctness:** a look chosen on an idea page now survives a bfcache
+  Back. The layers stack properly (the shade over Settings keeps the
+  home screen inert). A switch to modern rewinds the launcher's history
+  entries. ≡ → Search works with a layer open. Quick look switches build
+  once.
+- **Accessibility:**
+  - Arrow keys in search no longer swipe the screens.
+  - Focus returns to whatever opened a layer, and everything under an
+    open layer is inert (the page dots too).
+  - The drawer and Settings have their own close buttons.
+  - The match count is announced.
+  - Paper headings and the search placeholder meet AA.
+  - Targets are at least 48 px.
+- **Privacy:** Ledger is `"private"` in idea.json, so it never enters
+  recents, the tray, the recents dialog or the retro dock.
+- **Performance:**
+  - The wallpaper stamps pre-rendered sprites on a 1× canvas at about
+    20 fps, and rests after 30 s untouched.
+  - The canvas is freed on unmount.
+  - The modern hub no longer loads `retro.js` or `retro.css`.
+  - Worker updates reuse unchanged shell files by content hash.
+  - The zoom animates only transform and opacity.
+  - Clocks tick on the minute and not while hidden, and resizes are
+    batched.
+- **Design:** the paper variant now covers every dialog, the ≡ panel and
+  the tray. The header button no longer wraps. ≡ "Wallpaper motion" shows
+  its state. Both empty recents screens say the same thing.
+- **A bug the fixes exposed (older than this PR):** idea pages served
+  from the worker's own cache offline lost the injected bar, because
+  re-wrapped responses read back as type `default`. `withNav` now skips
+  only opaque responses.
+
+Deferred: splitting the retro-only parts of `nav.js` into a lazily loaded
+module (a size saving on idea pages).
 
 ## Open questions
 
