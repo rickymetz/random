@@ -54,15 +54,44 @@
   button { font: inherit; color: inherit; cursor: pointer; }
 
   /* ---- top bar ---- */
+  /* Two rows on a phone, one on anything wider: 600px is where the lead, the
+     tabs and the menu stop fighting for the same line. The tab row is last so
+     its underline can reach the header's own bottom rule. */
   #topbar {
     position: fixed;
     top: 0; left: 0; right: 0;
     z-index: 5;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "lead menu"
+      "tabs tabs";
+    align-items: center;
+    column-gap: 0.55rem;
+    padding: calc(0.5rem + var(--sat)) 0.75rem 0.5rem;
+    border-width: 0 0 1px 0;
+  }
+  .bar-lead {
+    grid-area: lead;
     display: flex;
     align-items: center;
     gap: 0.55rem;
-    padding: calc(0.5rem + var(--sat)) 0.75rem 0.5rem;
-    border-width: 0 0 1px 0;
+    min-width: 0;
+  }
+  #topbar #btn-menu { grid-area: menu; }
+  /* stretch, then reach a padding's worth further: the tabs run to the
+     header's bottom rule so the active underline can sit on it, while the
+     title stays centred in the padding the bar has always had. On a phone
+     that also takes the second row back down to the height of one. */
+  #tabbar { grid-area: tabs; align-self: stretch; margin-bottom: -0.5rem; }
+  @media (min-width: 600px) {
+    #topbar {
+      /* equal flanks, so the tablist is centred on the window and not merely
+         pushed right by however long the layout is named */
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      grid-template-areas: "lead tabs menu";
+    }
+    #topbar #btn-menu { justify-self: end; }
   }
   #topbar .back {
     color: var(--muted);
@@ -79,7 +108,7 @@
     min-width: 0;
     flex: 1;
   }
-  #topbar button {
+  #topbar > button {
     flex: none;
     width: 2.3rem; height: 2.3rem;
     font-size: var(--t-lg);
@@ -90,11 +119,11 @@
     display: grid;
     place-items: center;
   }
-  #topbar button:active { border-color: var(--accent); color: var(--accent); }
+  #topbar > button:active { border-color: var(--accent); color: var(--accent); }
 
   #menu {
     position: fixed;
-    top: calc(3.3rem + var(--sat));
+    top: calc(var(--topbar-h, 3.8rem) + 0.35rem);
     right: 0.75rem;
     z-index: 9;
     display: none;
@@ -102,6 +131,13 @@
     min-width: 11rem;
     border-radius: var(--r-panel);
     padding: 0.3rem;
+    /* Eight items on a landscape phone ran 36 px past the bottom of the
+       window, and the header growing a row pushed that to 50. Bound it to
+       what is left below the header and let it scroll. dvh, not vh, so the
+       browser's own retracting chrome is counted. */
+    max-height: calc(100dvh - var(--topbar-h, 3.8rem) - 0.7rem - var(--sab));
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   body.menu-open #menu { display: flex; }
   #menu button, #menu a {
@@ -536,37 +572,35 @@
     margin-top: 0.15rem;
   }
 
-  /* ---- mode tab bar: gutter-to-gutter segmented control ---- */
-  #tabbar {
-    position: fixed;
-    top: calc(3.55rem + var(--sat));
-    left: 0.75rem;
-    right: 0.75rem;
-    z-index: 5;
-    display: flex;
-    gap: 0.15rem;
-    padding: 0.22rem;
-    border-radius: var(--r-pill);
-    border: 1px solid var(--line);
-    background: var(--panel);
-    box-shadow: var(--shadow);
-  }
+  /* ---- mode tabs, in the nav ---- */
+  /* Natural width, centred, at every size. Stretching them edge to edge is a
+     segmented control's habit: it put a 168 px slab of accent under Plan on a
+     phone, which is a lot of paint for a drafting sheet. */
+  #tabbar { display: flex; justify-content: center; }
   #tabbar button {
-    flex: 1;
     border: 0;
     background: transparent;
-    border-radius: var(--r-pill);
-    padding: 0.38rem 0.5rem;
+    padding: 0.4rem 1.1rem;   /* keeps even "3D" past 44 px wide */
+    min-height: 44px;
     font-size: var(--t-sm);
     color: var(--muted);
     white-space: nowrap;
+    position: relative;
   }
-  #tabbar button.active {
-    background: var(--accent);
-    color: #fff;
+  /* weight as well as colour: the selected tab has to be legible as selected
+     without relying on the accent alone */
+  #tabbar button.active { color: var(--ink); font-weight: 600; }
+  #tabbar button::after {
+    content: "";
+    position: absolute;
+    left: 0.25rem; right: 0.25rem; bottom: 0;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: transparent;
   }
-  @media (min-width: 900px) {
-    #tabbar { left: 50%; right: auto; transform: translateX(-50%); min-width: 22rem; }
+  #tabbar button.active::after { background: var(--accent); }
+  @media (hover: hover) and (pointer: fine) {
+    #tabbar button:not(.active):hover { color: var(--ink); }
   }
 
   /* mode visibility: the plan edits, the 3D view looks */
@@ -1011,7 +1045,7 @@
   #cartouche {
     position: fixed;
     left: 16px;
-    top: calc(106px + var(--sat));
+    top: calc(var(--topbar-h, 98px) + 12px);
     z-index: 5;
     display: none;
     align-items: center;
@@ -1054,6 +1088,7 @@
      it did before. */
   #cart-north b,
   #cart-scale em,
+  #tabbar .lbl,
   #compass .n,
   #cart-key .lbl,
   #add-sheet .head h3,
@@ -1090,11 +1125,10 @@
      baseline, which in a 44 px box drops the glyph most of the way down. */
   .x { width: 44px !important; height: 44px !important; display: grid; place-items: center; }
   .back { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
-  /* #topbar button already sets 2.3rem, and an id plus a tag outranks an id
+  /* #topbar > button already sets 2.3rem, and an id plus a tag outranks an id
      alone, so the menu button has been 36.8 px ever since — the one control in
      the bar that never got the 44 px the rest of this block hands out. */
   #topbar #btn-menu { width: 44px; height: 44px; }
-  #tabbar button { min-height: 44px; }
   #stats-pill { min-height: 44px; }
   .pill-warn { display: inline-flex; align-items: center; gap: 0.2em; color: #8c3b2e; font-weight: 700; }
   .pill-warn .warn { width: 1em; height: 1em; }
@@ -1277,8 +1311,20 @@
 <body>
 
 <header id="topbar" class="panel">
-  <a class="back" href="../../" aria-label="Back to all ideas">←</a>
-  <h1><input id="layout-name" value="Container Compound" aria-label="Layout name" spellcheck="false" maxlength="60"></h1>
+  <div class="bar-lead">
+    <a class="back" href="../../" aria-label="Back to all ideas">←</a>
+    <h1><input id="layout-name" value="Container Compound" aria-label="Layout name" spellcheck="false" maxlength="60"></h1>
+  </div>
+  <!-- The tablist sits before the overflow button in the DOM because that is
+       the logical order: where you are, then the rest. On a phone it is drawn
+       on the row below, so a keyboard walks name -> Plan -> 3D -> menu while
+       the menu is physically up and to the right. The alternative reverses the
+       two on a wide window, where the row really is one line. -->
+  <div id="tabbar" role="tablist" aria-label="View">
+    <button data-mode="plan" class="active" role="tab" aria-selected="true"><span class="lbl">Plan</span></button>
+    <button data-mode="view" role="tab" aria-selected="false"><span class="lbl">3D</span></button>
+    <button data-mode="split" id="tab-split" role="tab" aria-selected="false"><span class="lbl">Both</span></button>
+  </div>
   <button id="btn-menu" aria-label="Menu" title="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
 </header>
 
@@ -1294,12 +1340,6 @@
   <button id="btn-va">VA notes</button>
   <button id="btn-clear">Clear the acre</button>
   <button id="btn-reset">Reset to the example</button>
-</div>
-
-<div id="tabbar" role="tablist" aria-label="View">
-  <button data-mode="plan" class="active" role="tab" aria-selected="true">Plan</button>
-  <button data-mode="view" role="tab" aria-selected="false">3D</button>
-  <button data-mode="split" id="tab-split" role="tab" aria-selected="false">Both</button>
 </div>
 
 <div id="site-panel" tabindex="0" role="img"

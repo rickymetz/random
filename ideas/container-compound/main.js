@@ -666,6 +666,16 @@ function fitToolColumn() {
   document.body.classList.add("tools-min");
 }
 
+// The tabs live in the header now, so the header is one row on a wide window
+// and two on a phone — and taller again at 200% system text. Everything that
+// hangs below it asks rather than assuming, the way chromeBand() already did.
+function measureTopbar() {
+  const el = document.getElementById("topbar");
+  if (!el) return;
+  document.body.style.setProperty("--topbar-h",
+    `${Math.round(el.getBoundingClientRect().bottom)}px`);
+}
+
 function measureStrip() {
   placeAlignTools();
   const el = document.getElementById("toolstrip");
@@ -4539,4 +4549,11 @@ function animate() {
   sceneDirty = false;
   renderer.render(scene, camera);
 }
+// The header's height sets where the cartouche and the menu hang. A resize
+// listener is not enough on its own: at 200% system text the bar grows with
+// nothing resizing, --topbar-h stays at its old value, and the cartouche lands
+// on top of the tab row and eats the taps meant for it. Watch the element.
+measureTopbar();
+new ResizeObserver(measureTopbar).observe(document.getElementById("topbar"));
+
 startLoop();
