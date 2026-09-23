@@ -21,13 +21,13 @@
  */
 'use strict';
 
-var VERSION = "76b33aec1245";
-var SHELL = ["./","manifest.webmanifest","ideas.json","nav.js","hub.js","retro.js","retro.css","fonts/DroidSans.woff2","fonts/DroidSans-Bold.woff2","offline.html","icon.svg","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png"];
+var VERSION = "0cbd1bd4061b";
+var SHELL = ["./","manifest.webmanifest","ideas.json","nav.js","hub.js","retro.js","retro.css","fonts/DroidSans.woff2","fonts/DroidSans-Bold.woff2","fonts/Archivo-Heavy.woff2","offline.html","icon.svg","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png","icons/cadence-flat.svg","icons/cadence-3d.svg","icons/ledger-flat.svg","icons/ledger-3d.svg","icons/ephemera-flat.svg","icons/ephemera-3d.svg","icons/public-screening-flat.svg","icons/public-screening-3d.svg","icons/container-compound-flat.svg","icons/container-compound-3d.svg","icons/breathe-flat.svg","icons/breathe-3d.svg"];
 // Each shell file's content hash: an update re-downloads only what changed.
-var SHELL_HASH = {"./":"c11436bb06fcfbb4","manifest.webmanifest":"02ccffdfa64ac064","ideas.json":"458eb44a47baf5b3","nav.js":"849ab7ecd5953854","hub.js":"5a3d5eb2b3195a02","retro.js":"c5479f976c7115a0","retro.css":"e141efa34308024e","fonts/DroidSans.woff2":"926eda9203636949","fonts/DroidSans-Bold.woff2":"b0f41617595b98bc","offline.html":"071764cae7779a82","icon.svg":"dfd5d5d474b00876","icon-192.png":"5a00e993c9494d3c","icon-512.png":"3d81a80b70f5bfd5","icon-maskable-512.png":"2e07cd24516fee62","apple-touch-icon.png":"f3a5e4309c27b078"};
+var SHELL_HASH = {"./":"5e6efc1afdb855b4","manifest.webmanifest":"53f4405d81c1ec7b","ideas.json":"1973f24e15042907","nav.js":"e9962de8b3144445","hub.js":"cc345008d043148a","retro.js":"986de8aeb92dbfc0","retro.css":"76c3478f27dd9d5a","fonts/DroidSans.woff2":"926eda9203636949","fonts/DroidSans-Bold.woff2":"b0f41617595b98bc","fonts/Archivo-Heavy.woff2":"ce32dcb7949f21d3","offline.html":"f89b70a5f04ad7f6","icon.svg":"dfd5d5d474b00876","icon-192.png":"5a00e993c9494d3c","icon-512.png":"3d81a80b70f5bfd5","icon-maskable-512.png":"2e07cd24516fee62","apple-touch-icon.png":"f3a5e4309c27b078","icons/cadence-flat.svg":"b397a3db837a016a","icons/cadence-3d.svg":"0114790db0947b89","icons/ledger-flat.svg":"253891bf97448073","icons/ledger-3d.svg":"569bf4c7f35c67ee","icons/ephemera-flat.svg":"e709a66cc71182a9","icons/ephemera-3d.svg":"3b2a505199f5e525","icons/public-screening-flat.svg":"894e941fecb16edf","icons/public-screening-3d.svg":"673513c223074759","icons/container-compound-flat.svg":"e8eac5e2d515712c","icons/container-compound-3d.svg":"b6981b391971b643","icons/breathe-flat.svg":"04a46106d3f07182","icons/breathe-3d.svg":"1c734d98ad437f3f"};
 // Ideas small enough to save whole at install: [{ slug, paths }], where
 // "ideas/<slug>/" stands for its index.html (the URL a visit requests).
-var AUTO_SAVE = [{"slug":"breathe","paths":["ideas/breathe/"]}];
+var AUTO_SAVE = [{"slug":"breathe","paths":["ideas/breathe/icon-3d.svg","ideas/breathe/icon-flat.svg","ideas/breathe/"]}];
 
 var PREFIX = 'random-hub-';
 var SHELL_CACHE = PREFIX + 'shell-' + VERSION;

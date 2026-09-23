@@ -151,6 +151,10 @@ html:not([data-look="retro"]) #retro { display: none !important; }
   transform: perspective(160px) rotateX(9deg);
 }
 .rt-tile.rt-custom { background: linear-gradient(180deg, rgba(255,255,255,.35), rgba(255,255,255,0) 48%), var(--tile); }
+/* An idea's hand-drawn icon (flat or 3D, nav.art) in place of its emoji. */
+.rt-tile.has-art { padding: 6px; }
+.rt-tile img, .rt-zoom-glyph img, .rt-result-emoji img { display: block; width: 100%; height: 100%; }
+.rt-zoom-glyph:has(img) { width: 44px; height: 44px; }
 .rt-label {
   max-width: 100%;
   font-size: 12px;
@@ -397,6 +401,7 @@ html:not([data-look="retro"]) #retro { display: none !important; }
 .rt-result:last-child { border-bottom: 0; }
 .rt-result:hover, .rt-result:focus-visible, .rt-news-item:hover { background: var(--rt-hl); color: var(--rt-hl-ink); outline: none; }
 .rt-result-emoji { font-size: 20px; width: 24px; text-align: center; }
+.rt-result-emoji.has-art { flex: none; width: 28px; height: 28px; padding: 2px; border-radius: 6px; background: var(--c, transparent); }
 .rt-results-none { margin: 0; padding: 14px; color: var(--rt-ink-2); }
 
 .rt-clock {

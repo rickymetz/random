@@ -1,7 +1,7 @@
 /* random — homepage-only PWA bits: the Install button (Chromium), the
  * "Add to Home Screen" hint (iOS Safari), the opt-in for the app-icon
- * badge (iOS), the cards' "Save offline" buttons, and opening links shared
- * to the installed app. Everything shared with idea pages lives in nav.js.
+ * badge (iOS), the Flat | 3D icon switch, the cards' "Save offline"
+ * buttons, and opening links shared to the installed app. Everything shared with idea pages lives in nav.js.
  */
 (function () {
   'use strict';
@@ -30,6 +30,23 @@
   if (lookRetro && window.randomNav) {
     lookRetro.addEventListener('click', function () { window.randomNav.setLook('retro'); });
   }
+
+  /* Icon style: Flat | 3D. The CSS reads <html data-icons>, so this only
+   * keeps aria-pressed in step (and nav.js tells every surface). */
+  var seg = document.querySelectorAll('.seg [data-icons]');
+  function paintSeg() {
+    var style = window.randomNav ? window.randomNav.icons() : document.documentElement.getAttribute('data-icons');
+    Array.prototype.forEach.call(seg, function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-icons') === style ? 'true' : 'false');
+    });
+  }
+  Array.prototype.forEach.call(seg, function (b) {
+    b.addEventListener('click', function () {
+      if (window.randomNav) window.randomNav.setIcons(b.getAttribute('data-icons'));
+    });
+  });
+  window.addEventListener('randomicons', paintSeg);
+  paintSeg();
 
   var standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   var ios = /iP(hone|ad|od)/.test(navigator.userAgent) ||

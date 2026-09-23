@@ -2,5 +2,6 @@
   "title": "Ledger",
   "description": "An encrypted personal notebook with a relationship graph — installable, offline, nothing leaves your device.",
   "emoji": "📒",
+  "color": "#26408b",
   "private": true
 }

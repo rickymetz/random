@@ -85,7 +85,7 @@
       tile.style.setProperty('--h', v.h);
       tile.style.setProperty('--dl', v.dl);
     }
-    tile.textContent = idea.emoji || '✦';
+    nav.art(tile, idea);
     var label = el('span', 'rt-label');
     label.textContent = idea.title;
     a.appendChild(tile);
@@ -95,6 +95,13 @@
       a.setAttribute('aria-label', idea.title + ' (new)');
     }
     return a;
+  }
+
+  // A small icon beside a search result or a "New ideas" entry.
+  function resultArt(idea) {
+    var e = nav.art(el('span', 'rt-result-emoji', { 'aria-hidden': 'true' }), idea);
+    if (idea.color) e.style.setProperty('--c', idea.color);
+    return e;
   }
 
   /* ------------------------------------------------------- home screens */
@@ -219,8 +226,7 @@
       }
       list.forEach(function (idea) {
         var a = el('a', 'rt-result', { href: idea.url, 'data-slug': idea.slug });
-        var e = el('span', 'rt-result-emoji', { 'aria-hidden': 'true' });
-        e.textContent = idea.emoji || '✦';
+        var e = resultArt(idea);
         var t = el('span', 'rt-result-title');
         t.textContent = idea.title;
         a.appendChild(e);
@@ -298,8 +304,7 @@
     }
     fresh.forEach(function (idea) {
       var a = el('a', 'rt-news-item', { href: idea.url, 'data-slug': idea.slug });
-      var e = el('span', 'rt-result-emoji', { 'aria-hidden': 'true' });
-      e.textContent = idea.emoji || '✦';
+      var e = resultArt(idea);
       var t = el('span');
       t.textContent = idea.title;
       a.appendChild(e);
@@ -957,13 +962,13 @@
     z.style.top = r.top + 'px';
     z.style.width = r.width + 'px';
     z.style.height = r.height + 'px';
-    z.style.background = getComputedStyle(tile).backgroundImage;
-    z.textContent = tile.textContent;
+    var bg = getComputedStyle(tile);
+    z.style.backgroundColor = bg.backgroundColor;
+    z.style.backgroundImage = bg.backgroundImage;
     root.appendChild(z);
-    // Compositor-only: transform on the tile, opacity on its emoji.
+    // Compositor-only: transform on the tile, opacity on its icon.
     var glyph = el('span', 'rt-zoom-glyph');
-    glyph.textContent = z.textContent;
-    z.textContent = '';
+    Array.prototype.forEach.call(tile.childNodes, function (n) { glyph.appendChild(n.cloneNode(true)); });
     z.appendChild(glyph);
     glyph.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, fill: 'forwards' });
     var anim = z.animate([
@@ -1099,6 +1104,8 @@
     } });
   }
 
+  function iconSummary() { return nav.icons() === '3d' ? '3D (soft clay)' : 'Flat'; }
+
   function renderSettings() {
     var body = ui.settingsBody;
     var top = body.scrollTop;
@@ -1107,6 +1114,10 @@
     sectionHead('Display', 'display');
     row({ id: 'look', title: 'Retro look', summary: 'The Gingerbread launcher. Turn off for the modern card grid.', checked: true,
       run: function () { nav.setLook('modern'); } });
+    row({ id: 'icons', title: 'Icon style', summary: iconSummary(), run: function (r) {
+      nav.setIcons(nav.icons() === '3d' ? 'flat' : '3d');
+      r._summary.textContent = iconSummary();
+    } });
     toggleRow('motion', 'Wallpaper motion', 'motion', 'The live wallpaper drifts', 'The wallpaper stays still');
     row({ id: 'clock', title: 'Clock style', summary: clockStyle() === 'analog' ? 'Analog' : 'Digital', run: function (r) {
       lset(KEY.clock, clockStyle() === 'analog' ? 'digital' : 'analog');
