@@ -214,7 +214,7 @@ const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.crea
 const KIND = (k) => (/^1 vs|2 vs/i.test(k) ? "asym" : /team/i.test(k) ? "teams" : "ffa");
 const all = []; // every picture on the page, in order, for the lightbox
 function img(src, alt, cls = "") {
-  const i = el("img", { src, alt, loading: "lazy", className: cls, width: cls === "phone" ? 390 : 1280, height: cls === "phone" ? 844 : 720 });
+  const i = el("img", { src, alt, loading: "lazy", className: cls, width: cls === "phone" ? 390 : 1920, height: cls === "phone" ? 844 : 1080 });
   const n = all.push({ src, alt }) - 1;
   i.addEventListener("click", () => open(n));
   i.tabIndex = 0; i.addEventListener("keydown", (e) => e.key === "Enter" && open(n));

@@ -42,7 +42,8 @@ await sleep(600);
 
 const browser = await chromium.launch();
 const errors = [];
-const tvCtx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+// a 1080p TV: the game renders at 1920×1080 natively, so this is 1:1
+const tvCtx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
 const tv = await tvCtx.newPage();
 tv.on("pageerror", (e) => errors.push("tv: " + e.message));
 tv.on("console", (m) => m.type() === "error" && errors.push("tv console: " + m.text()));
@@ -52,7 +53,7 @@ ph.on("pageerror", (e) => errors.push("phone: " + e.message));
 const S = (fn, arg) => tv.evaluate(fn, arg);
 const until = (fn, ms = 30000) => tv.waitForFunction(fn, null, { timeout: ms });
 async function shot(page, file, caption, list) {
-  await page.screenshot({ path: path.join(outDir, file), type: "jpeg", quality: page === tv ? 55 : 65 });
+  await page.screenshot({ path: path.join(outDir, file), type: "jpeg", quality: page === tv ? 60 : 65 });
   if (list) list.push({ file: `shots/${file}`, caption, kind: page === tv ? "tv" : "phone" });
   return `shots/${file}`;
 }
