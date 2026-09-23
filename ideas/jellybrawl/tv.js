@@ -116,6 +116,7 @@ S.opt = loadSettings(); applySettings();
 window.__jelly = S; // for tests and poking around in devtools
 window.__finish = () => finishGame(); // tests: settle S.game.result now
 window.__choose = () => startChoose(); // tests: deal a fresh set of options
+window.__games = GAMES; // the preview page's screenshot script walks these
 
 /* ---------------------------------------------------------------- players */
 

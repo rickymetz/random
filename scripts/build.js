@@ -8,7 +8,8 @@
 //     changes the shell or the idea list is offered as an update)
 //
 // Per-idea metadata (all optional), resolved in this order:
-//   1. ideas/<slug>/idea.json  -> { "title", "description", "emoji", "hidden" }
+//   1. ideas/<slug>/idea.json  -> { "title", "description", "emoji", "hidden",
+//      "offlineSkip": ["preview/"] (folders "Save offline" leaves out) }
 //   2. <title> and <meta name="description"> parsed from the idea's index.html
 //   3. the slug itself
 // Ideas are dated by the first git commit that touched their folder.
@@ -110,7 +111,8 @@ function collectIdeas() {
       private: meta.private === true,
       date: firstCommitDate(path.join("ideas", slug)),
       saveable,
-      files: saveable ? listFiles(dir) : [],
+      // offlineSkip: folders "Save offline" leaves out (e.g. a screenshot gallery)
+      files: saveable ? listFiles(dir).filter((f) => !(meta.offlineSkip || []).some((p) => f.rel.startsWith(p))) : [],
     });
   }
   // newest first

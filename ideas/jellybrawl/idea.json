@@ -1,6 +1,7 @@
 {
   "title": "Jellybrawl",
-  "description": "A Mario Party × Jackbox party game prototype: the TV is the shared screen, phones are the controllers, and your selfie is the face of your jelly blob. Flap, sling and chomp.",
+  "description": "A Mario Party × Jackbox party game prototype: the TV is the shared screen, phones are the controllers, and your selfie is the face of your jelly blob. 29 minigames, a board mode and a microgame gauntlet.",
   "emoji": "🫠",
-  "icon": "#b77dff"
+  "icon": "#b77dff",
+  "offlineSkip": ["preview/"]
 }
