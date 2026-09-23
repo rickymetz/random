@@ -161,3 +161,27 @@ export function unitExtents(items, types) {
   }
   return { x0, x1, z0, z1 };
 }
+
+// Stepping a camera heading round a compass grid, one mark at a time.
+//
+// three.js measures the azimuth as atan2(x, z) about the target, so the view
+// turning clockwise is the azimuth going *down*: the next mark clockwise is the
+// next multiple of `step` below where you are. A heading that is off the grid
+// lands on the first mark it passes, which is what makes one press both a snap
+// and a step.
+//
+// `tol` is the whole trick. A damped camera never settles exactly on a mark —
+// it comes to rest a few hundredths of a degree either side — and an exact test
+// puts a heading that drifted past the mark back onto the mark it is already
+// at, which reads as a dead button. Anything within `tol` counts as on the
+// mark and steps on to the next one.
+export function stepHeading(az, step, tol = 0) {
+  return (Math.ceil((az - tol) / step) - 1) * step;
+}
+
+// the shortest signed way round from `az` to `to`, so a step across the ±180°
+// seam is still a step and not a lap
+export function shortWay(az, to) {
+  const d = to - az;
+  return Math.atan2(Math.sin(d), Math.cos(d));
+}

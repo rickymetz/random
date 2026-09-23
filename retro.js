@@ -951,45 +951,61 @@
     launch(a);
   });
 
+  // Gingerbread opened an app by zooming its "starting window" — black,
+  // with the app's title bar — out of the icon you touched, while the
+  // launcher behind zoomed slightly and dimmed. The same here, uniformly
+  // scaled (nothing stretches), compositor-only (transform and opacity).
+  // If the idea is slow, a spinner turns up inside that window.
   function launch(a) {
     var href = a.href;
     var tile = a.querySelector('.rt-tile');
     if (matchMedia('(prefers-reduced-motion: reduce)').matches || !tile || !tile.animate) { location.href = href; return; }
     nav.feedback('key');
+    var label = a.querySelector('.rt-label');
+    var title = label ? label.textContent : '';
+
+    var win = el('div', 'rt-launch', { 'aria-hidden': 'true' });
+    var bar = el('div', 'rt-launch-bar');
+    var mini = tile.cloneNode(true);
+    mini.classList.add('rt-launch-icon'); // keeps rt-custom / has-art (the idea's colour and icon)
+    var name = el('span');
+    name.textContent = title;
+    bar.appendChild(mini);
+    bar.appendChild(name);
+    win.appendChild(bar);
+    win.appendChild(el('div', 'rt-launch-body'));
+    root.appendChild(win);
+
+    // Grow out of the icon's centre.
     var r = tile.getBoundingClientRect();
-    var z = el('div', 'rt-zoom', { 'aria-hidden': 'true' });
-    z.style.left = r.left + 'px';
-    z.style.top = r.top + 'px';
-    z.style.width = r.width + 'px';
-    z.style.height = r.height + 'px';
-    var bg = getComputedStyle(tile);
-    z.style.backgroundColor = bg.backgroundColor;
-    z.style.backgroundImage = bg.backgroundImage;
-    root.appendChild(z);
-    // Compositor-only: transform on the tile, opacity on its icon.
-    var glyph = el('span', 'rt-zoom-glyph');
-    Array.prototype.forEach.call(tile.childNodes, function (n) { glyph.appendChild(n.cloneNode(true)); });
-    z.appendChild(glyph);
-    glyph.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, fill: 'forwards' });
-    var anim = z.animate([
-      { transform: 'none' },
-      { transform: 'translate(' + -r.left + 'px,' + -r.top + 'px) scale(' + window.innerWidth / r.width + ',' + window.innerHeight / r.height + ')' }
-    ], { duration: 240, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)', fill: 'forwards' });
+    var w = win.getBoundingClientRect();
+    win.style.transformOrigin = (r.left + r.width / 2 - w.left) + 'px ' + (r.top + r.height / 2 - w.top) + 'px';
+    var ease = 'cubic-bezier(0.2, 0.7, 0.2, 1)';
+    var anim = win.animate([
+      { transform: 'scale(0.12)', opacity: 0 },
+      { transform: 'scale(0.12)', opacity: 1, offset: 0.12 },
+      { transform: 'scale(1)', opacity: 1 }
+    ], { duration: 260, easing: ease, fill: 'forwards' });
+    [ui.pages, ui.dots, ui.dock].forEach(function (n) {
+      if (n) n.animate([{ transform: 'none', opacity: 1 }, { transform: 'scale(1.06)', opacity: 0.35 }],
+        { duration: 260, easing: ease, fill: 'forwards' });
+    });
+
     var go = function () {
       location.href = href;
       // Still here after a moment? The idea is on its way: say so.
       setTimeout(function () {
-        if (!z.isConnected) return;
+        if (!win.isConnected) return;
         var card = el('div', 'rt-loading', { role: 'status' });
-        var label = a.querySelector('.rt-label');
         card.innerHTML = '<span class="rt-spinner" aria-hidden="true"></span><span></span>';
-        card.lastChild.textContent = 'Loading ' + (label ? label.textContent : '') + '…';
-        root.appendChild(card);
+        card.lastChild.textContent = 'Loading ' + title + '…';
+        win.querySelector('.rt-launch-body').appendChild(card);
       }, 600);
     };
     anim.onfinish = go;
     anim.oncancel = go;
   }
+
 
   /* -------------------------------------------------------------- boot */
 

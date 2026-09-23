@@ -720,7 +720,7 @@ try {
 
     // Launch: the tile zooms up, then the idea opens.
     await Promise.all([page.waitForURL(B + "ideas/breathe/"), page.click('.rt-pages .rt-icon[data-slug="breathe"]').then(async () => {
-      check((await page.locator(".rt-zoom").count()) === 1, "tapping an icon zooms its tile up");
+      check((await page.locator(".rt-launch .rt-launch-bar").count()) === 1, "tapping an icon zooms the idea's starting window out of it");
     })]);
     check(true, "and opens the idea");
     await page.goto(B);
@@ -731,7 +731,7 @@ try {
     await page.evaluate(() => new MutationObserver(() => {
       const card = document.querySelector(".rt-loading");
       if (card) sessionStorage.setItem("sawLoading", card.textContent);
-    }).observe(document.getElementById("retro"), { childList: true }));
+    }).observe(document.getElementById("retro"), { childList: true, subtree: true }));
     await page.click('.rt-pages .rt-icon[data-slug="container-compound"]');
     await page.waitForURL(B + "ideas/container-compound/", { timeout: 10000 });
     server.slow = null;

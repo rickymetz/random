@@ -12,6 +12,7 @@ import {
   halfDims as gHalfDims, gapBetween as gGapBetween, overlapDepth as gOverlapDepth,
   gapBand as gGapBand, clusterOf as gClusterOf, snapMove as gSnapMove,
   isFree as gIsFree, findSpot as gFindSpot, unitExtents as gUnitExtents,
+  stepHeading, shortWay,
 } from "./geometry.js";
 import {
   SEP_CLEAR, DIRS,
@@ -664,6 +665,16 @@ function fitToolColumn() {
   document.body.classList.add("tools-row");
   if (!clashes()) return;
   document.body.classList.add("tools-min");
+}
+
+// The tabs live in the header now, so the header is one row on a wide window
+// and two on a phone — and taller again at 200% system text. Everything that
+// hangs below it asks rather than assuming, the way chromeBand() already did.
+function measureTopbar() {
+  const el = document.getElementById("topbar");
+  if (!el) return;
+  document.body.style.setProperty("--topbar-h",
+    `${Math.round(el.getBoundingClientRect().bottom)}px`);
 }
 
 function measureStrip() {
@@ -1327,6 +1338,70 @@ function fit3D() {
   markShadowDirty();
 }
 document.getElementById("btn-fit").addEventListener("click", fit3D);
+
+// ---- the compass is a control ---------------------------------------------
+//
+// Every press takes the view to the next 45° mark clockwise, snapping a
+// hand-dragged heading up to the mark on the way; eight presses is a full turn
+// back to north. Heading only — the tilt, the zoom and what you are looking at
+// all survive, which is what separates it from Recenter beside it.
+//
+// three.js measures the azimuth as atan2(x, z) about the target, and the needle
+// is rotated by that same number. So the view turning clockwise is the azimuth
+// going *down*, and the needle swinging the other way.
+const SPIN_STEP = Math.PI / 4;
+const SPIN_MS = 250;
+const LONG_PRESS_MS = 500;
+const ON_MARK = 0.02;   // rad, ~1.1°: close enough to a mark to count as on it
+const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)");
+const HEADINGS = ["north", "north-east", "east", "south-east",
+                  "south", "south-west", "west", "north-west"];
+const headingName = (az) =>
+  HEADINGS[((Math.round(-az / SPIN_STEP) % 8) + 8) % 8];
+let spin = null;
+
+function setAzimuth(az) {
+  const t = controls.target;
+  const r = Math.hypot(camera.position.x - t.x, camera.position.z - t.z);
+  camera.position.set(t.x + r * Math.sin(az), camera.position.y, t.z + r * Math.cos(az));
+  // update() re-derives the spherical angles from the position it is handed,
+  // so getAzimuthalAngle() is fresh for the needle in this same frame
+  controls.update();
+}
+
+function spinTo(target) {
+  const az = controls.getAzimuthalAngle();
+  const d = shortWay(az, target);
+  if (REDUCED_MOTION.matches) setAzimuth(az + d);
+  else spin = { from: az, d, t0: performance.now() };
+  sceneDirty = true;
+  startLoop();
+  announce(`Facing ${headingName(az + d)}`);
+}
+
+// Holding the compass goes straight back to north — the one heading the
+// stepping is slowest to reach, four presses away from due south. Shift is the
+// same thing for a keyboard, which has no way to express a hold: a held Enter
+// on a button auto-repeats into a string of clicks, which would step, not
+// reset.
+const compassEl = document.getElementById("compass");
+let holdTimer = 0, holdFired = false;
+compassEl.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  holdFired = false;
+  clearTimeout(holdTimer);
+  holdTimer = setTimeout(() => { holdFired = true; spinTo(0); }, LONG_PRESS_MS);
+});
+for (const ev of ["pointerup", "pointercancel", "pointerleave"])
+  compassEl.addEventListener(ev, () => clearTimeout(holdTimer));
+compassEl.addEventListener("click", (e) => {
+  // the hold already acted; the release must not step on top of it
+  if (holdFired) { holdFired = false; return; }
+  if (e.shiftKey) spinTo(0);
+  else spinTo(stepHeading(controls.getAzimuthalAngle(), SPIN_STEP, ON_MARK));
+});
+// a drag is the user taking the wheel; the tween gets out of the way
+controls.addEventListener("start", () => { spin = null; });
 
 // overflow menu
 document.getElementById("btn-menu").addEventListener("click", (e) => {
@@ -4483,9 +4558,6 @@ setTimeout(() => toast(FINE_POINTER
   : "Drag to move · pinch to zoom · + to add", { queue: true }), 700);
 
 const clock = new THREE.Clock();
-// one angle drives both the needle and the N that rides its tip, so they
-// cannot disagree
-const compass = document.getElementById("compass");
 let lastAzimuth = null;
 
 // The plan sheet covers the canvas completely, so rendering behind it is pure
@@ -4507,9 +4579,18 @@ function animate() {
   if (!looping) return;
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
+  if (spin) {
+    const p = Math.min(1, (performance.now() - spin.t0) / SPIN_MS);
+    const ease = p < 0.5 ? 2 * p * p : 1 - (2 - 2 * p) ** 2 / 2;
+    setAzimuth(spin.from + spin.d * ease);   // before the needle is read
+    if (p >= 1) spin = null;
+    sceneDirty = true;
+  }
   const az = controls.getAzimuthalAngle();
   if (az !== lastAzimuth) {
-    compass.style.setProperty("--az", `${az}rad`);
+    // one angle drives both the needle and the N that rides its tip, so
+    // they cannot disagree
+    compassEl.style.setProperty("--az", `${az}rad`);
     lastAzimuth = az;
     sceneDirty = true;
   }
@@ -4539,4 +4620,11 @@ function animate() {
   sceneDirty = false;
   renderer.render(scene, camera);
 }
+// The header's height sets where the cartouche and the menu hang. A resize
+// listener is not enough on its own: at 200% system text the bar grows with
+// nothing resizing, --topbar-h stays at its old value, and the cartouche lands
+// on top of the tab row and eats the taps meant for it. Watch the element.
+measureTopbar();
+new ResizeObserver(measureTopbar).observe(document.getElementById("topbar"));
+
 startLoop();

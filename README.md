@@ -26,7 +26,7 @@ idea), add an `ideas/<slug>/idea.json`:
 ```json
 {
   "title": "Breathe",
-  "description": "A one-minute box-breathing circle.",
+  "description": "A breathing circle: box, 4-7-8, coherent, physiological sigh and more.",
   "emoji": "🫧",
   "color": "#2b6ca8",
   "hidden": false
