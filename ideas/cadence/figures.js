@@ -643,7 +643,10 @@
     "thoracic-extension": "Arch your upper back over the towel roll, chin tucked; hold 5 sec, come up slowly.",
     scaption: "Thumbs up, arms slightly forward. Up to shoulder height — straight elbows, no shrug.",
     "row-head-turn": "Elbow tucked, pull back, look over the opposite shoulder. Only your head turns.",
-    touchdowns: "Forearms on the wall. Slide up on a diagonal, lift the hands off, no shrug."
+    touchdowns: "Forearms on the wall. Slide up on a diagonal, lift the hands off, no shrug.",
+    "underhand-rows": "Palms facing you, body straight — pull your chest to the edge, elbows tight to your sides.",
+    "single-arm-rows": "One hand on the edge, the other by your side. Pull without letting your hips twist.",
+    "legs-up-wall": "Seat close to the wall, legs resting up it. Arms loose — breathe slow and long."
   };
 
   /* ---------- shared positions ---------- */
@@ -1788,6 +1791,39 @@
       })()
     },
 
+    'single-arm-rows': {
+      // The table row on one arm: the other lies along your side, and the
+      // body wants to turn toward the pulling side at the top — resist it.
+      cycle: 3.2,
+      props: [{ bar: [-40, TABLE] }],
+      keys: (function () {
+        var L = LEN.thigh + LEN.shin + LEN.spineLow + LEN.spineHigh;
+        var sLow = [-41, TABLE - 0.5 - LEN.upperArm - LEN.foreArm + 0.3];
+        var ank = [sLow[0] + Math.sqrt(L * L - Math.pow(sLow[1] - 4.5, 2)), 4.5];
+        var yHigh = TABLE - 9;
+        var sHigh = [ank[0] - Math.sqrt(L * L - Math.pow(yHigh - 4.5, 2)), yHigh];
+        var aLow = angleOf(sLow[0] - ank[0], sLow[1] - ank[1]), aHigh = angleOf(sHigh[0] - ank[0], sHigh[1] - ank[1]);
+        var legs = [ik(ank[0], ank[1], '+y'), ik(ank[0] + 1, ank[1], '+y')];
+        var pull = ik(-40, TABLE - 0.5, '-y');
+        var rest = function (a) { return [a + 180, a + 180]; };     // along your side
+        return [
+          { hip: line(ank, aLow).hip, spine: aLow, head: 10, arms: [pull, rest(aLow)], hands: [270, aLow + 180], legs: legs, feet: [0, 0], d3: { wide: { legs: [6, 6] } } },
+          { hip: line(ank, aHigh).hip, spine: aHigh, head: 16, arms: [pull, rest(aHigh)], hands: [270, aHigh + 180], legs: legs, feet: [0, 0],
+            d3: { wide: { legs: [6, 6] }, flare: { arms: [30, 0] }, twist: -8, twistArms: [0, 1] }, hold: 0.1 }
+        ];
+      })()
+    },
+    'legs-up-wall': {
+      // On your back, seat close to a wall, legs resting straight up it,
+      // arms loose by your sides. Nothing to do but breathe slowly.
+      cycle: 8,
+      props: [{ wall: 7 }],
+      keys: [
+        onBack({ head: 4, arms: SIDE_ARMS, hands: [90, 90], legs: [[4, 4], [5, 5]], feet: [274, 275], d3: { abd: { arms: [30, 30] } }, hold: 0.2 }),
+        onBack({ head: 4, spine: [270, 267], arms: SIDE_ARMS, hands: [90, 90], legs: [[4, 4], [5, 5]], feet: [274, 275], d3: { abd: { arms: [30, 30] } }, hold: 0.2 })
+      ]
+    },
+
     _default: {
       cycle: 4,
       keys: [standing(), standing({ spine: [1, 3], arms: [[186, 180], [174, 180]] })]
@@ -1806,6 +1842,7 @@
     });
   })(FIGURES['seated-twist']);
 
+  FIGURES['underhand-rows'] = FIGURES['table-rows'];
   FIGURES['express-squats'] = FIGURES.squats;
   FIGURES['express-pushups'] = FIGURES.pushups;
   FIGURES['express-lunges'] = FIGURES['reverse-lunges'];

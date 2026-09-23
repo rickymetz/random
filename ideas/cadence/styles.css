@@ -991,6 +991,15 @@ body.is-session .toast { top: 4.5rem; bottom: auto; }
 .demo-how summary::after { content: '▾'; margin-left: 0.35rem; transition: transform 0.2s; }
 .demo-how[open] summary::after { transform: rotate(180deg); }
 .demo-how-stop { border-left: 3px solid var(--accent); padding-left: 0.6rem; }
+.hold-status {
+  min-height: 1.6rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.hold-status.is-relax { color: var(--muted); }
+.hold-btn { align-self: center; min-width: 11rem; min-height: var(--tap); }
 .session-howto {
   align-self: center;
   min-height: var(--tap);

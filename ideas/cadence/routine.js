@@ -12,6 +12,8 @@
  *   min/max  reps per set, or seconds per set (min === max means a fixed target)
  *   perSide  the target applies to each side; sideWord picks "side", "leg" or "arm"
  *   rest     seconds of rest after each set (0 = flow straight on)
+ *   hold     (reps only) seconds to hold each rep; the session times each
+ *            hold and counts the reps for you
  *
  * Everything the UI prints — "6–12/leg × 3" — is computed from those fields, so
  * editing a target in Settings can never leave the printed target lying.
@@ -56,6 +58,7 @@
             items: [
               Object.assign({}, WARMUP),
               { id: 'pike-pushups', name: 'Pike push-ups', mode: 'reps', sets: 3, min: 6, max: 12, rest: 60 },
+              { id: 'underhand-rows', name: 'Underhand table rows', mode: 'reps', sets: 3, min: 6, max: 12, rest: 60 },
               { id: 'prone-ytw', name: 'Prone Y-T-W', mode: 'reps', sets: 3, min: 8, max: 12, rest: 45 },
               { id: 'glute-bridges', name: 'Glute bridges', mode: 'reps', sets: 3, min: 8, max: 15, rest: 60 },
               { id: 'split-squats', name: 'Split squats', mode: 'reps', sets: 3, min: 6, max: 10, perSide: true, sideWord: 'leg', rest: 60 },
@@ -132,6 +135,7 @@
             items: [
               Object.assign({}, WARMUP),
               { id: 'archer-pushups', name: 'Archer push-ups', mode: 'reps', sets: 3, min: 4, max: 8, perSide: true, sideWord: 'side', rest: 90 },
+              { id: 'single-arm-rows', name: 'Single-arm table rows', mode: 'reps', sets: 3, min: 4, max: 8, perSide: true, sideWord: 'arm', rest: 90 },
               { id: 'box-pistols', name: 'Box pistol squats', mode: 'reps', sets: 3, min: 4, max: 8, perSide: true, sideWord: 'leg', rest: 90 },
               { id: 'planche-lean', name: 'Pseudo-planche lean', mode: 'time', sets: 3, min: 15, max: 30, rest: 60 },
               { id: 'nordic-negatives', name: 'Nordic curl negatives', mode: 'reps', sets: 3, min: 3, max: 6, rest: 90 },
@@ -192,20 +196,20 @@
         blocks: [
           { name: '', items: [Object.assign({}, WARMUP)] },
           {
-            name: 'Hips',
+            name: 'Ankles',
             items: [
-              { id: 'hip-switches', name: '90/90 hip switches', mode: 'reps', sets: 1, min: 8, max: 8, perSide: true, sideWord: 'side', rest: 0 },
-              { id: 'hip-flexor', name: 'Hip-flexor stretch', mode: 'time', sets: 1, min: 30, max: 45, perSide: true, sideWord: 'side', rest: 0 },
-              { id: 'adductor-rock-backs', name: 'Adductor rock-backs', mode: 'reps', sets: 1, min: 8, max: 10, perSide: true, sideWord: 'side', rest: 0 },
-              { id: 'straddle', name: 'Straddle/butterfly', mode: 'time', sets: 1, min: 30, max: 45, rest: 0 }
+              { id: 'calf-stretch', name: 'Calf stretch', mode: 'time', sets: 1, min: 30, max: 30, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'knee-to-wall-rocks', name: 'Knee-to-wall rocks', mode: 'reps', sets: 1, min: 10, max: 10, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'knee-to-wall-hold', name: 'Knee-to-wall hold', mode: 'time', sets: 1, min: 30, max: 30, perSide: true, sideWord: 'side', rest: 0 }
             ]
           },
           {
-            name: 'Ankles',
+            name: 'Hips',
             items: [
-              { id: 'knee-to-wall-rocks', name: 'Knee-to-wall rocks', mode: 'reps', sets: 1, min: 10, max: 10, perSide: true, sideWord: 'side', rest: 0 },
-              { id: 'knee-to-wall-hold', name: 'Knee-to-wall hold', mode: 'time', sets: 1, min: 30, max: 30, perSide: true, sideWord: 'side', rest: 0 },
-              { id: 'calf-stretch', name: 'Calf stretch', mode: 'time', sets: 1, min: 30, max: 30, perSide: true, sideWord: 'side', rest: 0 }
+              { id: 'hip-flexor', name: 'Hip-flexor stretch', mode: 'time', sets: 1, min: 30, max: 45, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'adductor-rock-backs', name: 'Adductor rock-backs', mode: 'reps', sets: 1, min: 8, max: 10, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'hip-switches', name: '90/90 hip switches', mode: 'reps', sets: 1, min: 8, max: 8, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'straddle', name: 'Straddle/butterfly', mode: 'time', sets: 1, min: 30, max: 45, rest: 0 }
             ]
           },
           {
@@ -221,16 +225,17 @@
       },
       /* A physio's neck-and-shoulder programme: chin tucks and band work
        * lying down, then posture work sitting and standing. Slow, controlled
-       * reps, with a short pause between sets. */
+       * reps, with a short pause between sets. Prescribed every day, so it's
+       * a habit: offered daily, ticked off, not counted toward the goals. */
       {
         id: 'neck',
         name: 'Neck & shoulders',
-        kind: 'mobility',
+        kind: 'habit',
         blocks: [
           {
             name: 'On your back',
             items: [
-              { id: 'cervical-retraction', name: 'Supine cervical retraction with towel', mode: 'reps', sets: 2, min: 10, max: 10, rest: 15 },
+              { id: 'cervical-retraction', name: 'Supine cervical retraction with towel', mode: 'reps', sets: 2, min: 10, max: 10, hold: 5, rest: 15 },
               { id: 'horizontal-abduction', name: 'Supine horizontal abduction with chin tuck', mode: 'reps', sets: 2, min: 12, max: 12, rest: 20 },
               { id: 'supine-external-rotation', name: 'Supine shoulder external rotation with resistance', mode: 'reps', sets: 2, min: 12, max: 12, rest: 20 },
               { id: 'pnf-d2-flexion', name: 'Supine PNF D2 flexion with resistance', mode: 'reps', sets: 2, min: 12, max: 12, perSide: true, sideWord: 'arm', rest: 20 }
@@ -239,7 +244,7 @@
           {
             name: 'Sitting and standing',
             items: [
-              { id: 'thoracic-extension', name: 'Seated thoracic lumbar extension', mode: 'reps', sets: 1, min: 5, max: 10, rest: 0 },
+              { id: 'thoracic-extension', name: 'Seated thoracic lumbar extension', mode: 'reps', sets: 1, min: 5, max: 10, hold: 5, rest: 0 },
               { id: 'scaption', name: 'Scaption with dumbbells', mode: 'reps', sets: 2, min: 10, max: 12, rest: 20 },
               { id: 'row-head-turn', name: 'Single-arm row with opposite head turn', mode: 'reps', sets: 2, min: 12, max: 12, perSide: true, sideWord: 'arm', rest: 20 },
               { id: 'touchdowns', name: 'Touchdowns', mode: 'reps', sets: 2, min: 10, max: 12, rest: 20 }
@@ -287,7 +292,7 @@
             items: [
               { id: 'shoulder-rolls', name: 'Shoulder rolls', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
               { id: 'neck-circles', name: 'Neck half-circles', mode: 'reps', sets: 1, min: 3, max: 3, perSide: true, sideWord: 'side', rest: 0 },
-              { id: 'thoracic-extension', name: 'Seated thoracic lumbar extension', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
+              { id: 'thoracic-extension', name: 'Seated thoracic lumbar extension', mode: 'reps', sets: 1, min: 5, max: 10, hold: 5, rest: 0 },
               { id: 'touchdowns', name: 'Touchdowns', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
               { id: 'reach-side-bend', name: 'Overhead reach and side bend', mode: 'reps', sets: 1, min: 5, max: 5, perSide: true, sideWord: 'side', rest: 0 },
               { id: 'hip-flexor', name: 'Hip-flexor stretch', mode: 'time', sets: 1, min: 30, max: 30, perSide: true, sideWord: 'side', rest: 0 },
@@ -311,7 +316,35 @@
               { id: 'childs-pose', name: 'Child’s-pose/lat stretch', mode: 'time', sets: 1, min: 60, max: 90, rest: 0 },
               { id: 'seated-twist', name: 'Seated spinal twist', mode: 'time', sets: 1, min: 30, max: 45, perSide: true, sideWord: 'side', rest: 0 },
               { id: 'butterfly-fold', name: 'Butterfly fold', mode: 'time', sets: 1, min: 60, max: 90, rest: 0 },
-              { id: 'happy-baby', name: 'Happy baby', mode: 'time', sets: 1, min: 60, max: 90, rest: 0 }
+              { id: 'happy-baby', name: 'Happy baby', mode: 'time', sets: 1, min: 60, max: 90, rest: 0 },
+              { id: 'legs-up-wall', name: 'Legs up the wall', mode: 'time', sets: 1, min: 120, max: 180, rest: 0 }
+            ]
+          }
+        ]
+      },
+      /* Shoulders and upper back without any kit: on the floor first, then
+       * up for the wall and chair work. About twelve minutes. */
+      {
+        id: 'shoulders',
+        name: 'Shoulders & upper back',
+        kind: 'mobility',
+        blocks: [
+          {
+            name: 'On the floor',
+            items: [
+              { id: 'cat-cow', name: 'Cat-cow', mode: 'reps', sets: 1, min: 8, max: 8, rest: 0 },
+              { id: 'thread-needle', name: 'Thread the needle', mode: 'time', sets: 1, min: 30, max: 30, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'open-book', name: 'Open-book rotations', mode: 'reps', sets: 1, min: 8, max: 8, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'childs-pose', name: 'Child’s-pose/lat stretch', mode: 'time', sets: 1, min: 45, max: 45, rest: 0 },
+              { id: 'prone-ytw', name: 'Prone Y-T-W', mode: 'reps', sets: 2, min: 10, max: 10, rest: 20 }
+            ]
+          },
+          {
+            name: 'Chair and wall',
+            items: [
+              { id: 'thoracic-extension', name: 'Seated thoracic lumbar extension', mode: 'reps', sets: 1, min: 8, max: 8, hold: 5, rest: 0 },
+              { id: 'touchdowns', name: 'Touchdowns', mode: 'reps', sets: 2, min: 10, max: 10, rest: 20 },
+              { id: 'shoulder-rolls', name: 'Shoulder rolls', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 }
             ]
           }
         ]
@@ -358,10 +391,9 @@
           {
             name: 'Open the hips',
             items: [
+              { id: 'malasana', name: 'Deep squat (malasana)', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
               { id: 'frog', name: 'Frog stretch', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
               { id: 'pigeon', name: 'Pigeon pose', mode: 'time', sets: 1, min: 45, max: 60, perSide: true, sideWord: 'side', rest: 0 },
-              { id: 'happy-baby', name: 'Happy baby', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
-              { id: 'malasana', name: 'Deep squat (malasana)', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
               { id: 'hip-switches', name: '90/90 hip switches', mode: 'reps', sets: 1, min: 8, max: 8, perSide: true, sideWord: 'side', rest: 0 }
             ]
           },
@@ -387,6 +419,7 @@
             items: [
               { id: 'cobra', name: 'Cobra to upward dog', mode: 'time', sets: 2, min: 20, max: 30, rest: 10 },
               { id: 'camel', name: 'Camel pose', mode: 'time', sets: 2, min: 20, max: 30, rest: 15 },
+              { id: 'happy-baby', name: 'Happy baby', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
               { id: 'plow', name: 'Plow pose', mode: 'time', sets: 1, min: 30, max: 30, rest: 0 }
             ]
           },
@@ -518,6 +551,7 @@
     var t = amountLabel(ex);
     if (ex.perSide) t += '/' + (ex.sideWord || 'side');
     if (ex.sets > 1) t += ' × ' + ex.sets;
+    if (ex.mode === 'reps' && ex.hold) t += ' · ' + ex.hold + ' sec holds';
     return t;
   }
 

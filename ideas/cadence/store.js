@@ -136,6 +136,8 @@
       rest: Math.round(num(ex.rest, 0, 600, 0))
     };
     if (out.max < out.min) out.max = out.min;
+    // Seconds to hold each rep (a counted rep that's really a short hold).
+    if (out.mode === 'reps' && ex.hold) out.hold = Math.round(num(ex.hold, 1, 60, 5));
     if (ex.perSide) {
       out.perSide = true;
       out.sideWord = ex.sideWord === 'leg' || ex.sideWord === 'arm' ? ex.sideWord : 'side';

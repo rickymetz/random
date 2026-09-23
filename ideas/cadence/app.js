@@ -1840,6 +1840,84 @@
       if (this.tick) clearInterval(this.tick);
       this.tick = null;
       this.timer = null;
+      this.stopHolds();
+    },
+
+    /* ---------- held reps ----------
+     * A rep that's really a short hold (a chin tuck held 5 seconds): the
+     * session times the hold, lets you relax a moment, and counts the rep,
+     * round and round until the set's target. You can still type a number. */
+    HOLD_RELAX: 3,
+
+    startHolds: function (ex) {
+      var self = this;
+      this.stopHolds();
+      this.holds = { ex: ex, phase: 'hold', ends: Date.now() + ex.hold * 1000, running: true, left: 0, lastTick: Date.now() };
+      beep([660]);
+      this.holdTick = setInterval(function () { self.onHoldTick(); }, 200);
+      this.paintHolds();
+    },
+
+    stopHolds: function () {
+      if (this.holdTick) clearInterval(this.holdTick);
+      this.holdTick = null;
+      this.holds = null;
+    },
+
+    toggleHolds: function () {
+      var hd = this.holds;
+      if (!hd) return;
+      if (hd.running) { hd.left = Math.max(0, hd.ends - Date.now()); hd.running = false; }
+      else { hd.ends = Date.now() + hd.left; hd.running = true; hd.lastTick = Date.now(); }
+      this.paintHolds();
+    },
+
+    onHoldTick: function () {
+      var hd = this.holds;
+      if (!hd || !hd.running) return;
+      var now = Date.now();
+      // Asleep or hidden isn't holding: push the end back by the gap.
+      if (now - hd.lastTick > 2000) hd.ends += now - hd.lastTick - 200;
+      hd.lastTick = now;
+      if (now < hd.ends) return this.paintHolds();
+      var target = hd.ex.max || hd.ex.min || 1;
+      if (hd.phase === 'hold') {
+        this.value = Math.min(999, (this.value || 0) + 1);
+        buzz(20);
+        if (this.value >= target) {
+          this.stopHolds();
+          beep([660, 880]);
+          announce('Set done: ' + this.value + ' reps.');
+          this.paint();
+          return;
+        }
+        hd.phase = 'relax';
+        hd.ends = now + this.HOLD_RELAX * 1000;
+        announce(this.value + '. Relax.');
+      } else {
+        hd.phase = 'hold';
+        hd.ends = now + hd.ex.hold * 1000;
+        beep([660]);
+      }
+      this.paintHolds();
+    },
+
+    paintHolds: function () {
+      var root = document.getElementById('session-root');
+      var status = root.querySelector('.hold-status');
+      var btn = root.querySelector('.hold-btn');
+      var input = root.querySelector('.counter input');
+      if (input) input.value = String(this.value);
+      var hd = this.holds;
+      if (status) {
+        if (!hd) status.textContent = '';
+        else {
+          var left = Math.ceil(Math.max(0, (hd.running ? hd.ends - Date.now() : hd.left)) / 1000);
+          status.textContent = (hd.phase === 'hold' ? 'Hold · ' : 'Relax · ') + left + (hd.running ? '' : ' (paused)');
+          status.classList.toggle('is-relax', hd.phase !== 'hold');
+        }
+      }
+      if (btn) btn.textContent = !hd ? (this.value ? 'Continue holds' : 'Start holds') : hd.running ? 'Pause holds' : 'Resume holds';
     },
 
     /* Set up whatever the current step needs, then paint it. */
@@ -1855,7 +1933,8 @@
         if (ex.mode === 'time') {
           this.startTimer(R.timerSeconds(ex, this.workout && this.workout.kind));
         } else if (ex.mode === 'reps') {
-          this.value = this.suggestedReps(ex, step.set);
+          // Held reps count up from nothing as you do them.
+          this.value = ex.hold ? 0 : this.suggestedReps(ex, step.set);
         }
       } else if (step.kind === 'rest') {
         this.startTimer(step.seconds);
@@ -2159,7 +2238,15 @@
           class: 'counter-unit',
           text: step.sides > 1 ? 'reps this ' + (ex.sideWord || 'side') : 'reps'
         }));
-        body.appendChild(h('div', { class: 'session-hint', text: this.lastTimeHint(ex, step) }));
+        if (ex.hold) {
+          body.appendChild(h('div', { class: 'hold-status', role: 'timer', 'aria-live': 'off' }));
+          body.appendChild(h('button', {
+            class: 'btn hold-btn', type: 'button',
+            onclick: function () { if (self.holds) self.toggleHolds(); else self.startHolds(ex); }
+          }));
+        } else {
+          body.appendChild(h('div', { class: 'session-hint', text: this.lastTimeHint(ex, step) }));
+        }
         actions.appendChild(h('button', {
           class: 'btn btn-primary btn-lg btn-block', type: 'button', text: 'Log set',
           onclick: function () { self.complete(); }
@@ -2192,6 +2279,7 @@
       // squeeze the counter above them.
       root.appendChild(h('div', { class: 'session-scroll' }, [body, actions, demoNotes(ex)]));
       if (ex.mode === 'time') this.paintTimer();
+      if (ex.hold) this.paintHolds();
     },
 
     lastTimeHint: function (ex, step) {
