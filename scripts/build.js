@@ -160,12 +160,8 @@ function renderHome(ideas) {
   (function () {
     var look;
     try { look = JSON.parse(localStorage.getItem("random-hub:look")); } catch (e) {}
-    if (look !== "retro" && look !== "modern") {
-      var installed = false;
-      try { installed = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; } catch (e) {}
-      look = installed ? "retro" : "modern";
-    }
-    document.documentElement.setAttribute("data-look", look);
+    // Modern unless someone has chosen retro.
+    document.documentElement.setAttribute("data-look", look === "retro" ? "retro" : "modern");
   })();
 </script>
 <link rel="stylesheet" href="retro.css">

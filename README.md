@@ -100,9 +100,10 @@ PLAYWRIGHT=/path/to/node_modules/playwright node scripts/test/hub-e2e.mjs
 
 ### Retro look
 
-Installed, the hub opens as a **Gingerbread-era Android launcher** (browser
-tabs keep the modern card grid; the header's "Retro look" button, and
-Settings → Retro look, switch either way). Three swipeable home screens
+The hub has an opt-in **Gingerbread-era Android launcher** look. The modern
+card grid is the default everywhere; the header's "Retro look" button
+switches to it, and Settings → Retro look (or ≡ → Modern look) switches
+back. The choice is remembered. Three swipeable home screens
 hold every idea as an era tile beside search, clock, new-ideas and
 power-control widgets over a live wallpaper; a dock holds the app drawer
 and two favourites; a real-data status bar pulls down into a notification

@@ -1,9 +1,10 @@
 # Hub retro mode: early-Android (Gingerbread) — requirements
 
-When the hub runs as the **installed app**, it should feel like an early
-Android phone: a Gingerbread (2.3) launcher with home screens, an app
-drawer, widgets, a live wallpaper, a status bar with a pull-down shade and
-matching system chrome. The browser keeps today's clean card grid. These
+As an **opt-in look**, the hub can feel like an early Android phone: a
+Gingerbread (2.3) launcher with home screens, an app drawer, widgets, a
+live wallpaper, a status bar with a pull-down shade and matching system
+chrome. The modern card grid stays the default everywhere, installed or
+not. These
 requirements come from a 30-question interview held on 2026-09-23. They
 build on the hub PWA (`2026-09-22-hub-pwa-requirements.md`), which is
 live.
@@ -18,7 +19,7 @@ copied system artwork. Everything is drawn fresh in the era's style.
 | # | Topic | Decision |
 |---|-------|----------|
 | 1 | Era | **Gingerbread 2.3**: black, lime/green highlights, flat-ish. |
-| 2 | Where it applies | The installed app, with a **toggle**. Retro is the default when installed, and a setting switches it to modern (or tries retro in the browser). |
+| 2 | Where it applies | A **toggle**, available installed or in the browser. ~~Retro is the default when installed~~ Changed after the build: **modern is always the default**, and retro is opt-in. |
 | 3 | Scope | The **hub plus system chrome**: home screen, bar, recents, toasts, offline page. Idea *content* is untouched. |
 | 4 | Fidelity | Loving homage, not a pixel replica. |
 | 5 | Layout | **Home screens plus an app drawer.** |
@@ -54,10 +55,9 @@ copied system artwork. Everything is drawn fresh in the era's style.
 
 - There are two looks: **modern** (today) and **retro** (this spec),
   stored in `localStorage` as `random-hub:look` = `retro` | `modern`.
-- Default: **retro when installed** (`display-mode: standalone` or
-  `navigator.standalone`), **modern in a browser tab**. A saved choice
-  always wins, so a browser user can opt into retro and an installed user
-  can opt out.
+- Default: **modern, everywhere** (installed or in a tab). Retro appears
+  only once someone chooses it, and the choice is remembered. (First
+  specced as retro-by-default when installed; changed on review.)
 - The toggle lives in Settings (G16), the ≡ menu and the power-control
   widget. In modern, a "Retro look" button in the hub header is the way
   in. Switching applies at once: no reload, no flash of the wrong
@@ -289,7 +289,8 @@ copied system artwork. Everything is drawn fresh in the era's style.
 
 ## Acceptance checks
 
-1. A fresh install opens in retro. After the boot animation it lands on
+1. A fresh install opens in modern. Once retro is chosen, a cold start of
+   the installed app plays the boot animation and lands on
    the centre home screen with the status bar, search and clock widgets,
    icons, page dots, dock and ◀ ● ■ ≡.
 2. In a browser tab it's modern by default. Settings → Look → Retro

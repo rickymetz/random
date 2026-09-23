@@ -249,13 +249,15 @@ try {
     await ctx.close();
   }
 
-  section("retro look: installed default");
+  section("retro look: opt-in, even installed");
   {
     const { ctx, page } = await freshPage();
     await ctx.addInitScript(() => Object.defineProperty(navigator, "standalone", { get: () => true }));
     await page.goto(B);
-    await page.waitForSelector("#retro[data-ready]");
-    check((await page.evaluate(() => document.documentElement.dataset.look)) === "retro", "the installed app opens retro");
+    await page.waitForTimeout(500);
+    check((await page.evaluate(() => document.documentElement.dataset.look)) === "modern"
+      && (await page.locator("#retro").isHidden()) && (await page.locator(".rt-boot").count()) === 0,
+      "the installed app still opens modern, with no boot animation");
     await ctx.close();
   }
 
@@ -597,6 +599,7 @@ try {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, ...opts });
     await ctx.addInitScript(() => {
       Object.defineProperty(navigator, "standalone", { get: () => true });
+      localStorage.setItem("random-hub:look", '"retro"'); // retro is opt-in
       window.__vibes = [];
       navigator.vibrate = (ms) => { window.__vibes.push(ms); return true; };
     });

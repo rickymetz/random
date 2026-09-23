@@ -81,19 +81,11 @@
 
   /* -------------------------------------------------------------- look */
 
-  // Two looks: 'modern' (the card grid) and 'retro' (the Gingerbread
-  // launcher, retro.js). A saved choice wins; otherwise retro when running
-  // as the installed app, modern in a browser tab. The hub's inline head
-  // script makes the same decision before first paint.
-  function standalone() {
-    try {
-      return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-    } catch (e) { return false; }
-  }
+  // Two looks: 'modern' (the card grid, the default everywhere) and
+  // 'retro' (the Gingerbread launcher, retro.js), which is opt-in. The
+  // hub's inline head script makes the same decision before first paint.
   function currentLook() {
-    var saved = lget(KEY.look, null);
-    if (saved === 'retro' || saved === 'modern') return saved;
-    return standalone() ? 'retro' : 'modern';
+    return lget(KEY.look, null) === 'retro' ? 'retro' : 'modern';
   }
   var look = currentLook();
   document.documentElement.setAttribute('data-look', look);
