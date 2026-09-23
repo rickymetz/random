@@ -1,5 +1,6 @@
-// Sniper Plaza — asymmetric, 1 vs the rest. Everyone in the plaza is an
-// identical grey blob: the runners hide in an AI crowd while one sniper hunts
+// Sniper Plaza — asymmetric, 1 vs the rest. Every blob in the plaza wears a
+// random colour from the players' colours and a plain face, runners included
+// (never their own on purpose), so colour gives nothing away: the runners hide in an AI crowd while one sniper hunts
 // them through a scope. Runners steal coins (only runners can, so greed gives
 // you away) and find themselves on a private radar on their phone. The sniper
 // drags a trackpad and fires; hitting an innocent costs a long reload and sends
@@ -10,7 +11,6 @@ import { W, H, INK, text, outlined, shout, rrect, circle, blob, tag, countdown, 
 
 const TIME = 75, R = 26, SPEED = 150, PANIC_SPEED = 260, RELOAD = 1.5, MISFIRE = 4, PANIC = 3, SCOPE = 120, ZOOM = 1.6;
 const F = { x0: 120, y0: 170, x1: W - 120, y1: H - 90 };               // the plaza
-const CROWD = { color: "#aaa3bf", face: null, name: "" };              // what everyone looks like
 const rnd = (a, b) => a + Math.random() * (b - a);
 const clampX = (x) => Math.max(F.x0 + R, Math.min(F.x1 - R, x));
 const clampY = (y) => Math.max(F.y0 + R, Math.min(F.y1 - R, y));
@@ -26,7 +26,10 @@ export default {
     const sniper = ctx.players.find((p) => p.pid === sniperPid);
     const runnersP = ctx.players.filter((p) => p !== sniper);
     const target = 3 + 2 * runnersP.length;
-    const mk = (p) => { const [x, y] = spot(); return { p, x, y, vx: 0, vy: 0, goal: spot(), wait: rnd(0, 2), emote: 0, emoteCool: 0, dead: false, mx: 0, my: 0, loot: 0, pace: rnd(0.55, 1), bot: { goal: null, think: 0 } }; };
+    // everyone's disguise: a random colour from the players in this game, no selfie
+    const pool = [...new Set(ctx.players.map((q) => q.color))];
+    const look = () => ({ color: pool[Math.floor(Math.random() * pool.length)], face: null, name: "" });
+    const mk = (p) => { const [x, y] = spot(); return { p, look: look(), x, y, vx: 0, vy: 0, goal: spot(), wait: rnd(0, 2), emote: 0, emoteCool: 0, dead: false, mx: 0, my: 0, loot: 0, pace: rnd(0.55, 1), bot: { goal: null, think: 0 } }; };
     const runners = runnersP.map(mk);
     const npcs = Array.from({ length: Math.min(45 - runners.length, 12 * runners.length + 6) }, () => mk(null));
     const everyone = [...runners, ...npcs];
@@ -66,7 +69,7 @@ export default {
         ctx.sfx.pop();
       } else {
         best.dead = true;
-        splats.push(makeSplat(best.x, best.y, 34, "#6d6682"));
+        splats.push(makeSplat(best.x, best.y, 34, best.look.color));
         pops.push({ x: best.x, y: best.y - 70, word: "INNOCENT!", color: "#fff", t: 0 });
         scope.cool = MISFIRE; panic = PANIC;
         for (const n of npcs) if (!n.dead) { const a = Math.random() * Math.PI * 2; n.goal = [clampX(n.x + Math.cos(a) * 500), clampY(n.y + Math.sin(a) * 500)]; n.wait = 0; }
@@ -101,7 +104,7 @@ export default {
       }
       for (const b of [...everyone].filter((b) => !b.dead).sort((a, c) => a.y - c.y)) {
         const e = b.emote > 0 ? Math.sin((0.6 - b.emote) * 16) : 0, bob = Math.hypot(b.vx, b.vy) > 1 ? Math.abs(Math.sin(t * 12 + b.x)) * 5 : 0;
-        blob(g, CROWD, b.x, b.y - bob - Math.abs(e) * 14, R, { sx: 1 + e * 0.15, sy: 1 - e * 0.15 });
+        blob(g, b.look, b.x, b.y - bob - Math.abs(e) * 14, R, { sx: 1 + e * 0.15, sy: 1 - e * 0.15 });
       }
     }
 

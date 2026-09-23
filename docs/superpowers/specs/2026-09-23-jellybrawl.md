@@ -118,8 +118,10 @@ payouts are coins.
 
 A hide-in-the-crowd sniper game, decided in a short Q&A on 2026-09-23.
 
-- **Crowd blend.** Everyone in the plaza is an identical grey blob: the
-  runners plus about 12 AI wanderers per runner (capped near 45). NPCs walk
+- **Crowd blend.** Every blob in the plaza (the runners plus about 12 AI
+  wanderers per runner, capped near 45) wears a random colour drawn from
+  the colours of the players in the game, with a plain face. Runners get a
+  random one too, not their own, so colour is never a tell. NPCs walk
   to random spots, pause, and do small emote bounces.
 - **Finding yourself.** Your phone shows a private radar with only your dot
   (and the coins). The sniper can't see it.
