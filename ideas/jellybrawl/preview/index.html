@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="random-nav" content="off">
+<meta name="theme-color" content="#0d0221">
+<title>Jellybrawl · Preview</title>
+<meta name="description" content="Screenshots of every screen and minigame in Jellybrawl, a Mario Party × Jackbox party game where the TV is the shared screen and phones are the controllers.">
+<link rel="stylesheet" href="../fonts/fonts.css">
+<style>
+  /* A Steam-style store page: a media carousel (a sizzle video, then
+     collages) beside a capsule with the buttons, then the description,
+     every game, the modes and the details. All the pictures and the video
+     come from shots.json, which scripts/jellybrawl-preview.mjs regenerates. */
+  :root {
+    --bg: #0d0221; --page: #170b2a; --panel: #211338; --line: #3a2656;
+    --text: #ece6f5; --dim: #a99bc0; --pink: #ff2a6d; --cyan: #05d9e8; --acid: #f9f002;
+    --display: "Knewave", Impact, sans-serif; --label: "League Gothic", Impact, "Arial Narrow", sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  img { max-width: 100%; height: auto; }
+  html { background: var(--bg); }
+  body {
+    margin: 0; color: var(--text); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background:
+      radial-gradient(1200px 500px at 50% -10%, #3a0d4a 0%, transparent 70%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 2px, transparent 2px 4px),
+      var(--bg);
+    min-height: 100vh; padding: 0 16px 60px;
+  }
+  a { color: var(--cyan); }
+  a:hover { color: #7ff3fb; }
+  .top { max-width: 1100px; margin: 0 auto; padding: 12px 0; font-size: 14px; color: var(--dim); display: flex; gap: 14px; flex-wrap: wrap; }
+  .top a { color: var(--dim); text-decoration: none; }
+  .top a:hover { color: var(--text); }
+  .page { max-width: 1100px; margin: 0 auto; background: var(--page); border: 1px solid var(--line); box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+
+  .btn { display: inline-block; font: 26px/1 var(--label); letter-spacing: 3px; text-transform: uppercase; text-decoration: none; color: #fff; background: var(--pink); padding: 14px 26px; border: 3px solid #0b0710; box-shadow: 5px 5px 0 #0b0710; }
+  .btn:hover { color: #fff; transform: translate(-1px, -1px); box-shadow: 6px 6px 0 #0b0710; }
+  .btn.alt { background: #3a2656; }
+
+  /* the Steam-style top: a media carousel (the sizzle, then collages) with
+     a capsule-and-buttons panel beside it */
+  .title { padding: 22px 26px 4px; display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  .title h1 { margin: 0; font: clamp(44px, 7vw, 64px)/1 var(--display); color: var(--pink); transform: rotate(-2deg); text-shadow: 0 0 14px rgba(255,42,109,.6), 4px 5px 0 #0b0710; }
+  .title p { margin: 0; font: 20px var(--label); letter-spacing: 2.5px; color: var(--cyan); text-transform: uppercase; }
+  .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: 16px; padding: 14px 26px 0; }
+  .stage { position: relative; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line); overflow: hidden; }
+  .stage > img, .stage > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .stage > img { cursor: zoom-in; }
+  .stage .arrow { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 72px; font: 40px/1 var(--label); color: #fff; background: rgba(11,6,22,.6); border: 0; cursor: pointer; opacity: 0; transition: opacity .15s; }
+  .stage:hover .arrow, .stage .arrow:focus-visible { opacity: 1; }
+  .stage .prev { left: 0; } .stage .next { right: 0; }
+  @media (hover: none) { .stage .arrow { opacity: .8; } }
+  .caption { font-size: 14px; color: var(--dim); margin: 6px 0 0; min-height: 1.5em; }
+  .thumbs { display: flex; gap: 6px; overflow-x: auto; padding: 8px 0 10px; scrollbar-color: var(--line) transparent; scroll-snap-type: x proximity; }
+  .thumbs button { position: relative; flex: 0 0 auto; width: 116px; aspect-ratio: 16 / 9; padding: 0; border: 2px solid transparent; background: #000; cursor: pointer; opacity: .6; scroll-snap-align: start; }
+  .thumbs button img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumbs button:hover, .thumbs button[aria-current="true"] { opacity: 1; }
+  .thumbs button[aria-current="true"] { border-color: var(--cyan); }
+  .thumbs .play::after { content: "▶"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; color: #fff; text-shadow: 0 0 6px #000; background: rgba(0,0,0,.25); }
+  /* the time left before auto-advancing, as a bar along the current thumb */
+  .thumbs button .bar { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--acid); }
+  .thumbs button.ticking .bar { animation: tick var(--dwell, 5s) linear forwards; }
+  @keyframes tick { to { width: 100%; } }
+
+  .side { display: flex; flex-direction: column; gap: 12px; font-size: 14px; }
+  .side .capsule { width: 100%; aspect-ratio: 920 / 430; object-fit: cover; display: block; border: 1px solid var(--line); background: #000; }
+  .side .blurb { margin: 0; font-size: 15px; line-height: 1.45; }
+  .side dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
+  .side dt { color: var(--dim); text-transform: uppercase; font: 15px var(--label); letter-spacing: 1.5px; padding-top: 1px; }
+  .side dd { margin: 0; color: var(--cyan); }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tags span { font-size: 12px; padding: 2px 7px; background: #2b1a44; color: #c9b8e8; border-radius: 2px; }
+  .side .buy { background: linear-gradient(180deg, #2b1a44, #211338); border: 1px solid var(--line); padding: 12px; display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
+  .side .buy .btn { text-align: center; font-size: 24px; padding: 12px 16px; }
+  .side .buy small { color: var(--dim); font-size: 12.5px; line-height: 1.4; }
+
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: 28px; padding: 18px 26px 26px; }
+  @media (max-width: 820px) {
+    .hero, .cols { grid-template-columns: minmax(0, 1fr); padding-left: 16px; padding-right: 16px; }
+    .title { padding: 18px 16px 2px; }
+    .thumbs button { width: 96px; }
+    .side .buy { margin-top: 0; }
+  }
+  h2 { font: 30px/1.1 var(--label); letter-spacing: 2px; text-transform: uppercase; color: var(--acid); margin: 34px 0 12px; }
+  h2:first-child { margin-top: 0; }
+  h3 { font: 26px/1.1 var(--label); letter-spacing: 1.5px; margin: 0; text-transform: uppercase; }
+
+  .pitch { font-size: 18px; }
+  ul.feats { padding-left: 20px; }
+  ul.feats li { margin: 6px 0; }
+  ul.feats b { color: var(--cyan); font-weight: 600; }
+
+  /* game cards */
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
+  .filters button { font: 17px var(--label); letter-spacing: 1.5px; text-transform: uppercase; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 6px 12px; cursor: pointer; }
+  .filters button[aria-pressed="true"] { background: var(--cyan); color: #0b0710; border-color: var(--cyan); }
+  .game { background: var(--panel); border: 1px solid var(--line); padding: 16px; margin: 0 0 16px; }
+  .game header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .chip { font: 15px var(--label); letter-spacing: 1.5px; text-transform: uppercase; padding: 1px 8px; background: var(--pink); color: #fff; }
+  .chip.k-teams { background: var(--cyan); color: #0b0710; }
+  .chip.k-ffa { background: var(--acid); color: #0b0710; }
+  .chip.k-asym { background: #b14dff; }
+  .chip.players { background: transparent; color: var(--dim); border: 1px solid var(--line); }
+  .game p { margin: 4px 0; }
+  .game .controls { color: var(--dim); font-size: 14px; }
+  .game .controls::before { content: "🎮 "; }
+  .shots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, .42fr); gap: 8px; margin-top: 12px; align-items: start; }
+  @media (max-width: 520px) { .shots { grid-template-columns: 1fr 1fr; } .shots .ph { grid-column: span 2; max-width: 50%; margin: 0 auto; } }
+  .shots img, .modes img { width: 100%; display: block; border: 1px solid var(--line); cursor: zoom-in; background: #000; }
+  .shots img:hover, .modes img:hover { border-color: var(--cyan); }
+
+  .modes .mode { background: var(--panel); border: 1px solid var(--line); padding: 16px; margin: 0 0 16px; }
+  .modes .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-top: 10px; }
+  .modes .row img.phone { max-height: 260px; width: auto; justify-self: center; }
+
+  .modes .row img:not(.phone) { width: 100%; }
+
+  /* how a night works: the screens in the order you meet them */
+  .night { display: flex; flex-wrap: wrap; gap: 14px 12px; }
+  .night figure { margin: 0; flex: 0 0 auto; width: 267px; }
+  .night figure.ph { width: 130px; }
+  .night img { height: 150px; width: auto; display: block; border: 1px solid var(--line); cursor: zoom-in; background: #000; }
+  .night img:hover { border-color: var(--cyan); }
+  .night figcaption { font-size: 12.5px; line-height: 1.35; color: var(--dim); margin-top: 4px; }
+  @media (max-width: 520px) { .night img { height: 110px; } .night figure { width: 196px; } .night figure.ph { width: 110px; } }
+
+  aside.details h2 { margin-top: 0; }
+  aside.details table { font-size: 14px; }
+  aside.details td:first-child { width: auto; white-space: normal; }
+
+  /* More information */
+  details.info { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 14px; }
+  details.info summary { cursor: pointer; font: 24px var(--label); letter-spacing: 2px; text-transform: uppercase; color: var(--acid); }
+  table { border-collapse: collapse; width: 100%; margin-top: 10px; font-size: 15px; }
+  td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td:first-child { color: var(--dim); width: 34%; white-space: nowrap; }
+  code, pre { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  pre { background: #0b0616; border: 1px solid var(--line); padding: 12px 14px; overflow-x: auto; }
+  .note { color: var(--dim); font-size: 14px; }
+  footer { max-width: 1100px; margin: 18px auto 0; color: var(--dim); font-size: 13px; text-align: center; }
+
+  /* lightbox */
+  .lb { position: fixed; inset: 0; z-index: 10; background: rgba(5,2,10,.94); display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px; padding: 20px; }
+  .lb.open { display: flex; }
+  .lb img { max-width: 100%; max-height: calc(100vh - 120px); border: 1px solid var(--line); }
+  .lb p { margin: 0; color: var(--text); text-align: center; }
+  .lb button { position: absolute; font: 28px var(--label); color: #fff; background: rgba(255,255,255,.08); border: 1px solid var(--line); width: 52px; height: 52px; cursor: pointer; }
+  .lb .x { top: 14px; right: 14px; }
+  .lb .prev { left: 14px; top: 50%; }
+  .lb .next { right: 14px; top: 50%; }
+  .loading { color: var(--dim); }
+</style>
+</head>
+<body>
+<nav class="top" aria-label="Site">
+  <a href="../../../">← random</a><span>/</span><a href="../">Jellybrawl</a><span>/</span><span>Preview</span>
+</nav>
+
+<main class="page">
+  <header class="title">
+    <h1>Jellybrawl</h1>
+    <p>Mario Party × Jackbox · your TV and everyone's phones</p>
+  </header>
+
+  <section class="hero" aria-label="Trailer and screenshots">
+    <div class="car">
+      <div class="stage" id="stage" tabindex="0" aria-roledescription="carousel" aria-label="Trailer and collages. Use the arrow keys to move.">
+        <button type="button" class="arrow prev" aria-label="Previous">‹</button>
+        <button type="button" class="arrow next" aria-label="Next">›</button>
+      </div>
+      <p class="caption" id="caption" aria-live="polite"></p>
+      <div class="thumbs" id="thumbs" role="group" aria-label="Pick a slide"></div>
+    </div>
+
+    <aside class="side" aria-label="About the game">
+      <img class="capsule" id="capsule" alt="Jellybrawl" src="shots/capsule.webp" width="920" height="430">
+      <p class="blurb">A living-room party game: the TV is the shared screen and everyone plays on their own phone, with a selfie as the face of their jelly blob.</p>
+      <dl>
+        <dt>Players</dt><dd>1–8, plus bots</dd>
+        <dt>Games</dt><dd id="side-games">29 minigames</dd>
+        <dt>Modes</dt><dd>Playlist · 3 boards · Gauntlet</dd>
+        <dt>Updated</dt><dd id="side-updated">—</dd>
+      </dl>
+      <div class="tags" aria-label="Tags"><span>Party</span><span>Local multiplayer</span><span>Minigames</span><span>Phone controllers</span><span>Board game</span><span>Team-based</span><span>Asymmetric</span><span>Browser</span></div>
+      <div class="buy">
+        <a class="btn" href="../tv.html">▶ Run game</a>
+        <a class="btn alt" href="../">📱 Controller</a>
+        <small>Open <b>Run game</b> on the TV (or a laptop). On this site you can play against bots, or with controller tabs in the same browser. Real phones need the tiny relay server (see <a href="#download">Download</a>).</small>
+      </div>
+    </aside>
+  </section>
+
+  <div class="cols">
+    <div>
+      <h2>About</h2>
+      <p class="pitch">A living-room party game. The TV is the shared screen; everyone plays on their own phone, with a selfie (or a doodle) as the face of their jelly blob. Minigames are free-for-alls, 2v2 to 4v4 team games and lopsided 1-vs-the-rest showdowns, strung together as a playlist, a Mario Party-style board, or a WarioWare-style gauntlet.</p>
+      <ul class="feats">
+        <li><b id="n-games">29 minigames</b>: flappy free-for-alls, blob soccer, a sniper hunting look-alikes, a kaiju in a neon city, tug of war, a bomb to defuse with the manual split across phones, drawing and voting, tilt mazes…</li>
+        <li><b>Phones do more than buttons</b>: sticks, trackpads, tilt, drawing, private maps and secret info.</li>
+        <li><b>Three ways to play</b>: a playlist where last place picks the next game, three boards with forks, shops and duels, and a microgame gauntlet with bosses.</li>
+        <li><b>Nobody sits out</b>: knocked-out players drop goo on the living and send emoji.</li>
+        <li><b>Grit</b>: neon on black with a CRT filter (which you can turn down or off).</li>
+        <li><b>Accessibility settings</b>: reduced motion, text size, colour-blind shapes, brightness, CRT level.</li>
+      </ul>
+
+      <h2 id="games">Every game</h2>
+      <div class="filters" role="group" aria-label="Filter games">
+        <button type="button" data-f="all" aria-pressed="true">All</button>
+        <button type="button" data-f="ffa" aria-pressed="false">Free-for-all</button>
+        <button type="button" data-f="teams" aria-pressed="false">Teams</button>
+        <button type="button" data-f="asym" aria-pressed="false">1 vs rest</button>
+      </div>
+      <div id="game-list"><p class="loading">Loading screenshots…</p></div>
+
+      <h2 id="modes">Modes</h2>
+      <div class="modes" id="mode-list"></div>
+
+      <h2 id="night">How a night works</h2>
+      <div class="night" id="night-list"></div>
+
+      <h2 id="download">Download &amp; run</h2>
+      <p>No install for players: phones just open a web page. To host with real phones, run the relay on any computer on the same Wi-Fi (Node 18+, no dependencies):</p>
+      <pre>git clone https://github.com/rickymetz/random
+cd random/ideas/jellybrawl
+node server.mjs</pre>
+      <p>It prints a TV link and a phone link; the TV shows a QR code for the phones.</p>
+
+    </div>
+
+    <aside class="details" aria-label="Details">
+      <h2>Details</h2>
+      <table>
+        <tr><td>Status</td><td>Prototype, in active development</td></tr>
+        <tr><td>Platforms</td><td>HTML5: a TV / laptop browser for the shared screen; iOS and Android browsers as controllers</td></tr>
+        <tr><td>Players</td><td>1–8 on phones, plus bots</td></tr>
+        <tr><td>Genre</td><td>Party</td></tr>
+        <tr><td>Session length</td><td>About 20–40 minutes (3–8 rounds)</td></tr>
+        <tr><td>Inputs</td><td>Touchscreen, tilt (phones); keyboard (TV)</td></tr>
+        <tr><td>Accessibility</td><td>Reduced motion, CRT filter off, text size, colour-blind shapes, brightness boost, haptics off</td></tr>
+        <tr><td>Made with</td><td>Plain JavaScript and canvas; no frameworks</td></tr>
+        <tr><td>Fonts</td><td>Knewave and League Gothic (SIL OFL)</td></tr>
+        <tr><td>Screenshots updated</td><td id="updated">—</td></tr>
+      </table>
+    </aside>
+  </div>
+</main>
+<footer>Every picture on this page, and the trailer, is taken automatically by driving the real game in a headless browser, and retaken whenever the game's code changes.</footer>
+
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Screenshot">
+  <button type="button" class="x" aria-label="Close">✕</button>
+  <button type="button" class="prev" aria-label="Previous">‹</button>
+  <img alt="">
+  <p></p>
+  <button type="button" class="next" aria-label="Next">›</button>
+</div>
+
+<script type="module">
+const $ = (s) => document.querySelector(s);
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids.filter(Boolean)); return e; };
+const KIND = (k) => (/^1 vs|2 vs/i.test(k) ? "asym" : /team/i.test(k) ? "teams" : "ffa");
+const all = []; // every picture on the page, in order, for the lightbox
+function img(src, alt, cls = "") {
+  const i = el("img", { src, alt, loading: "lazy", className: cls, width: cls === "phone" ? 390 : 1920, height: cls === "phone" ? 844 : 1080 });
+  const n = all.push({ src, alt }) - 1;
+  i.addEventListener("click", () => open(n));
+  i.tabIndex = 0; i.addEventListener("keydown", (e) => e.key === "Enter" && open(n));
+  return i;
+}
+
+const res = await fetch("shots.json", { cache: "no-cache" });
+const data = await res.json();
+
+// the carousel: the sizzle first, then the collages. It moves on by itself
+// (when the video ends, then every few seconds) until you touch it.
+const items = [];
+if (data.video) items.push({ video: data.video.file, poster: data.video.poster, caption: `Trailer: ${Math.round(data.video.seconds)} seconds of the real game` });
+for (const s of data.slides || []) items.push({ src: s.file, caption: s.caption, lb: all.push({ src: s.file, alt: s.caption }) - 1 });
+const stage = $("#stage"), thumbs = $("#thumbs"), caption = $("#caption");
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const DWELL = 5000;
+let at = -1, auto = !still, timer = 0;
+for (const [i, it] of items.entries()) {
+  const b = el("button", { type: "button", className: it.video ? "play" : "", ariaLabel: it.caption }, el("img", { src: it.video ? it.poster : it.src, alt: "", loading: i < 6 ? "eager" : "lazy" }), el("span", { className: "bar" }));
+  b.addEventListener("click", () => { stop(); show(i); });
+  thumbs.append(b);
+}
+thumbs.style.setProperty("--dwell", `${DWELL}ms`);
+function show(i) {
+  at = (i + items.length) % items.length;
+  const it = items[at];
+  clearTimeout(timer);
+  stage.querySelector("video, img")?.remove();
+  let media;
+  if (it.video) {
+    media = el("video", { src: it.video, poster: it.poster, muted: true, playsInline: true, controls: true, preload: "metadata" });
+    media.muted = true; // the attribute alone doesn't count for autoplay everywhere
+    media.addEventListener("ended", () => auto && show(at + 1));
+    if (auto) media.play().catch(() => { auto && (timer = setTimeout(() => show(at + 1), DWELL)); }); // autoplay blocked: treat it like a picture
+  } else {
+    media = el("img", { src: it.src, alt: it.caption, width: 1920, height: 1080 });
+    media.addEventListener("click", () => { stop(); open(it.lb); });
+    if (auto) timer = setTimeout(() => show(at + 1 === items.length ? (items[0].video ? 1 : 0) : at + 1), DWELL); // loop the pictures, not the video
+  }
+  stage.prepend(media);
+  caption.textContent = it.caption;
+  for (const [j, b] of [...thumbs.children].entries()) {
+    b.setAttribute("aria-current", String(j === at));
+    b.classList.remove("ticking");
+    if (j === at && auto && !it.video) { void b.offsetWidth; b.classList.add("ticking"); } // restart the bar
+  }
+  const b = thumbs.children[at];
+  if (b) thumbs.scrollTo({ left: b.offsetLeft - thumbs.clientWidth / 2 + b.clientWidth / 2, behavior: still ? "auto" : "smooth" });
+}
+function stop() { auto = false; clearTimeout(timer); for (const b of thumbs.children) b.classList.remove("ticking"); }
+stage.querySelector(".prev").addEventListener("click", () => { stop(); show(at - 1); });
+stage.querySelector(".next").addEventListener("click", () => { stop(); show(at + 1); });
+stage.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowLeft") { stop(); show(at - 1); } else if (e.key === "ArrowRight") { stop(); show(at + 1); }
+});
+// the video's own controls count as touching it
+stage.addEventListener("pointerdown", (e) => e.target.tagName === "VIDEO" && stop());
+if (items.length) show(0); else stage.hidden = true;
+if (data.capsule) $("#capsule").src = data.capsule;
+
+// how a night works: the screens, in the order you'd meet them
+const night = $("#night-list");
+for (const s of data.screens) night.append(el("figure", { className: s.kind === "phone" ? "ph" : "" }, img(s.file, s.caption, s.kind === "phone" ? "phone" : ""), el("figcaption", { textContent: s.caption })));
+
+// every game
+const list = $("#game-list");
+list.replaceChildren();
+$("#n-games").textContent = $("#side-games").textContent = `${data.games.length} minigames`;
+for (const g of data.games) {
+  const k = KIND(g.kind);
+  const card = el("article", { className: "game", id: `g-${g.id}` },
+    el("header", {}, el("h3", { textContent: g.title }), el("span", { className: `chip k-${k}`, textContent: g.kind }), el("span", { className: "chip players", textContent: `${g.min}–${g.max} players` })),
+    el("p", { textContent: g.blurb }),
+    el("p", { className: "controls", textContent: g.controls }),
+    el("div", { className: "shots" }, ...g.tv.map((src, i) => img(src, `${g.title}: on the TV${g.tv.length > 1 ? ` (${i + 1})` : ""}`)), g.phone && el("div", { className: "ph" }, img(g.phone, `${g.title}: a phone`, "phone"))),
+  );
+  card.dataset.kind = k;
+  list.append(card);
+}
+
+// modes
+const modes = $("#mode-list");
+for (const m of data.modes) modes.append(el("section", { className: "mode" }, el("h3", { textContent: m.title }), el("p", { textContent: m.blurb }),
+  el("div", { className: "row" }, ...m.shots.map((src) => img(src, `${m.title}${/phone/.test(src) ? ": a phone" : ""}`, /phone/.test(src) ? "phone" : "")))));
+
+const d = new Date(data.generated);
+$("#updated").textContent = `${d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}${data.commit ? ` · commit ${data.commit}` : ""}`;
+$("#side-updated").textContent = d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+
+// filters
+for (const b of document.querySelectorAll(".filters button")) b.addEventListener("click", () => {
+  for (const x of document.querySelectorAll(".filters button")) x.setAttribute("aria-pressed", String(x === b));
+  for (const c of list.children) c.hidden = b.dataset.f !== "all" && c.dataset.kind !== b.dataset.f;
+});
+
+// lightbox
+const lb = $("#lb"), lbImg = lb.querySelector("img"), lbCap = lb.querySelector("p");
+let cur = 0, back = null;
+function open(n) { cur = (n + all.length) % all.length; lbImg.src = all[cur].src; lbImg.alt = all[cur].alt; lbCap.textContent = all[cur].alt; if (!lb.classList.contains("open")) back = document.activeElement; lb.classList.add("open"); lb.querySelector(".x").focus(); }
+function close() { lb.classList.remove("open"); back?.focus(); }
+lb.querySelector(".x").onclick = close;
+lb.querySelector(".prev").onclick = () => open(cur - 1);
+lb.querySelector(".next").onclick = () => open(cur + 1);
+lb.addEventListener("click", (e) => { if (e.target === lb) close(); });
+addEventListener("keydown", (e) => {
+  if (!lb.classList.contains("open")) return;
+  if (e.key === "Escape") close(); else if (e.key === "ArrowLeft") open(cur - 1); else if (e.key === "ArrowRight") open(cur + 1);
+});
+</script>
+</body>
+</html>

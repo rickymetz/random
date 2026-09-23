@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="random-nav" content="off">
+<title>Jellybrawl — TV</title>
+<meta name="description" content="The big-screen host for Jellybrawl.">
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #0b0710; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+  #tools { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  #tools button { font: 19px "League Gothic", Impact, sans-serif; text-transform: uppercase; letter-spacing: 2px; color: #fff; background: rgba(13,2,33,.85); border: 2px solid #05d9e8; border-radius: 2px; padding: 8px 14px; cursor: pointer; box-shadow: 4px 4px 0 #ff2a6d; }
+  #tools button:hover { background: #2a0845; }
+  #tools #t-start { background: #f9f002; color: #0b0710; border-color: #0b0710; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="screen" width="1920" height="1080"></canvas>
+<div id="tools" hidden>
+  <button id="t-tab" type="button" hidden>Open a controller tab</button>
+  <button id="t-bot" type="button">+ Bot (B)</button>
+  <button id="t-rmbot" type="button">− Bot (N)</button>
+  <button id="t-mode" type="button">Mode</button>
+  <button id="t-rounds" type="button">Rounds</button>
+  <button id="t-start" type="button">Start (Enter)</button>
+</div>
+<script type="module" src="tv.js"></script>
+</body>
+</html>

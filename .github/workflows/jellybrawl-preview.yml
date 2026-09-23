@@ -1,0 +1,62 @@
+name: Jellybrawl preview screenshots
+
+# Keeps ideas/jellybrawl/preview/ (a Steam-style page: a sizzle video, collages,
+# and every screen and game) current: whenever Jellybrawl's code changes on
+# main, drive the real game in headless Chromium, re-record the sizzle, retake
+# every screenshot, and commit them back.
+# Pages serves main directly, so the page updates with the push. The preview
+# folder itself is excluded from the trigger, so the loop stops at one lap.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ideas/jellybrawl/**'
+      - '!ideas/jellybrawl/preview/**'
+      - 'scripts/jellybrawl-preview.mjs'
+      - '.github/workflows/jellybrawl-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jellybrawl-preview
+  cancel-in-progress: true
+
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright (outside the repo)
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" --no-save --no-audit --no-fund playwright@1.56.1
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Take the screenshots
+        env:
+          PLAYWRIGHT: ${{ runner.temp }}/pw/node_modules/playwright
+        run: node scripts/jellybrawl-preview.mjs
+      - name: Commit the new screenshots
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A ideas/jellybrawl/preview
+          if git diff --cached --quiet; then
+            echo "Screenshots unchanged"
+          else
+            git commit -m "Update Jellybrawl preview screenshots"
+            # other workflows push to main from the same trigger;
+            # rebase-and-retry so losing that race doesn't fail this one
+            for attempt in 1 2 3; do
+              if git push; then
+                exit 0
+              fi
+              git pull --rebase
+            done
+            git push
+          fi
