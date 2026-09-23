@@ -2176,9 +2176,9 @@
         noteBtn
       ]));
 
-      root.appendChild(body);
-      root.appendChild(actions);
-      root.appendChild(demoNotes(ex));
+      // One scroll for all three, so the words below the buttons never
+      // squeeze the counter above them.
+      root.appendChild(h('div', { class: 'session-scroll' }, [body, actions, demoNotes(ex)]));
       if (ex.mode === 'time') this.paintTimer();
     },
 
