@@ -27,6 +27,8 @@
  * the body does, 0 toward you, -1 looking back); `shrug` and `roll` move the
  * shoulder joint up and forward; `arms` and `legs` [near, far]; `hands` and
  * `feet`, optional angles (a foot defaults to square with its shin).
+ * A reached-for limb can take `arc`: moving into or out of that keyframe,
+ * the hand or foot travels on a curve that high instead of a straight line.
  * `armLen` and `legLen` ([[upper, lower], [upper, lower]], default 1) draw a
  * bone shorter when it points toward you — a leg out to the side, seen from
  * the side, is mostly foreshortened.
@@ -80,14 +82,20 @@
     return best.a;
   }
 
-  /* The sole's heel and toe from the ankle and the foot's angle. `foot` is
-   * the direction heel→toe; 90 is flat, pointing forward. */
-  function footPoints(ankle, a) {
+  /* The sole from the ankle: heel, the ball of the foot, and the toes. `a`
+   * is the direction heel→ball (90: flat, pointing forward); `t` is the
+   * toes', which bend at the ball — up on your toes, they stay flat on the
+   * floor while the heel rises. */
+  var FOOT = { heel: 2.5, ball: 7.5, toes: 3.5 };
+  function footPoints(ankle, a, t) {
     var f = dir(a), down = dir(a + 90);
-    var base = [ankle[0] + down[0] * (ANKLE - WIDTH.foot / 2), ankle[1] + down[1] * (ANKLE - WIDTH.foot / 2)];
+    var k = ANKLE - WIDTH.foot / 2;
+    var base = [ankle[0] + down[0] * k, ankle[1] + down[1] * k];
+    var ball = [base[0] + f[0] * FOOT.ball, base[1] + f[1] * FOOT.ball];
     return {
-      heel: [base[0] - f[0] * 2, base[1] - f[1] * 2],
-      toe: [base[0] + f[0] * 10, base[1] + f[1] * 10]
+      heel: [base[0] - f[0] * FOOT.heel, base[1] - f[1] * FOOT.heel],
+      ball: ball,
+      toe: step(ball, t == null ? a : t, FOOT.toes)
     };
   }
 
@@ -127,8 +135,8 @@
       var knee = step(hip, th, LEN.thigh * ll[0]);
       var ankle = step(knee, sh, LEN.shin * ll[1]);
       var footA = p.feet && p.feet[i] != null ? p.feet[i] : sh - 90;
-      var fp = footPoints(ankle, footA);
-      out.legs[i] = { knee: knee, ankle: ankle, heel: fp.heel, toe: fp.toe };
+      var fp = footPoints(ankle, footA, p.toes && p.toes[i] != null ? p.toes[i] : null);
+      out.legs[i] = { knee: knee, ankle: ankle, heel: fp.heel, ball: fp.ball, toe: fp.toe };
     }
     return out;
   }
@@ -148,9 +156,13 @@
     var shoulder = step(step(hip, sp[0], LEN.spineLow), sp[1], LEN.spineHigh);
     var root = armRoot(shoulder, sp[1], k);
     var out = { hip: hip, spine: sp, head: k.head || 0, turn: k.turn, shrug: k.shrug, roll: k.roll,
-      armLen: k.armLen, legLen: k.legLen, arms: [], legs: [], hands: k.hands, feet: k.feet };
+      armLen: k.armLen, legLen: k.legLen, arms: [], legs: [], hands: k.hands, feet: [null, null], toes: [null, null] };
     for (var i = 0; i < 2; i++) {
       var a = k.arms[i], l = k.legs[i];
+      // A foot placed with flat() or toes() carries its own angles; the
+      // keyframe's `feet` wins over them.
+      out.feet[i] = k.feet && k.feet[i] != null ? k.feet[i] : l.foot != null ? l.foot : null;
+      out.toes[i] = l.toe != null ? l.toe : null;
       var al = scaleOf(k.armLen, i), ll = scaleOf(k.legLen, i);
       out.arms[i] = a.ik ? reach(root, a.ik, LEN.upperArm * al[0], LEN.foreArm * al[1], a.bend) : a;
       out.legs[i] = l.ik ? reach(hip, l.ik, LEN.thigh * ll[0], LEN.shin * ll[1], l.bend) : l;
@@ -209,7 +221,11 @@
       for (var i = 0; i < 2; i++) {
         var a = ka[part][i], b = kb[part][i];
         if (a.ik && b.ik && a.bend === b.bend) {
-          k[part][i] = { ik: lerpPt(a.ik, b.ik, u), bend: a.bend };
+          // `arc` lifts a moving hand or foot along a curve instead of a
+          // straight line — a stepping foot clears the floor.
+          var p = lerpPt(a.ik, b.ik, u);
+          p[1] += Math.max(a.arc || 0, b.arc || 0) * Math.sin(Math.PI * u);
+          k[part][i] = { ik: p, bend: a.bend };
         } else {
           k[part][i] = [lerpAngle(ra[part][i][0], rb[part][i][0], u), lerpAngle(ra[part][i][1], rb[part][i][1], u)];
         }
@@ -217,7 +233,14 @@
     });
     var r = resolve(k);
     r.hands = optAngles(ka.hands, kb.hands, function (i) { return ra.arms[i][1]; }, function (i) { return rb.arms[i][1]; }, u);
-    r.feet = optAngles(ka.feet, kb.feet, function (i) { return ra.legs[i][1] - 90; }, function (i) { return rb.legs[i][1] - 90; }, u);
+    var fa = [], fb = [];
+    r.feet = []; r.toes = [];
+    for (var i = 0; i < 2; i++) {
+      fa[i] = ra.feet[i] != null ? ra.feet[i] : ra.legs[i][1] - 90;
+      fb[i] = rb.feet[i] != null ? rb.feet[i] : rb.legs[i][1] - 90;
+      r.feet[i] = lerpAngle(fa[i], fb[i], u);
+      r.toes[i] = lerpAngle(ra.toes[i] != null ? ra.toes[i] : fa[i], rb.toes[i] != null ? rb.toes[i] : fb[i], u);
+    }
     return r;
   }
 
@@ -259,7 +282,7 @@
     var r = LEN.headR;
     pts.push([sk.head[0] - r, sk.head[1] - r], [sk.head[0] + r, sk.head[1] + r]);
     sk.arms.forEach(function (a) { pts.push(a.elbow, a.wrist, a.fingers); });
-    sk.legs.forEach(function (l) { pts.push(l.knee, l.ankle, l.heel, l.toe); });
+    sk.legs.forEach(function (l) { pts.push(l.knee, l.ankle, l.heel, l.ball, l.toe); });
     return pts;
   }
 
@@ -348,7 +371,7 @@
       var a = sk.arms[i], l = sk.legs[i];
       set.parts.thigh.setAttribute('d', seg(sk.hip, l.knee));
       set.parts.shin.setAttribute('d', seg(l.knee, l.ankle));
-      set.parts.foot.setAttribute('d', 'M' + P(l.ankle) + 'L' + P(l.heel) + 'L' + P(l.toe));
+      set.parts.foot.setAttribute('d', 'M' + P(l.ankle) + 'L' + P(l.heel) + 'L' + P(l.ball) + 'L' + P(l.toe));
       set.parts.upperArm.setAttribute('d', seg(sk.root, a.elbow));
       set.parts.foreArm.setAttribute('d', seg(a.elbow, a.wrist));
       set.parts.hand.setAttribute('d', seg(a.wrist, a.fingers));
@@ -403,15 +426,28 @@
 
   function ik(x, y, bend) { return { ik: [x, y], bend: bend }; }
 
-  /* An ankle for a foot flat on the floor (or on top of a box at `y`). */
-  function flat(x, y, bend) { return ik(x, (y || 0) + ANKLE, bend || '+x'); }
+  /* A foot flat on the floor (or on top of a box at `y`), ankle at x. */
+  function flat(x, y, bend) {
+    var l = ik(x, (y || 0) + ANKLE, bend || '+x');
+    l.foot = 90; l.toe = 90;
+    return l;
+  }
 
-  /* An ankle for a foot up on its toes, the ball of the foot at (x, y). */
-  function toes(x, y, footAngle, bend) {
-    var fa = footAngle == null ? 45 : footAngle;
-    var f = dir(fa), down = dir(fa + 90);
+  /* Where the ankle is when the ball of the foot is at (x, y) and the foot
+   * points at `footAngle` — up on the toes, or toes tucked under in a plank. */
+  function ankleOnToes(x, y, footAngle) {
+    var f = dir(footAngle), down = dir(footAngle + 90);
     var k = ANKLE - WIDTH.foot / 2;
-    return ik(x - f[0] * 10 - down[0] * k, (y || 0) + WIDTH.foot / 2 - f[1] * 10 - down[1] * k, bend || '+x');
+    return [x - f[0] * FOOT.ball - down[0] * k, (y || 0) + WIDTH.foot / 2 - f[1] * FOOT.ball - down[1] * k];
+  }
+
+  /* A foot up on its toes: the ball at (x, y), toes flat on the floor. */
+  function toes(x, y, footAngle, bend) {
+    var fa = footAngle == null ? 135 : footAngle;
+    var a = ankleOnToes(x, y, fa);
+    var l = ik(a[0], a[1], bend || '+x');
+    l.foot = fa; l.toe = 90;
+    return l;
   }
 
   var STAND = 54;                 // hip height, standing tall
@@ -509,6 +545,7 @@
       shoulder: step(ankle, angle, LEN.thigh + LEN.shin + LEN.spineLow + LEN.spineHigh)
     };
   }
+  function arced(leg, h) { leg.arc = h; return leg; }
   function merge(base, extra) {
     var k = {};
     Object.keys(base).forEach(function (key) { k[key] = base[key]; });
@@ -517,18 +554,33 @@
   }
   var PALMS = [90, 90];          // hands flat on the floor, fingers forward
   var WRIST = 2.6;               // wrist height with the palm flat
-  var KNEE = 3;                  // knee joint height, kneeling
-  var LYING = 5.5;               // hip and shoulder height lying down
+  var KNEE = 3.8;                // knee joint height, kneeling on it
+  var LYING = 6.2;               // hip and shoulder height lying down
 
-  /* High plank / push-up: toes at PU_ANKLE, the body one line. */
-  var PU_ANKLE = [-46, 12];
-  var puTop = line(PU_ANKLE, 74);
-  var puLow = line(PU_ANKLE, 88);
+  /* A leg reaching for an ankle point with the foot on its toes: ball on
+   * the floor, toes flat, heel up. */
+  function onToes(ankle, bend, footAngle) {
+    var l = ik(ankle[0], ankle[1], bend);
+    l.foot = footAngle; l.toe = 90;
+    return l;
+  }
+
+  /* High plank / push-up: balls of the feet at x = -50, toes tucked under,
+   * the body one line from heel to head. */
+  var PU_FOOT = 162;
+  var PU_ANKLE = ankleOnToes(-50, 0, PU_FOOT);
+  /* The body angle at which straight arms just reach the floor. */
+  function lineForShoulderAt(ankle, y) {
+    return Math.acos((y - ankle[1]) / (LEN.thigh + LEN.shin + LEN.spineLow + LEN.spineHigh)) * 180 / Math.PI;
+  }
+  var PU_ANGLE = lineForShoulderAt(PU_ANKLE, WRIST + LEN.upperArm + LEN.foreArm - 0.2);
+  var puTop = line(PU_ANKLE, PU_ANGLE);
+  var puLow = line(PU_ANKLE, 87);
   var PU_HAND = puTop.shoulder[0];
-  var PU_LEGS = [ik(PU_ANKLE[0], PU_ANKLE[1], '+y'), ik(PU_ANKLE[0] - 1, PU_ANKLE[1], '+y')];
+  var PU_LEGS = [onToes(PU_ANKLE, '+y', PU_FOOT), onToes([PU_ANKLE[0] - 1, PU_ANKLE[1]], '+y', PU_FOOT)];
   var PU_ARMS = [ik(PU_HAND, WRIST, '+y'), ik(PU_HAND + 1, WRIST, '+y')];
   function pushTop(extra) {
-    return merge({ hip: puTop.hip, spine: 74, head: 12, arms: PU_ARMS, hands: PALMS, legs: PU_LEGS }, extra);
+    return merge({ hip: puTop.hip, spine: PU_ANGLE, head: 12, arms: PU_ARMS, hands: PALMS, legs: PU_LEGS }, extra);
   }
   function pushLow(extra) {
     return merge({ hip: puLow.hip, spine: 88, head: 8, arms: PU_ARMS, hands: PALMS, legs: PU_LEGS }, extra);
@@ -548,7 +600,7 @@
   var B_SHOULDER = [-LEN.spineLow - LEN.spineHigh, LYING];
   function onBack(extra) {
     return merge({
-      hip: [0, LYING], spine: 270, head: -4,
+      hip: [0, LYING], spine: 270, head: 4,
       arms: [ik(-3, WRIST + 0.5, '+y'), ik(-2, WRIST + 0.5, '+y')], hands: [90, 90],
       legs: [flat(22, 0, '+y'), flat(21, 0, '+y')]
     }, extra);
@@ -646,14 +698,14 @@
       cycle: 3.2,
       keys: [
         standing(),
-        { hip: [-6, 34], spine: 4, arms: HANG, legs: [flat(9), toes(-34, 0, 145, '-y')] }
+        { hip: [-6, 34], spine: 4, arms: HANG, legs: [flat(9), arced(toes(-34, 0, 145, '+x'), 12)] }
       ]
     },
     plank: {
       // On the forearms, one line from heels to head.
       cycle: 4.5,
       keys: (function () {
-        var a = line([-46, 12], 78), b = line([-46, 12], 77);
+        var a = line(PU_ANKLE, 78), b = line(PU_ANKLE, 77);
         var fore = function (s) { return [ik(s[0] + 14, WRIST, '-y'), ik(s[0] + 15, WRIST, '-y')]; };
         return [
           { hip: a.hip, spine: 78, head: 12, arms: fore(a.shoulder), hands: PALMS, legs: PU_LEGS },
@@ -759,7 +811,7 @@
       cycle: 3.4,
       keys: [
         onBack({ hip: [0, 16], shoulderAt: B_SHOULDER, head: 12, legs: [ik(47, 4, '+y'), ik(48, 4, '+y')], feet: [0, 0] }),
-        onBack({ hip: [0, 24], shoulderAt: B_SHOULDER, head: 18, legs: [ik(24, 4, '+y'), ik(25, 4, '+y')], feet: [20, 20] })
+        onBack({ hip: [0, 24], shoulderAt: B_SHOULDER, head: 18, legs: [ik(24, 4, '+y'), ik(25, 4, '+y')], feet: [6, 6] })
       ]
     },
     'step-ups': {
@@ -782,8 +834,13 @@
     'calf-raises': {
       cycle: 2.4,
       keys: [
-        standing(),
-        standing({ hip: [5, 65], legs: [toes(11, 0, 142), toes(10, 0, 142)], hold: 0.1 })
+        standing({ legs: [flat(0), flat(-1)] }),
+        (function () {
+          // The ball of the foot stays where it was; the heel lifts and the
+          // whole body rises straight up over it — not forward.
+          var fa = 140, a = ankleOnToes(0 + 7.5, 0, fa);
+          return standing({ hip: [a[0], a[1] + LEN.thigh + LEN.shin - 0.05], legs: [toes(7.5, 0, fa), toes(6.5, 0, fa)], hold: 0.12 });
+        })()
       ]
     },
 
@@ -821,8 +878,8 @@
         var legs = [ik(ank[0], ank[1], '+y'), ik(ank[0] + 2, ank[1] + 3, '+y')];
         var elbowArm = ik(top.shoulder[0] + 12, WRIST, '-y');
         return [
-          { hip: [ank[0] + 46, 7.5], shoulderAt: top.shoulder, head: 10, arms: [elbowArm, [0, 0]], hands: [90, 0], legs: legs, feet: [95, 95] },
-          { hip: top.hip, spine: 78, head: 10, arms: [elbowArm, [0, 0]], hands: [90, 0], legs: legs, feet: [95, 95], hold: 0.2 }
+          { hip: [ank[0] + 46, 7.5], shoulderAt: top.shoulder, head: 10, arms: [elbowArm, [0, 0]], hands: [90, 0], legs: legs, feet: [84, 84] },
+          { hip: top.hip, spine: 78, head: 10, arms: [elbowArm, [0, 0]], hands: [90, 0], legs: legs, feet: [84, 84], hold: 0.2 }
         ];
       })()
     },
@@ -857,19 +914,21 @@
       props: [{ box: [-38, -10, 25] }],
       keys: [
         standing({ arms: [[92, 92], [94, 94]], legs: [flat(1), [98, 98]], feet: [null, 30] }),
-        { hip: [-17, 32], spine: [34, 38], head: -26, arms: [[80, 82], [82, 84]], legs: [flat(4, 0, '+y'), [84, 86]], feet: [null, 20] }
+        { hip: [-17, 32], spine: [34, 38], head: -26, arms: [[80, 82], [82, 84]], legs: [flat(4, 0, '+x'), [84, 86]], feet: [null, 20] }
       ]
     },
     'planche-lean': {
       // Arms locked, shoulders slide forward past the hands.
       cycle: 4.5,
       keys: (function () {
-        var ank2 = [-35, 15];
-        var lean = line(ank2, 77);
+        // The balls of the feet stay put; the ankles roll over them as the
+        // whole straight body shifts forward past the hands.
+        var ank2 = ankleOnToes(-47, 0, 185);
+        var lean = line(ank2, 76);
         var arms = [ik(PU_HAND, WRIST, '+y'), ik(PU_HAND + 1, WRIST, '+y')];
         return [
           pushTop({ hands: [70, 70] }),
-          { hip: lean.hip, spine: 77, head: 10, arms: arms, hands: [70, 70], legs: [ik(ank2[0], ank2[1], '+y'), ik(ank2[0] - 1, ank2[1], '+y')], feet: [200, 200], hold: 0.25 }
+          { hip: lean.hip, spine: 76, head: 10, arms: arms, hands: [70, 70], legs: [onToes(ank2, '+y', 185), onToes([ank2[0] - 1, ank2[1]], '+y', 185)], hold: 0.25 }
         ];
       })()
     },
@@ -879,11 +938,13 @@
       props: [{ bar: [-26, 11] }],
       keys: (function () {
         var knee = [0, KNEE];
-        var leanHip = step(knee, 55, LEN.thigh);
-        return [
-          { hip: [0, KNEE + LEN.thigh], spine: 0, arms: [[160, 40], [165, 40]], legs: [[180, 270], [180, 270]], feet: [270, 270], hold: 0.1 },
-          { hip: leanHip, spine: 55, head: -12, arms: [[120, 125], [125, 130]], legs: [[235, 270], [235, 270]], feet: [270, 270], hold: 0.05 }
-        ];
+        // The body pivots at the knee: keyframes every ~20° so the hips
+        // travel on that arc and the knee stays on the floor.
+        var at = function (deg, extra) {
+          return merge({ hip: step(knee, deg, LEN.thigh), spine: deg, head: -deg * 0.2,
+            arms: [[160 - deg, 40 + deg * 1.5], [165 - deg, 40 + deg * 1.5]], legs: [[deg + 180, 270], [deg + 180, 270]], feet: [270, 270] }, extra);
+        };
+        return [at(0, { hold: 0.1 }), at(20), at(40), at(58, { hold: 0.05 }), at(30)];
       })()
     },
     'tuck-l-sit': {
@@ -944,8 +1005,12 @@
       keys: [
         // Both targets bend the knee down, so the foot travels along the
         // floor instead of the leg swinging up through the air between them.
-        pushTop({ legs: [ik(puTop.hip[0] + 14, 14, '-y'), ik(PU_ANKLE[0] - 1, PU_ANKLE[1], '-y')], feet: [150, null] }),
-        pushTop({ legs: [ik(PU_ANKLE[0], PU_ANKLE[1], '-y'), ik(puTop.hip[0] + 13, 14, '-y')], feet: [null, 150] })
+        // The knee drives in under the chest; the foot trails just behind it.
+        // The hips lift a little as each knee comes through, as they do for
+        // real — with the hips at plank height a thigh passing straight down
+        // would hit the floor.
+        pushTop({ hip: [puTop.hip[0] + 1, puTop.hip[1] + 6], spine: PU_ANGLE + 4, legs: [arced(ik(puTop.hip[0] - 1, 14, '+x'), 10), onToes([PU_ANKLE[0] - 1, PU_ANKLE[1]], '+x', PU_FOOT)], feet: [160, null] }),
+        pushTop({ hip: [puTop.hip[0] + 1, puTop.hip[1] + 6], spine: PU_ANGLE + 4, legs: [onToes(PU_ANKLE, '+x', PU_FOOT), arced(ik(puTop.hip[0] - 2, 14, '+x'), 10)], feet: [null, 160] })
       ]
     },
 
@@ -971,16 +1036,17 @@
       // Half-kneeling; tuck the tail and press the hips forward.
       cycle: 4.5,
       keys: [
-        { hip: [-4, 28], spine: 0, head: -2, arms: [[182, 176], [178, 184]], legs: [flat(21, 0, '+y'), ik(-30, KNEE + 0.5, '-y')], feet: [null, 270] },
-        { hip: [3, 26], spine: 358, head: -2, arms: [[182, 176], [178, 184]], legs: [flat(21, 0, '+y'), ik(-30, KNEE + 0.5, '-y')], feet: [null, 270], hold: 0.25 }
+        { hip: [-4, 29.5], spine: 0, head: -2, arms: [[182, 176], [178, 184]], legs: [flat(21, 0, '+y'), ik(-30, KNEE + 0.5, '-y')], feet: [null, 270] },
+        { hip: [3, 28.5], spine: 358, head: -2, arms: [[182, 176], [178, 184]], legs: [flat(21, 0, '+y'), ik(-30, KNEE + 0.5, '-y')], feet: [null, 270], hold: 0.25 }
       ]
     },
     'adductor-rock-backs': {
       // All fours with one leg out to the side; rock the hips back.
       cycle: 3.8,
       keys: [
-        fours({ legs: [[160, 160], Q_LEGS[1]], legLen: [[0.55, 0.55], [1, 1]], feet: [95, 270] }),
-        fours({ hip: [-9, 21], spine: 70, legs: [[172, 172], Q_LEGS[1]], legLen: [[0.45, 0.45], [1, 1]], feet: [95, 270], hold: 0.15 })
+        fours({ legs: [[160, 160], Q_LEGS[1]], legLen: [[0.55, 0.55], [1, 1]], feet: [78, 270] }),
+        // Rocking back pivots on the planted knee, like the frog.
+        fours({ hip: step([0, KNEE], 335, LEN.thigh), spine: 72, legs: [[140, 140], [155, 270]], legLen: [[0.46, 0.46], [1, 1]], feet: [95, 270], hold: 0.15 })
       ]
     },
     straddle: {
@@ -996,16 +1062,16 @@
       cycle: 2.6,
       props: [{ wall: 42 }],
       keys: [
-        { hip: [2, 28], spine: 8, arms: [ik(41, 50, '-y'), ik(41, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+y'), ik(-22, KNEE + 0.5, '-y')], feet: [null, 270] },
-        { hip: [11, 27], spine: 12, arms: [ik(41, 50, '-y'), ik(41, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+x'), ik(-14, KNEE + 0.5, '-y')], feet: [null, 270] }
+        { hip: [2, 29.5], spine: 8, arms: [ik(41, 50, '-y'), ik(41, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+y'), ik(-22, KNEE + 0.5, '-y')], feet: [null, 270] },
+        { hip: [11, 29], spine: 12, arms: [ik(41, 50, '-y'), ik(41, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+x'), ik(-14, KNEE + 0.5, '-y')], feet: [null, 270] }
       ]
     },
     'knee-to-wall-hold': {
       cycle: 6,
       props: [{ wall: 42 }],
       keys: [
-        { hip: [11, 27], spine: 12, arms: [ik(41, 50, '-y'), ik(41, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+x'), ik(-14, KNEE + 0.5, '-y')], feet: [null, 270] },
-        { hip: [12, 26.5], spine: 13, arms: [ik(41, 50, '-y'), ik(41, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+x'), ik(-13, KNEE + 0.5, '-y')], feet: [null, 270] }
+        { hip: [11, 29], spine: 12, arms: [ik(41, 50, '-y'), ik(41, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+x'), ik(-14, KNEE + 0.5, '-y')], feet: [null, 270] },
+        { hip: [12, 28.7], spine: 13, arms: [ik(41, 50, '-y'), ik(41, 48, '-y')], hands: [0, 0], legs: [flat(24, 0, '+x'), ik(-13, KNEE + 0.5, '-y')], feet: [null, 270] }
       ]
     },
     'calf-stretch': {
@@ -1043,8 +1109,8 @@
         var hip = step([0, KNEE], 285, LEN.thigh);
         var legs = [[105, 270], [105, 270]];
         return [
-          { hip: hip, spine: [78, 100], head: 8, arms: [ik(38, WRIST, '+y'), ik(37, WRIST, '+y')], hands: PALMS, legs: legs, feet: [270, 270] },
-          { hip: [hip[0] - 0.5, hip[1] - 0.6], spine: [80, 103], head: 6, arms: [ik(40, WRIST, '+y'), ik(39, WRIST, '+y')], hands: PALMS, legs: legs, feet: [270, 270] }
+          { hip: hip, spine: [78, 100], head: 0, arms: [ik(38, WRIST, '+y'), ik(37, WRIST, '+y')], hands: PALMS, legs: legs, feet: [270, 270] },
+          { hip: [hip[0] - 0.5, hip[1] - 0.6], spine: [80, 103], head: -2, arms: [ik(40, WRIST, '+y'), ik(39, WRIST, '+y')], hands: PALMS, legs: legs, feet: [270, 270] }
         ];
       })()
     },
@@ -1052,8 +1118,8 @@
       // One leg long, the other tucked; fold over the long one.
       cycle: 5,
       keys: [
-        seated({ legs: [[90, 90], [60, 230]], feet: [5, 95], arms: [ik(20, 12, '-y'), ik(10, WRIST, '-x')], hands: [90, 90] }),
-        seated({ spine: [60, 78], head: 16, legs: [[90, 90], [60, 230]], feet: [5, 95], arms: [ik(44, 9, '+y'), ik(40, 9, '+y')], hands: [90, 90], hold: 0.25 })
+        seated({ legs: [[90, 90], [60, 230]], feet: [5, 82], arms: [ik(20, 12, '-y'), ik(10, WRIST, '-x')], hands: [90, 90] }),
+        seated({ spine: [60, 78], head: 16, legs: [[90, 90], [60, 230]], feet: [5, 82], arms: [ik(44, 9, '+y'), ik(40, 9, '+y')], hands: [90, 90], hold: 0.25 })
       ]
     },
 
@@ -1128,13 +1194,16 @@
 
     frog: {
       // On the forearms, knees wide; rock the hips back toward the heels.
+      // The knees stay put, so the hips travel on an arc around them.
       cycle: 5,
       keys: (function () {
+        var knee = [0, KNEE];
         var arms = [ik(34, WRIST, '-y'), ik(35, WRIST, '-y')];
-        return [
-          fours({ spine: 104, head: 20, arms: arms, legs: [ik(-LEN.shin + 2, KNEE + 0.5, '-y'), ik(-LEN.shin + 1, KNEE + 0.5, '-y')] }),
-          fours({ hip: [-9, 24], spine: 99, head: 22, arms: arms, legs: [ik(-LEN.shin + 2, KNEE + 0.5, '-y'), ik(-LEN.shin + 1, KNEE + 0.5, '-y')], hold: 0.2 })
-        ];
+        var at = function (deg, extra) {
+          return fours(merge({ hip: step(knee, deg, LEN.thigh), spine: 104 - (360 - deg) * 0.1, head: 20, arms: arms,
+            legs: [[(deg + 180) % 360, 270], [(deg + 180) % 360, 270]] }, extra));
+        };
+        return [at(360), at(345), at(332, { hold: 0.2 }), at(345)];
       })()
     },
     pigeon: {
@@ -1142,9 +1211,9 @@
       cycle: 5.5,
       keys: [
         { hip: [0, 13], spine: 0, head: -2, arms: [ik(12, WRIST, '-x'), ik(-6, WRIST, '-x')], hands: PALMS,
-          legs: [[102, 262], [262, 270]], feet: [5, 270] },
+          legs: [[102, 262], [262, 270]], feet: [345, 270] },
         { hip: [0, 12], spine: [62, 84], head: 30, arms: [ik(42, WRIST, '+y'), ik(41, WRIST, '+y')], hands: PALMS,
-          legs: [[102, 262], [262, 270]], feet: [5, 270], hold: 0.2 }
+          legs: [[102, 262], [262, 270]], feet: [345, 270], hold: 0.2 }
       ]
     },
     'happy-baby': {
@@ -1184,8 +1253,8 @@
       keys: (function () {
         var legs = [[58, 228], [56, 230]];
         return [
-          seated({ spine: 0, head: -4, arms: [ik(8, 8, '+y'), ik(9, 8, '+y')], hands: [120, 120], legs: legs, feet: [100, 100] }),
-          seated({ spine: [52, 70], head: 24, arms: [ik(12, 5, '+y'), ik(13, 5, '+y')], hands: [120, 120], legs: legs, feet: [100, 100], hold: 0.25 })
+          seated({ spine: 0, head: -4, arms: [ik(8, 8, '+y'), ik(9, 8, '+y')], hands: [120, 120], legs: legs, feet: [86, 86] }),
+          seated({ spine: [52, 70], head: 24, arms: [ik(12, 5, '+y'), ik(13, 5, '+y')], hands: [120, 120], legs: legs, feet: [86, 86], hold: 0.25 })
         ];
       })()
     },
@@ -1193,9 +1262,9 @@
       // Back knee down, front leg long, heel down; hips back, then fold.
       cycle: 5,
       keys: [
-        { hip: [-4, 28], spine: 10, head: -2, arms: [ik(12, WRIST, '+x'), ik(13, WRIST, '+x')], hands: PALMS,
+        { hip: [-4, 29.5], spine: 10, head: -2, arms: [ik(12, WRIST, '+x'), ik(13, WRIST, '+x')], hands: PALMS,
           legs: [ik(39, 5, '+y'), ik(-28, KNEE + 0.5, '-y')], feet: [0, 270] },
-        { hip: [-6, 27], spine: [58, 74], head: 14, arms: [ik(28, WRIST, '+y'), ik(29, WRIST, '+y')], hands: PALMS,
+        { hip: [-6, 29], spine: [58, 74], head: 14, arms: [ik(28, WRIST, '+y'), ik(29, WRIST, '+y')], hands: PALMS,
           legs: [ik(37, 5, '+y'), ik(-30, KNEE + 0.5, '-y')], feet: [0, 270], hold: 0.2 }
       ]
     },
@@ -1220,7 +1289,7 @@
       cycle: 5,
       keys: [
         fours(),
-        fours({ spine: [84, 118], head: 30, turn: 0, arms: [ik(-6, 4, '-y'), ik(Q_HAND + 1, WRIST, '+x')], hands: [270, 90], hold: 0.25 })
+        fours({ spine: [84, 118], head: 30, turn: 0, arms: [arced(ik(-6, WRIST + 1.5, '+x'), 6), ik(Q_HAND + 1, WRIST, '+x')], hands: [270, 90], hold: 0.25 })
       ]
     },
     cobra: {
@@ -1237,8 +1306,8 @@
       // reach for the heels.
       cycle: 6,
       keys: [
-        { hip: [0, 28], spine: 0, head: -4, arms: [ik(-7, 31, '-y'), ik(-6, 30, '-y')], hands: [0, 0], legs: KNEELING_LEGS, feet: [180, 180], hold: 0.1 },
-        { hip: [4, 27], spine: [322, 250], head: -50, arms: [ik(-23, 11, '-x'), ik(-22, 11, '-x')], hands: [180, 180], legs: KNEELING_LEGS, feet: [180, 180], hold: 0.2 }
+        { hip: [0, KNEE + LEN.thigh], spine: 0, head: -4, arms: [ik(-7, 33, '-y'), ik(-6, 32, '-y')], hands: [0, 0], legs: KNEELING_LEGS, feet: [270, 270], hold: 0.1 },
+        { hip: [4, KNEE + LEN.thigh - 1], spine: [322, 250], head: -50, arms: [ik(-22, 9, '-x'), ik(-21, 9, '-x')], hands: [180, 180], legs: KNEELING_LEGS, feet: [270, 270], hold: 0.2 }
       ]
     },
     plow: {
