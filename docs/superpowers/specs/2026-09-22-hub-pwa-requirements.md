@@ -165,9 +165,10 @@ every open question).
 ### R6. The apps outside the hub worker's reach
 
 - Add `<script src="../../nav.js" defer></script>` to
-  `ideas/cadence/index.html`, and the equivalent absolute
-  `/random/nav.js` to `dossier/app/index.html` so it lands in the built
-  `/random/ledger/`.
+  `ideas/cadence/index.html`. Ledger's `src/main.tsx` appends the same
+  script, but only when built for the hub (a Vite base other than `/`).
+  Standalone runs (dev, `vite preview`, the e2e smokes) have no hub, and
+  the preview server answers a missing script with the SPA's HTML.
 - `nav.js` must coexist with their own update toasts and bottom UI. Check
   both visually.
 - Their workers must not pin hub files in their own versioned caches.

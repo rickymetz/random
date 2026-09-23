@@ -34,6 +34,18 @@ registerSW({
   },
 })
 
+// The random hub's navbar (/random/nav.js). This app has its own service
+// worker, which the hub's worker can't inject into, so it asks for the bar
+// itself — but only when deployed beside the hub (base /random/ledger/).
+// Standalone (dev, `vite preview`, the smokes) there is no hub, and a
+// missing script would come back as the SPA's index.html.
+if (import.meta.env.BASE_URL !== '/') {
+  const nav = document.createElement('script')
+  nav.src = new URL('../nav.js', new URL(import.meta.env.BASE_URL, location.origin)).href
+  nav.defer = true
+  document.body.appendChild(nav)
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <HashRouter>
