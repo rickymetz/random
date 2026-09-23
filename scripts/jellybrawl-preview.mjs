@@ -4,10 +4,10 @@
 // Starts the relay (server.mjs), then drives a real TV and one phone in
 // headless Chromium through every screen, every minigame (TV + phone), the
 // three boards and the Gauntlet, and writes:
-//   ideas/jellybrawl/preview/shots/*.jpg   the pictures
+//   ideas/jellybrawl/preview/shots/*.webp  the pictures
 //   ideas/jellybrawl/preview/shots.json    what's what (the page reads this)
 //   ideas/jellybrawl/preview/bumper.webm   a ~30 s sizzle cut, recorded in the page
-//   ideas/jellybrawl/preview/shots/slide-*.jpg  collages for the page's carousel
+//   ideas/jellybrawl/preview/shots/slide-*.webp  collages for the page's carousel
 //
 // Run it locally with Playwright installed, or point PLAYWRIGHT at a copy
 // (CI installs one into a temp dir, like the hub's e2e):
@@ -57,10 +57,27 @@ tv.on("console", (m) => m.type() === "error" && errors.push("tv console: " + m.t
 const ph = await (await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })).newPage();
 ph.on("pageerror", (e) => errors.push("phone: " + e.message));
 
+// Pictures are saved as WebP: about half the size of the equivalent JPEG.
+// Playwright only takes PNG or JPEG, so take a lossless PNG and have
+// Chromium encode it.
+const enc = await browser.newPage();
+async function save(file, png, quality) {
+  const webp = await enc.evaluate(async ({ b64, quality }) => {
+    const bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
+    const c = new OffscreenCanvas(bmp.width, bmp.height);
+    c.getContext("2d").drawImage(bmp, 0, 0);
+    const bytes = new Uint8Array(await (await c.convertToBlob({ type: "image/webp", quality })).arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }, { b64: png.toString("base64"), quality });
+  fs.writeFileSync(path.join(outDir, file), Buffer.from(webp, "base64"));
+}
+
 const S = (fn, arg) => tv.evaluate(fn, arg);
 const until = (fn, ms = 30000) => tv.waitForFunction(fn, null, { timeout: ms });
 async function shot(page, file, caption, list) {
-  await page.screenshot({ path: path.join(outDir, file), type: "jpeg", quality: page === tv ? 60 : 65 });
+  await save(file, await page.screenshot({ type: "png" }), page === tv ? 0.75 : 0.8);
   if (list) { // a retried game can take the same picture twice: keep one
     const item = { file: `shots/${file}`, caption, kind: page === tv ? "tv" : "phone" }, at = list.findIndex((x) => x.file === item.file);
     if (at >= 0) list[at] = item; else list.push(item);
@@ -195,14 +212,14 @@ await sleep(900);
 await tv.evaluate(() => document.fonts.ready);
 await tv.evaluate(REC);
 await cut({ card: true, sub: "One TV · Everyone's phone · A pile of minigames" }, 2400);
-await shot(tv, "screen-title.jpg", "The title screen", manifest.screens);
+await shot(tv, "screen-title.webp", "The title screen", manifest.screens);
 await tv.keyboard.press("Space");
 await until(() => window.__jelly.scene === "lobby");
 const code = await S(() => window.__jelly.net.code);
 
 await ph.goto(`${B}?room=${code}`);
 await sleep(500);
-await shot(ph, "phone-join.jpg", "Joining: scan the QR code, type a name", manifest.screens);
+await shot(ph, "phone-join.webp", "Joining: scan the QR code, type a name", manifest.screens);
 await ph.fill("#name", "Ana"); await ph.click("button[type=submit]");
 await ph.waitForSelector("#face:not([hidden])");
 await ph.click("#draw-btn");
@@ -210,14 +227,14 @@ const pad = await ph.locator("#doodle").boundingBox();
 const dot = async (x, y) => { await ph.mouse.move(pad.x + x, pad.y + y); await ph.mouse.down(); await ph.mouse.move(pad.x + x + 2, pad.y + y + 2); await ph.mouse.up(); };
 await dot(80, 90); await dot(140, 90);
 await ph.mouse.move(pad.x + 70, pad.y + 150); await ph.mouse.down(); await ph.mouse.move(pad.x + 110, pad.y + 175, { steps: 6 }); await ph.mouse.move(pad.x + 150, pad.y + 150, { steps: 6 }); await ph.mouse.up();
-await shot(ph, "phone-face.jpg", "Add your face: a selfie or a doodle", manifest.screens);
+await shot(ph, "phone-face.webp", "Add your face: a selfie or a doodle", manifest.screens);
 await ph.click("#face-done");
 for (const k of "bbbb") await tv.keyboard.press(k);
 await sleep(1600);
-await shot(tv, "screen-lobby.jpg", "The lobby: a QR code to join, seats for up to 8, bots to fill in", manifest.screens);
-await shot(ph, "phone-vip.jpg", "The VIP's phone runs the lobby", manifest.screens);
+await shot(tv, "screen-lobby.webp", "The lobby: a QR code to join, seats for up to 8, bots to fill in", manifest.screens);
+await shot(ph, "phone-vip.webp", "The VIP's phone runs the lobby", manifest.screens);
 await ph.click("text=⚙ Settings"); await sleep(300);
-await shot(ph, "phone-settings.jpg", "Accessibility settings: motion, CRT filter, text size, colour-blind shapes…", manifest.screens);
+await shot(ph, "phone-settings.webp", "Accessibility settings: motion, CRT filter, text size, colour-blind shapes…", manifest.screens);
 await ph.click("text=✓ Done");
 
 // ------------------------------------------------------------------ games
@@ -251,8 +268,8 @@ for (let i = 0; i < queue.length; i++) {
   if (i === 1) {
     await S(() => { const S = window.__jelly; S.players.find((p) => p.name === "Ana").score = -1; S.round = Math.max(1, S.round); window.__choose(); });
     await sleep(900);
-    await shot(tv, "screen-choose.jpg", "Loser picks: last place chooses the next game from three", manifest.screens);
-    await shot(ph, "phone-choose.jpg", "…on their phone", manifest.screens);
+    await shot(tv, "screen-choose.webp", "Loser picks: last place chooses the next game from three", manifest.screens);
+    await shot(ph, "phone-choose.webp", "…on their phone", manifest.screens);
   }
   // all three options are the game we want, so even an automatic pick lands on it
   await S((id) => { const S = window.__jelly, d = window.__games.find((g) => g.id === id); S.options = [d, d, d]; S.picked = null; }, def.id);
@@ -260,8 +277,8 @@ for (let i = 0; i < queue.length; i++) {
   await until(() => window.__jelly.scene === "intro", 15000);
   await sleep(1500);
   if (i === 0) { // one example of the intro and the role card
-    await shot(tv, "screen-intro.jpg", "Every game opens with a slammed-in command and the rules", manifest.screens);
-    await shot(ph, "phone-ready.jpg", "…while each phone shows your role, and READY", manifest.screens);
+    await shot(tv, "screen-intro.webp", "Every game opens with a slammed-in command and the rules", manifest.screens);
+    await shot(ph, "phone-ready.webp", "…while each phone shows your role, and READY", manifest.screens);
   }
   await ph.waitForSelector("text=READY!", { timeout: 5000 }).catch(() => {});
   await ph.click("text=READY!").catch(() => {});
@@ -273,8 +290,8 @@ for (let i = 0; i < queue.length; i++) {
     await ph.waitForSelector("button.heckle", { timeout: 6000 }).catch(() => {});
     await ph.click("button.heckle").catch(() => {}); await ph.click(".reacts button >> nth=0").catch(() => {});
     await sleep(700);
-    await shot(tv, "screen-heckle.jpg", "Knocked out? Drop goo on the living and send emoji", manifest.screens);
-    await shot(ph, "phone-heckle.jpg", "…from the waiting screen", manifest.screens);
+    await shot(tv, "screen-heckle.webp", "Knocked out? Drop goo on the living and send emoji", manifest.screens);
+    await shot(ph, "phone-heckle.webp", "…from the waiting screen", manifest.screens);
   }
   let phoneShot = null;
   for (const [k, at] of when.entries()) {
@@ -284,13 +301,13 @@ for (let i = 0; i < queue.length; i++) {
     }
     await wiggle(Math.max(0, at * 1000 - (Date.now() - t0)));
     if (await S(() => window.__jelly.scene !== "game")) { console.log(`\n${def.id}: left the game scene early (${await S(() => window.__jelly.scene)})`, await S(() => [window.__jelly.def?.id, window.__jelly.result?.headline, window.__jelly.round])); break; }
-    tvShots.push(await shot(tv, `${def.id}-tv-${k + 1}.jpg`));
-    if (!phoneShot) phoneShot = await shot(ph, `${def.id}-phone.jpg`);
+    tvShots.push(await shot(tv, `${def.id}-tv-${k + 1}.webp`));
+    if (!phoneShot) phoneShot = await shot(ph, `${def.id}-phone.webp`);
   }
   // extras, once: a pause, and a knocked-out phone heckling
   if (def.id === "kraken") {
     await ph.click("#pause").catch(() => {}); await sleep(500);
-    await shot(tv, "screen-pause.jpg", "The VIP can pause, skip a game or end the night", manifest.screens);
+    await shot(tv, "screen-pause.webp", "The VIP can pause, skip a game or end the night", manifest.screens);
     await ph.click("text=▶ Resume").catch(() => {});
   }
   if (!tvShots.length && queue[i].tries++ < 2) { queue.push(queue[i]); continue; } // ended before we got a picture: go again later
@@ -298,7 +315,7 @@ for (let i = 0; i < queue.length; i++) {
   if (i === 2) { // one results screen, from a (made-up) finishing order
     await S(() => { const S = window.__jelly; if (S.scene === "game" && S.game && !S.game.result) { S.game.result = { ranking: S.players.map((p) => [p.pid]).reverse(), headline: `${S.players[S.players.length - 1].name} wins the round!` }; window.__finish(); } });
     await until(() => window.__jelly.scene === "results", 10000).catch(() => {});
-    await sleep(2800); await shot(tv, "screen-results.jpg", "Results: rows slide into the standings; lead changes get called out", manifest.screens);
+    await sleep(2800); await shot(tv, "screen-results.webp", "Results: rows slide into the standings; lead changes get called out", manifest.screens);
   }
   process.stdout.write(`${def.id} `);
 }
@@ -320,8 +337,8 @@ for (let k = 0; k < 80 && (await S(() => window.__jelly.scene)) !== "final"; k++
 await sleep(1200);
 await cut({ label: "The podium", sub: "Awards for everyone" }, CUT);
 await sleep(300);
-await shot(tv, "screen-final.jpg", "The final: a podium and awards for everyone", manifest.screens);
-await shot(ph, "phone-final.jpg", "…and a rematch button for the VIP", manifest.screens);
+await shot(tv, "screen-final.webp", "The final: a podium and awards for everyone", manifest.screens);
+await shot(ph, "phone-final.webp", "…and a rematch button for the VIP", manifest.screens);
 
 // ------------------------------------------------------------------ modes
 for (const [map, title] of [["city", "Neon City"], ["sewers", "Slime Sewers"], ["volcano", "Volcano Island"]]) {
@@ -332,8 +349,8 @@ for (const [map, title] of [["city", "Neon City"], ["sewers", "Slime Sewers"], [
   await until(() => window.__jelly.scene === "board", 20000);
   const shots = [];
   if (map === "city") { await sleep(2600); await cut({ label: title, sub: "Board mode" }, CUT); await sleep(100); } else await sleep(4000);
-  shots.push(await shot(tv, `board-${map}-tv-1.jpg`)); shots.push(await shot(ph, `board-${map}-phone.jpg`));
-  await sleep(7000); shots.push(await shot(tv, `board-${map}-tv-2.jpg`));
+  shots.push(await shot(tv, `board-${map}-tv-1.webp`)); shots.push(await shot(ph, `board-${map}-phone.webp`));
+  await sleep(7000); shots.push(await shot(tv, `board-${map}-tv-2.webp`));
   manifest.modes.push({ id: `board-${map}`, title: `Board: ${title}`, blurb: "Mario Party-style: roll, take forks, buy stars and items, duel, and play a minigame after every turn.", shots });
   await ph.click("#pause").catch(() => {}); await sleep(300); await ph.click("text=🏁 End the night").catch(() => {});
   await until(() => window.__jelly.scene === "final", 15000).catch(() => {});
@@ -349,7 +366,7 @@ for (const [map, title] of [["city", "Neon City"], ["sewers", "Slime Sewers"], [
   const shots = [], t0 = Date.now();
   for (const [k, at] of [6, 13, 21].entries()) {
     if (k === 1) { await wiggle(Math.max(0, at * 1000 - CUT - 150 - (Date.now() - t0))); await cut({ label: "Microgame Gauntlet", sub: "20 microgames · 3 lives" }, CUT, wiggle); }
-    await wiggle(Math.max(0, at * 1000 - (Date.now() - t0))); shots.push(await shot(tv, `gauntlet-tv-${k + 1}.jpg`)); if (k === 0) shots.push(await shot(ph, "gauntlet-phone.jpg")); }
+    await wiggle(Math.max(0, at * 1000 - (Date.now() - t0))); shots.push(await shot(tv, `gauntlet-tv-${k + 1}.webp`)); if (k === 0) shots.push(await shot(ph, "gauntlet-phone.webp")); }
   manifest.modes.push({ id: "gauntlet", title: "Microgame Gauntlet", blurb: "WarioWare-style: 20 microgames of a few seconds each, three lives, speeding up, with boss stages.", shots });
 }
 
@@ -393,7 +410,7 @@ async function slide(file, body, caption, size = [1920, 1080]) {
   await cmp.setViewportSize({ width: size[0], height: size[1] });
   await cmp.goto(B + "preview/__slide.html");
   await cmp.evaluate(async () => { await document.fonts.ready; await Promise.all([...document.images].map((i) => i.decode().catch(() => {}))); });
-  await cmp.screenshot({ path: path.join(outDir, file), type: "jpeg", quality: 72 });
+  await save(file, await cmp.screenshot({ type: "png" }), 0.8);
   if (caption) manifest.slides.push({ file: `shots/${file}`, caption });
   return `shots/${file}`;
 }
@@ -402,14 +419,14 @@ const sample = (list, n) => list.filter((g, i) => i % Math.max(1, Math.floor(lis
 
 // a hero collage: the video's poster, and the Steam-style capsule
 const hero = sample(manifest.games, 12);
-manifest.video = { file: "bumper.webm", seconds: +(sizzleMs / 1000).toFixed(1), poster: await slide("slide-poster.jpg", `
+manifest.video = { file: "bumper.webm", seconds: +(sizzleMs / 1000).toFixed(1), poster: await slide("slide-poster.webp", `
   <div style="position:absolute;inset:-60px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px;transform:rotate(-4deg);opacity:.42">${hero.map((g) => `<img src="${g.tv[0]}" style="height:300px">`).join("")}</div>
   <div style="position:absolute;inset:0;background:radial-gradient(900px 500px at 50% 50%,rgba(11,7,16,.85),rgba(11,7,16,.3))"></div>
   <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
     <div class="k tilt" style="font-size:230px;color:#ff2a6d;text-shadow:0 0 40px rgba(255,42,109,.7),12px 14px 0 #0b0710">Jellybrawl</div>
     <div style="font-size:66px;letter-spacing:10px;color:#05d9e8;text-transform:uppercase;text-shadow:4px 4px 0 #0b0710">One TV · Everyone's phone · ${manifest.games.length} minigames</div>
   </div>`) };
-manifest.capsule = await slide("capsule.jpg", `
+manifest.capsule = await slide("capsule.webp", `
   <div style="position:absolute;inset:-30px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;transform:rotate(-4deg);opacity:.5">${hero.slice(0, 9).map((g) => `<img src="${g.tv[0]}" style="height:170px">`).join("")}</div>
   <div style="position:absolute;inset:0;background:linear-gradient(transparent,rgba(11,7,16,.75))"></div>
   <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
@@ -422,7 +439,7 @@ for (const [k, name, line] of [["ffa", "Free-for-all", "Every blob for themselve
   const list = manifest.games.filter((g) => KIND(g.kind) === k);
   if (!list.length) continue;
   const shown = list.slice(0, 11), span = Math.min(3, Math.ceil((shown.length + 2) / 4) * 4 - shown.length);
-  await slide(`slide-${k}.jpg`, `<div class="grid" style="--c:${COLOR[k]};grid-template-rows:repeat(${Math.ceil((shown.length + span) / 4)},1fr)">
+  await slide(`slide-${k}.webp`, `<div class="grid" style="--c:${COLOR[k]};grid-template-rows:repeat(${Math.ceil((shown.length + span) / 4)},1fr)">
     <div class="head" style="grid-column:span ${span}"><small>${manifest.games.length} minigames</small><h1>${esc(name)}</h1><p>${esc(line)} · <span class="chip">${list.length} games</span></p></div>
     ${shown.map(tile).join("")}</div>`, `${name}: ${list.map((g) => g.title).join(", ")}`);
 }
@@ -432,7 +449,7 @@ for (const id of PAIRS) {
   const g = manifest.games.find((x) => x.id === id);
   if (!g || !g.phone) continue;
   const c = COLOR[KIND(g.kind)];
-  await slide(`slide-pair-${id}.jpg`, `<div style="--c:${c}">
+  await slide(`slide-pair-${id}.webp`, `<div style="--c:${c}">
     <div style="position:absolute;left:50px;top:36px;display:flex;align-items:center;gap:30px">
       <div class="k" style="font-size:100px;line-height:1.1;color:${c};text-shadow:6px 7px 0 #0b0710;transform:rotate(-2deg)">${esc(g.title)}</div>
       <span class="chip">${esc(g.kind)}</span>
@@ -448,7 +465,7 @@ for (const id of PAIRS) {
 {
   const m = (id) => manifest.modes.find((x) => x.id === id);
   const four = ["board-city", "board-sewers", "board-volcano", "gauntlet"].map(m).filter(Boolean);
-  if (four.length) await slide("slide-modes.jpg", `<div style="position:absolute;inset:0;display:grid;grid-template-columns:repeat(2,1fr);gap:18px;padding:18px">
+  if (four.length) await slide("slide-modes.webp", `<div style="position:absolute;inset:0;display:grid;grid-template-columns:repeat(2,1fr);gap:18px;padding:18px">
       ${four.map((x, i) => `<figure style="margin:0;position:relative;border:5px solid #0b0710;overflow:hidden;box-shadow:8px 8px 0 ${["#ff2a6d", "#05d9e8", "#f9f002", "#b14dff"][i]}"><img src="${x.shots.filter((s) => !/phone/.test(s)).pop()}"><figcaption style="position:absolute;left:0;bottom:0;padding:8px 18px;font:50px Knewave,Impact,sans-serif;background:#0b0710">${esc(x.title.replace(/^Board: /, ""))}</figcaption></figure>`).join("")}</div>
     <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-3deg);background:#0b0710;border:5px solid #ff2a6d;box-shadow:12px 12px 0 #05d9e8;padding:18px 50px;text-align:center">
       <div class="k" style="font-size:84px;line-height:1.05;color:#ff2a6d">Three boards</div>
