@@ -307,6 +307,16 @@
     };
     // The anchor must be a Monday, or every week number after it is off by a day.
     out.anchorMonday = toISO(mondayOf(fromISO(out.anchorMonday)));
+    // A routine you've edited is a stored copy, so a program added to the app
+    // later wouldn't reach it. Built-ins are never removed (deleting one
+    // archives it), so a missing one is new.
+    if (out.routine) {
+      R.DEFAULT_ROUTINE.workouts.forEach(function (w) {
+        if (R.findWorkout(out.routine, w.id)) return;
+        var at = out.routine.workouts.map(function (v) { return v.id; }).indexOf('rest');
+        out.routine.workouts.splice(at < 0 ? out.routine.workouts.length : at, 0, R.clone(w));
+      });
+    }
     // A day you've touched keeps the programs it had — a version 1 backup
     // carries no plans, and its days would otherwise follow today's schedule.
     Object.keys(out.sessions).forEach(function (iso) {
@@ -860,7 +870,8 @@
   }
 
   /* A program with logged days is archived rather than removed, so those days
-   * still say what they were. It comes off the weekly plan from this week on,
+   * still say what they were. Built-ins are always archived, so an edited
+   * routine can tell one you deleted from one the app has added since. It comes off the weekly plan from this week on,
    * and off any day ahead that you'd added it to. */
   function deleteProgram(id) {
     if (isRotationProgram(id)) return;
@@ -880,7 +891,7 @@
     updateRoutine(function (next) {
       next.workouts = next.workouts.map(function (w) {
         if (w.id !== id) return w;
-        if (!used) return null;
+        if (!used && !R.findWorkout(R.DEFAULT_ROUTINE, id)) return null;
         w.archived = true;
         return w;
       }).filter(Boolean);

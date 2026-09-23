@@ -451,10 +451,30 @@
     }
   };
 
+  /* Cues for exercises that don't have a drawing yet. Where a stretch can
+   * hurt, the cue says how. */
+  var CUES = {
+    frog: 'Knees wide, shins parallel, ankles in line with the knees. Rock the hips back slowly.',
+    pigeon: 'Front shin as square as your hip allows, back leg long. Square hips beat a deep hold.',
+    'happy-baby': 'Hold the outsides of the feet, knees toward the armpits, and let the low back sink.',
+    malasana: 'Heels down if they’ll go, elbows pressing the knees apart, chest proud.',
+    'seated-fold': 'Hinge at the hips, not the waist — a long spine over a straight-ish leg.',
+    'butterfly-fold': 'Soles together, then walk the chest toward the feet. Don’t push on the knees.',
+    'straddle-fold': 'Toes up, kneecaps up, fold only as far as the back stays long.',
+    'half-splits': 'Front leg straight, hips over the back knee, fold toward the front shin.',
+    'seated-twist': 'Grow tall on the inhale, twist on the exhale. The twist starts from the ribs, not the neck.',
+    'half-lotus': 'Ankle on the opposite thigh. The turn comes from the hip — any twinge in the knee, stay at figure-4.',
+    'thread-needle': 'From all fours, slide one arm under and rest that shoulder down.',
+    cobra: 'Hips heavy, shoulders away from the ears. Straighten the arms only if the low back is happy.',
+    camel: 'Hands on the low back first, hips pushed forward. Reach for the heels only when that feels easy.',
+    plow: 'Weight on the shoulders, never the neck, and don’t turn your head. Legs up the wall instead if your neck complains.',
+    'pelvic-floor': 'Lift and hold for three seconds, then let it go completely. Keep breathing; don’t clench the glutes.'
+  };
+
   global.CadenceFigures = {
     create: create,
     has: function (id) { return Object.prototype.hasOwnProperty.call(FIGURES, id) && id !== '_default'; },
-    cue: function (id) { return (FIGURES[id] || FIGURES._default).cue || ''; },
+    cue: function (id) { return (FIGURES[id] && FIGURES[id].cue) || CUES[id] || ''; },
     ids: function () { return Object.keys(FIGURES).filter(function (k) { return k !== '_default'; }); }
   };
 })(window);

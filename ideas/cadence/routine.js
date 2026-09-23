@@ -91,6 +91,59 @@
           }
         ]
       },
+      /* Not on the weekly plan by default — pick it from Today, or put it on a
+       * day in Settings. Hips, folds, twists and arches: the range that makes
+       * the more ambitious pages of the Kama Sutra feel less like a dare. */
+      {
+        id: 'pretzel',
+        name: 'Pretzel Hour 🌶',
+        kind: 'mobility',
+        blocks: [
+          { name: '', items: [Object.assign({}, WARMUP)] },
+          {
+            name: 'Open the hips',
+            items: [
+              { id: 'frog', name: 'Frog stretch', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
+              { id: 'pigeon', name: 'Pigeon pose', mode: 'time', sets: 1, min: 45, max: 60, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'happy-baby', name: 'Happy baby', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
+              { id: 'malasana', name: 'Deep squat (malasana)', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
+              { id: 'hip-switches', name: '90/90 hip switches', mode: 'reps', sets: 1, min: 8, max: 8, perSide: true, sideWord: 'side', rest: 0 }
+            ]
+          },
+          {
+            name: 'Fold in half',
+            items: [
+              { id: 'seated-fold', name: 'Seated forward fold', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
+              { id: 'butterfly-fold', name: 'Butterfly fold', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
+              { id: 'straddle-fold', name: 'Wide-leg straddle fold', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
+              { id: 'half-splits', name: 'Half splits', mode: 'time', sets: 1, min: 30, max: 45, perSide: true, sideWord: 'leg', rest: 0 }
+            ]
+          },
+          {
+            name: 'The human pretzel',
+            items: [
+              { id: 'seated-twist', name: 'Seated spinal twist', mode: 'time', sets: 1, min: 30, max: 30, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'half-lotus', name: 'Figure-4 to half lotus', mode: 'time', sets: 1, min: 30, max: 45, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'thread-needle', name: 'Thread the needle', mode: 'time', sets: 1, min: 30, max: 30, perSide: true, sideWord: 'side', rest: 0 }
+            ]
+          },
+          {
+            name: 'Arch and invert',
+            items: [
+              { id: 'cobra', name: 'Cobra to upward dog', mode: 'time', sets: 2, min: 20, max: 30, rest: 10 },
+              { id: 'camel', name: 'Camel pose', mode: 'time', sets: 2, min: 20, max: 30, rest: 15 },
+              { id: 'plow', name: 'Plow pose', mode: 'time', sets: 1, min: 30, max: 30, rest: 0 }
+            ]
+          },
+          {
+            name: 'Pelvic floor',
+            items: [
+              { id: 'pelvic-floor', name: 'Pelvic-floor squeezes', mode: 'reps', sets: 2, min: 10, max: 10, rest: 30 },
+              Object.assign({}, COOLDOWN)
+            ]
+          }
+        ]
+      },
       {
         id: 'rest',
         name: 'Rest',
