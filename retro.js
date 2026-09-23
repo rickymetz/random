@@ -1,8 +1,10 @@
 /* random — the retro (Gingerbread) launcher.
  *
- * Draws the installed hub as an early-Android home: three swipeable home
- * screens holding every idea as an era icon, page dots, a dock with the
- * app-drawer button and two favourites, and the drawer itself. It is only
+ * Draws the installed hub as an early-Android home: a status bar with a
+ * pull-down notification shade, a live wallpaper, three swipeable home
+ * screens holding every idea as an era icon beside four widgets (search,
+ * clock, new ideas, power control), page dots, a dock with the app-drawer
+ * button and two favourites, and the drawer itself. It is only
  * drawn while the look is 'retro' (nav.js owns the look and fires a
  * 'randomlook' event when it changes); the modern hub markup is untouched.
  * Spec: docs/superpowers/specs/2026-09-23-hub-gingerbread-retro.md
@@ -16,11 +18,28 @@
 
   var KEY = {
     dock: 'random-hub:dock',
-    sort: 'random-hub:drawer-sort'
+    sort: 'random-hub:drawer-sort',
+    clock: 'random-hub:clock',
+    sounds: 'random-hub:sounds',
+    haptics: 'random-hub:haptics',
+    motion: 'random-hub:wallpaper-motion',
+    events: 'random-hub:events',
+    dismissed: 'random-hub:shade-dismissed'
   };
   var PAGES = 3;
   var CENTRE = 1;
-  var PER_PAGE = 16; // a 4 × 4 grid; later widgets take cells from it
+  // Icons per screen after its widgets (the centre has search and clock,
+  // the right the power control); the last screen in the flow scrolls.
+  var ROOM = { 1: 8, 2: 12, 0: Infinity };
+
+  // Settings the widgets and Settings share. Defaults: haptics on, sounds
+  // off, wallpaper moving.
+  var DEFAULTS = { sounds: false, haptics: true, motion: true };
+  function setting(name) { var v = lget(KEY[name], null); return typeof v === 'boolean' ? v : DEFAULTS[name]; }
+  function setSetting(name, on) {
+    lset(KEY[name], !!on);
+    try { window.dispatchEvent(new CustomEvent('randomsetting', { detail: { name: name, on: !!on } })); } catch (e) {}
+  }
   // Tile colour: a hue from a stable hash of the slug, and one of three
   // lightness steps from other bits of it, so neighbours stay distinct.
   var LIGHT_STEPS = [0, -7, 6];
@@ -47,6 +66,7 @@
   var ui = {};
   var mounted = false;
   var themeMetas = [];
+  var clockTimer = 0;
 
   /* ------------------------------------------------------------ icons */
 
@@ -109,10 +129,14 @@
 
   function fillPages() {
     ui.grid.forEach(function (g) { g.textContent = ''; });
+    // Widgets first, each spanning the grid's width.
+    ui.grid[CENTRE].appendChild(searchWidget());
+    ui.grid[CENTRE].appendChild(clockWidget());
+    ui.grid[0].appendChild(newIdeasWidget());
+    ui.grid[2].appendChild(powerWidget());
     var i = 0;
-    FLOW.forEach(function (p, n) {
-      var room = n === FLOW.length - 1 ? Infinity : PER_PAGE; // the last page scrolls
-      for (var c = 0; c < room && i < ideas.length; c++, i++) ui.grid[p].appendChild(icon(ideas[i]));
+    FLOW.forEach(function (p) {
+      for (var c = 0; c < ROOM[p] && i < ideas.length; c++, i++) ui.grid[p].appendChild(icon(ideas[i]));
     });
   }
 
@@ -135,6 +159,174 @@
     markDot(currentPage());
     clearTimeout(scrollTimer);
     scrollTimer = setTimeout(function () { markDot(currentPage()); }, 120);
+  }
+
+  /* ------------------------------------------------------------ widgets */
+
+  function widget(cls, label) {
+    return el('div', 'rt-widget ' + cls, { role: 'group', 'aria-label': label });
+  }
+
+  // Search: filters ideas by title and description as you type; Enter
+  // opens the top match.
+  function searchWidget() {
+    var w = widget('rt-search', 'Search ideas');
+    var form = el('form', 'rt-search-box', { role: 'search' });
+    form.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M14.6 14.6L20 20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+    var input = el('input', '', { type: 'search', placeholder: 'Search ideas', 'aria-label': 'Search ideas',
+      autocomplete: 'off', spellcheck: 'false', enterkeyhint: 'go' });
+    form.appendChild(input);
+    var results = el('div', 'rt-results', { role: 'listbox', 'aria-label': 'Matching ideas', hidden: '' });
+    w.appendChild(form);
+    w.appendChild(results);
+    ui.search = input;
+
+    function matches(q) {
+      q = q.trim().toLowerCase();
+      if (!q) return [];
+      return ideas.filter(function (i) {
+        return (i.title + ' ' + (i.description || '')).toLowerCase().indexOf(q) !== -1;
+      });
+    }
+    function render() {
+      var list = matches(input.value);
+      results.textContent = '';
+      results.hidden = !input.value.trim();
+      if (!list.length) {
+        var none = el('p', 'rt-results-none');
+        none.textContent = 'No ideas match';
+        results.appendChild(none);
+        return;
+      }
+      list.forEach(function (idea) {
+        var a = el('a', 'rt-result', { href: idea.url, role: 'option', 'data-slug': idea.slug });
+        var e = el('span', 'rt-result-emoji', { 'aria-hidden': 'true' });
+        e.textContent = idea.emoji || '✦';
+        var t = el('span', 'rt-result-title');
+        t.textContent = idea.title;
+        a.appendChild(e);
+        a.appendChild(t);
+        results.appendChild(a);
+      });
+    }
+    input.addEventListener('input', render);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { input.value = ''; render(); input.blur(); }
+    });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var top = matches(input.value)[0];
+      if (top) location.href = new URL(top.url, location.href).href;
+    });
+    return w;
+  }
+
+  // Clock: big digital or glossy analog; a tap flips it (remembered).
+  function clockWidget() {
+    var w = el('button', 'rt-widget rt-clock', { type: 'button', 'aria-label': 'Clock. Tap to switch style' });
+    ui.clock = w;
+    paintClock();
+    w.addEventListener('click', function () {
+      lset(KEY.clock, clockStyle() === 'analog' ? 'digital' : 'analog');
+      paintClock();
+    });
+    return w;
+  }
+  function clockStyle() { return lget(KEY.clock, 'digital') === 'analog' ? 'analog' : 'digital'; }
+  function paintClock() {
+    if (!ui.clock) return;
+    var now = new Date();
+    var style = clockStyle();
+    ui.clock.setAttribute('data-style', style);
+    var time = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    var date = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    if (style === 'digital') {
+      ui.clock.innerHTML = '<span class="rt-clock-time"></span><span class="rt-clock-date"></span>';
+      ui.clock.firstChild.textContent = time;
+      ui.clock.lastChild.textContent = date;
+    } else {
+      var h = now.getHours() % 12, m = now.getMinutes();
+      var ha = (h + m / 60) * 30, ma = m * 6;
+      var ticks = '';
+      for (var i = 0; i < 12; i++) {
+        ticks += '<line x1="50" y1="9" x2="50" y2="' + (i % 3 ? 14 : 18) + '" transform="rotate(' + i * 30 + ' 50 50)"/>';
+      }
+      ui.clock.innerHTML =
+        '<svg class="rt-analog" viewBox="0 0 100 100" aria-hidden="true">' +
+        '<defs><radialGradient id="rt-face" cx="40%" cy="30%" r="80%"><stop offset="0" stop-color="#fdfdfd"/><stop offset=".7" stop-color="#cfd3d6"/><stop offset="1" stop-color="#8e9499"/></radialGradient></defs>' +
+        '<circle cx="50" cy="50" r="47" fill="#1a1a1a"/><circle cx="50" cy="50" r="43" fill="url(#rt-face)"/>' +
+        '<g stroke="#333" stroke-width="2" stroke-linecap="round">' + ticks + '</g>' +
+        '<line x1="50" y1="50" x2="50" y2="27" stroke="#222" stroke-width="4.5" stroke-linecap="round" transform="rotate(' + ha + ' 50 50)"/>' +
+        '<line x1="50" y1="50" x2="50" y2="15" stroke="#222" stroke-width="2.6" stroke-linecap="round" transform="rotate(' + ma + ' 50 50)"/>' +
+        '<circle cx="50" cy="50" r="3.2" fill="#9fd01d"/>' +
+        '<ellipse cx="42" cy="30" rx="26" ry="14" fill="#fff" opacity=".35"/></svg>' +
+        '<span class="rt-clock-date"></span>';
+      ui.clock.lastChild.textContent = time + ' · ' + date;
+    }
+  }
+
+  // New ideas: up to three added since your first visit and not yet opened.
+  function newIdeasWidget() {
+    var w = widget('rt-panel-widget rt-news', 'New ideas');
+    var h = el('h3');
+    h.textContent = 'New ideas';
+    w.appendChild(h);
+    var fresh = ideas.filter(function (i) { return nav.isNew(i); }).slice(0, 3);
+    if (!fresh.length) {
+      var p = el('p', 'rt-muted');
+      p.textContent = 'No new ideas';
+      w.appendChild(p);
+    }
+    fresh.forEach(function (idea) {
+      var a = el('a', 'rt-news-item', { href: idea.url, 'data-slug': idea.slug });
+      var e = el('span', 'rt-result-emoji', { 'aria-hidden': 'true' });
+      e.textContent = idea.emoji || '✦';
+      var t = el('span');
+      t.textContent = idea.title;
+      a.appendChild(e);
+      a.appendChild(t);
+      w.appendChild(a);
+    });
+    return w;
+  }
+
+  // Power control: a row of toggles, each with a lit bar when on.
+  var POWER = [
+    { id: 'look', label: 'Retro look', glyph: '<rect x="6" y="3" width="12" height="18" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="17.5" r="1.3" fill="currentColor"/>' },
+    { id: 'sounds', label: 'Sounds', glyph: '<path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' },
+    { id: 'haptics', label: 'Haptic feedback', glyph: '<rect x="8" y="4" width="8" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4.5 8v8M19.5 8v8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' },
+    { id: 'motion', label: 'Wallpaper motion', glyph: '<circle cx="7" cy="15" r="2" fill="currentColor"/><circle cx="14" cy="8" r="1.6" fill="currentColor"/><circle cx="18" cy="16" r="1.2" fill="currentColor"/><path d="M4 20c5-1 11-6 16-15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 3"/>' },
+    { id: 'storage', label: 'Storage', glyph: '<ellipse cx="12" cy="6" rx="7" ry="2.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5 6v12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6M5 12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6" fill="none" stroke="currentColor" stroke-width="1.8"/>' }
+  ];
+  function powerOn(id) {
+    if (id === 'look') return nav.look() === 'retro';
+    if (id === 'storage') return false;
+    return setting(id);
+  }
+  function powerWidget() {
+    var w = widget('rt-power', 'Power control');
+    POWER.forEach(function (p) {
+      var b = el('button', 'rt-power-key', { type: 'button', 'data-power': p.id, 'aria-label': p.label, title: p.label });
+      b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + p.glyph + '</svg><i aria-hidden="true"></i>';
+      if (p.id !== 'storage') b.setAttribute('aria-pressed', powerOn(p.id) ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        if (p.id === 'look') { nav.setLook('modern'); return; }
+        if (p.id === 'storage') { showStorage(); return; }
+        setSetting(p.id, !setting(p.id));
+        b.setAttribute('aria-pressed', setting(p.id) ? 'true' : 'false');
+        nav.toast(p.label + (setting(p.id) ? ' on' : ' off'));
+      });
+      w.appendChild(b);
+    });
+    return w;
+  }
+  function showStorage() {
+    if (window.randomRetro && window.randomRetro.openSettings) { window.randomRetro.openSettings('storage'); return; }
+    if (!navigator.storage || !navigator.storage.estimate) { nav.toast('Storage details unavailable'); return; }
+    navigator.storage.estimate().then(function (e) {
+      var mb = function (b) { return (b / 1048576).toFixed(1) + ' MB'; };
+      nav.toast('Using ' + mb(e.usage || 0) + (e.quota ? ' of ' + mb(e.quota) : ''), 3500);
+    });
   }
 
   /* --------------------------------------------------------------- dock */
@@ -239,6 +431,7 @@
     ui.pages.inert = on;
     ui.dock.inert = on;
     if (nav.refreshBack) nav.refreshBack();
+    wallpaperPaused(on);
     if (on) {
       var first = ui.drawerGrid.querySelector('.rt-icon');
       (first || ui.drawer).focus({ preventScroll: true });
@@ -247,17 +440,323 @@
     }
   }
   window.addEventListener('popstate', function () {
-    if (!mounted) return;
-    var wantDrawer = !!(history.state && history.state.rt === 'drawer');
-    if (wantDrawer !== drawerOpen()) showDrawer(wantDrawer);
+    if (!mounted || !ui.drawer) return;
+    var state = history.state && history.state.rt;
+    if ((state === 'drawer') !== drawerOpen()) showDrawer(state === 'drawer');
+    if ((state === 'shade') !== shadeOpen()) showShade(state === 'shade');
   });
 
   // The bar's ● on the launcher: close whatever is open, back to centre.
   window.addEventListener('randomhome', function () {
-    if (!mounted) return;
-    if (drawerOpen()) closeDrawer();
+    if (!mounted || !ui.drawer) return;
+    // Unwind every launcher layer in one go (shade over drawer is two
+    // history entries).
+    var steps = 0;
+    if (shadeOpen()) { if (history.state && history.state.rt === 'shade') steps++; else showShade(false); }
+    if (drawerOpen()) steps++;
+    if (steps) history.go(-steps);
+    if (ui.search) { ui.search.value = ''; ui.search.dispatchEvent(new Event('input')); }
     goTo(CENTRE, true);
   });
+
+  /* ---------------------------------------------------- status bar, shade */
+
+  // Events the shade lists that aren't derived from live state: things that
+  // happened (an idea saved for offline). Newest first, a dozen at most.
+  function events() { return lget(KEY.events, []); }
+  function notify(ev) {
+    var list = events().filter(function (e) { return e.id !== ev.id; });
+    ev.at = ev.at || new Date().toISOString();
+    list.unshift(ev);
+    lset(KEY.events, list.slice(0, 12));
+    undismiss(ev.id);
+    refreshShade();
+  }
+  function dismissed() { return lget(KEY.dismissed, []); }
+  function dismiss(ids) {
+    var d = dismissed();
+    ids.forEach(function (id) { if (d.indexOf(id) === -1) d.push(id); });
+    lset(KEY.dismissed, d.slice(-200));
+  }
+  function undismiss(id) { lset(KEY.dismissed, dismissed().filter(function (d) { return d !== id; })); }
+
+  // Everything the shade shows right now: ongoing state (offline, an update
+  // waiting) and notifications (new ideas, events), minus dismissed ones.
+  function shadeItems() {
+    var gone = dismissed();
+    var ongoing = [];
+    if (!navigator.onLine) ongoing.push({ id: 'offline', icon: '⚠', title: "You're offline", text: 'Saved and cached ideas still open.' });
+    if (nav.updateReady && nav.updateReady()) {
+      ongoing.push({ id: 'update', icon: '⟳', title: 'Update ready', text: 'Tap to refresh with the newest ideas.', run: function () { nav.applyUpdate(); } });
+    }
+    var notes = [];
+    ideas.filter(function (i) { return nav.isNew(i); }).forEach(function (idea) {
+      notes.push({ id: 'new:' + idea.slug, icon: idea.emoji || '✦', title: 'New idea: ' + idea.title,
+        text: idea.description || '', href: idea.url });
+    });
+    events().forEach(function (e) {
+      if (e.type === 'saved') {
+        var idea = ideas.filter(function (i) { return i.slug === e.slug; })[0];
+        if (idea) notes.push({ id: e.id, icon: '⤓', title: 'Saved for offline', text: idea.title + ' works without a connection.', href: idea.url });
+      }
+    });
+    return {
+      ongoing: ongoing,
+      notes: notes.filter(function (n) { return gone.indexOf(n.id) === -1; })
+    };
+  }
+
+  function buildStatusBar() {
+    ui.status = el('div', 'rt-status', { role: 'button', tabindex: '0', 'aria-label': 'Notifications. Pull down or tap to open', 'aria-expanded': 'false' });
+    ui.statusNotes = el('span', 'rt-status-notes', { 'aria-hidden': 'true' });
+    var right = el('span', 'rt-status-right');
+    ui.statusNet = el('span', 'rt-status-net');
+    ui.statusBattery = el('span', 'rt-status-battery', { hidden: '' });
+    ui.statusClock = el('span', 'rt-status-clock');
+    right.appendChild(ui.statusNet);
+    right.appendChild(ui.statusBattery);
+    right.appendChild(ui.statusClock);
+    ui.status.appendChild(ui.statusNotes);
+    ui.status.appendChild(right);
+
+    // Pull down (or tap, or Enter) to open the shade.
+    var startY = null;
+    ui.status.addEventListener('pointerdown', function (e) { startY = e.clientY; });
+    ui.status.addEventListener('pointermove', function (e) {
+      if (startY != null && e.clientY - startY > 24) { startY = null; openShade(); }
+    });
+    ui.status.addEventListener('pointerup', function () { if (startY != null) { startY = null; openShade(); } });
+    ui.status.addEventListener('pointercancel', function () { startY = null; });
+    ui.status.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') { e.preventDefault(); openShade(); }
+    });
+
+    paintNet();
+    watchBattery();
+  }
+
+  function paintNet() {
+    if (!ui.statusNet) return;
+    var on = navigator.onLine;
+    ui.statusNet.setAttribute('data-online', on ? 'true' : 'false');
+    ui.statusNet.setAttribute('title', on ? 'Online' : 'Offline');
+    ui.statusNet.innerHTML = on
+      ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 13h2.5v2H1zM5 10h2.5v5H5zM9 7h2.5v8H9zM13 3h2.5v12H13z" fill="currentColor"/></svg>'
+      : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 13h2.5v2H1zM5 10h2.5v5H5zM9 7h2.5v8H9zM13 3h2.5v12H13z" fill="currentColor" opacity=".3"/><path d="M2 2l12 12" stroke="currentColor" stroke-width="1.6"/></svg>';
+  }
+
+  // Battery only where the browser really reports it; never a made-up one.
+  var batteryWatched = false;
+  function watchBattery() {
+    if (!navigator.getBattery) return;
+    navigator.getBattery().then(function (b) {
+      paint();
+      if (batteryWatched) return;
+      batteryWatched = true;
+      b.addEventListener('levelchange', paint);
+      b.addEventListener('chargingchange', paint);
+      function paint() {
+        if (!ui.statusBattery) return;
+        var pct = Math.round(b.level * 100);
+        ui.statusBattery.hidden = false;
+        ui.statusBattery.setAttribute('title', 'Battery ' + pct + '%' + (b.charging ? ', charging' : ''));
+        ui.statusBattery.innerHTML =
+          '<svg viewBox="0 0 12 20" aria-hidden="true"><rect x="3.5" y="0.5" width="5" height="2" rx=".6" fill="currentColor"/>' +
+          '<rect x="0.8" y="2.3" width="10.4" height="16.9" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
+          '<rect x="2.3" y="' + (3.8 + 13.9 * (1 - b.level)).toFixed(2) + '" width="7.4" height="' + (13.9 * b.level).toFixed(2) +
+          '" fill="' + (b.level <= 0.15 && !b.charging ? '#e5452e' : '#9fd01d') + '"/>' +
+          (b.charging ? '<path d="M6.8 5L3.8 11h2.4l-1 4.2L8.4 9H6z" fill="#000"/>' : '') + '</svg>';
+      }
+    }).catch(function () {});
+  }
+
+  function paintStatusClock() {
+    if (ui.statusClock) ui.statusClock.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function buildShade() {
+    ui.shade = el('div', 'rt-shade', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Notifications', 'aria-hidden': 'true' });
+    var head = el('div', 'rt-shade-head');
+    ui.shadeDate = el('span', 'rt-shade-date');
+    ui.shadeClear = el('button', 'rt-shade-clear', { type: 'button' });
+    ui.shadeClear.textContent = 'Clear';
+    ui.shadeClear.addEventListener('click', function () {
+      dismiss(shadeItems().notes.map(function (n) { return n.id; }));
+      refreshShade();
+    });
+    head.appendChild(ui.shadeDate);
+    head.appendChild(ui.shadeClear);
+    ui.shadeBody = el('div', 'rt-shade-body');
+    var handle = el('button', 'rt-shade-handle', { type: 'button', 'aria-label': 'Close notifications' });
+    handle.addEventListener('click', function () { closeShade(); });
+    // Drag the handle up to close.
+    var startY = null;
+    handle.addEventListener('pointerdown', function (e) { startY = e.clientY; });
+    handle.addEventListener('pointermove', function (e) { if (startY != null && startY - e.clientY > 24) { startY = null; closeShade(); } });
+    ui.shade.appendChild(head);
+    ui.shade.appendChild(ui.shadeBody);
+    ui.shade.appendChild(handle);
+    ui.shade.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); closeShade(); } });
+    refreshShade();
+  }
+
+  function shadeRow(item) {
+    var tag = item.href ? 'a' : 'button';
+    var row = el(tag, 'rt-note', item.href ? { href: item.href, 'data-note': item.id } : { type: 'button', 'data-note': item.id });
+    var ic = el('span', 'rt-note-icon', { 'aria-hidden': 'true' });
+    ic.textContent = item.icon;
+    var body = el('span', 'rt-note-body');
+    var t = el('span', 'rt-note-title');
+    t.textContent = item.title;
+    body.appendChild(t);
+    if (item.text) {
+      var x = el('span', 'rt-note-text');
+      x.textContent = item.text;
+      body.appendChild(x);
+    }
+    row.appendChild(ic);
+    row.appendChild(body);
+    if (item.run) row.addEventListener('click', item.run);
+    return row;
+  }
+
+  function refreshShade() {
+    if (!ui.shade) return;
+    var items = shadeItems();
+    ui.shadeDate.textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    ui.shadeBody.textContent = '';
+    function section(title, list) {
+      if (!list.length) return;
+      var h = el('h3', 'rt-shade-section');
+      h.textContent = title;
+      ui.shadeBody.appendChild(h);
+      list.forEach(function (i) { ui.shadeBody.appendChild(shadeRow(i)); });
+    }
+    section('Ongoing', items.ongoing);
+    section('Notifications', items.notes);
+    if (!items.ongoing.length && !items.notes.length) {
+      var none = el('p', 'rt-shade-none');
+      none.textContent = 'No notifications';
+      ui.shadeBody.appendChild(none);
+    }
+    ui.shadeClear.hidden = !items.notes.length;
+    // The status bar's notification icons: one per unread notification (up to 4).
+    if (ui.statusNotes) {
+      ui.statusNotes.textContent = '';
+      items.notes.slice(0, 4).forEach(function (n) {
+        var i = el('span', 'rt-status-note');
+        i.textContent = n.icon;
+        ui.statusNotes.appendChild(i);
+      });
+      ui.status.setAttribute('data-unread', String(items.notes.length));
+      ui.status.setAttribute('aria-label', (items.notes.length ? items.notes.length + ' notifications. ' : 'No notifications. ') + 'Pull down or tap to open');
+    }
+  }
+
+  function shadeOpen() { return ui.shade && ui.shade.classList.contains('rt-open'); }
+  function openShade() {
+    if (shadeOpen()) return;
+    history.pushState({ rt: 'shade' }, '');
+    showShade(true);
+  }
+  function closeShade() {
+    if (!shadeOpen()) return;
+    if (history.state && history.state.rt === 'shade') history.back();
+    else showShade(false);
+  }
+  function showShade(on) {
+    refreshShade();
+    ui.shade.classList.toggle('rt-open', on);
+    ui.shade.setAttribute('aria-hidden', on ? 'false' : 'true');
+    ui.status.setAttribute('aria-expanded', on ? 'true' : 'false');
+    ui.pages.inert = on || drawerOpen();
+    ui.dock.inert = on || drawerOpen();
+    if (nav.refreshBack) nav.refreshBack();
+    wallpaperPaused(on);
+    if (on) (ui.shadeBody.querySelector('a, button') || ui.shadeClear).focus({ preventScroll: true });
+    else if (ui.shade.contains(document.activeElement)) ui.status.focus({ preventScroll: true });
+  }
+
+  /* ------------------------------------------------------ live wallpaper */
+
+  // Slow glowing motes drifting upwards, tinted rust and lime; a gentle
+  // parallax as the home screens swipe. Paused when hidden or covered,
+  // capped near 30 fps, and a single still frame with reduced motion or
+  // when "Wallpaper motion" is off.
+  var wall = { raf: 0, last: 0, motes: [], paused: false };
+
+  function buildWallpaper() {
+    ui.wall = el('canvas', 'rt-wallpaper', { 'aria-hidden': 'true' });
+    wall.ctx = ui.wall.getContext('2d');
+    var n = 42;
+    wall.motes = [];
+    for (var i = 0; i < n; i++) {
+      wall.motes.push({
+        x: Math.random(), y: Math.random(), z: 0.3 + Math.random() * 0.7,
+        r: 0.6 + Math.random() * 1.8, tint: Math.random() < 0.55 ? 0 : (Math.random() < 0.6 ? 1 : 2),
+        tw: Math.random() * Math.PI * 2
+      });
+    }
+  }
+
+  function sizeWallpaper() {
+    if (!ui.wall) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var r = root.getBoundingClientRect();
+    ui.wall.width = Math.max(1, Math.round(r.width * dpr));
+    ui.wall.height = Math.max(1, Math.round(r.height * dpr));
+    wall.dpr = dpr;
+    drawWallpaper(0);
+  }
+
+  function moving() {
+    return setting('motion') && !matchMedia('(prefers-reduced-motion: reduce)').matches &&
+      !document.hidden && !wall.paused && mounted;
+  }
+  function wallpaperPaused(on) { wall.paused = on || drawerOpen() || shadeOpen(); tickControl(); }
+  function tickControl() {
+    cancelAnimationFrame(wall.raf);
+    wall.raf = 0;
+    if (!ui.wall) return;
+    ui.wall.setAttribute('data-moving', moving() ? 'true' : 'false');
+    if (moving()) wall.raf = requestAnimationFrame(tick);
+    else drawWallpaper(0);
+  }
+  function tick(t) {
+    wall.raf = requestAnimationFrame(tick);
+    if (t - wall.last < 33) return; // ~30 fps
+    var dt = Math.min(0.1, (t - (wall.last || t)) / 1000);
+    wall.last = t;
+    drawWallpaper(dt);
+  }
+
+  function drawWallpaper(dt) {
+    var c = wall.ctx;
+    if (!c) return;
+    var w = ui.wall.width, h = ui.wall.height, dpr = wall.dpr || 1;
+    var light = matchMedia('(prefers-color-scheme: light)').matches;
+    c.clearRect(0, 0, w, h);
+    var parallax = ui.pages ? ui.pages.scrollLeft / Math.max(1, ui.pages.clientWidth) : CENTRE;
+    var tints = light
+      ? ['rgba(90,110,80,', 'rgba(120,150,40,', 'rgba(179,84,46,']
+      : ['rgba(235,230,220,', 'rgba(159,208,29,', 'rgba(224,133,84,'];
+    wall.motes.forEach(function (m) {
+      m.y -= dt * 0.012 * m.z;
+      m.tw += dt * 1.3;
+      if (m.y < -0.05) { m.y = 1.05; m.x = Math.random(); }
+      var x = ((m.x - parallax * 0.06 * m.z) % 1 + 1) % 1 * w;
+      var y = m.y * h;
+      var r = m.r * dpr * (0.8 + m.z);
+      var a = (light ? 0.28 : 0.55) * (0.55 + 0.45 * Math.sin(m.tw)) * m.z;
+      var g = c.createRadialGradient(x, y, 0, x, y, r * 4);
+      g.addColorStop(0, tints[m.tint] + a.toFixed(3) + ')');
+      g.addColorStop(1, tints[m.tint] + '0)');
+      c.fillStyle = g;
+      c.beginPath();
+      c.arc(x, y, r * 4, 0, Math.PI * 2);
+      c.fill();
+    });
+  }
 
   /* ------------------------------------------------------ mount, look */
 
@@ -281,16 +780,31 @@
       if (!mounted) return;
       ideas = (list || []).slice();
       root.textContent = '';
+      buildWallpaper();
+      buildStatusBar();
       buildPages();
       buildDock();
       buildDrawer();
+      buildShade();
+      root.appendChild(ui.wall);
+      root.appendChild(ui.status);
       root.appendChild(ui.pages);
       root.appendChild(ui.dots);
       root.appendChild(ui.dock);
       root.appendChild(ui.drawer);
+      root.appendChild(ui.shade);
       // Open on the centre screen, after layout gives the pages a width.
-      requestAnimationFrame(function () { goTo(CENTRE, false); });
-      if (history.state && history.state.rt === 'drawer') showDrawer(true);
+      requestAnimationFrame(function () {
+        goTo(CENTRE, false);
+        sizeWallpaper();
+        tickControl();
+      });
+      var state = history.state && history.state.rt;
+      if (state === 'drawer') showDrawer(true);
+      if (state === 'shade') showShade(true);
+      // Clocks tick on the minute; the shade's live items follow events.
+      paintStatusClock();
+      clockTimer = setInterval(function () { paintStatusClock(); paintClock(); }, 15000);
       root.setAttribute('data-ready', '');
     });
   }
@@ -300,6 +814,8 @@
     mounted = false;
     root.hidden = true;
     root.removeAttribute('data-ready');
+    clearInterval(clockTimer);
+    cancelAnimationFrame(wall.raf);
     root.textContent = '';
     ui = {};
     paintSystemBar(false);
@@ -310,5 +826,23 @@
     else unmount();
   }
   window.addEventListener('randomlook', onLook);
+  window.addEventListener('randomupdate', function () { refreshShade(); });
+  window.addEventListener('online', function () { paintNet(); refreshShade(); });
+  window.addEventListener('offline', function () { paintNet(); refreshShade(); });
+  window.addEventListener('resize', sizeWallpaper);
+  document.addEventListener('visibilitychange', tickControl);
+  window.addEventListener('randomsetting', function (e) { if (e.detail && e.detail.name === 'motion') tickControl(); });
+  // Back from an idea can restore this page from the back/forward cache:
+  // redraw, so New dots, the dock and the widgets reflect the visit.
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted && mounted) { unmount(); mount(); }
+  });
   onLook();
+
+  // For the rest of the launcher (stage 3's menus, stage 4's Settings).
+  window.randomRetro = {
+    notify: notify,
+    setting: setting,
+    setSetting: setSetting
+  };
 })();

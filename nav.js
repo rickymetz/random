@@ -530,8 +530,12 @@
     toast: function (text, ms) { if (ui.toast) toast(text, null, ms || 2200); },
     // The launcher pushes history entries (the drawer); Back's visibility
     // on the hub follows whether there is anywhere to go back to.
-    refreshBack: refreshBack
+    refreshBack: refreshBack,
+    // A newer hub is waiting: updateReady() says so, applyUpdate() takes it.
+    updateReady: function () { return !!pendingUpdate; },
+    applyUpdate: function () { if (pendingUpdate) pendingUpdate(); }
   };
+  var pendingUpdate = null;
 
   function refreshBack() {
     if (ui.back && isHub) ui.back.hidden = !canGoBack();
@@ -691,12 +695,15 @@
     var refreshing = false;
     navigator.serviceWorker.register(new URL('sw.js', HUB).href, { scope: HUB.href }).then(function (reg) {
       function offer(worker) {
-        toast('New ideas available', { label: 'Refresh', run: function () {
+        pendingUpdate = function () {
           worker.addEventListener('statechange', function () {
             if (worker.state === 'activated' && !refreshing) { refreshing = true; location.reload(); }
           });
           worker.postMessage({ type: 'SKIP_WAITING' });
-        } });
+        };
+        toast('New ideas available', { label: 'Refresh', run: pendingUpdate });
+        // The retro launcher also lists it in its notification shade.
+        try { window.dispatchEvent(new CustomEvent('randomupdate')); } catch (e) {}
       }
       // Only an *update* is news: the very first install has no older
       // version to replace.

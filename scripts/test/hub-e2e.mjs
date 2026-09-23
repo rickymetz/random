@@ -322,6 +322,153 @@ try {
     await ctx.close();
   }
 
+  /* ------------------------------------------ retro launcher (stage 2) */
+
+  section("retro widgets");
+  {
+    const { ctx, page } = await freshPage();
+    await ctx.addInitScript(() => {
+      if (!sessionStorage.getItem("seeded")) {
+        sessionStorage.setItem("seeded", "1");
+        localStorage.setItem("random-hub:look", '"retro"');
+        localStorage.setItem("random-hub:since", JSON.stringify("2000-01-01T00:00:00Z"));
+      }
+    });
+    await installHub(page);
+    await page.waitForSelector("#retro[data-ready]");
+    const catalogue = await (await page.request.get(B + "ideas.json")).json();
+    check(await page.locator('.rt-page[data-page="1"] .rt-search').isVisible() && await page.locator('.rt-page[data-page="1"] .rt-clock').count() === 1
+      && await page.locator('.rt-page[data-page="0"] .rt-news').count() === 1 && await page.locator('.rt-page[data-page="2"] .rt-power').count() === 1,
+      "search and clock on the centre screen, new ideas on the left, power control on the right");
+
+    await page.fill(".rt-search input", "film");
+    const found = await page.$$eval(".rt-result", (els) => els.map((e) => e.dataset.slug));
+    const expected = catalogue.filter((i) => (i.title + " " + i.description).toLowerCase().includes("film")).map((i) => i.slug);
+    check(found.length > 0 && found.join() === expected.join(), `search filters title and description (${found.join(", ")})`);
+    await page.fill(".rt-search input", "zzzz");
+    check(await page.locator(".rt-results-none").isVisible(), "and says when nothing matches");
+    await page.press(".rt-search input", "Escape");
+    check(await page.locator(".rt-results").isHidden(), "Escape clears it");
+
+    const clockText = await page.textContent(".rt-clock-time");
+    check(/\d{1,2}:\d{2}/.test(clockText), `the clock tells the time (${clockText})`);
+    await page.click(".rt-clock");
+    check((await page.getAttribute(".rt-clock", "data-style")) === "analog" && (await page.locator(".rt-analog").count()) === 1, "a tap flips it to analog");
+
+    const news = await page.$$eval(".rt-news-item", (els) => els.map((e) => e.dataset.slug));
+    check(news.length === Math.min(3, catalogue.length) && news[0] === catalogue[0].slug, "New ideas lists up to three, newest first");
+
+    const key = (id) => page.locator(`.rt-power-key[data-power="${id}"]`);
+    check((await key("look").getAttribute("aria-pressed")) === "true" && (await key("haptics").getAttribute("aria-pressed")) === "true"
+      && (await key("sounds").getAttribute("aria-pressed")) === "false", "power control shows retro on, haptics on, sounds off");
+    await page.click(".rt-dots button:nth-child(3)");
+    await page.waitForTimeout(500);
+    await key("sounds").click();
+    check((await key("sounds").getAttribute("aria-pressed")) === "true", "a power key toggles");
+    check((await page.getAttribute(".rt-wallpaper", "data-moving")) === "true", "the live wallpaper moves");
+    await key("motion").click();
+    check((await page.getAttribute(".rt-wallpaper", "data-moving")) === "false", "Wallpaper motion off stills it");
+
+    await page.reload();
+    await page.waitForSelector("#retro[data-ready]");
+    check((await page.getAttribute(".rt-clock", "data-style")) === "analog" && (await key("sounds").getAttribute("aria-pressed")) === "true",
+      "clock style and toggles are remembered");
+    await key("motion").click();
+    await page.click(".rt-launcher");
+    await page.waitForSelector(".rt-drawer.rt-open");
+    check((await page.getAttribute(".rt-wallpaper", "data-moving")) === "false", "the wallpaper pauses under the drawer");
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".rt-drawer:not(.rt-open)");
+    check((await page.getAttribute(".rt-wallpaper", "data-moving")) === "true", "and resumes");
+    await key("look").click();
+    check((await page.evaluate(() => document.documentElement.dataset.look)) === "modern", "the look key leaves for modern");
+    await ctx.close();
+  }
+
+  section("retro status bar and shade");
+  {
+    const { ctx, page } = await freshPage();
+    await ctx.addInitScript(() => {
+      if (!sessionStorage.getItem("seeded")) {
+        sessionStorage.setItem("seeded", "1");
+        localStorage.setItem("random-hub:look", '"retro"');
+        localStorage.setItem("random-hub:since", JSON.stringify("2000-01-01T00:00:00Z"));
+      }
+    });
+    await installHub(page);
+    await page.waitForSelector("#retro[data-ready]");
+    const catalogue = await (await page.request.get(B + "ideas.json")).json();
+    // (Waits rather than compares once, so a minute ticking over can't flake it.)
+    const inStep = await page.waitForFunction(() => document.querySelector(".rt-status-clock").textContent ===
+      new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), null, { timeout: 20000 }).then(() => true, () => false);
+    check(inStep, `the status bar shows the real time (${await page.textContent(".rt-status-clock")})`);
+    check((await page.getAttribute(".rt-status-net", "data-online")) === "true", "and that you're online");
+    const hasBattery = await page.evaluate(() => !!navigator.getBattery);
+    check((await page.locator(".rt-status-battery").isVisible()) === hasBattery, "battery shows only where the browser reports it");
+    check(Number(await page.getAttribute(".rt-status", "data-unread")) === catalogue.length, "one notification per new idea");
+
+    await page.click(".rt-status");
+    await page.waitForSelector(".rt-shade.rt-open");
+    const notes = await page.$$eval(".rt-note", (els) => els.map((e) => e.dataset.note));
+    check(catalogue.every((i) => notes.includes("new:" + i.slug)), "the shade lists them");
+    await page.click(".rt-shade-clear");
+    check((await page.locator(".rt-note").count()) === 0 && (await page.locator(".rt-shade-none").isVisible()), "Clear empties it");
+    await bar(page, 'button[aria-label="Back"]').click();
+    await page.waitForSelector(".rt-shade:not(.rt-open)");
+    check(page.url() === B, "Back closes the shade");
+    await page.reload();
+    await page.waitForSelector("#retro[data-ready]");
+    check(Number(await page.getAttribute(".rt-status", "data-unread")) === 0, "cleared stays cleared");
+
+    await page.evaluate(() => window.randomRetro.notify({ id: "saved:breathe", type: "saved", slug: "breathe" }));
+    check(Number(await page.getAttribute(".rt-status", "data-unread")) === 1, "a saved-for-offline event arrives");
+    await ctx.setOffline(true);
+    await page.waitForFunction(() => document.querySelector(".rt-status-net").dataset.online === "false");
+    await page.click(".rt-status");
+    await page.waitForSelector(".rt-shade.rt-open");
+    const now = await page.$$eval(".rt-note", (els) => els.map((e) => e.dataset.note));
+    check(now.includes("offline") && now.includes("saved:breathe"), "offline shows as ongoing, beside the event");
+    await ctx.setOffline(false);
+    await page.click(".rt-shade-handle");
+    await page.waitForSelector(".rt-shade:not(.rt-open)");
+
+    await page.click(".rt-launcher");
+    await page.waitForSelector(".rt-drawer.rt-open");
+    await page.click(".rt-status");
+    await page.waitForSelector(".rt-shade.rt-open");
+    check(await page.locator(".rt-drawer.rt-open").count() === 1, "the shade pulls down over the drawer");
+    await bar(page, 'button[aria-label^="Home"]').click();
+    await page.waitForSelector(".rt-shade:not(.rt-open)");
+    await page.waitForSelector(".rt-drawer:not(.rt-open)");
+    check(true, "● unwinds both at once");
+
+    server.bump++;
+    await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()));
+    await page.waitForFunction(() => window.randomNav.updateReady(), null, { timeout: 15000 });
+    await page.click(".rt-status");
+    await page.waitForSelector('.rt-note[data-note="update"]');
+    await Promise.all([page.waitForEvent("load"), page.click('.rt-note[data-note="update"]')]);
+    check(!(await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => !!r.waiting))), "an update in the shade refreshes onto it");
+    await ctx.close();
+  }
+
+  section("retro: no battery API, reduced motion");
+  {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
+    await ctx.addInitScript(() => {
+      localStorage.setItem("random-hub:look", '"retro"');
+      Object.defineProperty(Navigator.prototype, "getBattery", { value: undefined, configurable: true });
+    });
+    const page = await ctx.newPage();
+    page.on("pageerror", (e) => pageErrors.push(`${page.url()}: ${e.message}`));
+    await page.goto(B);
+    await page.waitForSelector("#retro[data-ready]");
+    await page.waitForTimeout(300);
+    check(await page.locator(".rt-status-battery").isHidden(), "no battery API, no battery (never a fake one)");
+    check((await page.getAttribute(".rt-wallpaper", "data-moving")) === "false", "reduced motion keeps the wallpaper still");
+    await ctx.close();
+  }
+
   check(pageErrors.length === 0, `no page errors${pageErrors.length ? ": " + pageErrors.join(" | ") : ""}`);
 } catch (e) {
   failures++;
