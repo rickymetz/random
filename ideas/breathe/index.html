@@ -15,7 +15,7 @@
     --chip-on: rgba(90, 169, 230, 0.28);
   }
   /* Registered so the sweep angle can be animated; browsers without
-     @property just skip the countdown overlay. */
+     @property just skip the countdown ring. */
   @property --sweep {
     syntax: "<angle>";
     inherits: true;
@@ -32,25 +32,52 @@
     padding: 3.5rem 16px 2rem;
   }
   main { text-align: center; max-width: 30rem; }
-  .circle {
+  /* The stage holds three layers: the countdown ring (fixed size), the
+     breathing circle (scales inside it) and the big number (fixed). */
+  .stage {
+    --size: min(80vw, 46vh, 380px);
     position: relative;
-    width: 180px;
-    height: 180px;
-    margin: 0 auto 2rem;
-    border-radius: 50%;
-    background: radial-gradient(circle at 35% 35%, #7cc0f0, var(--glow) 60%, #2b6ca8);
-    box-shadow: 0 0 60px rgba(90, 169, 230, 0.35);
-    transform: scale(0.6);
+    width: var(--size);
+    height: var(--size);
+    margin: 0 auto 1.75rem;
   }
-  /* Countdown: a wedge that sweeps around the circle once per phase */
-  .circle::after {
+  /* Countdown: a ring that fills once per phase; the faint track is
+     ::before, the progress ::after (it inherits --sweep from the stage). */
+  .stage::before,
+  .stage::after {
     content: "";
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    background: conic-gradient(rgba(255, 255, 255, 0.2) var(--sweep), transparent 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
   }
-  .phase { font-size: 1.3rem; letter-spacing: 0.04em; min-height: 1.6em; }
+  .stage::before { background: rgba(220, 230, 242, 0.1); }
+  .stage::after { background: conic-gradient(#bfe2ff var(--sweep), transparent 0); }
+  .circle {
+    position: absolute;
+    inset: 18px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #7cc0f0, var(--glow) 60%, #2b6ca8);
+    box-shadow: 0 0 90px rgba(90, 169, 230, 0.45);
+    transform: scale(0.6);
+  }
+  .count {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: calc(var(--size) * 0.24);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    color: #fff;
+    text-shadow: 0 2px 16px rgba(14, 40, 72, 0.6);
+    pointer-events: none;
+  }
+  .count.small { font-size: calc(var(--size) * 0.16); }
+  .phase { font-size: 1.6rem; font-weight: 500; letter-spacing: 0.04em; min-height: 1.6em; }
+  body.running .phase { font-size: 2rem; }
   .hint { color: var(--muted); margin-top: 0.75rem; font-size: 0.85rem; min-height: 1.5em; }
   .patterns {
     display: flex;
@@ -122,7 +149,10 @@
 <body>
 <a class="back" href="../../">← random</a>
 <main>
-  <div class="circle" id="circle"></div>
+  <div class="stage" id="stage">
+    <div class="circle" id="circle"></div>
+    <div class="count" id="count" aria-hidden="true"></div>
+  </div>
   <div class="phase" id="phase">Press anywhere to begin</div>
   <div class="hint" id="hint"></div>
   <div class="patterns" id="patterns" role="group" aria-label="Breathing pattern"></div>
@@ -130,7 +160,9 @@
   <p class="note">Benefits are as reported in studies and practice; evidence varies. Stop if you feel dizzy.</p>
 </main>
 <script>
+  const stage = document.getElementById("stage");
   const circle = document.getElementById("circle");
+  const countEl = document.getElementById("count");
   const phaseEl = document.getElementById("phase");
   const hintEl = document.getElementById("hint");
   const patternsEl = document.getElementById("patterns");
@@ -256,8 +288,9 @@
       rounds: 3,
       phases: [
         ...Array.from({ length: 30 }, (_, n) => [
-          { label: `In · ${n + 1}`, s: 1.5, from: SMALL, to: BIG },
-          { label: `Let go · ${n + 1}`, s: 1.5, from: BIG, to: SMALL },
+          // `num` replaces the countdown: count breaths, not seconds.
+          { label: "In", s: 1.5, from: SMALL, to: BIG, num: n + 1 },
+          { label: "Let go", s: 1.5, from: BIG, to: SMALL, num: n + 1 },
         ]).flat(),
         // Open-ended: ends on a tap, or at the cap (s) as a safety net.
         { label: "Hold", s: 180, from: SMALL, to: SMALL, open: true },
@@ -282,7 +315,9 @@
   function clearPhase() {
     for (const a of current) a.cancel();
     current = [];
-    clearInterval(ticker);
+    cancelAnimationFrame(ticker);
+    countEl.textContent = "";
+    countEl.classList.remove("small");
     advance = null;
   }
 
@@ -344,20 +379,27 @@
     const next = () => { if (running) run(i + 1); };
     phaseEl.textContent = p.label;
     if (round) hintEl.textContent = round;
+    const t0 = performance.now();
+    let shown = "";
+    const show = (text) => { if (text !== shown) countEl.textContent = shown = text; };
+    const tick = () => {
+      const t = performance.now() - t0;
+      if (p.num) show(String(p.num));
+      else if (p.open) {
+        // Count up rather than down: the hold lasts as long as it's comfortable.
+        const sec = Math.floor(t / 1000);
+        show(`${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`);
+      } else show(String(Math.max(1, Math.ceil((ms - t) / 1000))));
+      ticker = requestAnimationFrame(tick);
+    };
+    countEl.classList.toggle("small", !!p.open);
+    tick();
     if (p.open) {
-      // Count up rather than down: the hold lasts as long as it's comfortable.
-      const t0 = performance.now();
-      const tick = () => {
-        const sec = Math.floor((performance.now() - t0) / 1000);
-        phaseEl.textContent = `${p.label} · ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
-      };
-      tick();
-      ticker = setInterval(tick, 250);
       hintEl.textContent = `${round} · tap when you need to breathe`;
       advance = next;
     } else {
-      // Linear, so the wedge doubles as a countdown; ::after inherits --sweep.
-      current.push(circle.animate(
+      // Linear, so the ring doubles as a countdown.
+      current.push(stage.animate(
         [{ "--sweep": "0deg" }, { "--sweep": "360deg" }],
         { duration: ms, easing: "linear" }
       ));
