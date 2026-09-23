@@ -17,7 +17,7 @@
  *    figures.js) cached indefinitely, which no later request would repair.
  *    A version is now all-or-nothing.
  */
-var CACHE = 'cadence-v6';
+var CACHE = 'cadence-v7';
 
 /* Without every one of these the app is broken, so the install fails and the
  * browser retries rather than leaving a half-built cache in place. */
@@ -27,14 +27,17 @@ var CORE = [
   'styles.css',
   'routine.js',
   'figures.js',
+  'figure3d.js',
   'media.js',
   'store.js',
   'charts.js',
   'app.js'
 ];
 
-/* Nice to have offline; a missing one is not worth failing an install over. */
+/* Nice to have offline; a missing one is not worth failing an install over.
+ * Without three.js the exercise figure is simply the flat drawing. */
 var OPTIONAL = [
+  'vendor/three.cadence.min.js',
   'manifest.webmanifest',
   'icon.svg',
   'icon-192.png',

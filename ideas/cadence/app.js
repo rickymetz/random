@@ -359,6 +359,7 @@
   /* ---------- the demonstration panel ---------- */
 
   var Figures = global.CadenceFigures;
+  var Figure3D = global.CadenceFigure3D;
   var Media = global.CadenceMedia;
 
   var demoCache = { key: null, node: null, stop: null };
@@ -419,7 +420,9 @@
       return demoCache.node;
     }
 
-    var fig = Figures.create(ex.id, {});
+    // The demonstration is 3D, turned with a drag, wherever WebGL is there;
+    // thumbnails stay flat drawings.
+    var fig = Figure3D && Figure3D.supported() ? Figure3D.create(ex.id, {}) : Figures.create(ex.id, {});
     demoCache.node = fig.node;
     demoCache.stop = fig.stop;
     return fig.node;
