@@ -758,7 +758,7 @@
     gap: 0.4rem;
   }
   #view-tools { right: 0.75rem; }
-  #edge-tools button, #view-tools button, #compass {
+  #edge-tools button, #view-tools button {
     width: 44px; height: 44px;
     border-radius: 50%;
     border: 1px solid var(--line);
@@ -1158,18 +1158,6 @@
     #btn-delete { margin-left: 0.3rem; }
   }
 
-  /* The compass is a readout, not a control, and was styled as a button. The
-     face went back to paper when the needle did — a white south lobe over a
-     transparent dial is a white lobe over grass — but the dashed bezel and the
-     missing shadow still keep it out of the row of buttons it sits in. */
-  #compass.readout {
-    background: var(--panel);
-    box-shadow: none;
-    border: 1px solid var(--line);
-    border-style: dashed;
-    color: var(--muted);
-  }
-
 
   /* Every dialog is this overlay. #key-modal was added with only its content
      styles, so it laid out statically below the fold on a page that cannot
@@ -1400,7 +1388,7 @@
 <div id="view-tools">
   <button id="btn-doll" aria-label="Dollhouse view: lift every roof" aria-pressed="false" title="Dollhouse: roofs on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 11v9h14v-9"/></svg></button>
   <button id="btn-sun" aria-label="Cycle sun" title="Midday"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.4v2.2M12 19.4v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.4 12h2.2M19.4 12h2.2M5.8 18.2l-1.6 1.6M19.8 4.2l-1.6 1.6"/></svg></button>
-  <div id="compass" class="readout" aria-hidden="true"><span id="needle"><svg viewBox="0 0 24 24"><path class="lobe south" d="M12 22 14.9 12 9.1 12Z"/><path class="lobe north" d="M12 2 14.9 12 9.1 12Z"/><circle class="lobe pivot" cx="12" cy="12" r="1.5"/></svg></span><span class="n">N</span></div>
+  <button id="compass" aria-label="Turn the view 45° clockwise" title="Turn the view 45° clockwise"><span id="needle" aria-hidden="true"><svg viewBox="0 0 24 24"><path class="lobe south" d="M12 22 14.9 12 9.1 12Z"/><path class="lobe north" d="M12 2 14.9 12 9.1 12Z"/><circle class="lobe pivot" cx="12" cy="12" r="1.5"/></svg></span><span class="n" aria-hidden="true">N</span></button>
   <button id="btn-fit" aria-label="Recenter view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 1.6v3.2M12 19.2v3.2M1.6 12h3.2M19.2 12h3.2"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg></button>
 </div>
 

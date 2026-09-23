@@ -12,6 +12,7 @@ import {
   halfDims as gHalfDims, gapBetween as gGapBetween, overlapDepth as gOverlapDepth,
   gapBand as gGapBand, clusterOf as gClusterOf, snapMove as gSnapMove,
   isFree as gIsFree, findSpot as gFindSpot, unitExtents as gUnitExtents,
+  stepHeading, shortWay,
 } from "./geometry.js";
 import {
   SEP_CLEAR, DIRS,
@@ -1337,6 +1338,48 @@ function fit3D() {
   markShadowDirty();
 }
 document.getElementById("btn-fit").addEventListener("click", fit3D);
+
+// ---- the compass is a control ---------------------------------------------
+//
+// Every press takes the view to the next 45° mark clockwise, snapping a
+// hand-dragged heading up to the mark on the way; eight presses is a full turn
+// back to north. Heading only — the tilt, the zoom and what you are looking at
+// all survive, which is what separates it from Recenter beside it.
+//
+// three.js measures the azimuth as atan2(x, z) about the target, and the needle
+// is rotated by that same number. So the view turning clockwise is the azimuth
+// going *down*, and the needle swinging the other way.
+const SPIN_STEP = Math.PI / 4;
+const SPIN_MS = 250;
+const ON_MARK = 0.02;   // rad, ~1.1°: close enough to a mark to count as on it
+const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)");
+const HEADINGS = ["north", "north-east", "east", "south-east",
+                  "south", "south-west", "west", "north-west"];
+const headingName = (az) =>
+  HEADINGS[((Math.round(-az / SPIN_STEP) % 8) + 8) % 8];
+let spin = null;
+
+function setAzimuth(az) {
+  const t = controls.target;
+  const r = Math.hypot(camera.position.x - t.x, camera.position.z - t.z);
+  camera.position.set(t.x + r * Math.sin(az), camera.position.y, t.z + r * Math.cos(az));
+  // update() re-derives the spherical angles from the position it is handed,
+  // so getAzimuthalAngle() is fresh for the needle in this same frame
+  controls.update();
+}
+
+function compassPress() {
+  const az = controls.getAzimuthalAngle();
+  const d = shortWay(az, stepHeading(az, SPIN_STEP, ON_MARK));
+  if (REDUCED_MOTION.matches) setAzimuth(az + d);
+  else spin = { from: az, d, t0: performance.now() };
+  sceneDirty = true;
+  startLoop();
+  announce(`Facing ${headingName(az + d)}`);
+}
+document.getElementById("compass").addEventListener("click", compassPress);
+// a drag is the user taking the wheel; the tween gets out of the way
+controls.addEventListener("start", () => { spin = null; });
 
 // overflow menu
 document.getElementById("btn-menu").addEventListener("click", (e) => {
@@ -4517,6 +4560,13 @@ function animate() {
   if (!looping) return;
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
+  if (spin) {
+    const p = Math.min(1, (performance.now() - spin.t0) / SPIN_MS);
+    const ease = p < 0.5 ? 2 * p * p : 1 - (2 - 2 * p) ** 2 / 2;
+    setAzimuth(spin.from + spin.d * ease);   // before the needle is read
+    if (p >= 1) spin = null;
+    sceneDirty = true;
+  }
   const az = controls.getAzimuthalAngle();
   if (az !== lastAzimuth) {
     compass.style.setProperty("--az", `${az}rad`);
