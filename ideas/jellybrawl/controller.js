@@ -167,6 +167,20 @@ function wait(l) {
   const msg = el("p", { className: "msg" + (l.shout ? " shout" : ""), textContent: l.text || "" });
   if (l.shout) msg.style.fontSize = `min(120px, ${Math.floor(128 / Math.max(4, (l.text || "").length))}vw)`;
   add(msg, l.sub && el("p", { className: "hint", textContent: l.sub }));
+  if (l.heckle) { // knocked out? make trouble
+    const h = el("button", { type: "button", className: "big heckle", textContent: "DROP GOO" });
+    h.addEventListener("click", () => {
+      conn.send({ t: "heckle" }); navigator.vibrate?.(30);
+      h.disabled = true; let n = 4; h.textContent = `RELOADING ${n}`;
+      const iv = setInterval(() => { if (--n <= 0) { clearInterval(iv); h.disabled = false; h.textContent = "DROP GOO"; } else h.textContent = `RELOADING ${n}`; }, 1000);
+    });
+    add(h, el("p", { className: "hint", textContent: "Drop a goo puddle into the game. Anyone who hits it goes spinning!" }));
+  }
+  if (l.react) add(el("div", { className: "reacts" }, ...["😂", "😱", "🔥", "👏", "💀", "🍿"].map((e) => {
+    const b = el("button", { type: "button", textContent: e, ariaLabel: `react ${e}` });
+    b.addEventListener("click", () => { conn.send({ t: "react", e }); navigator.vibrate?.(10); b.classList.add("pop"); setTimeout(() => b.classList.remove("pop"), 250); });
+    return b;
+  })));
 }
 
 function menu(l) {

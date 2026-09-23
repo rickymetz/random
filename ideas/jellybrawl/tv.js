@@ -57,7 +57,7 @@ const AWARDS = [
   ["hits", "Dodgeball ace", "hits"], ["snacks", "Big appetite", "snacks eaten"], ["cutoffs", "Cut-off artist", "snakes cut off"], ["heaves", "Heave-ho", "HEAVE! taps"],
   ["legs", "Anchor leg", "relay legs run"], ["perfects", "Steady hands", "perfect drops"], ["defused", "Bomb whisperer", "modules defused"], ["votes", "Crowd favourite", "votes"], ["plops", "Hole magnet", "falls down holes"],
   ["spooks", "Poltergeist", "hunters spooked"], ["zaps", "Ghostbuster", "beam hits"], ["gems", "Gem hoarder", "gems"], ["bonks", "Bonk master", "moles bonked"],
-  ["slams", "Sea monster", "tentacle hits"], ["splatted", "Tank ace", "swarmers splatted"], ["gnaws", "Gnawer", "armour gnawed"], ["reign", "Giant", "s as king"], ["checkpoints", "Navigator", "checkpoints"],
+  ["slams", "Sea monster", "tentacle hits"], ["splatted", "Tank ace", "swarmers splatted"], ["gnaws", "Gnawer", "armour gnawed"], ["reign", "Giant", "s as king"], ["checkpoints", "Navigator", "checkpoints"], ["heckles", "Heckler", "goo bombs dropped"],
   ["squashes", "Stomper", "blobs squashed"], ["cannon", "Artillery", "cannon shots"], ["wrecked", "Wrecking ball", "buildings flattened"], ["loot", "Master thief", "coins stolen"], ["catches", "Best hunter", "catches"], ["gulps", "Tables turned", "hunters gulped"],
 ];
 
@@ -72,7 +72,7 @@ const g = sceneC.getContext("2d");
 const S = {
   scene: "gate", t: 0, players: [], rounds: 5, round: 0, net: null, qr: null, joinUrl: "",
   mode: "playlist", boardMap: "random", game: null, def: null, chooser: null, options: null, picked: null, lastGameId: null,
-  result: null, deltas: [], roleCounts: {}, layouts: new Map(),
+  result: null, deltas: [], roleCounts: {}, layouts: new Map(), reacts: [], gctx: null,
 };
 window.__jelly = S; // for tests and poking around in devtools
 
@@ -87,6 +87,8 @@ function layout(pid, obj) {
   const p = byPid(pid);
   if (!p) return;
   const l = { t: "layout", ...obj, you: { name: p.name, color: p.color } };
+  // anyone waiting mid-game can react; knocked out of an arena game, they can heckle too
+  if (l.kind === "wait" && ["game", "duel", "board", "intro", "results"].includes(S.scene)) { l.react = true; l.heckle = !!S.gctx?.arena?.stepping && S.scene === "game"; }
   S.layouts.set(pid, l);
   send(p, l);
 }
@@ -163,6 +165,8 @@ function onInput(pid, m) {
       p.taps.push(now); p.held = true;
     } else p.held = false;
   }
+  if (m.t === "react" && REACTS.includes(m.e) && now - (p.reactAt || 0) > 500) { p.reactAt = now; S.reacts.push({ e: m.e, p, t: 0, x: 120 + (S.players.indexOf(p) + 0.5) * ((W - 240) / S.players.length) + (Math.random() - 0.5) * 40 }); return; }
+  if (m.t === "heckle" && S.scene === "game" && now - (p.heckleAt || 0) > 4000 && S.gctx?.arena?.heckle(p)) { p.heckleAt = now; p.stats.heckles = (p.stats.heckles || 0) + 1; return; }
   if (m.t === "act") return act(m.id, p);
   if (m.t === "pick" && S.scene === "choose" && pid === S.chooser && !S.picked) return pick(m.id);
   if ((S.scene === "game" || S.scene === "duel") && S.game && !p.bot) S.game.input(pid, m);
@@ -296,7 +300,8 @@ function pick(id) {
 function startIntro() {
   S.def = S.picked;
   S.lastGameId = S.def.id;
-  S.game = S.def.create(gameCtx(S.players.slice()));
+  S.gctx = gameCtx(S.players.slice());
+  S.game = S.def.create(S.gctx);
   go("intro");
   layoutAll(() => ({ kind: "wait", text: S.def.command, sub: S.def.controls, shout: true }));
   setTimeout(() => sfx.slam(), 120);
@@ -620,6 +625,19 @@ function post() {
   flushCrisp(out, base);
 }
 
+// emoji from the phones float up from the bottom edge, each above its sender's slot
+const REACTS = ["😂", "😱", "🔥", "👏", "💀", "🍿"];
+function drawReacts() {
+  const dt = 1 / 60;
+  S.reacts = S.reacts.filter((r) => (r.t += dt) < 2.2);
+  for (const r of S.reacts) {
+    g.save(); g.globalAlpha = Math.min(1, (2.2 - r.t) * 1.5);
+    g.font = `${54 + r.t * 10}px system-ui, "Apple Color Emoji", "Noto Color Emoji", sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(r.e, r.x + Math.sin(r.t * 5 + r.x) * 18, H - 40 - r.t * 260);
+    g.restore();
+  }
+}
+
 function draw() {
   g.setTransform(1, 0, 0, 1, 0, 0);
   CRISP.ctx = g; CRISP.q.length = 0;
@@ -627,11 +645,12 @@ function draw() {
   else if (S.scene === "lobby") drawLobby();
   else if (S.scene === "choose") drawChoose();
   else if (S.scene === "intro") drawIntro();
-  else if (S.scene === "game") S.game.draw(g);
+  else if (S.scene === "game") { S.game.draw(g); S.gctx?.arena?.drawHazards(g); }
   else if (S.scene === "board") S.board.draw(g, S.t);
   else if (S.scene === "duel") { S.game.draw(g); outlined(g, "DUEL · WINNER TAKES 10", W / 2, 1050, 30, "#b026ff"); }
   else if (S.scene === "results") drawResults();
   else if (S.scene === "final") drawFinal();
+  drawReacts();
   if (S.wipe != null) flushCrisp(g, new DOMMatrix()); // the wipe covers everything, labels too
   drawWipe();
   post();

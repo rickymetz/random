@@ -102,3 +102,8 @@ h2 { margin: 0; font: 48px var(--display); letter-spacing: 3px; color: #fff; tex
 .manual p { margin: 0 0 4px; }
 .hit.bombbtn { width: min(52vw, 220px); font-size: clamp(26px, 8vw, 40px); }
 .radar.big { width: min(96vw, 460px); aspect-ratio: 480 / 280; }
+.reacts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: min(340px, 100%); }
+.reacts button { font: 40px system-ui, "Apple Color Emoji", sans-serif; padding: 10px 0; border-color: var(--cyan); box-shadow: 4px 4px 0 var(--pink); text-transform: none; }
+.reacts button.pop { transform: scale(1.25); }
+.heckle { background: #39ff14; color: var(--ink); border-color: var(--ink); }
+.heckle:disabled { background: #444; color: #aaa; }

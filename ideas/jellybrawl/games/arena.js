@@ -35,8 +35,9 @@ export function arena(ctx, o) {
     }
   } else seats.forEach((p) => bodies.push(makeBody(p)));
 
+  const hazards = []; // goo puddles dropped by knocked-out players (heckles)
   const A = {
-    R, bounds, bodies, dash,
+    R, bounds, bodies, dash, hazards, stepping: false,
     teams: o.teams ? [0, 1].map((t) => bodies.filter((b) => b.team === t)) : null,
     live: () => bodies.filter((b) => !b.out),
     of: (pid) => bodies.find((b) => b.pid === pid),
@@ -67,10 +68,15 @@ export function arena(ctx, o) {
 
     // physics step; returns collisions [{a, b, speed}] and wall hits [{b, speed}]
     step(dt, extra = []) {
+      A.stepping = true;
       const hits = [], walls = [];
+      for (let i = hazards.length - 1; i >= 0; i--) { const h = hazards[i]; h.t += dt; if (h.t > 9) hazards.splice(i, 1); }
+      for (const b of bodies) if (!b.out) for (const h of hazards) if (h.t > 0.6 && Math.hypot(b.x - h.x, b.y - h.y) < R + 34 && !(b.slipT > 0)) {
+        b.slipT = 0.8; const a = Math.random() * Math.PI * 2; b.vx += Math.cos(a) * 520; b.vy += Math.sin(a) * 520; ctx.sfx.pop(); // whee
+      }
       for (const b of bodies) {
         if (b.out) continue;
-        b.dash = Math.max(0, b.dash - dt); b.dashCool -= dt; b.hit = Math.max(0, b.hit - dt);
+        b.dash = Math.max(0, b.dash - dt); b.dashCool -= dt; b.hit = Math.max(0, b.hit - dt); b.slipT = Math.max(0, (b.slipT || 0) - dt);
         const sp = (b.speedMul ?? 1) * speed;
         const k = Math.min(1, accel * dt * (b.dash > 0 ? 0.25 : 1));
         b.vx += (b.mx * sp - b.vx) * k; b.vy += (b.my * sp - b.vy) * k;
@@ -139,7 +145,28 @@ export function arena(ctx, o) {
     // standard layouts
     layoutAll(action, hint, role) { for (const b of bodies) if (!b.ghost) ctx.layout(b.pid, { kind: "stick", radar: false, action, hint, role: role ? role(b) : b.team >= 0 ? `${TEAM[b.team].name} team` : "" }); },
     ghosts: () => bodies.filter((b) => b.ghost),
+
+    // a heckle from someone watching: goo lands near the thick of the action
+    heckle(from) {
+      if (!A.stepping || hazards.length >= 6) return false;
+      const live = A.live();
+      const t = live[Math.floor(Math.random() * live.length)] || { x: (bounds.x0 + bounds.x1) / 2, y: (bounds.y0 + bounds.y1) / 2 };
+      const x = Math.max(bounds.x0 + 50, Math.min(bounds.x1 - 50, t.x + (Math.random() - 0.5) * 360)), y = Math.max(bounds.y0 + 50, Math.min(bounds.y1 - 50, t.y + (Math.random() - 0.5) * 240));
+      hazards.push({ x, y, t: 0, by: from }); ctx.sfx.whoosh();
+      return true;
+    },
+    drawHazards(g) {
+      for (const h of hazards) {
+        const k = Math.min(1, h.t / 0.6), fade = h.t > 8 ? 9 - h.t : 1;
+        if (k < 1) { circle(g, h.x, h.y - (1 - k) * 400, 16, h.by?.color || "#39ff14", INK, 3); continue; } // falling
+        g.save(); g.globalAlpha = 0.85 * fade;
+        g.beginPath(); g.ellipse(h.x, h.y, 38, 24, 0, 0, Math.PI * 2); g.fillStyle = h.by?.color || "#39ff14"; g.fill(); g.lineWidth = 4; g.strokeStyle = INK; g.stroke();
+        circle(g, h.x - 10, h.y - 6, 5, "rgba(255,255,255,.6)");
+        g.restore();
+      }
+    },
   };
+  ctx.arena = A; // the TV reaches heckles through this
   return A;
 }
 
