@@ -118,10 +118,12 @@ payouts are coins.
 
 A hide-in-the-crowd sniper game, decided in a short Q&A on 2026-09-23.
 
-- **Crowd blend.** Every blob in the plaza (the runners plus about 12 AI
-  wanderers per runner, capped near 45) wears a random colour drawn from
-  the colours of the players in the game, with a plain face. Runners get a
-  random one too, not their own, so colour is never a tell. NPCs walk
+- **Crowd blend.** Runners wear their own colour with a plain face (no
+  selfie). They mix with about 12 AI wanderers per runner (capped near 45),
+  dealt evenly across the runners' colours, so each runner has a dozen or
+  so lookalikes. The sniper knows Ana is pink, but there are a dozen pink
+  blobs. The sniper's colour is left out of the crowd, since any blob in it
+  would be a known NPC. NPCs walk
   to random spots, pause, and do small emote bounces.
 - **Solid blobs.** Blobs can't overlap or pass behind one another. Overlapping
   pairs are pushed apart and bounce (restitution 0.7) into a knockback that

@@ -1,6 +1,6 @@
-// Sniper Plaza — asymmetric, 1 vs the rest. Every blob in the plaza wears a
-// random colour from the players' colours and a plain face, runners included
-// (never their own on purpose), so colour gives nothing away: the runners hide in an AI crowd while one sniper hunts
+// Sniper Plaza — asymmetric, 1 vs the rest. Runners wear their own colour
+// (plain face) among NPC lookalikes dealt evenly across the runners' colours,
+// so colour narrows the search but never gives anyone away: the runners hide in an AI crowd while one sniper hunts
 // them through a scope. Runners steal coins (only runners can, so greed gives
 // you away) and find themselves on a private radar on their phone. The sniper
 // drags a trackpad and fires; hitting an innocent costs a long reload and sends
@@ -27,10 +27,13 @@ export default {
     const sniper = ctx.players.find((p) => p.pid === sniperPid);
     const runnersP = ctx.players.filter((p) => p !== sniper);
     const target = 3 + 2 * runnersP.length;
-    // everyone's disguise: a random colour from the players in this game, no selfie
-    const pool = [...new Set(ctx.players.map((q) => q.color))];
-    const look = () => ({ color: pool[Math.floor(Math.random() * pool.length)], face: null, name: "" });
-    const mk = (p) => { const [x, y] = spot(); return { p, look: look(), x, y, vx: 0, vy: 0, goal: spot(), wait: rnd(0, 2), emote: 0, emoteCool: 0, dead: false, mx: 0, my: 0, loot: 0, pace: rnd(0.55, 1), kx: 0, ky: 0, bump: 0, bot: { goal: null, think: 0 } }; };
+    // Runners wear their own colour; NPCs are dealt round-robin across the
+    // runners' colours so each runner has about a dozen lookalikes. The
+    // sniper's colour is left out: any blob wearing it would be a known NPC.
+    const tints = [...new Set(runnersP.map((q) => q.color))];
+    let dealt = 0;
+    const look = (p) => ({ color: p ? p.color : tints[dealt++ % tints.length], face: null, name: "" });
+    const mk = (p) => { const [x, y] = spot(); return { p, look: look(p), x, y, vx: 0, vy: 0, goal: spot(), wait: rnd(0, 2), emote: 0, emoteCool: 0, dead: false, mx: 0, my: 0, loot: 0, pace: rnd(0.55, 1), kx: 0, ky: 0, bump: 0, bot: { goal: null, think: 0 } }; };
     const runners = runnersP.map(mk);
     const npcs = Array.from({ length: Math.min(45 - runners.length, 12 * runners.length + 6) }, () => mk(null));
     const everyone = [...runners, ...npcs];
