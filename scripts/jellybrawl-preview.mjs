@@ -54,7 +54,10 @@ const S = (fn, arg) => tv.evaluate(fn, arg);
 const until = (fn, ms = 30000) => tv.waitForFunction(fn, null, { timeout: ms });
 async function shot(page, file, caption, list) {
   await page.screenshot({ path: path.join(outDir, file), type: "jpeg", quality: page === tv ? 60 : 65 });
-  if (list) list.push({ file: `shots/${file}`, caption, kind: page === tv ? "tv" : "phone" });
+  if (list) { // a retried game can take the same picture twice: keep one
+    const item = { file: `shots/${file}`, caption, kind: page === tv ? "tv" : "phone" }, at = list.findIndex((x) => x.file === item.file);
+    if (at >= 0) list[at] = item; else list.push(item);
+  }
   return `shots/${file}`;
 }
 // keep the phone busy during games: wiggle the stick, press whatever's there

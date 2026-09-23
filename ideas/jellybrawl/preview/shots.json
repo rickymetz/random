@@ -1,0 +1,566 @@
+{
+ "generated": "2026-09-23T19:06:22.299Z",
+ "commit": "2d9134b9",
+ "screens": [
+  {
+   "file": "shots/screen-title.jpg",
+   "caption": "The title screen",
+   "kind": "tv"
+  },
+  {
+   "file": "shots/phone-join.jpg",
+   "caption": "Joining: scan the QR code, type a name",
+   "kind": "phone"
+  },
+  {
+   "file": "shots/phone-face.jpg",
+   "caption": "Add your face: a selfie or a doodle",
+   "kind": "phone"
+  },
+  {
+   "file": "shots/screen-lobby.jpg",
+   "caption": "The lobby: a QR code to join, seats for up to 8, bots to fill in",
+   "kind": "tv"
+  },
+  {
+   "file": "shots/phone-vip.jpg",
+   "caption": "The VIP's phone runs the lobby",
+   "kind": "phone"
+  },
+  {
+   "file": "shots/phone-settings.jpg",
+   "caption": "Accessibility settings: motion, CRT filter, text size, colour-blind shapes\u2026",
+   "kind": "phone"
+  },
+  {
+   "file": "shots/screen-intro.jpg",
+   "caption": "Every game opens with a slammed-in command and the rules",
+   "kind": "tv"
+  },
+  {
+   "file": "shots/phone-ready.jpg",
+   "caption": "\u2026while each phone shows your role, and READY",
+   "kind": "phone"
+  },
+  {
+   "file": "shots/screen-choose.jpg",
+   "caption": "Loser picks: last place chooses the next game from three",
+   "kind": "tv"
+  },
+  {
+   "file": "shots/phone-choose.jpg",
+   "caption": "\u2026on their phone",
+   "kind": "phone"
+  },
+  {
+   "file": "shots/screen-results.jpg",
+   "caption": "Results: rows slide into the standings; lead changes get called out",
+   "kind": "tv"
+  },
+  {
+   "file": "shots/screen-heckle.jpg",
+   "caption": "Knocked out? Drop goo on the living and send emoji",
+   "kind": "tv"
+  },
+  {
+   "file": "shots/phone-heckle.jpg",
+   "caption": "\u2026from the waiting screen",
+   "kind": "phone"
+  },
+  {
+   "file": "shots/screen-pause.jpg",
+   "caption": "The VIP can pause, skip a game or end the night",
+   "kind": "tv"
+  },
+  {
+   "file": "shots/screen-final.jpg",
+   "caption": "The final: a podium and awards for everyone",
+   "kind": "tv"
+  },
+  {
+   "file": "shots/phone-final.jpg",
+   "caption": "\u2026and a rematch button for the VIP",
+   "kind": "phone"
+  }
+ ],
+ "games": [
+  {
+   "id": "flap",
+   "title": "Flap Frenzy",
+   "command": "FLAP!",
+   "kind": "Free-for-all",
+   "min": 1,
+   "max": 8,
+   "blurb": "Flap through the pillars. Last blob flying wins.",
+   "controls": "Tap FLAP on your phone",
+   "tv": [
+    "shots/flap-tv-1.jpg",
+    "shots/flap-tv-2.jpg"
+   ],
+   "phone": "shots/flap-phone.jpg"
+  },
+  {
+   "id": "sling",
+   "title": "Sling Siege",
+   "command": "LAUNCH!",
+   "kind": "Teams",
+   "min": 2,
+   "max": 8,
+   "blurb": "Launch yourself at the enemy fort. Pop their kings!",
+   "controls": "Drag back on your phone, release to launch",
+   "tv": [
+    "shots/sling-tv-1.jpg",
+    "shots/sling-tv-2.jpg"
+   ],
+   "phone": "shots/sling-phone.jpg"
+  },
+  {
+   "id": "chomp",
+   "title": "Chomp Chase",
+   "command": "CHOMP!",
+   "kind": "1 vs rest",
+   "min": 2,
+   "max": 5,
+   "blurb": "One chomper eats dots. Everyone else hunts it down.",
+   "controls": "Swipe or use the d-pad",
+   "tv": [
+    "shots/chomp-tv-1.jpg",
+    "shots/chomp-tv-2.jpg"
+   ],
+   "phone": "shots/chomp-phone.jpg"
+  },
+  {
+   "id": "snipe",
+   "title": "Sniper Plaza",
+   "command": "BLEND IN!",
+   "kind": "1 vs rest",
+   "min": 2,
+   "max": 8,
+   "blurb": "Hide in the crowd and steal the loot. One sniper is watching.",
+   "controls": "Runners: stick + BLEND. Sniper: drag to aim, FIRE",
+   "tv": [
+    "shots/snipe-tv-1.jpg",
+    "shots/snipe-tv-2.jpg"
+   ],
+   "phone": "shots/snipe-phone.jpg"
+  },
+  {
+   "id": "blackout",
+   "title": "Sniper Blackout",
+   "command": "STAY HIDDEN!",
+   "kind": "1 vs rest",
+   "min": 2,
+   "max": 8,
+   "blurb": "Lights out. The sniper only sees through the scope. Use cover, watch your map.",
+   "controls": "Runners: stick + mini-map. Sniper: drag to aim, FIRE",
+   "tv": [
+    "shots/blackout-tv-1.jpg",
+    "shots/blackout-tv-2.jpg"
+   ],
+   "phone": "shots/blackout-phone.jpg"
+  },
+  {
+   "id": "tag",
+   "title": "Infection",
+   "command": "INFECTION!",
+   "kind": "1 vs rest",
+   "min": 3,
+   "max": 8,
+   "blurb": "One blob is infected. Every touch spreads it. Last clean blob wins.",
+   "controls": "Stick to move, DASH to escape (or pounce)",
+   "tv": [
+    "shots/tag-tv-1.jpg",
+    "shots/tag-tv-2.jpg"
+   ],
+   "phone": "shots/tag-phone.jpg"
+  },
+  {
+   "id": "kaiju",
+   "title": "Kaiju",
+   "command": "KAIJU!",
+   "kind": "1 vs rest",
+   "min": 2,
+   "max": 8,
+   "blurb": "One giant blob wrecks the city. Everyone else charges the cannons.",
+   "controls": "Kaiju: stick + STOMP. City: stick + DASH, stand on cannon pads",
+   "tv": [
+    "shots/kaiju-tv-1.jpg",
+    "shots/kaiju-tv-2.jpg"
+   ],
+   "phone": "shots/kaiju-phone.jpg"
+  },
+  {
+   "id": "soccer",
+   "title": "Blob Soccer",
+   "command": "KICK OFF!",
+   "kind": "Teams",
+   "min": 2,
+   "max": 8,
+   "blurb": "Two teams, one ball. First to 3 goals wins.",
+   "controls": "Stick to run, KICK near the ball",
+   "tv": [
+    "shots/soccer-tv-1.jpg",
+    "shots/soccer-tv-2.jpg"
+   ],
+   "phone": "shots/soccer-phone.jpg"
+  },
+  {
+   "id": "sumo",
+   "title": "Sumo Ring",
+   "command": "SHOVE!",
+   "kind": "Free-for-all",
+   "min": 2,
+   "max": 8,
+   "blurb": "Shove everyone off the shrinking ring. Last blob standing wins.",
+   "controls": "Stick to move, BUMP to shove",
+   "tv": [
+    "shots/sumo-tv-1.jpg",
+    "shots/sumo-tv-2.jpg"
+   ],
+   "phone": "shots/sumo-phone.jpg"
+  },
+  {
+   "id": "bumper",
+   "title": "Bumper Blobs",
+   "command": "BUMP!",
+   "kind": "Free-for-all",
+   "min": 2,
+   "max": 8,
+   "blurb": "Bumper cars in a spiked pen. Knock them into the spikes.",
+   "controls": "Stick to drive, BOOST to ram",
+   "tv": [
+    "shots/bumper-tv-1.jpg",
+    "shots/bumper-tv-2.jpg"
+   ],
+   "phone": "shots/bumper-phone.jpg"
+  },
+  {
+   "id": "coinrush",
+   "title": "Coin Rush",
+   "command": "GRAB IT!",
+   "kind": "Free-for-all",
+   "min": 2,
+   "max": 8,
+   "blurb": "Coins rain down. Grab the most. Dodge the spike rollers.",
+   "controls": "Stick to run, DASH to barge (they drop a coin)",
+   "tv": [
+    "shots/coinrush-tv-1.jpg",
+    "shots/coinrush-tv-2.jpg"
+   ],
+   "phone": "shots/coinrush-phone.jpg"
+  },
+  {
+   "id": "potato",
+   "title": "Hot Potato",
+   "command": "PASS IT!",
+   "kind": "Free-for-all",
+   "min": 3,
+   "max": 8,
+   "blurb": "Bump someone to hand them the bomb. Don't be holding it when it pops.",
+   "controls": "Stick to run, DASH to tag someone",
+   "tv": [
+    "shots/potato-tv-1.jpg",
+    "shots/potato-tv-2.jpg"
+   ],
+   "phone": "shots/potato-phone.jpg"
+  },
+  {
+   "id": "paint",
+   "title": "Paint the Town",
+   "command": "PAINT IT!",
+   "kind": "Teams",
+   "min": 2,
+   "max": 8,
+   "blurb": "Roll around to paint the floor. Most ground covered wins.",
+   "controls": "Stick to roll, SPLAT for a paint burst",
+   "tv": [
+    "shots/paint-tv-1.jpg",
+    "shots/paint-tv-2.jpg"
+   ],
+   "phone": "shots/paint-phone.jpg"
+  },
+  {
+   "id": "crown",
+   "title": "Capture the Crown",
+   "command": "GRAB IT!",
+   "kind": "Teams",
+   "min": 2,
+   "max": 8,
+   "blurb": "Keep the crown on your team's head. Bump it off theirs.",
+   "controls": "Stick to run, DASH to knock the crown loose",
+   "tv": [
+    "shots/crown-tv-1.jpg",
+    "shots/crown-tv-2.jpg"
+   ],
+   "phone": "shots/crown-phone.jpg"
+  },
+  {
+   "id": "dodgeball",
+   "title": "Jelly Dodgeball",
+   "command": "DODGE!",
+   "kind": "Teams",
+   "min": 2,
+   "max": 8,
+   "blurb": "Stay on your side. Grab a ball, throw it, knock them out.",
+   "controls": "Stick to move and aim, THROW when holding a ball",
+   "tv": [
+    "shots/dodgeball-tv-1.jpg",
+    "shots/dodgeball-tv-2.jpg"
+   ],
+   "phone": "shots/dodgeball-phone.jpg"
+  },
+  {
+   "id": "snake",
+   "title": "Snake Pit",
+   "command": "SLITHER!",
+   "kind": "Free-for-all",
+   "min": 2,
+   "max": 8,
+   "blurb": "Grow your tail, cut them off. Don't bonk a tail.",
+   "controls": "Stick to steer, tap BOOST for a burst (costs tail)",
+   "tv": [
+    "shots/snake-tv-1.jpg",
+    "shots/snake-tv-2.jpg"
+   ],
+   "phone": "shots/snake-phone.jpg"
+  },
+  {
+   "id": "tug",
+   "title": "Tug of Jelly",
+   "command": "PULL!",
+   "kind": "Teams",
+   "min": 2,
+   "max": 8,
+   "blurb": "Mash to pull the other team into the goo. Tap hard on HEAVE!",
+   "controls": "Mash PULL. Taps during HEAVE! count triple",
+   "tv": [
+    "shots/tug-tv-1.jpg",
+    "shots/tug-tv-2.jpg"
+   ],
+   "phone": "shots/tug-phone.jpg"
+  },
+  {
+   "id": "relay",
+   "title": "Relay Race",
+   "command": "RUN!",
+   "kind": "Teams",
+   "min": 2,
+   "max": 8,
+   "blurb": "Take turns running the obstacle lane. Pass the baton, beat the other team.",
+   "controls": "Stick to run, JUMP over hurdles",
+   "tv": [
+    "shots/relay-tv-1.jpg",
+    "shots/relay-tv-2.jpg"
+   ],
+   "phone": "shots/relay-phone.jpg"
+  },
+  {
+   "id": "stack",
+   "title": "Tower Stack",
+   "command": "STACK!",
+   "kind": "Teams",
+   "min": 2,
+   "max": 8,
+   "blurb": "Take turns dropping slabs. Overhang gets sliced off. Tallest tower wins.",
+   "controls": "Tap DROP when it's your turn",
+   "tv": [
+    "shots/stack-tv-1.jpg",
+    "shots/stack-tv-2.jpg"
+   ],
+   "phone": "shots/stack-phone.jpg"
+  },
+  {
+   "id": "bombsquad",
+   "title": "Bomb Squad",
+   "command": "DEFUSE!",
+   "kind": "Teams",
+   "min": 2,
+   "max": 8,
+   "blurb": "One of you holds the bomb, the rest hold the manual. Talk it through!",
+   "controls": "Defuser: wires, keypad, button on your phone \u00b7 Everyone else: read your manual pages",
+   "tv": [
+    "shots/bombsquad-tv-1.jpg",
+    "shots/bombsquad-tv-2.jpg"
+   ],
+   "phone": "shots/bombsquad-phone.jpg"
+  },
+  {
+   "id": "maze",
+   "title": "Tilt Maze",
+   "command": "TILT!",
+   "kind": "Free-for-all",
+   "min": 1,
+   "max": 8,
+   "blurb": "Tilt your phone to roll through the maze. Mind the holes.",
+   "controls": "Tilt the phone (or use the stick)",
+   "tv": [
+    "shots/maze-tv-1.jpg",
+    "shots/maze-tv-2.jpg"
+   ],
+   "phone": "shots/maze-phone.jpg"
+  },
+  {
+   "id": "draw",
+   "title": "Draw Duel",
+   "command": "DRAW!",
+   "kind": "Free-for-all",
+   "min": 3,
+   "max": 8,
+   "blurb": "Everyone draws the same prompt. Vote for the best one (not your own).",
+   "controls": "Draw on your phone, then vote",
+   "tv": [
+    "shots/draw-tv-1.jpg",
+    "shots/draw-tv-2.jpg"
+   ],
+   "phone": "shots/draw-phone.jpg"
+  },
+  {
+   "id": "haunted",
+   "title": "Haunted House",
+   "command": "BOO!",
+   "kind": "1 vs rest",
+   "min": 3,
+   "max": 8,
+   "blurb": "One invisible ghost. Everyone else has a flashlight. Light it up before it spooks you.",
+   "controls": "Hunters: stick (your beam points where you walk). Ghost: stick + VANISH, map on your phone",
+   "tv": [
+    "shots/haunted-tv-1.jpg",
+    "shots/haunted-tv-2.jpg"
+   ],
+   "phone": "shots/haunted-phone.jpg"
+  },
+  {
+   "id": "whack",
+   "title": "Whack-a-Blob",
+   "command": "WHACK!",
+   "kind": "1 vs rest",
+   "min": 2,
+   "max": 8,
+   "blurb": "Moles pop up for gems. The hammer tries to bonk them.",
+   "controls": "Moles: tap a hole to pop up, DUCK to hide. Hammer: tap holes to whack",
+   "tv": [
+    "shots/whack-tv-1.jpg",
+    "shots/whack-tv-2.jpg"
+   ],
+   "phone": "shots/whack-phone.jpg"
+  },
+  {
+   "id": "kraken",
+   "title": "Kraken",
+   "command": "ROW!",
+   "kind": "1 vs rest",
+   "min": 2,
+   "max": 8,
+   "blurb": "One raft, many rowers who must agree. One kraken who wants it sunk.",
+   "controls": "Rowers: stick (the raft goes where you all point). Kraken: stick to aim, SLAM",
+   "tv": [
+    "shots/kraken-tv-1.jpg",
+    "shots/kraken-tv-2.jpg"
+   ],
+   "phone": "shots/kraken-phone.jpg"
+  },
+  {
+   "id": "tank",
+   "title": "Tank vs Swarm",
+   "command": "SWARM!",
+   "kind": "2 vs rest",
+   "min": 2,
+   "max": 8,
+   "blurb": "Two players drive and gun one tank. Everyone else swarms it.",
+   "controls": "Driver: stick + SHAKE. Gunner: stick aims + FIRE. Swarm: stick + DASH, latch on to gnaw",
+   "tv": [
+    "shots/tank-tv-1.jpg",
+    "shots/tank-tv-2.jpg"
+   ],
+   "phone": "shots/tank-phone.jpg"
+  },
+  {
+   "id": "hill",
+   "title": "King of the Hill Giant",
+   "command": "CLIMB!",
+   "kind": "Free-for-all",
+   "min": 2,
+   "max": 8,
+   "blurb": "Hold the hill and you grow into a slow giant. Everyone else: topple them!",
+   "controls": "Stick to move, SHOVE to charge",
+   "tv": [
+    "shots/hill-tv-1.jpg",
+    "shots/hill-tv-2.jpg"
+   ],
+   "phone": "shots/hill-phone.jpg"
+  },
+  {
+   "id": "pilot",
+   "title": "Blind Pilot",
+   "command": "DRIVE!",
+   "kind": "Teams",
+   "min": 2,
+   "max": 8,
+   "blurb": "The TV is dark. Your pilot drives; the navigators see the track on their phones.",
+   "controls": "Pilot: stick to steer. Navigators: read the map, shout directions!",
+   "tv": [
+    "shots/pilot-tv-1.jpg",
+    "shots/pilot-tv-2.jpg"
+   ],
+   "phone": "shots/pilot-phone.jpg"
+  },
+  {
+   "id": "greed",
+   "title": "Greed Doors",
+   "command": "PICK A DOOR!",
+   "kind": "Free-for-all",
+   "min": 2,
+   "max": 8,
+   "blurb": "Pick a door in secret. Share the prize with whoever else picked it. One door is a bomb.",
+   "controls": "Tap a door on your phone",
+   "tv": [
+    "shots/greed-tv-1.jpg",
+    "shots/greed-tv-2.jpg"
+   ],
+   "phone": "shots/greed-phone.jpg"
+  }
+ ],
+ "modes": [
+  {
+   "id": "board-city",
+   "title": "Board: Neon City",
+   "blurb": "Mario Party-style: roll, take forks, buy stars and items, duel, and play a minigame after every turn.",
+   "shots": [
+    "shots/board-city-tv-1.jpg",
+    "shots/board-city-phone.jpg",
+    "shots/board-city-tv-2.jpg"
+   ]
+  },
+  {
+   "id": "board-sewers",
+   "title": "Board: Slime Sewers",
+   "blurb": "Mario Party-style: roll, take forks, buy stars and items, duel, and play a minigame after every turn.",
+   "shots": [
+    "shots/board-sewers-tv-1.jpg",
+    "shots/board-sewers-phone.jpg",
+    "shots/board-sewers-tv-2.jpg"
+   ]
+  },
+  {
+   "id": "board-volcano",
+   "title": "Board: Volcano Island",
+   "blurb": "Mario Party-style: roll, take forks, buy stars and items, duel, and play a minigame after every turn.",
+   "shots": [
+    "shots/board-volcano-tv-1.jpg",
+    "shots/board-volcano-phone.jpg",
+    "shots/board-volcano-tv-2.jpg"
+   ]
+  },
+  {
+   "id": "gauntlet",
+   "title": "Microgame Gauntlet",
+   "blurb": "WarioWare-style: 20 microgames of a few seconds each, three lives, speeding up, with boss stages.",
+   "shots": [
+    "shots/gauntlet-tv-1.jpg",
+    "shots/gauntlet-phone.jpg",
+    "shots/gauntlet-tv-2.jpg",
+    "shots/gauntlet-tv-3.jpg"
+   ]
+  }
+ ]
+}
