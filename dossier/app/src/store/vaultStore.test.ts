@@ -303,6 +303,81 @@ describe('vault store', () => {
     expect(JSON.stringify([...store().records.values()])).not.toContain('smuggled')
   })
 
+  it('an edit being made to a note, or to the details, comes back on unlock', async () => {
+    const ada = await store().addPerson('Ada')
+    await store().saveNote(ada.id, 'Sails on Sundays')
+    const note = selectNotes(store().records, ada.id)[0]
+    const slot = `note:${note.id}` as const
+    await store().persistDraft(ada.id, 'Sails on Saturdays now', slot)
+    await store().persistDraft(ada.id, '{"form":{"location":"Lisbon"}}', 'details')
+    // Read back at once, ahead of the write: an editor reopening in the
+    // same breath it closed must not miss it.
+    const write = store().persistDraft(ada.id, 'Sails on Saturdays, mostly', slot)
+    expect(store().readDraft(ada.id, slot)).toBe('Sails on Saturdays, mostly')
+    await write
+    store().lock()
+    expect(await store().unlock('open sesame')).toBe(true)
+    expect(store().readDraft(ada.id, slot)).toBe('Sails on Saturdays, mostly')
+    expect(store().readDraft(ada.id, 'details')).toBe('{"form":{"location":"Lisbon"}}')
+    // Neither is the note box's draft, nor in the records.
+    expect(store().drafts.has(ada.id)).toBe(false)
+    expect(JSON.stringify([...store().records.values()])).not.toContain('Saturdays')
+    // Saving is one write with forgetting.
+    await store().updateNote(note.id, 'Sails on Saturdays', { clearDraft: true })
+    await store().updatePerson({ ...ada, location: 'Lisbon' }, { clearDraft: true })
+    expect(store().readDraft(ada.id, slot)).toBeUndefined()
+    store().lock()
+    await store().unlock('open sesame')
+    expect(store().readDraft(ada.id, slot)).toBeUndefined()
+    expect(store().readDraft(ada.id, 'details')).toBeUndefined()
+    expect(selectNotes(store().records, ada.id)[0].body).toBe('Sails on Saturdays')
+  })
+
+  it('a kept edit goes with its note, and every draft goes with the person', async () => {
+    const ada = await store().addPerson('Ada')
+    await store().saveNote(ada.id, 'one')
+    await store().saveNote(ada.id, 'two')
+    const [a, b] = selectNotes(store().records, ada.id)
+    await store().persistDraft(ada.id, 'edit of a', `note:${a.id}`)
+    await store().persistDraft(ada.id, 'edit of b', `note:${b.id}`)
+    await store().removeNote(a.id)
+    expect(store().readDraft(ada.id, `note:${a.id}`)).toBeUndefined()
+    // …and a late write for a note that's gone is refused.
+    await store().persistDraft(ada.id, 'again', `note:${a.id}`)
+    store().lock()
+    await store().unlock('open sesame')
+    expect(store().readDraft(ada.id, `note:${a.id}`)).toBeUndefined()
+    expect(store().readDraft(ada.id, `note:${b.id}`)).toBe('edit of b')
+
+    await store().persistDraft(ada.id, '{"form":{}}', 'details')
+    await store().persistDraft(ada.id, 'box')
+    await store().removePerson(ada.id)
+    store().lock()
+    await store().unlock('open sesame')
+    expect(store().readDraft(ada.id, `note:${b.id}`)).toBeUndefined()
+    expect(store().readDraft(ada.id, 'details')).toBeUndefined()
+    expect(store().drafts.size).toBe(0)
+    const rows = await db.records.count()
+    // Only what the vault itself keeps is left on disk: no stray drafts.
+    store().lock()
+    await store().unlock('open sesame')
+    expect(await db.records.count()).toBe(rows)
+  })
+
+  it('a lock writes the edits still waiting on a pause in typing', async () => {
+    const ada = await store().addPerson('Ada')
+    let waiting = true
+    const unregister = store().registerDraftSaver(async () => {
+      if (waiting) await store().persistDraft(ada.id, '{"form":{"pronouns":"she/her"}}', 'details')
+      waiting = false
+    })
+    await store().flushDrafts()
+    unregister()
+    store().lock()
+    await store().unlock('open sesame')
+    expect(store().readDraft(ada.id, 'details')).toBe('{"form":{"pronouns":"she/her"}}')
+  })
+
   it('updateNote re-derives mention edges from the new text', async () => {
     const ada = await store().addPerson('Ada')
     const bob = await store().addPerson('Bob')

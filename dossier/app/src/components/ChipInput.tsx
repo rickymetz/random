@@ -25,6 +25,7 @@ export default function ChipInput({
   values,
   onChange,
   onDraftChange,
+  initialDraft = '',
   suggestions = [],
   placeholder,
   label,
@@ -40,6 +41,8 @@ export default function ChipInput({
    * turn it into a chip on the way out (see the blur handler).
    */
   onDraftChange?: (draft: string) => void
+  /** Half-typed text to start with: a kept draft of the form coming back. */
+  initialDraft?: string
   suggestions?: string[]
   placeholder?: string
   label: string
@@ -50,7 +53,7 @@ export default function ChipInput({
   /** Phone keyboard capitalisation: names and circles want 'words'. */
   capitalize?: 'none' | 'words'
 }) {
-  const [draft, setDraftState] = useState('')
+  const [draft, setDraftState] = useState(initialDraft)
   // The leftover is reported the way a commit would store it: an
   // existing spelling wins ("climbing crew" typed is "Climbing crew"), so
   // a word saved by the form's Save doesn't start a second spelling.
