@@ -1123,7 +1123,8 @@
   function saveOffline(s, on) {
     return ideasReady.then(function () {
       var idea = ideaBySlug(s);
-      return on && s !== slug && idea ? loadHidden(new URL(idea.url, HUB).href) : null;
+      // the idea itself, not an entry page in front of it (a preview)
+      return on && s !== slug && idea ? loadHidden(new URL('ideas/' + s + '/', HUB).href) : null;
     }).then(function () { return ask({ type: 'PIN', slug: s, on: !!on }); }).then(function (st) {
       if (on) addEvent({ id: 'saved:' + s, type: 'saved', slug: s });
       return st;

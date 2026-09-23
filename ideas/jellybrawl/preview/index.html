@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="random-nav" content="off">
+<meta name="random-nav" content="overlay">
 <meta name="theme-color" content="#0d0221">
 <title>Jellybrawl · Preview</title>
 <meta name="description" content="Screenshots of every screen and minigame in Jellybrawl, a Mario Party × Jackbox party game where the TV is the shared screen and phones are the controllers.">
@@ -28,7 +28,7 @@
       radial-gradient(1200px 500px at 50% -10%, #3a0d4a 0%, transparent 70%),
       repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 2px, transparent 2px 4px),
       var(--bg);
-    min-height: 100vh; padding: 0 16px 60px;
+    min-height: 100vh; padding: 0 16px calc(60px + var(--random-nav-h, 0px));
   }
   a { color: var(--cyan); }
   a:hover { color: #7ff3fb; }
@@ -167,7 +167,7 @@
 </head>
 <body>
 <nav class="top" aria-label="Site">
-  <a href="../../../">← random</a><span>/</span><a href="../">Jellybrawl</a><span>/</span><span>Preview</span>
+  <a href="../../../" data-random-keep>← random</a><span>/</span><a href="../">Jellybrawl</a><span>/</span><span>Preview</span>
 </nav>
 
 <main class="page">
@@ -374,8 +374,8 @@ for (const b of document.querySelectorAll(".filters button")) b.addEventListener
 // lightbox
 const lb = $("#lb"), lbImg = lb.querySelector("img"), lbCap = lb.querySelector("p");
 let cur = 0, back = null;
-function open(n) { cur = (n + all.length) % all.length; lbImg.src = all[cur].src; lbImg.alt = all[cur].alt; lbCap.textContent = all[cur].alt; if (!lb.classList.contains("open")) back = document.activeElement; lb.classList.add("open"); lb.querySelector(".x").focus(); }
-function close() { lb.classList.remove("open"); back?.focus(); }
+function open(n) { cur = (n + all.length) % all.length; lbImg.src = all[cur].src; lbImg.alt = all[cur].alt; lbCap.textContent = all[cur].alt; if (!lb.classList.contains("open")) { back = document.activeElement; window.randomNav?.hide(); } lb.classList.add("open"); lb.querySelector(".x").focus(); }
+function close() { lb.classList.remove("open"); window.randomNav?.show(); back?.focus(); }
 lb.querySelector(".x").onclick = close;
 lb.querySelector(".prev").onclick = () => open(cur - 1);
 lb.querySelector(".next").onclick = () => open(cur + 1);

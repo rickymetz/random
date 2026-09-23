@@ -33,6 +33,11 @@ idea), add an `ideas/<slug>/idea.json`:
 }
 ```
 
+`entry` (optional) sends the hub's links (the homepage card, the launcher,
+recents and app shortcuts) to a page inside the idea instead of its
+`index.html`, e.g. `"entry": "preview/"` for a store-style page in front of
+the app. "Save offline" still saves the idea itself.
+
 `color` is the idea's colour: its full-colour block on the homepage, its
 swatch and its launcher tile. Text on it is white or ink, whichever reads
 better (the build warns if neither reaches 4.5:1). Without it, a colour is
