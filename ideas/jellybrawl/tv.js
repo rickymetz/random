@@ -2,7 +2,7 @@
 // render the layouts we send them (see index.html / controller.js).
 
 import { hostRoom } from "./net.js";
-import { W, H, INK, POP, T, fit, grid, neon, text, outlined, rrect, shout, sunburst, halftone, panel, bomb, circle, blob, tag, star, shade } from "./gfx.js";
+import { W, H, INK, POP, T, fit, grid, neon, text, outlined, rrect, shout, sunburst, halftone, panel, bomb, circle, blob, tag, star, shade, CRISP, flushCrisp } from "./gfx.js";
 import { qr } from "./qr.js";
 import { sfx, unlock } from "./sfx.js";
 import flap from "./games/flap.js";
@@ -576,7 +576,7 @@ const overlay = (() => {
   o.fillStyle = "rgba(0,0,0,.22)";
   for (let y = 0; y < H; y += 4) o.fillRect(0, y, W, 2);
   const v = o.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.95);
-  v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.65)");
+  v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.5)");
   o.fillStyle = v; o.fillRect(0, 0, W, H);
   return c;
 })();
@@ -594,19 +594,21 @@ function post() {
     ch.g.globalCompositeOperation = "copy"; ch.g.drawImage(low, 0, 0);
     ch.g.globalCompositeOperation = "multiply"; ch.g.fillStyle = ch.color; ch.g.fillRect(0, 0, LW, LH);
   }
-  S.shake = Math.max(0, (S.shake || 0) - 0.9);
+  S.shake = Math.min(30, Math.max(0, (S.shake || 0) - 0.9));
   const sh = S.shake, now = performance.now() / 1000;
+  // a smooth wobble that dies away, not a new random jolt every frame
   out.save();
   out.imageSmoothingEnabled = false;
   out.fillStyle = INK; out.fillRect(0, 0, W, H);
-  out.translate(W / 2 + (Math.random() - 0.5) * sh, H / 2 + (Math.random() - 0.5) * sh);
-  out.rotate(Math.sin(now * 0.5) * 0.006 + (Math.random() - 0.5) * sh * 0.0015);
+  out.translate(W / 2 + Math.sin(now * 41) * sh * 0.45, H / 2 + Math.cos(now * 37) * sh * 0.45);
+  out.rotate(Math.sin(now * 0.5) * 0.006 + Math.sin(now * 29) * sh * 0.0006);
   out.scale(1.02, 1.02);
   out.translate(-W / 2, -H / 2);
+  const base = out.getTransform(); // the crisp labels follow the same sway and shake
   out.drawImage(low, 0, 0, W, H);
   out.globalCompositeOperation = "screen";
   out.globalAlpha = 0.28;
-  const ab = 4 + sh * 0.4;
+  const ab = 4 + Math.min(sh, 20) * 0.25;
   out.drawImage(chans[0].c, ab, 0, W, H);
   out.drawImage(chans[1].c, -ab, 0, W, H);
   out.restore();
@@ -615,10 +617,12 @@ function post() {
   out.globalCompositeOperation = "overlay"; out.globalAlpha = 0.18;
   out.drawImage(grain[Math.floor(Math.random() * 3)], 0, 0, W, H);
   out.restore();
+  flushCrisp(out, base);
 }
 
 function draw() {
   g.setTransform(1, 0, 0, 1, 0, 0);
+  CRISP.ctx = g; CRISP.q.length = 0;
   if (S.scene === "gate") drawGate();
   else if (S.scene === "lobby") drawLobby();
   else if (S.scene === "choose") drawChoose();
@@ -628,6 +632,7 @@ function draw() {
   else if (S.scene === "duel") { S.game.draw(g); outlined(g, "DUEL · WINNER TAKES 10", W / 2, 1050, 30, "#b026ff"); }
   else if (S.scene === "results") drawResults();
   else if (S.scene === "final") drawFinal();
+  if (S.wipe != null) flushCrisp(g, new DOMMatrix()); // the wipe covers everything, labels too
   drawWipe();
   post();
 }

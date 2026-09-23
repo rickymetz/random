@@ -84,7 +84,7 @@ export default {
         }
       },
       draw(g) {
-        g.fillStyle = "#020104"; g.fillRect(0, 0, W, H);
+        g.fillStyle = "#0b0912"; g.fillRect(0, 0, W, H);
         // only the headlights light the road
         g.save(); g.beginPath();
         for (const c of cars) { g.moveTo(c.x + LIGHT * 0.6, c.y); g.arc(c.x, c.y, LIGHT * 0.6, 0, Math.PI * 2); g.moveTo(c.x, c.y); g.arc(c.x, c.y, LIGHT * 1.9, c.ang - 0.45, c.ang + 0.45); g.closePath(); }
@@ -113,7 +113,7 @@ export default {
           for (let k = 0; k < totalCp; k++) circle(g, x - (totalCp - 1) * 14 + k * 28, 96, 10, k < c.cp - 1 ? TEAM[c.t].color : "rgba(255,255,255,.12)", INK, 2);
         }
         outlined(g, String(ck.left()), W / 2, 70, 70, "#fff");
-        text(g, "NAVIGATORS: CHECK YOUR PHONES", W / 2, 124, 22, "#777", "center", 900);
+        text(g, "NAVIGATORS: CHECK YOUR PHONES", W / 2, 124, 24, "#c8c8d0", "center", 900);
         ck.overlay(g, "DRIVE!");
       },
     };

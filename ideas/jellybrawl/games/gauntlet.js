@@ -86,7 +86,7 @@ const MICROS = [
       for (const [pid, x] of st.lanes) {
         const s = st.p[pid], y = STAGE_BOT - 70;
         blob(g, st.players[pid], x, y, 36);
-        if (s.d) outlined(g, ARROWS[s.d], x, y - 80, 50, s.d === st.dir ? "#39ff14" : "#ff2a6d");
+        if (s.d) outlined(g, ARROWS[s.d] + (s.d === st.dir ? "✓" : "✗"), x, y - 80, 50, s.d === st.dir ? "#39ff14" : "#ff2a6d");
       }
     },
     judge: (st, pid) => st.p[pid].d === st.dir,
@@ -105,7 +105,7 @@ const MICROS = [
       for (const [pid, x] of st.lanes) {
         const s = st.p[pid], y = STAGE_BOT - 70;
         blob(g, st.players[pid], x, y, 36);
-        if (s.pick) rrect(g, x - 22, y - 110, 44, 44, 4, COLORS.find(([id]) => id === s.pick)[1], s.pick === st.target ? "#39ff14" : "#ff2a6d", 6);
+        if (s.pick) { rrect(g, x - 22, y - 110, 44, 44, 4, COLORS.find(([id]) => id === s.pick)[1], s.pick === st.target ? "#39ff14" : "#ff2a6d", 6); text(g, s.pick === st.target ? "✓" : "✗", x, y - 110 - 26, 30, s.pick === st.target ? "#39ff14" : "#ff2a6d", "center", 900); }
       }
     },
     judge: (st, pid) => st.p[pid].pick === st.target,
@@ -132,7 +132,7 @@ const MICROS = [
       st.dots.forEach(([x, y, ph], i) => blob(g, who[i % who.length], x + Math.sin(t * 5 + ph) * 18, y + Math.cos(t * 4 + ph) * 12, 40));
       for (const [pid, x] of st.lanes) {
         const s = st.p[pid];
-        if (s.pick != null) tag(g, String(s.pick), x, STAGE_BOT - 30, s.pick === st.n ? "#39ff14" : "#ff2a6d", 30);
+        if (s.pick != null) tag(g, `${s.pick} ${s.pick === st.n ? "✓" : "✗"}`, x, STAGE_BOT - 30, s.pick === st.n ? "#39ff14" : "#ff2a6d", 30);
       }
     },
     judge: (st, pid) => st.p[pid].pick === st.n,
@@ -155,6 +155,7 @@ const MICROS = [
         g.fillStyle = "rgba(57,255,20,.45)"; g.fillRect(x - 26, top + h * (1 - st.c - st.w / 2), 52, h * st.w);
         g.fillStyle = s.v == null ? "#fff" : Math.abs(s.v - st.c) < st.w / 2 ? "#39ff14" : "#ff2a6d";
         g.fillRect(x - 40, top + h * (1 - v) - 5, 80, 10);
+        if (s.v != null) { const hit = Math.abs(s.v - st.c) < st.w / 2; text(g, hit ? "✓" : "✗", x + 60, top + h * (1 - v), 34, hit ? "#39ff14" : "#ff2a6d", "center", 900); }
         blob(g, st.players[pid], x, STAGE_BOT - 45, 32);
       }
     },
@@ -258,7 +259,7 @@ const MICROS = [
       text(g, "◀  OR  ▶", W / 2, STAGE_TOP + 220, 50, "#fff", "center", 900);
       for (const [pid, x] of st.lanes) {
         const s = st.p[pid]; blob(g, st.players[pid], x, STAGE_BOT - 70, 36);
-        if (s.d) outlined(g, s.d === "left" ? "◀" : "▶", x, STAGE_BOT - 150, 50, s.d === st.ans ? "#39ff14" : "#ff2a6d");
+        if (s.d) outlined(g, (s.d === "left" ? "◀" : "▶") + (s.d === st.ans ? "✓" : "✗"), x, STAGE_BOT - 150, 50, s.d === st.ans ? "#39ff14" : "#ff2a6d");
       }
     },
     judge: (st, pid) => st.p[pid].d === st.ans,
@@ -281,7 +282,7 @@ const MICROS = [
       } else outlined(g, "YOUR TURN", W / 2, STAGE_TOP + 230, 120, "#fff");
       for (const [pid, x] of st.lanes) {
         const s = st.p[pid]; blob(g, st.players[pid], x, STAGE_BOT - 70, 36);
-        s.got.forEach((d, i) => text(g, ARROWS[d], x - 40 + i * 27, STAGE_BOT - 140, 26, d === st.seq[i] ? "#39ff14" : "#ff2a6d", "center", 800));
+        s.got.forEach((d, i) => text(g, ARROWS[d] + (d === st.seq[i] ? "" : "✗"), x - 40 + i * 27, STAGE_BOT - 140, 26, d === st.seq[i] ? "#39ff14" : "#ff2a6d", "center", 800));
       }
     },
     judge: (st, pid) => st.p[pid].got.join() === st.seq.join(),
@@ -361,7 +362,7 @@ const MICROS = [
     input(st, pid, m) { const s = st.p[pid]; if (m.t === "pad" && s.pick == null) s.pick = +m.id; },
     draw(g, st) {
       outlined(g, `${st.q} = ?`, W / 2, STAGE_TOP + 220, 200, "#fff");
-      for (const [pid, x] of st.lanes) { const s = st.p[pid]; blob(g, st.players[pid], x, STAGE_BOT - 70, 36); if (s.pick != null) tag(g, String(s.pick), x, STAGE_BOT - 140, s.pick === st.ans ? "#39ff14" : "#ff2a6d", 28); }
+      for (const [pid, x] of st.lanes) { const s = st.p[pid]; blob(g, st.players[pid], x, STAGE_BOT - 70, 36); if (s.pick != null) tag(g, `${s.pick} ${s.pick === st.ans ? "✓" : "✗"}`, x, STAGE_BOT - 140, s.pick === st.ans ? "#39ff14" : "#ff2a6d", 28); }
     },
     judge: (st, pid) => st.p[pid].pick === st.ans,
     bot(st, pid, t) { const s = st.p[pid]; if (s.pick == null && t >= s.botAt) s.pick = s.botOk ? st.ans : pick(st.opts.filter((n) => n !== st.ans)); },
@@ -382,7 +383,7 @@ const MICROS = [
         blob(g, { color: c, name: "" }, x, y, 80);
         text(g, String(i + 1), x, y + 130, 50, "#fff", "center", 900);
       });
-      for (const [pid, x] of st.lanes) { const s = st.p[pid]; blob(g, st.players[pid], x, STAGE_BOT - 50, 30); if (s.pick != null) tag(g, String(s.pick + 1), x, STAGE_BOT - 110, s.pick === st.odd ? "#39ff14" : "#ff2a6d", 26); }
+      for (const [pid, x] of st.lanes) { const s = st.p[pid]; blob(g, st.players[pid], x, STAGE_BOT - 50, 30); if (s.pick != null) tag(g, `${s.pick + 1} ${s.pick === st.odd ? "✓" : "✗"}`, x, STAGE_BOT - 110, s.pick === st.odd ? "#39ff14" : "#ff2a6d", 26); }
     },
     judge: (st, pid) => st.p[pid].pick === st.odd,
     bot(st, pid, t) { const s = st.p[pid]; if (s.pick == null && t >= s.botAt) s.pick = s.botOk ? st.odd : (st.odd + 1 + Math.floor(Math.random() * 3)) % 4; },
@@ -421,7 +422,7 @@ const MICROS = [
     draw(g, st) {
       outlined(g, ARROWS[st.arrow], W / 2, STAGE_TOP + 200, 300, "#ff2a6d");
       outlined(g, st.word.toUpperCase(), W / 2, STAGE_TOP + 210, 130, "#fff");
-      for (const [pid, x] of st.lanes) { const s = st.p[pid]; blob(g, st.players[pid], x, STAGE_BOT - 70, 36); if (s.d) outlined(g, ARROWS[s.d], x, STAGE_BOT - 150, 50, s.d === st.word ? "#39ff14" : "#ff2a6d"); }
+      for (const [pid, x] of st.lanes) { const s = st.p[pid]; blob(g, st.players[pid], x, STAGE_BOT - 70, 36); if (s.d) outlined(g, ARROWS[s.d] + (s.d === st.word ? "✓" : "✗"), x, STAGE_BOT - 150, 50, s.d === st.word ? "#39ff14" : "#ff2a6d"); }
     },
     judge: (st, pid) => st.p[pid].d === st.word,
     bot(st, pid, t) { const s = st.p[pid]; if (s.d == null && t >= s.botAt) s.d = s.botOk ? st.word : st.arrow !== st.word ? st.arrow : pick(Object.keys(ARROWS)); },
@@ -437,7 +438,7 @@ const MICROS = [
     draw(g, st, t) {
       if (t < st.show) rrect(g, W / 2 - 150, STAGE_TOP + 60, 300, 300, 10, COLORS.find(([id]) => id === st.target)[1], INK, 10);
       else { rrect(g, W / 2 - 150, STAGE_TOP + 60, 300, 300, 10, "#1b1030", INK, 10); outlined(g, "?", W / 2, STAGE_TOP + 210, 200, "#fff"); }
-      for (const [pid, x] of st.lanes) { const s = st.p[pid]; blob(g, st.players[pid], x, STAGE_BOT - 70, 36); if (s.pick) rrect(g, x - 22, STAGE_BOT - 180, 44, 44, 4, COLORS.find(([id]) => id === s.pick)[1], s.pick === st.target ? "#39ff14" : "#ff2a6d", 6); }
+      for (const [pid, x] of st.lanes) { const s = st.p[pid]; blob(g, st.players[pid], x, STAGE_BOT - 70, 36); if (s.pick) { rrect(g, x - 22, STAGE_BOT - 180, 44, 44, 4, COLORS.find(([id]) => id === s.pick)[1], s.pick === st.target ? "#39ff14" : "#ff2a6d", 6); text(g, s.pick === st.target ? "✓" : "✗", x, STAGE_BOT - 180 - 26, 30, s.pick === st.target ? "#39ff14" : "#ff2a6d", "center", 900); } }
     },
     judge: (st, pid) => st.p[pid].pick === st.target,
     bot(st, pid, t) { const s = st.p[pid]; if (s.pick == null && t >= s.botAt) s.pick = s.botOk ? st.target : pick(COLORS.filter(([id]) => id !== st.target))[0]; },

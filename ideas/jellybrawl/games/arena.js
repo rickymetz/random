@@ -118,6 +118,13 @@ export function arena(ctx, o) {
       if (b.team >= 0) { g.beginPath(); g.ellipse(b.x, b.y + R * 0.75, R * 1.05, R * 0.4, 0, 0, Math.PI * 2); g.lineWidth = 5; g.strokeStyle = TEAM[b.team].color; g.stroke(); }
       const bob = moving ? Math.abs(Math.sin(performance.now() / 70 + b.x)) * 4 : 0;
       blob(g, b.p, b.x, b.y - bob, R, { sx: 1 + sq + (b.dash > 0 ? 0.2 : 0), sy: 1 - sq - (b.dash > 0 ? 0.15 : 0), alpha: opt.alpha, tint: opt.tint });
+      if (b.team >= 0) { // team first, blob colour second: an outline and a lettered badge
+        g.save(); if (opt.alpha != null) g.globalAlpha = opt.alpha;
+        g.beginPath(); g.arc(b.x, b.y - bob, R + 5, 0, Math.PI * 2); g.lineWidth = 7; g.strokeStyle = TEAM[b.team].color; g.stroke();
+        circle(g, b.x + R * 0.8, b.y - bob - R * 0.8, 13, TEAM[b.team].color, INK, 3);
+        text(g, TEAM[b.team].name[0], b.x + R * 0.8, b.y - bob - R * 0.8 + 1, 20, INK, "center", 900);
+        g.restore();
+      }
       if (!opt.noTag) tag(g, b.ghost ? "BOT" : b.p.name, b.x, b.y - R - 22, b.team >= 0 ? TEAM[b.team].color : b.p.color, 16);
     },
 

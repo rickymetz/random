@@ -14,7 +14,25 @@ export const T = {
 const DISPLAY = () => `${T.display}, ${FALLBACK}`;
 
 /** Body text; weight 900 means a display label (League Gothic, tracked out). */
+// Small text drawn into the scene is queued instead and drawn by the TV after
+// its low-res CRT pass, at full resolution, so labels and name tags stay sharp.
+// Only the scene context queues (offscreen caches draw straight away).
+export const CRISP = { ctx: null, q: [], min: 20 };
+const queue = (g, fn, args) => {
+  if (g !== CRISP.ctx) return false;
+  CRISP.q.push({ m: g.getTransform(), a: g.globalAlpha, fn, args });
+  return true;
+};
+export function flushCrisp(out, base) {
+  const q = CRISP.q.splice(0), was = CRISP.ctx;
+  CRISP.ctx = null; // replaying: draw for real
+  for (const it of q) { out.setTransform(base.multiply(it.m)); out.globalAlpha = it.a; it.fn(out, ...it.args); }
+  out.setTransform(1, 0, 0, 1, 0, 0); out.globalAlpha = 1;
+  CRISP.ctx = was;
+}
+
 export function text(g, str, x, y, size, color = "#fff", align = "center", weight = 800) {
+  if (size < 48 && queue(g, text, [str, x, y, Math.max(size, CRISP.min), color, align, weight])) return;
   const display = weight >= 900;
   g.font = display ? `${Math.round(size * T.labelScale)}px ${T.label}, ${FALLBACK}` : `${weight} ${size}px ${FONT}`;
   g.letterSpacing = display ? `${Math.round(size * 0.06)}px` : "0px";
@@ -317,6 +335,7 @@ export function shade(hex, amt) {
 
 /** Name label: a tilted tape strip. */
 export function tag(g, str, x, y, color = "#fff", size = 26) {
+  if (queue(g, tag, [str, x, y, color, Math.max(size, CRISP.min)])) return;
   g.font = `${Math.round(size * T.labelScale)}px ${T.label}, ${FALLBACK}`;
   g.letterSpacing = `${Math.round(size * 0.06)}px`;
   const w = g.measureText(String(str).toUpperCase()).width + size;
