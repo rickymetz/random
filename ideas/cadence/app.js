@@ -189,6 +189,7 @@
   var views = {
     today: document.getElementById('view-today'),
     week: document.getElementById('view-week'),
+    plan: document.getElementById('view-plan'),
     progress: document.getElementById('view-progress'),
     settings: document.getElementById('view-settings')
   };
@@ -223,6 +224,15 @@
     ]);
   }
 
+  /* A goal of zero is no goal: its meter only shows once there's something
+   * on it, so a week of bonus sessions still shows up. */
+  function goalMeters(stats, suffix) {
+    return [
+      stats.strengthTarget || stats.strength ? meter('Calisthenics' + (suffix || ''), stats.strength, stats.strengthTarget) : null,
+      stats.mobilityTarget || stats.mobility ? meter('Mobility' + (suffix || ''), stats.mobility, stats.mobilityTarget) : null
+    ];
+  }
+
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
   /* Ticking a box used to store nothing at all, so the "I already know these
@@ -231,13 +241,13 @@
   var quickLog = null;
   var quickValue = 0;
 
-  function suggestQuick(date, ex) {
+  function suggestQuick(date, workout, ex) {
     var history = S.historyFor(ex.id, 'best').filter(function (row) { return row.iso !== S.toISO(date); });
     if (history.length) return history[history.length - 1].value;
-    return ex.mode === 'time' ? R.timerSeconds(ex, (S.workoutForSession(date) || {}).kind) : ex.min || 0;
+    return ex.mode === 'time' ? R.timerSeconds(ex, workout.kind) : ex.min || 0;
   }
 
-  function quickRow(date, ex) {
+  function quickRow(date, workout, ex) {
     var input = h('input', {
       type: 'number', min: 0, max: 999, class: 'quick-input',
       'aria-label': ex.name + ', ' + (ex.mode === 'time' ? 'seconds held' : 'reps'),
@@ -256,14 +266,14 @@
       h('button', {
         class: 'btn btn-sm btn-primary', type: 'button', text: 'Log',
         onclick: function () {
-          S.setItem(date, ex.id, { sets: [quickValue], done: true });
+          S.setItem(date, workout.id, ex.id, { sets: [quickValue], done: true });
           quickLog = null;
           buzz(12);
         }
       }),
       h('button', {
         class: 'btn btn-sm btn-ghost', type: 'button', text: 'No number',
-        onclick: function () { quickLog = null; S.toggleItem(date, ex.id); }
+        onclick: function () { quickLog = null; S.toggleItem(date, workout.id, ex.id); }
       })
     ]);
   }
@@ -271,7 +281,8 @@
   function exerciseRows(date, workout) {
     var rows = [];
     var lastBlock = null;
-    var sessionIds = S.sessionItemIds(date);
+    var wid = workout.id;
+    var sessionIds = S.sessionItemIds(date, wid);
     var rendered = {};
     R.flatten(workout).forEach(function (row, index) {
       if (sessionIds.indexOf(row.ex.id) === -1) return;   // added to the routine after this day
@@ -281,19 +292,19 @@
       }
       lastBlock = row.block;
       var ex = row.ex;
-      var log = S.itemLog(date, ex.id);
+      var log = S.itemLog(date, wid, ex.id);
       var done = !!(log && log.done);
       var actual = log ? setsSummary(ex, log.sets) : '';
       var note = log && log.note ? log.note : '';
       var detail = [actual, note].filter(Boolean).join(' — ');
 
-      var iso = S.toISO(date);
+      var key = S.toISO(date) + ':' + wid + ':' + ex.id;
       rows.push(h('div', { class: 'row' + (done ? ' is-done' : '') }, [
         h('button', {
           class: 'row-main',
           type: 'button',
-          'data-fkey': 'row:' + iso + ':' + ex.id,
-          onclick: function () { session.start(date, index); }
+          'data-fkey': 'row:' + key,
+          onclick: function () { session.start(date, wid, index); }
         }, [
           h('div', { class: 'row-name', text: ex.name }),
           detail ? h('div', { class: 'row-actual', text: detail }) : null
@@ -302,20 +313,20 @@
         h('button', {
           class: 'check',
           type: 'button',
-          'data-fkey': 'check:' + iso + ':' + ex.id,
+          'data-fkey': 'check:' + key,
           'aria-pressed': done ? 'true' : 'false',
           'aria-label': (done ? 'Mark not done: ' : 'Mark done: ') + ex.name,
           onclick: function () {
-            if (done) { S.toggleItem(date, ex.id); return; }
+            if (done) { S.toggleItem(date, wid, ex.id); return; }
             var hasNumbers = log && (log.sets || []).some(function (n) { return n > 0; });
-            if (ex.mode === 'none' || hasNumbers) { S.toggleItem(date, ex.id); buzz(12); return; }
-            quickLog = S.toISO(date) + ':' + ex.id;
-            quickValue = suggestQuick(date, ex);
+            if (ex.mode === 'none' || hasNumbers) { S.toggleItem(date, wid, ex.id); buzz(12); return; }
+            quickLog = key;
+            quickValue = suggestQuick(date, workout, ex);
             render();
           }
         }, [h('span', { text: done ? '✓' : '' })])
       ]));
-      if (quickLog === iso + ':' + ex.id) rows.push(quickRow(date, ex));
+      if (quickLog === key) rows.push(quickRow(date, workout, ex));
     });
 
     // Anything this session contained that the routine no longer does.
@@ -324,20 +335,20 @@
       var found = R.findExercise(S.routine(), id);
       var ex = found ? found.ex : S.state.retired[id];
       if (!ex) return;
-      var log = S.itemLog(date, id);
+      var log = S.itemLog(date, wid, id);
       var done = !!(log && log.done);
       rows.push(h('div', { class: 'row' + (done ? ' is-done' : '') }, [
         h('span', { class: 'row-main' }, [
           h('div', { class: 'row-name', text: ex.name }),
-          h('div', { class: 'row-actual', text: 'No longer in your routine' })
+          h('div', { class: 'row-actual', text: 'No longer in this program' })
         ]),
         h('span', { class: 'row-target', text: R.targetLabel(ex) }),
         h('button', {
           class: 'check', type: 'button',
-          'data-fkey': 'check:' + S.toISO(date) + ':' + id,
+          'data-fkey': 'check:' + S.toISO(date) + ':' + wid + ':' + id,
           'aria-pressed': done ? 'true' : 'false',
           'aria-label': (done ? 'Mark not done: ' : 'Mark done: ') + ex.name,
-          onclick: function () { S.toggleItem(date, id); }
+          onclick: function () { S.toggleItem(date, wid, id); }
         }, [h('span', { text: done ? '✓' : '' })])
       ]));
     });
@@ -489,148 +500,222 @@
 
   /* ---------- today ---------- */
 
+  /* ---------- today ---------- */
+
+  var openLists = {};   /* wid -> true while its exercise list is shown on Today */
+
   function renderToday() {
     var root = views.today;
     clear(root);
 
     var date = S.today();
-    var workout = S.workoutForSession(date);
-    var progress = S.sessionProgress(date);
     var weekNo = S.weekNumber(date);
     var stats = S.weekStats(S.mondayOf(date));
-    var isRest = workout.kind === 'rest';
-    var done = S.isSessionDone(date);
-    var pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+    var sessions = S.sessionsOn(date);
+    var counted = sessions.filter(function (r) { return S.counts(r.workout); });
+    var active = counted.filter(function (r) { return !r.entry.done; })[0] || null;
+    var suggestion = active ? null : S.suggestionFor(date);
+    var focus = active ? active.workout : suggestion ? suggestion.workout : null;
 
     var hero = h('section', { class: 'card hero' }, [
       h('div', { class: 'hero-day' }, [
         h('span', { class: 'eyebrow', text: date.toLocaleDateString(undefined, { weekday: 'long' }) }),
         h('span', { class: 'small muted', text: 'Week ' + weekNo + ' · ' + S.formatDate(date) })
       ]),
-      h('div', { class: 'hero-workout', text: workout.name }),
-      h('div', {
-        class: 'hero-sub',
-        text: isRest
-          ? 'Nothing scheduled. Move gently if you feel like it.'
-          : progress.total + ' exercises · about ' + estimateMinutes(workout) + ' min'
-      }),
-      isRest ? null : h('div', { class: 'progress-track' }, [
-        h('div', { class: 'progress-fill', style: 'width:' + pct + '%' })
-      ]),
-      isRest ? null : h('div', { class: 'progress-legend' }, [
-        h('span', { text: progress.done + ' of ' + progress.total + ' done' }),
-        h('span', { text: done ? 'Session complete' : pct + '%' })
-      ]),
-      h('button', {
-        class: 'btn btn-primary btn-block btn-lg',
-        type: 'button',
-        'data-fkey': 'hero:start',
-        onclick: function () {
-          if (isRest) {
-            if (done) { S.reopenSession(date); toast('Rest day reopened'); }
-            else { S.finishSession(date); S.setItem(date, 'recovery', { done: true }); buzz([18, 60, 18]); toast('Rest day logged'); }
-            return;
-          }
-          session.start(date, done ? 0 : null);
-        },
-        text: isRest
-          ? (done ? 'Rest day logged ✓' : 'Log the rest day')
-          : done ? 'Review session' : progress.done ? 'Continue session' : 'Start session'
-      })
+      goalLine(date, stats)
     ]);
+
+    if (focus) {
+      var wid = focus.id;
+      var progress = S.sessionProgress(date, wid);
+      var pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+      var why = active ? 'In progress'
+        : suggestion.reason === 'plan' ? 'Up next · on your plan'
+        : 'Up next · ' + goalHint(focus, stats).replace(/^Counts/, 'counts');
+      [
+        h('div', { class: 'hero-eyebrow', text: why }),
+        h('div', { class: 'hero-workout', text: focus.name }),
+        h('div', { class: 'hero-sub', text: programMeta(focus) }),
+        active ? h('div', { class: 'progress-track' }, [h('div', { class: 'progress-fill', style: 'width:' + pct + '%' })]) : null,
+        active ? h('div', { class: 'progress-legend' }, [
+          h('span', { text: progress.done + ' of ' + progress.total + ' done' }),
+          h('span', { text: pct + '%' })
+        ]) : null,
+        h('button', {
+          class: 'btn btn-primary btn-block btn-lg', type: 'button', 'data-fkey': 'hero:start',
+          text: active && progress.done ? 'Continue' : 'Start',
+          onclick: function () { session.start(date, wid, null); }
+        }),
+        h('div', { class: 'hero-tools' }, [
+          h('button', {
+            class: 'btn btn-sm btn-ghost', type: 'button', 'data-fkey': 'hero:list',
+            'aria-expanded': openLists[wid] ? 'true' : 'false',
+            text: openLists[wid] ? 'Hide exercises ▴' : 'Exercises ▾',
+            onclick: function () { openLists[wid] = !openLists[wid]; render(); }
+          }),
+          active ? h('button', {
+            class: 'btn btn-sm btn-ghost', type: 'button', text: 'Discard',
+            onclick: function () { discard(date, focus); }
+          }) : null
+        ]),
+        openLists[wid] ? exerciseRows(date, focus) : null
+      ].forEach(function (node) { if (node) hero.appendChild(node); });
+    } else {
+      var restDay = !S.scheduledIds(date).length;
+      hero.appendChild(h('div', { class: 'hero-workout', text: stats.complete ? 'Goals met' : counted.length ? 'Done for today' : restDay ? 'Rest day' : 'Nothing planned' }));
+      hero.appendChild(h('div', {
+        class: 'hero-sub',
+        text: counted.length || stats.complete
+          ? 'Anything else is a bonus — pick from below if you feel like it.'
+          : 'Nothing on your plan today. Move gently, or pick anything below.'
+      }));
+    }
     root.appendChild(hero);
 
     var away = S.lastLoggedDate();
     var gapDays = away ? Math.round((date - away) / 86400000) : 0;
     if (gapDays > 10) {
-      var lastWorkout = S.workoutForSession(away);
+      var lastNames = S.sessionsOn(away).map(function (r) { return r.workout.name; }).join(' + ');
       root.appendChild(h('div', { class: 'banner' }, [
         h('span', { class: 'banner-glyph', 'aria-hidden': true, text: '↩' }),
         h('span', {
           text: Math.round(gapDays / 7) + ' weeks off. Your last session was ' +
-            (lastWorkout ? lastWorkout.name + ' on ' : '') + S.formatDate(away) +
+            (lastNames ? lastNames + ' on ' : '') + S.formatDate(away) +
             '. Start a rep or two under what you were doing and you’ll be back inside a fortnight.'
         })
       ]));
     }
 
-    var nudge = nudgeFor(date, stats);
-    if (nudge) {
-      var content = [
-        h('span', { class: 'banner-glyph', 'aria-hidden': true, text: nudge.glyph }),
-        h('span', { text: nudge.text })
-      ];
-      root.appendChild(nudge.date
-        ? h('button', {
-            class: 'banner banner-action', type: 'button',
-            onclick: function () { session.start(nudge.date, null); }
-          }, content)
-        : h('div', { class: 'banner' }, content));
+    var finished = counted.filter(function (r) { return r.entry.done; })
+      .concat(sessions.filter(function (r) { return r.workout.kind === 'rest'; }));
+    var others = counted.filter(function (r) { return !r.entry.done && r !== active; });
+    if (finished.length || others.length) {
+      root.appendChild(h('section', { class: 'card' }, [h('h2', { text: 'Today' })].concat(
+        finished.concat(others).map(function (r) { return sessionRow(date, r.workout, r.entry); }))));
     }
 
-    var streak = S.streakInfo();
-    root.appendChild(h('div', { class: 'stat-grid' }, [
-      h('section', { class: 'card' }, [
-        h('div', { class: 'eyebrow', text: 'This week' }),
-        h('div', { style: 'height:.6rem' }),
-        meter('Calisthenics', stats.strength, stats.strengthTarget),
-        meter('Mobility', stats.mobility, stats.mobilityTarget)
-      ]),
-      /* A bare zero under "a week counts when both targets are met" is the
-       * same card a brand-new install shows — five good weeks and one missed
-       * one rendered as though none of it had happened. The streak only
-       * appears once there is one, and it always carries the best run. */
-      streak.best > 0
-        ? h('section', { class: 'card' }, [
-            h('div', { class: 'eyebrow', text: 'Streak' }),
-            h('div', { class: 'stat-value', text: String(streak.current) }),
-            h('div', { class: 'stat-label', text: streak.current === 1 ? 'full week in a row' : 'full weeks in a row' }),
-            h('div', { style: 'height:.5rem' }),
-            h('div', { class: 'small muted', text: streakLine(streak, stats) })
-          ])
-        : h('section', { class: 'card' }, [
-            h('div', { class: 'eyebrow', text: 'Week ' + weekNo }),
-            h('div', { class: 'stat-value', text: (stats.strength + stats.mobility) + ' / ' + (stats.strengthTarget + stats.mobilityTarget) }),
-            h('div', { class: 'stat-label', text: 'sessions this week' }),
-            h('div', { style: 'height:.5rem' }),
-            h('div', {
-              class: 'small muted',
-              text: stats.partial
-                ? 'A part week — the target is only what was left of it when you started.'
-                : 'Finish a full week and a streak starts here.'
-            })
-          ])
-    ]));
-
-    if (!isRest) {
+    var habits = S.habits();
+    if (habits.length) {
       root.appendChild(h('section', { class: 'card' }, [
-        h('div', { class: 'card-head' }, [
-          h('h2', { text: 'Today’s list' }),
-          h('button', {
-            class: 'btn btn-sm btn-ghost', type: 'button',
-            text: 'Open week →',
-            onclick: function () { show('week'); }
-          })
-        ]),
-        exerciseRows(date, workout)
+        h('div', { class: 'card-head' }, [h('h2', { text: 'Every day' }), h('span', { class: 'small muted', text: 'Habits — not toward your goals' })])
+      ].concat(habits.map(function (w) { return sessionRow(date, w, S.sessionFor(date, w.id)); }))));
+    }
+
+    root.appendChild(pickList(date, stats, focus));
+    root.appendChild(h('p', { class: 'small muted streak-line', text: streakLine(S.streakInfo(), stats) }));
+  }
+
+  /* "Calisthenics 1/3 · Mobility 0/3 · 5 days left" — the week at a glance. */
+  function goalLine(date, stats) {
+    var g = S.goals();
+    if (!g.strength && !g.mobility) return h('div', { class: 'goal-line', text: 'No weekly goals — set them in Plan.' });
+    var daysLeft = 7 - S.dayIndex(date);
+    var parts = [];
+    if (stats.strengthTarget || stats.strength) parts.push(goalBit('Calisthenics', stats.strength, stats.strengthTarget));
+    if (stats.mobilityTarget || stats.mobility) parts.push(goalBit('Mobility', stats.mobility, stats.mobilityTarget));
+    parts.push(h('span', { class: 'goal-days', text: stats.complete ? 'Goals met ✦' : plural(daysLeft, 'day', 'days') + ' left' }));
+    return h('div', { class: 'goal-line' }, parts);
+  }
+
+  function goalBit(label, value, target) {
+    var met = value >= target && target > 0;
+    return h('span', { class: 'goal-bit' + (met ? ' is-met' : '') }, [
+      h('span', { text: label + ' ' }),
+      h('strong', { text: value + '/' + target })
+    ]);
+  }
+
+  /* One program on one day: name, where it's at, and the one thing to do. */
+  function sessionRow(date, workout, entry) {
+    var wid = workout.id;
+    var progress = S.sessionProgress(date, wid);
+    var done = !!(entry && entry.done);
+    var status = done ? '✓ Done' + (entry.workedAt && entry.finishedAt ? ' · ' + Math.max(1, Math.round((entry.finishedAt - entry.workedAt) / 60000)) + ' min' : '')
+      : entry && progress.done ? progress.done + ' of ' + progress.total + ' done'
+      : programMeta(workout).replace(/^[^·]+· /, '');
+    return h('div', { class: 'session-row' + (done ? ' is-done' : '') }, [
+      h('div', { class: 'session-row-main' }, [
+        h('div', { class: 'session-row-name', text: workout.name }),
+        h('div', { class: 'small muted', text: status })
+      ]),
+      workout.kind === 'rest' ? null : h('button', {
+        class: 'btn btn-sm' + (done ? ' btn-ghost' : ''), type: 'button', 'data-fkey': 'row-start:' + wid,
+        'aria-label': (done ? 'Review ' : entry && progress.done ? 'Continue ' : 'Start ') + workout.name,
+        text: done ? 'Review' : entry && progress.done ? 'Continue' : 'Start',
+        onclick: function () { session.start(date, wid, done ? 0 : null); }
+      })
+    ]);
+  }
+
+  function discard(date, workout) {
+    if (S.hasLoggedWork(date, workout.id) &&
+      !global.confirm('Discard today’s ' + workout.name + '? The sets you’ve logged in it will be lost.')) return;
+    S.discardSession(date, workout.id);
+    toast(workout.name + ' discarded');
+  }
+
+  /* A la carte: every program, by kind, with what it would count toward. */
+  function pickList(date, stats, focus) {
+    var taken = S.sessionsOn(date).map(function (r) { return r.workout.id; });
+    var card = h('section', { class: 'card' }, [h('h2', { text: focus ? 'Or pick another' : 'Pick a program' })]);
+    [['strength', 'Calisthenics'], ['mobility', 'Mobility']].forEach(function (pair) {
+      var list = S.programs().filter(function (w) {
+        return w.kind === pair[0] && taken.indexOf(w.id) < 0 && (!focus || w.id !== focus.id);
+      });
+      if (!list.length) return;
+      var left = pair[0] === 'strength' ? stats.strengthTarget - stats.strength : stats.mobilityTarget - stats.mobility;
+      card.appendChild(h('div', { class: 'block-head pick-head' }, [
+        h('span', { text: pair[1] }),
+        left > 0 ? h('span', { class: 'picker-goal', text: left + ' to go this week' }) : null
       ]));
-    }
+      list.forEach(function (w) {
+        card.appendChild(h('button', {
+          class: 'picker-choice', type: 'button', 'data-fkey': 'pick:' + w.id,
+          onclick: function () { session.start(date, w.id, null); }
+        }, [
+          h('span', { class: 'picker-name', text: w.name }),
+          h('span', { class: 'small muted', text: programMeta(w).replace(/^[^·]+· /, '') })
+        ]));
+      });
+    });
+    card.appendChild(h('button', {
+      class: 'btn btn-sm btn-ghost', type: 'button', text: 'Make a new program…', style: 'margin-top:.6rem',
+      onclick: function () { newProgram = { name: '', kind: 'mobility', from: '' }; show('plan'); focusNewProgram(); }
+    }));
+    return card;
   }
 
+  function kindLabel(workout) {
+    return { strength: 'Calisthenics', mobility: 'Mobility', habit: 'Habit' }[workout.kind] || 'Rest';
+  }
+
+  function programMeta(workout) {
+    return kindLabel(workout) + ' · ' + plural(R.flatten(workout).length, 'exercise', 'exercises') +
+      ' · about ' + estimateMinutes(workout) + ' min';
+  }
+
+  /* "Counts toward the 2 mobility still to go" — so picking a la carte is
+   * picking toward the week. */
+  function goalHint(workout, stats) {
+    if (workout.kind !== 'strength' && workout.kind !== 'mobility') return '';
+    var left = workout.kind === 'strength' ? stats.strengthTarget - stats.strength : stats.mobilityTarget - stats.mobility;
+    if (left <= 0) return '';
+    return 'Counts toward the ' + left + ' ' + (workout.kind === 'strength' ? 'calisthenics' : 'mobility') + ' still to go';
+  }
+
+  /* The streak only shows once there is one, and always with the best run:
+   * a bare zero after five good weeks read as though none of it happened. */
   function streakLine(streak, stats) {
-    if (streak.current === 0) {
-      return 'Your best run was ' + plural(streak.best, 'week', 'weeks') + '. ' +
-        streak.sessionsDone + ' of your last ' + streak.sessionsPossible + ' sessions landed.';
+    var g = S.goals();
+    if (!g.strength && !g.mobility) return 'Set weekly goals in Plan and a week that meets them starts a streak.';
+    if (streak.best === 0) {
+      return stats.partial
+        ? 'A part week — your goals are scaled to the days that were left when you started.'
+        : 'Meet both goals this week and a streak starts.';
     }
-    if (stats.complete) return 'This week is already complete.';
-    if (streak.best > streak.current) return 'Best run so far: ' + plural(streak.best, 'week', 'weeks') + '.';
-    return 'A week counts when both targets are met.';
-  }
-
-  function firstUndone(date, workout) {
-    var items = R.flatten(workout);
-    for (var i = 0; i < items.length; i++) if (!S.isItemDone(date, items[i].ex.id)) return i;
-    return 0;
+    var line = 'Streak: ' + plural(streak.current, 'week', 'weeks');
+    if (streak.best > streak.current) line += ' · best ' + plural(streak.best, 'week', 'weeks');
+    return line + ' · ' + streak.sessionsDone + ' of ' + streak.sessionsPossible + ' sessions in the last six weeks';
   }
 
   function estimateMinutes(workout) {
@@ -649,45 +734,6 @@
    * session could still save the week — then start counting your debt once
    * the week was already lost, including on the rest day, where it once read
    * "behind by 3 sessions with 1 days left" above a meter showing 3 of 3. */
-  function nudgeFor(date, stats) {
-    if (stats.complete) return { glyph: '✦', text: 'Both targets met this week. Anything else is a bonus.' };
-
-    var workout = S.workoutForSession(date);
-    if (workout && workout.kind === 'rest') return null;
-
-    var short = (stats.strengthTarget - stats.strength) + (stats.mobilityTarget - stats.mobility);
-    if (short <= 0) return null;
-
-    var monday = S.mondayOf(date);
-    var todayIdx = S.dayIndex(date);
-
-    var open = null;
-    for (var i = 0; i < todayIdx && !open; i++) {
-      var past = S.addDays(monday, i);
-      var pastWorkout = S.workoutForSession(past);
-      if (!pastWorkout || pastWorkout.kind === 'rest' || S.isSessionDone(past)) continue;
-      open = { date: past, workout: pastWorkout, day: R.DAYS[i] };
-    }
-
-    var remaining = 0;
-    for (var j = todayIdx; j < 7; j++) {
-      var day = S.addDays(monday, j);
-      var dayWorkout = S.workoutForSession(day);
-      if (dayWorkout && dayWorkout.kind !== 'rest' && !S.isSessionDone(day)) remaining++;
-    }
-
-    if (short > remaining) {
-      return { glyph: '○', text: 'This one isn’t going to be a full week. Get one good session in and start clean on Monday.' };
-    }
-    if (open) {
-      return {
-        glyph: '◑', date: open.date,
-        text: open.day.long + '’s ' + open.workout.name + ' is still open. Do it today and the week’s still on.'
-      };
-    }
-    return { glyph: '◑', text: plural(short, 'session', 'sessions') + ' to go, with ' + plural(remaining, 'day', 'days') + ' scheduled to do ' + (short === 1 ? 'it' : 'them') + '.' };
-  }
-
   /* ---------- week ---------- */
 
   var weekCursor = null;
@@ -701,7 +747,6 @@
     var todayISO = S.toISO(S.today());
     var weekNo = S.weekNumber(monday);
     var stats = S.weekStats(monday);
-    var pattern = S.calPattern(weekNo);
 
     root.appendChild(h('div', { class: 'week-nav' }, [
       h('button', {
@@ -726,75 +771,131 @@
       }));
     }
 
+    var meters = goalMeters(stats);
+    if (meters.some(Boolean)) {
+      root.appendChild(h('section', { class: 'card', style: 'margin-bottom:.85rem' }, [
+        h('div', { class: 'card-head' }, [
+          h('h2', { text: 'Goals' }),
+          stats.complete ? h('span', { class: 'small muted', text: 'Met ✦' }) : null
+        ])
+      ].concat(meters)));
+    }
+
     for (var i = 0; i < 7; i++) {
       (function (offset) {
         var date = S.addDays(monday, offset);
         var iso = S.toISO(date);
         var day = R.DAYS[offset];
-        var workout = S.workoutForSession(date);
-        var progress = S.sessionProgress(date);
         var isToday = iso === todayISO;
-        var isOpen = expandedDays[iso] != null ? expandedDays[iso] : isToday;
-        var done = S.isSessionDone(date);
-        var missed = iso < todayISO && !done && workout.kind !== 'rest' && progress.done === 0;
-        var session_ = S.sessionFor(date);
+        var future = iso > todayISO;
+        var sessions = S.sessionsOn(date);
+        var counted = sessions.filter(function (r) { return r.workout.kind !== 'habit'; });
+        var habitsDone = sessions.filter(function (r) { return r.workout.kind === 'habit' && r.entry.done; });
+        var doneCount = counted.filter(function (r) { return r.entry.done && S.counts(r.workout); }).length;
+        var planned = S.scheduledIds(date).map(S.findWorkout).filter(Boolean);
 
-        var body = h('div', { class: 'day-body', hidden: !isOpen }, [
-          exerciseRows(date, workout),
-          h('textarea', {
-            class: 'note-input',
-            rows: 2,
-            'aria-label': 'Notes for ' + S.formatDate(date, { weekday: 'long', month: 'short', day: 'numeric' }),
-            placeholder: 'Notes for the day…',
-            oninput: function (e) { S.setSessionNote(date, e.target.value); }
-          }),
-          h('div', { class: 'btn-row', style: 'margin-top:.6rem' }, [
-            workout.kind === 'rest' ? null : h('button', {
-              class: 'btn btn-sm btn-primary', type: 'button',
-              'data-fkey': 'daystart:' + iso,
-              text: progress.done ? 'Continue' : 'Start',
-              onclick: function () { session.start(date, null); }
-            }),
-            h('button', {
-              class: 'btn btn-sm', type: 'button',
-              text: done ? 'Reopen' : 'Mark complete',
-              onclick: function () { done ? S.reopenSession(date) : S.finishSession(date); }
-            })
+        var summary;
+        if (counted.length) {
+          summary = counted.map(function (r) { return r.workout.name + (r.entry.done ? ' ✓' : ''); }).join(' + ');
+        } else if (future || isToday) {
+          summary = planned.length ? 'Suggested: ' + planned.map(function (w) { return w.name; }).join(' + ') : 'Rest';
+        } else {
+          summary = 'Nothing logged';
+        }
+        var meta = S.formatDate(date) + (habitsDone.length ? ' · ' + habitsDone.map(function (r) { return r.workout.name.toLowerCase(); }).join(', ') + ' ✓' : '');
+
+        var expandable = !future;
+        var isOpen = expandable && (expandedDays[iso] != null ? expandedDays[iso] : isToday && sessions.length > 0);
+        var head = h(expandable ? 'button' : 'div', {
+          class: 'day-head' + (counted.length ? '' : ' is-quiet'), type: expandable ? 'button' : null,
+          'data-fkey': 'day:' + iso,
+          'aria-expanded': expandable ? (isOpen ? 'true' : 'false') : null,
+          onclick: expandable ? function () { expandedDays[iso] = !isOpen; render(); } : null
+        }, [
+          h('span', { class: 'day-key', text: day.label }),
+          h('span', {}, [
+            h('div', { class: 'day-name', text: summary }),
+            h('div', { class: 'day-meta', text: meta })
+          ]),
+          h('span', { class: 'day-count' }, [
+            doneCount ? h('span', { class: 'day-done-dot', 'aria-label': plural(doneCount, 'session', 'sessions') + ' done', text: new Array(doneCount + 1).join('●') }) : null,
+            expandable ? h('span', { 'aria-hidden': true, text: isOpen ? '▴' : '▾' }) : null
           ])
         ]);
-        body.querySelector('textarea').value = session_ ? session_.note || '' : '';
 
-        root.appendChild(h('article', { class: 'day' + (isToday ? ' is-today' : '') + (missed ? ' is-missed' : '') }, [
-          h('button', {
-            class: 'day-head', type: 'button',
-            'data-fkey': 'day:' + iso,
-            'aria-expanded': isOpen ? 'true' : 'false',
-            onclick: function () { expandedDays[iso] = !isOpen; render(); }
-          }, [
-            h('span', { class: 'day-key', text: day.label }),
-            h('span', {}, [
-              h('div', { class: 'day-name', text: workout.name }),
-              h('div', {
-                class: 'day-meta',
-                text: S.formatDate(date) + (missed ? ' · missed' : workout.kind === 'rest' ? '' : ' · about ' + estimateMinutes(workout) + ' min')
-              })
-            ]),
-            h('span', { class: 'day-count' }, [
-              done ? h('span', { class: 'day-done-dot', text: '●' }) : null,
-              h('span', { text: progress.done + '/' + progress.total }),
-              h('span', { 'aria-hidden': true, text: isOpen ? '▴' : '▾' })
-            ])
-          ]),
-          body
-        ]));
+        var article = h('article', { class: 'day' + (isToday ? ' is-today' : '') }, [head]);
+        if (isOpen) article.appendChild(dayBody(date, sessions));
+        root.appendChild(article);
       })(i);
     }
+  }
 
-    root.appendChild(h('section', { class: 'card', style: 'margin-top:1rem' }, [
-      h('div', { class: 'card-head' }, [h('h2', { text: 'Week ' + weekNo + ' tally' }), h('span', { class: 'small muted', text: pattern.join(' · ').replace(/cal/g, '') })]),
-      meter('Calisthenics sessions', stats.strength, stats.strengthTarget),
-      meter('Mobility sessions', stats.mobility, stats.mobilityTarget)
-    ]));
+  /* A day's sessions, each editable after the fact, and a way to log one you
+   * did without the app. */
+  function dayBody(date, sessions) {
+    var iso = S.toISO(date);
+    var body = h('div', { class: 'day-body' }, sessions.map(function (r) {
+      var workout = r.workout;
+      var wid = workout.id;
+      var entry = r.entry;
+      var done = !!entry.done;
+      var progress = S.sessionProgress(date, wid);
+      var note = h('textarea', {
+        class: 'note-input', rows: 2,
+        'aria-label': 'Notes for ' + workout.name + ', ' + S.formatDate(date, { weekday: 'long', month: 'short', day: 'numeric' }),
+        placeholder: 'Notes…',
+        oninput: function (e) { S.setSessionNote(date, wid, e.target.value); }
+      });
+      note.value = entry.note || '';
+      return h('div', { class: 'day-program' }, [
+        h('h3', { class: 'day-program-name', text: workout.name + (done ? ' ✓' : ' · ' + progress.done + ' of ' + progress.total) }),
+        workout.kind === 'rest' ? null : h('button', {
+          class: 'btn btn-sm btn-ghost', type: 'button', 'data-fkey': 'daylist:' + iso + ':' + wid,
+          'aria-expanded': openLists[iso + ':' + wid] ? 'true' : 'false',
+          text: openLists[iso + ':' + wid] ? 'Hide exercises ▴' : 'Exercises ▾',
+          onclick: function () { openLists[iso + ':' + wid] = !openLists[iso + ':' + wid]; render(); }
+        }),
+        openLists[iso + ':' + wid] && workout.kind !== 'rest' ? exerciseRows(date, workout) : null,
+        note,
+        h('div', { class: 'btn-row', style: 'margin-top:.6rem' }, [
+          workout.kind === 'rest' ? null : h('button', {
+            class: 'btn btn-sm btn-primary', type: 'button', 'data-fkey': 'daystart:' + iso + ':' + wid,
+            text: done ? 'Review' : progress.done ? 'Continue' : 'Start',
+            onclick: function () { session.start(date, wid, done ? 0 : null); }
+          }),
+          h('button', {
+            class: 'btn btn-sm', type: 'button',
+            text: done ? 'Reopen' : 'Mark complete',
+            'aria-label': (done ? 'Reopen ' : 'Mark complete: ') + workout.name,
+            onclick: function () { done ? S.reopenSession(date, wid) : S.finishSession(date, wid); }
+          }),
+          h('button', {
+            class: 'btn btn-sm btn-ghost', type: 'button', text: 'Discard',
+            'aria-label': 'Discard ' + workout.name,
+            onclick: function () { discard(date, workout); }
+          })
+        ])
+      ]);
+    }));
+    var taken = sessions.map(function (r) { return r.workout.id; });
+    var options = S.programs().filter(function (w) { return taken.indexOf(w.id) < 0; });
+    if (options.length) {
+      body.appendChild(h('select', {
+        class: 'sched-add log-add', 'aria-label': 'Log a session on ' + S.formatDate(date, { weekday: 'long', month: 'short', day: 'numeric' }),
+        'data-fkey': 'logadd:' + iso,
+        onchange: function (e) {
+          var id = e.target.value;
+          if (!id) return;
+          openLists[iso + ':' + id] = true;
+          expandedDays[iso] = true;
+          S.ensureSession(date, id);
+          S.emit();
+        }
+      }, [h('option', { value: '', text: '+ Log a session' })].concat(options.map(function (w) {
+        return h('option', { value: w.id, text: w.name + ' (' + kindLabel(w) + ')' });
+      }))));
+    }
+    return body;
   }
 
   /* ---------- progress ---------- */
@@ -836,7 +937,7 @@
     }, logged.map(function (row) {
       return h('option', {
         value: row.id, selected: row.id === progressPick.exId,
-        text: row.ex.name + (row.removed ? ' (no longer in your routine)' : '')
+        text: row.ex.name + (row.removed ? ' (removed from your programs)' : '')
       });
     }));
 
@@ -874,7 +975,7 @@
           h('div', {
             class: 'small muted',
             text: (isBest ? 'Best set' : 'Session total') + ', in ' + unit + ' · target ' + R.targetLabel(ex) +
-              (picked.removed ? ' · no longer in your routine' : '')
+              (picked.removed ? ' · removed from your programs' : '')
           })
         ])
       ])
@@ -973,23 +1074,134 @@
   var editingItem = null;
   var deferredInstall = null;
 
+  /* ---------- weekly goals ---------- */
+
+  function goalsCard() {
+    var g = S.goals();
+    function picker(id, label, key) {
+      var options = [];
+      for (var n = 0; n <= 7; n++) options.push(h('option', { value: String(n), selected: g[key] === n, text: n === 0 ? 'No goal' : plural(n, 'session', 'sessions') }));
+      return h('div', { class: 'field' }, [
+        h('label', { for: id, text: label }),
+        h('select', {
+          id: id,
+          onchange: function (e) {
+            var next = { strength: g.strength, mobility: g.mobility };
+            next[key] = Number(e.target.value);
+            S.setGoals(next.strength, next.mobility);
+            toast('Goals updated for this week on');
+          }
+        }, options)
+      ]);
+    }
+    return h('section', { class: 'card' }, [
+      h('div', { class: 'card-head' }, [h('h2', { text: 'Weekly goals' })]),
+      h('p', { class: 'small muted', style: 'margin-bottom:.8rem', text: 'Do any program on any day — every finished session counts toward its kind. A week that meets both keeps your streak going.' }),
+      h('div', { class: 'field-row' }, [
+        picker('goal-strength', 'Calisthenics a week', 'strength'),
+        picker('goal-mobility', 'Mobility a week', 'mobility')
+      ]),
+      h('p', { class: 'small muted', text: 'Changes apply from this week on; weeks behind you keep the goals they had.' })
+    ]);
+  }
+
+  /* ---------- the suggested week ---------- */
+
+  function scheduleName(token) {
+    if (token === R.ROTATION) return 'Calisthenics (alternating)';
+    var w = S.findWorkout(token);
+    return w ? w.name : token;
+  }
+
+  function scheduleEditor() {
+    var days = S.schedule();
+    var live = function (token) { return token === R.ROTATION || S.counts(S.findWorkout(token)) && !S.findWorkout(token).archived; };
+
+    function edit(dayIdx, fn) {
+      var next = days.map(function (list) { return list.filter(live); });
+      fn(next[dayIdx]);
+      S.setSchedule(next);
+    }
+
+    var pool = S.programs().filter(function (w) { return w.kind === 'strength' && w.rotate; });
+    var card = h('section', { class: 'card' }, [
+      h('div', { class: 'card-head' }, [
+        h('h2', { text: 'Suggested week' }),
+        S.state.schedules.length ? h('button', {
+          class: 'btn btn-sm btn-ghost', type: 'button', text: 'Reset',
+          onclick: function () {
+            if (!global.confirm('Go back to the original suggested week — alternating calisthenics on Mon / Wed / Fri, flexibility on Tue / Thu / Sat?')) return;
+            S.resetSchedule();
+            toast('Suggested week reset');
+          }
+        }) : null
+      ]),
+      h('p', { class: 'small muted', text: 'What Today offers first each day. It’s a suggestion, not the goal — do something else whenever you like. Changes apply from this week on.' })
+    ]);
+
+    var rows = h('div', { class: 'sched' });
+    R.DAYS.forEach(function (day, dayIdx) {
+      var list = days[dayIdx].filter(live);
+      var options = [R.ROTATION].concat(S.programs().filter(S.counts).map(function (w) { return w.id; }))
+        .filter(function (token) { return list.indexOf(token) < 0; });
+      var chips = list.length ? list.map(function (token, idx) {
+        return h('span', { class: 'chip' }, [
+          h('span', { text: scheduleName(token) }),
+          h('button', {
+            class: 'chip-x', type: 'button', text: '✕',
+            'data-fkey': 'sched:x:' + dayIdx + ':' + idx,
+            'aria-label': 'Take ' + scheduleName(token) + ' off ' + day.long + 's',
+            onclick: function () { edit(dayIdx, function (d) { d.splice(d.indexOf(token), 1); }); }
+          })
+        ]);
+      }) : [h('span', { class: 'chip chip-rest', text: 'Rest' })];
+      if (options.length && list.length < 6) {
+        chips.push(h('select', {
+          class: 'chip-add', 'aria-label': 'Add a program on ' + day.long + 's',
+          'data-fkey': 'sched:add:' + dayIdx,
+          onchange: function (e) {
+            var token = e.target.value;
+            if (token) edit(dayIdx, function (d) { d.push(token); });
+          }
+        }, [h('option', { value: '', text: '+' })].concat(options.map(function (token) {
+          return h('option', { value: token, text: scheduleName(token) });
+        }))));
+      }
+      rows.appendChild(h('div', { class: 'sched-row' }, [
+        h('span', { class: 'sched-day', text: day.label }),
+        h('div', { class: 'sched-chips' }, chips)
+      ]));
+    });
+    card.appendChild(rows);
+    card.appendChild(h('p', { class: 'small muted', style: 'margin-top:.8rem', text: pool.length
+      ? 'Alternating takes turns between ' + pool.map(function (w) { return w.name; }).join(', ') + ' — whichever you did least recently. Choose which take turns under Programs.'
+      : 'No program takes turns in the alternating slot, so it suggests nothing. Tick “Takes turns” on a calisthenics program under Programs.' }));
+    return card;
+  }
+
+  /* ---------- plan: goals, the suggested week, programs ---------- */
+
+  function renderPlan() {
+    var root = views.plan;
+    clear(root);
+    root.appendChild(goalsCard());
+    root.appendChild(scheduleEditor());
+    root.appendChild(routineEditor());
+  }
+
+  /* Straight to the new-program form, which is a long way down the page. */
+  function focusNewProgram() {
+    setTimeout(function () {
+      var el = document.getElementById('newprog-name');
+      if (!el) return;
+      el.scrollIntoView({ block: 'center' });
+      el.focus();
+    }, 0);
+  }
+
   function renderSettings() {
     var root = views.settings;
     clear(root);
-
-    var weekNo = S.weekNumber(S.today());
-    var pattern = S.calPattern(weekNo);
-
-    root.appendChild(h('section', { class: 'card' }, [
-      h('div', { class: 'card-head' }, [h('h2', { text: 'This week’s pattern' })]),
-      h('p', { class: 'small muted', text: 'Week ' + weekNo + ' runs ' + pattern.map(function (id) { return id === 'calA' ? 'A' : 'B'; }).join(' / ') + ' on Mon / Wed / Fri, then alternates every week.' }),
-      h('div', { class: 'btn-row', style: 'margin-top:.7rem' }, [
-        h('button', {
-          class: 'btn btn-sm', type: 'button', text: 'Flip to ' + (pattern[0] === 'calA' ? 'B / A / B' : 'A / B / A'),
-          onclick: function () { S.setPhaseOffset(!S.state.phaseOffset); toast('Pattern flipped'); }
-        })
-      ])
-    ]));
 
     root.appendChild(h('section', { class: 'card' }, [
       h('div', { class: 'card-head' }, [h('h2', { text: 'During a session' })]),
@@ -1007,8 +1219,6 @@
       ])
     ]));
 
-    root.appendChild(routineEditor());
-
     var dataCard = h('section', { class: 'card' }, [
       h('div', { class: 'card-head' }, [h('h2', { text: 'Your data' })]),
       h('p', { class: 'small muted', text: 'Cadence never uploads anything and talks to no third party — it only fetches its own files from the site it is served from. Your data is stored in this browser, which also means any other page published on this same domain can read it. Clearing site data wipes it, so keep a backup file if the history matters to you.' }),
@@ -1023,7 +1233,7 @@
         h('button', {
           class: 'btn btn-sm btn-danger', type: 'button', text: 'Erase everything',
           onclick: function () {
-            if (!global.confirm('Erase every logged session and any routine edits? This cannot be undone.')) return;
+            if (!global.confirm('Erase every logged session and any program edits? This cannot be undone.')) return;
             S.clearAll();
             weekCursor = null;
             expandedDays = {};
@@ -1114,21 +1324,21 @@
     var routine = S.routine();
     var card = h('section', { class: 'card' }, [
       h('div', { class: 'card-head' }, [
-        h('h2', { text: 'Your routine' }),
+        h('h2', { text: 'Programs' }),
         S.state.routine ? h('button', {
           class: 'btn btn-sm btn-ghost', type: 'button', text: 'Reset',
           onclick: function () {
-            if (!global.confirm('Throw away your edits and go back to the original routine? Logged sessions are kept.')) return;
+            if (!global.confirm('Throw away your edits to the built-in programs and go back to the originals? Programs you made and logged sessions are kept.')) return;
             S.resetRoutine();
-            toast('Routine reset');
+            toast('Built-in programs reset');
           }
         }) : null
       ]),
-      h('p', { class: 'small muted', text: 'Edit targets, add exercises, reorder them. Past sessions keep whatever you logged at the time.' })
+      h('p', { class: 'small muted', text: 'Edit targets, add exercises, reorder them, or make a program of your own. Past sessions keep whatever you logged at the time.' })
     ]);
 
     routine.workouts.forEach(function (workout, wIdx) {
-      if (workout.kind === 'rest') return;
+      if (workout.kind === 'rest' || workout.archived) return;
       var open = !!editorOpen[workout.id];
       var count = R.flatten(workout).length;
       var wrap = h('div', { class: 'editor-workout' }, [
@@ -1138,11 +1348,12 @@
           onclick: function () { editorOpen[workout.id] = !open; render(); }
         }, [
           h('span', { text: workout.name }),
-          h('span', { class: 'small muted', text: count + ' exercises ' + (open ? '▴' : '▾') })
+          h('span', { class: 'small muted', text: kindLabel(workout) + (workout.rotate && workout.kind === 'strength' ? ' ↻' : '') + ' · ' + count + ' exercises ' + (open ? '▴' : '▾') })
         ])
       ]);
 
       if (open) {
+        wrap.appendChild(programFields(workout, wIdx));
         workout.blocks.forEach(function (block, bIdx) {
           if (workout.blocks.length > 1) {
             var nameInput = h('input', {
@@ -1156,6 +1367,22 @@
               h('label', { text: 'Section' }), nameInput
             ]));
           }
+          wrap.appendChild(h('label', { class: 'switch circuit-switch' }, [
+            h('span', { class: 'switch-text' }, [
+              workout.blocks.length > 1 ? 'Run this section as a circuit' : 'Run as a circuit',
+              h('small', { text: 'One set of each exercise in turn, round after round, instead of all the sets of one before the next.' })
+            ]),
+            h('input', {
+              type: 'checkbox', checked: !!block.circuit,
+              onchange: function (e) {
+                var on = e.target.checked;
+                S.updateRoutine(function (next) {
+                  if (on) next.workouts[wIdx].blocks[bIdx].circuit = true;
+                  else delete next.workouts[wIdx].blocks[bIdx].circuit;
+                });
+              }
+            })
+          ]));
           block.items.forEach(function (ex, iIdx) {
             wrap.appendChild(editorItem(workout, wIdx, bIdx, iIdx, ex, block.items.length));
           });
@@ -1180,7 +1407,114 @@
       card.appendChild(wrap);
     });
 
+    card.appendChild(newProgramForm());
     return card;
+  }
+
+  /* A program's own name and kind, whether it takes turns in the
+   * alternating calisthenics, and the way to delete it. */
+  function programFields(workout, wIdx) {
+    return h('div', { class: 'program-fields' }, [
+      h('div', { class: 'field' }, [
+        h('label', { for: 'prog-name-' + workout.id, text: 'Name' }),
+        h('input', {
+          id: 'prog-name-' + workout.id, type: 'text', value: workout.name, maxlength: 60,
+          onchange: function (e) {
+            var v = e.target.value.trim() || workout.name;
+            S.updateRoutine(function (next) { next.workouts[wIdx].name = v; });
+          }
+        })
+      ]),
+      h('div', { class: 'field' }, [
+        h('label', { for: 'prog-kind-' + workout.id, text: 'Kind' }),
+        kindSelect('prog-kind-' + workout.id, workout.kind, function (v) {
+          S.updateRoutine(function (next) { next.workouts[wIdx].kind = v; });
+        })
+      ]),
+      workout.kind === 'strength' ? h('label', { class: 'switch' }, [
+        h('span', { class: 'switch-text' }, [
+          'Takes turns in the alternating slot',
+          h('small', { text: 'Calisthenics (alternating) on your suggested week picks whichever of these you did least recently.' })
+        ]),
+        h('input', {
+          type: 'checkbox', checked: !!workout.rotate,
+          onchange: function (e) { var on = e.target.checked; S.updateRoutine(function (next) { next.workouts[wIdx].rotate = on; }); }
+        })
+      ]) : null,
+      h('button', {
+        class: 'btn btn-sm btn-danger', type: 'button', text: 'Delete program', style: 'margin:.6rem 0',
+        onclick: function () {
+          if (!global.confirm('Delete “' + workout.name + '”? It comes off your suggested week. Days you’ve already logged keep it.')) return;
+          delete editorOpen[workout.id];
+          S.deleteProgram(workout.id);
+          toast(workout.name + ' deleted');
+        }
+      })
+    ]);
+  }
+
+  /* Calisthenics and mobility each count toward their weekly goal; a habit
+   * is offered every day and counts toward neither. */
+  var KIND_OPTIONS = [
+    ['strength', 'Calisthenics'],
+    ['mobility', 'Mobility'],
+    ['habit', 'Habit (daily, no goal)']
+  ];
+
+  function kindSelect(id, value, onChange) {
+    return h('select', { id: id, onchange: function (e) { onChange(e.target.value); } }, KIND_OPTIONS.map(function (pair) {
+      return h('option', { value: pair[0], selected: value === pair[0], text: pair[1] });
+    }));
+  }
+
+  var newProgram = null;   /* { name, kind, from } while the form is open */
+
+  function newProgramForm() {
+    if (!newProgram) {
+      return h('button', {
+        class: 'btn btn-sm', type: 'button', text: '+ New program', style: 'margin-top:.8rem',
+        'data-fkey': 'newprog:open',
+        onclick: function () { newProgram = { name: '', kind: 'mobility', from: '' }; render(); focusNewProgram(); }
+      });
+    }
+    var nameInput = h('input', {
+      id: 'newprog-name', type: 'text', maxlength: 60, placeholder: 'e.g. Daily flexibility',
+      oninput: function (e) { newProgram.name = e.target.value; }
+    });
+    nameInput.value = newProgram.name;
+    var sources = S.programs();
+    return h('div', { class: 'editor-form new-program' }, [
+      h('h3', { text: 'New program' }),
+      h('div', { class: 'field' }, [h('label', { for: 'newprog-name', text: 'Name' }), nameInput]),
+      h('div', { class: 'field' }, [
+        h('label', { for: 'newprog-kind', text: 'Kind' }),
+        kindSelect('newprog-kind', newProgram.kind, function (v) { newProgram.kind = v; })
+      ]),
+      h('div', { class: 'field' }, [
+        h('label', { for: 'newprog-from', text: 'Start from' }),
+        h('select', { id: 'newprog-from', onchange: function (e) { newProgram.from = e.target.value; } },
+          [h('option', { value: '', selected: !newProgram.from, text: 'Blank — just a warm-up and cool-down' })].concat(sources.map(function (w) {
+            return h('option', { value: w.id, selected: newProgram.from === w.id, text: 'A copy of ' + w.name });
+          })))
+      ]),
+      h('div', { class: 'btn-row', style: 'margin-top:.6rem' }, [
+        h('button', {
+          class: 'btn btn-sm btn-primary', type: 'button', text: 'Create',
+          onclick: function () {
+            var name = newProgram.name.trim();
+            if (!name) { toast('Give it a name first'); nameInput.focus(); return; }
+            var id = S.createProgram(name, newProgram.kind, newProgram.from);
+            newProgram = null;
+            editorOpen[id] = true;
+            toast(name + ' created — pick it from Today, or put it on your suggested week');
+          }
+        }),
+        h('button', {
+          class: 'btn btn-sm btn-ghost', type: 'button', text: 'Cancel',
+          onclick: function () { newProgram = null; render(); }
+        })
+      ])
+    ]);
   }
 
   function editorItem(workout, wIdx, bIdx, iIdx, ex, siblingCount) {
@@ -1218,7 +1552,7 @@
           onclick: function () {
             var logged = S.historyFor(ex.id, 'best').length;
             var warning = logged
-              ? '\n\nYou have ' + logged + ' session' + (logged > 1 ? 's' : '') + ' logged for it. The history is kept and stays in Progress under “no longer in your routine”.'
+              ? '\n\nYou have ' + logged + ' session' + (logged > 1 ? 's' : '') + ' logged for it. The history is kept and stays in Progress, marked “removed from your programs”.'
               : '';
             if (!global.confirm('Remove “' + ex.name + '” from ' + workout.name + '?' + warning)) return;
             S.retireExercise(ex);
@@ -1372,6 +1706,7 @@
   var session = {
     open: false,
     date: null,
+    wid: null,
     workout: null,
     items: [],
     steps: [],
@@ -1381,16 +1716,17 @@
     tick: null,
     chimed: false,
 
-    start: function (date, itemIndex) {
-      var workout = S.workoutForSession(date);
+    start: function (date, wid, itemIndex) {
+      var workout = S.findWorkout(wid);
       if (!workout) return;
       this.date = date;
+      this.wid = wid;
       this.workout = workout;
       this.items = R.flatten(workout);
       this.steps = buildSteps(this.items);
       this.index = itemIndex == null ? this.firstIncompleteStep() : this.stepForItem(itemIndex);
       this.open = true;
-      S.ensureSession(date);
+      S.ensureSession(date, wid);
       requestPersistence();
       this.returnFocusKey = activeFocusKey();
 
@@ -1423,7 +1759,7 @@
         if (step.kind !== 'work') continue;
         var ex = this.items[step.i].ex;
         if (ex.mode === 'none') {
-          if (!S.isItemDone(this.date, ex.id)) return i;
+          if (!S.isItemDone(this.date, this.wid, ex.id)) return i;
           continue;
         }
         if (!this.loggedValue(ex, step)) return i;
@@ -1432,7 +1768,7 @@
     },
 
     loggedValue: function (ex, step) {
-      var log = S.itemLog(this.date, ex.id);
+      var log = S.itemLog(this.date, this.wid, ex.id);
       if (!log) return 0;
       if (step.sides > 1) {
         var pair = (log.sides || [])[step.set] || [];
@@ -1452,6 +1788,9 @@
       this.stopTimer();
       this.open = false;
       stopDemo();
+      // Opened and closed without logging anything: it never happened, so it
+      // shouldn't sit on Today as a session in progress.
+      if (this.date && this.wid && !S.hasLoggedWork(this.date, this.wid)) S.discardSession(this.date, this.wid);
 
       var root = document.getElementById('session-root');
       root.hidden = true;
@@ -1502,7 +1841,7 @@
       var step = this.steps[this.index];
       if (!step) return;
       if (step.kind === 'done') {
-        var progress = S.sessionProgress(this.date);
+        var progress = S.sessionProgress(this.date, this.wid);
         announce(progress.done === progress.total
           ? 'Session complete. ' + progress.done + ' of ' + progress.total + ' exercises.'
           : 'Session paused. ' + progress.done + ' of ' + progress.total + ' exercises logged.');
@@ -1516,7 +1855,8 @@
       }
       var ex = this.items[step.i].ex;
       var parts = [ex.name];
-      if ((ex.sets || 1) > 1) parts.push('set ' + (step.set + 1) + ' of ' + ex.sets);
+      if (step.rounds > 1) parts.push('round ' + (step.round + 1) + ' of ' + step.rounds);
+      else if ((ex.sets || 1) > 1) parts.push('set ' + (step.set + 1) + ' of ' + ex.sets);
       if (step.sides > 1) parts.push('side ' + (step.side + 1) + ' of 2');
       if (ex.mode !== 'none') parts.push('target ' + R.targetLabel(ex));
       announce(parts.join(', ') + '.');
@@ -1524,7 +1864,7 @@
 
     /* Start from what you managed last time — that is the whole point of logging. */
     suggestedReps: function (ex, setIndex) {
-      var log = S.itemLog(this.date, ex.id);
+      var log = S.itemLog(this.date, this.wid, ex.id);
       if (log && typeof (log.sets || [])[setIndex] === 'number' && log.sets[setIndex] > 0) return log.sets[setIndex];
       var history = S.historyFor(ex.id, 'best');
       var previous = history.filter(function (row) { return row.iso !== S.toISO(session.date); });
@@ -1614,7 +1954,7 @@
       if (step.kind === 'work') {
         var row = this.items[step.i];
         var ex = row.ex;
-        var log = S.itemLog(this.date, ex.id) || { sets: [], note: '', done: false };
+        var log = S.itemLog(this.date, this.wid, ex.id) || { sets: [], note: '', done: false };
         var sets = (log.sets || []).slice();
         var patchSides = null;
 
@@ -1656,7 +1996,7 @@
         var patch = { sets: sets };
         if (patchSides) patch.sides = patchSides;
         if (isLastStepOfItem) patch.done = true;
-        S.setItem(this.date, ex.id, patch);
+        S.setItem(this.date, this.wid, ex.id, patch);
         if (isLastStepOfItem) buzz(14);
       }
       this.go(1);
@@ -1695,7 +2035,7 @@
       var step = this.steps[this.index];
       var self = this;
 
-      var workDone = this.items.filter(function (row) { return S.isItemDone(self.date, row.ex.id); }).length;
+      var workDone = this.items.filter(function (row) { return S.isItemDone(self.date, self.wid, row.ex.id); }).length;
       var pct = this.steps.length > 1 ? Math.round((this.index / (this.steps.length - 1)) * 100) : 0;
 
       root.appendChild(h('div', { class: 'session-bar' }, [
@@ -1727,7 +2067,8 @@
 
       if (sets > 1 || step.sides > 1) {
         var line = [];
-        if (sets > 1) line.push('Set ' + (step.set + 1) + ' of ' + sets);
+        if (step.rounds > 1) line.push('Round ' + (step.round + 1) + ' of ' + step.rounds);
+        else if (sets > 1) line.push('Set ' + (step.set + 1) + ' of ' + sets);
         if (step.sides > 1) line.push('Side ' + (step.side + 1) + ' of 2');
         body.appendChild(h('div', { class: 'session-setline', text: line.join(' · ') }));
       }
@@ -1799,9 +2140,9 @@
       var noteBtn = h('button', {
         class: 'btn btn-sm btn-ghost', type: 'button', text: 'Add a note',
         onclick: function () {
-          var log = S.itemLog(self.date, ex.id);
+          var log = S.itemLog(self.date, self.wid, ex.id);
           var next = global.prompt('Note for ' + ex.name, (log && log.note) || '');
-          if (next != null) S.setItem(self.date, ex.id, { note: next });
+          if (next != null) S.setItem(self.date, self.wid, ex.id, { note: next });
         }
       });
       actions.appendChild(h('div', { class: 'btn-row' }, [
@@ -1845,7 +2186,7 @@
         this.dial(),
         h('div', {
           class: 'session-hint',
-          text: nextEx ? 'Next: ' + nextEx.name + (nextStep.set != null && (nextEx.sets || 1) > 1 ? ' · set ' + (nextStep.set + 1) : '') : 'Almost there.'
+          text: nextEx ? 'Next: ' + nextEx.name + (nextStep.rounds > 1 ? ' · round ' + (nextStep.round + 1) : nextStep.set != null && (nextEx.sets || 1) > 1 ? ' · set ' + (nextStep.set + 1) : '') : 'Almost there.'
         }),
         nextEx ? h('div', { class: 'demo-rest' }, [Figures.create(nextEx.id, { still: true }).node]) : null
       ]);
@@ -1853,7 +2194,7 @@
        * been a second earlier — so tapping twice, which is what you do at
        * 6am, cut every prescribed rest to nothing. */
       var actions = h('div', { class: 'session-actions' }, [
-        h('button', { class: 'btn btn-primary btn-lg btn-block', type: 'button', text: 'Next set', onclick: function () { self.go(1); } }),
+        h('button', { class: 'btn btn-primary btn-lg btn-block', type: 'button', text: nextStep && previous && nextStep.i === previous.i ? 'Next set' : 'Next', onclick: function () { self.go(1); } }),
         h('div', { class: 'btn-row' }, [
           h('button', { class: 'btn btn-sm', type: 'button', text: '+15s', onclick: function () { self.addTime(15); } }),
           h('button', { class: 'btn btn-sm btn-ghost', type: 'button', text: '‹ Back', onclick: function () { self.go(-1); } })
@@ -1913,10 +2254,10 @@
     paintSummary: function (root) {
       var self = this;
       stopDemo();
-      var progress = S.sessionProgress(this.date);
+      var progress = S.sessionProgress(this.date, this.wid);
       var complete = progress.done === progress.total;
       var stats = S.weekStats(S.mondayOf(this.date));
-      var entry = S.sessionFor(this.date);
+      var entry = S.sessionFor(this.date, this.wid);
       /* Timed from the first set actually logged. It used to run from the
        * moment the record was created — which is a checkbox tapped over
        * breakfast — so training at six in the evening reported 780 minutes. */
@@ -1924,7 +2265,7 @@
       if (minutes != null && (minutes < 1 || minutes > 180)) minutes = null;
 
       var logged = this.items.filter(function (row) {
-        var log = S.itemLog(self.date, row.ex.id);
+        var log = S.itemLog(self.date, self.wid, row.ex.id);
         return log && (log.sets || []).some(function (n) { return n > 0; });
       });
 
@@ -1945,7 +2286,7 @@
       if (logged.length) {
         body.appendChild(h('div', { class: 'summary-list' }, logged.map(function (row) {
           var ex = row.ex;
-          var log = S.itemLog(self.date, ex.id);
+          var log = S.itemLog(self.date, self.wid, ex.id);
           var history = S.historyFor(ex.id, 'best').filter(function (r) { return r.iso !== S.toISO(self.date); });
           var previous = history.length ? history[history.length - 1].value : null;
           var best = S.bestOfSets(log.sets);
@@ -1963,10 +2304,7 @@
 
       // The weekly meters on a session you bailed out of only twist the knife.
       if (complete) {
-        body.appendChild(h('div', { style: 'text-align:left;margin-top:1rem' }, [
-          meter('Calisthenics', stats.strength, stats.strengthTarget),
-          meter('Mobility', stats.mobility, stats.mobilityTarget)
-        ]));
+        body.appendChild(h('div', { style: 'text-align:left;margin-top:1rem' }, goalMeters(stats)));
       }
 
       this.progressionCandidates().forEach(function (ex) {
@@ -1992,7 +2330,7 @@
           class: 'btn btn-primary btn-lg btn-block', type: 'button',
           text: complete ? 'Finish' : 'Done for now',
           onclick: function () {
-            if (complete) S.finishSession(self.date);
+            if (complete) S.finishSession(self.date, self.wid);
             buzz([20, 70, 20]);
             self.close();
           }
@@ -2009,30 +2347,64 @@
 
   function buildSteps(items) {
     var steps = [];
-    items.forEach(function (row, i) {
-      var ex = row.ex;
-      if (ex.mode === 'none') {
-        steps.push({ kind: 'work', i: i, set: 0, side: 0, sides: 1 });
-        return;
+    var i = 0;
+    while (i < items.length) {
+      if (items[i].circuit) {
+        var end = i;
+        while (end < items.length && items[end].circuit && items[end].blockIndex === items[i].blockIndex) end++;
+        circuitSteps(items, i, end, steps);
+        i = end;
+      } else {
+        straightSteps(items, i, steps);
+        i++;
       }
-      var sets = ex.sets || 1;
-      // Every per-side exercise gets a pass each side, not just the timed
-      // ones — otherwise a left/right difference, which is the most useful
-      // thing a home trainee can spot, never reaches the log at all.
-      var sides = ex.perSide ? 2 : 1;
-      for (var s = 0; s < sets; s++) {
-        for (var sd = 0; sd < sides; sd++) steps.push({ kind: 'work', i: i, set: s, side: sd, sides: sides });
-        if ((ex.rest || 0) > 0 && s < sets - 1) steps.push({ kind: 'rest', i: i, set: s, seconds: ex.rest });
-      }
-      // …and a rest before the next exercise. The third set of squats used to
-      // run straight into the first set of lunges with no pause at all.
-      var next = items[i + 1];
-      if (next && (ex.rest || 0) > 0 && next.ex.mode !== 'none') {
-        steps.push({ kind: 'rest', i: i, set: sets - 1, seconds: ex.rest });
-      }
-    });
+    }
     steps.push({ kind: 'done' });
     return steps;
+  }
+
+  function straightSteps(items, i, steps) {
+    var ex = items[i].ex;
+    if (ex.mode === 'none') {
+      steps.push({ kind: 'work', i: i, set: 0, side: 0, sides: 1 });
+      return;
+    }
+    var sets = ex.sets || 1;
+    // Every per-side exercise gets a pass each side, not just the timed
+    // ones — otherwise a left/right difference, which is the most useful
+    // thing a home trainee can spot, never reaches the log at all.
+    var sides = ex.perSide ? 2 : 1;
+    for (var s = 0; s < sets; s++) {
+      for (var sd = 0; sd < sides; sd++) steps.push({ kind: 'work', i: i, set: s, side: sd, sides: sides });
+      if ((ex.rest || 0) > 0 && s < sets - 1) steps.push({ kind: 'rest', i: i, set: s, seconds: ex.rest });
+    }
+    // …and a rest before the next exercise. The third set of squats used to
+    // run straight into the first set of lunges with no pause at all.
+    var next = items[i + 1];
+    if (next && (ex.rest || 0) > 0 && next.ex.mode !== 'none') {
+      steps.push({ kind: 'rest', i: i, set: sets - 1, seconds: ex.rest });
+    }
+  }
+
+  /* A circuit goes round: set one of every exercise, then set two of every
+   * exercise, with each exercise's rest after its turn. */
+  function circuitSteps(items, from, to, steps) {
+    var rounds = 0;
+    for (var k = from; k < to; k++) rounds = Math.max(rounds, items[k].ex.sets || 1);
+    for (var r = 0; r < rounds; r++) {
+      for (var i = from; i < to; i++) {
+        var ex = items[i].ex;
+        if (r >= (ex.sets || 1)) continue;
+        if (ex.mode === 'none') { if (r === 0) steps.push({ kind: 'work', i: i, set: 0, side: 0, sides: 1 }); continue; }
+        var sides = ex.perSide ? 2 : 1;
+        for (var sd = 0; sd < sides; sd++) steps.push({ kind: 'work', i: i, set: r, side: sd, sides: sides, round: r, rounds: rounds });
+        var last = r === rounds - 1 && i === to - 1;
+        var nextItem = items[i + 1];
+        if ((ex.rest || 0) > 0 && !(last && (!nextItem || nextItem.ex.mode === 'none'))) {
+          steps.push({ kind: 'rest', i: i, set: r, seconds: ex.rest });
+        }
+      }
+    }
   }
 
   function trapTab(e) {
@@ -2079,6 +2451,7 @@
       }
       if (currentView === 'today') renderToday();
       else if (currentView === 'week') renderWeek();
+      else if (currentView === 'plan') renderPlan();
       else if (currentView === 'progress') renderProgress();
       else renderSettings();
       if (session.open) session.paint();
@@ -2102,18 +2475,18 @@
       h('p', {
         class: 'small muted', style: 'margin-top:.45rem',
         text: 'Something in the stored data is wrong: ' + ((err && err.message) || 'unknown error') +
-          '. Export a backup first if you want a copy of it, then reset the routine — that keeps your logged sessions.'
+          '. Export a backup first if you want a copy of it, then reset the built-in programs — that keeps your logged sessions.'
       }),
       h('div', { class: 'btn-row', style: 'margin-top:.9rem' }, [
         h('button', { class: 'btn btn-sm', type: 'button', text: 'Export backup', onclick: doExport }),
         h('button', {
-          class: 'btn btn-sm', type: 'button', text: 'Reset the routine',
-          onclick: function () { S.resetRoutine(); toast('Routine reset'); }
+          class: 'btn btn-sm', type: 'button', text: 'Reset built-in programs',
+          onclick: function () { S.resetRoutine(); toast('Built-in programs reset'); }
         }),
         h('button', {
           class: 'btn btn-sm btn-danger', type: 'button', text: 'Erase everything',
           onclick: function () {
-            if (!global.confirm('Erase every logged session and any routine edits? This cannot be undone.')) return;
+            if (!global.confirm('Erase every logged session and any program edits? This cannot be undone.')) return;
             S.clearAll();
           }
         })
