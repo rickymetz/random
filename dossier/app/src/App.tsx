@@ -13,6 +13,7 @@ import {
   DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_BACKGROUND_GRACE_SECONDS,
 } from './lib/models'
+import { applyUpdate, isUpdateReady, onUpdateReady } from './lib/appUpdate'
 import { currentDisguise, subscribeDisguise } from './lib/disguise'
 import { onLock } from './lib/sessionCaches'
 import {
@@ -217,6 +218,22 @@ export default function App() {
   useEffect(() => {
     void init()
   }, [init])
+  // A new build waiting to take over (lib/appUpdate.ts) is taken only
+  // when nothing is in use: the moment the app locks, or on the unlock
+  // screen before anything has been typed there. Never while unlocked —
+  // that reload would lock you out mid-sentence.
+  useEffect(() => {
+    if (unlocked) return
+    const takeIfIdle = () => {
+      if (!isUpdateReady()) return
+      const typing = [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea')].some(
+        (el) => el.value !== '',
+      )
+      if (!typing) void applyUpdate()
+    }
+    takeIfIdle()
+    return onUpdateReady(takeIfIdle)
+  }, [unlocked])
   useKeyboardInset()
   useScrollReset()
   // Ctrl/Cmd+K reaches the People search from any page but the graph,

@@ -284,6 +284,14 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
       if (settings.recentIds?.length === 0) settings.recentIds = undefined
       return settings
     }
+    case 'draft': {
+      // A note being written: capped like a note's body, and only ever
+      // about a person id.
+      const personId = typeof r.personId === 'string' && ID_RE.test(r.personId) ? r.personId : undefined
+      const body = str(r.body, 50_000)
+      if (!personId || !body || !body.trim()) return null
+      return { kind: 'draft', id: rid, personId, body, updatedAt: num(r.updatedAt) }
+    }
     default:
       return null
   }

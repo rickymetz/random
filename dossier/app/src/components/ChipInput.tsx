@@ -1,6 +1,19 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 /**
+ * The value still being typed, folded into the list the way a commit
+ * would: trimmed, and never a second copy of one already there. A form
+ * calls this on save, because the chip field cannot commit it itself
+ * (see the blur handler below).
+ */
+export function withDraft(values: string[], draft: string | undefined): string[] {
+  const value = draft?.trim()
+  if (!value) return values
+  if (values.some((v) => v.toLowerCase() === value.toLowerCase())) return values
+  return [...values, value]
+}
+
+/**
  * Chip-style list editor for tags/likes/dislikes/nicknames (§4.1
  * "tag-like lists, free-vocabulary"). Replaces comma-separated text:
  * values can contain commas, editing one value doesn't mean cursor-
@@ -11,6 +24,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 export default function ChipInput({
   values,
   onChange,
+  onDraftChange,
   suggestions = [],
   placeholder,
   label,
@@ -20,6 +34,12 @@ export default function ChipInput({
 }: {
   values: string[]
   onChange: (values: string[]) => void
+  /**
+   * The half-typed value, reported as it changes. A form that can be
+   * saved while this field has focus needs it: the field itself must not
+   * turn it into a chip on the way out (see the blur handler).
+   */
+  onDraftChange?: (draft: string) => void
   suggestions?: string[]
   placeholder?: string
   label: string
@@ -30,7 +50,24 @@ export default function ChipInput({
   /** Phone keyboard capitalisation: names and circles want 'words'. */
   capitalize?: 'none' | 'words'
 }) {
-  const [draft, setDraft] = useState('')
+  const [draft, setDraftState] = useState('')
+  // The leftover is reported the way a commit would store it: an
+  // existing spelling wins ("climbing crew" typed is "Climbing crew"), so
+  // a word saved by the form's Save doesn't start a second spelling.
+  const report = (next: string) => {
+    if (!onDraftChange) return
+    const t = next.trim().toLowerCase()
+    onDraftChange(suggestions.find((sug) => sug.toLowerCase() === t) ?? next)
+  }
+  const setDraft = (next: string) => {
+    setDraftState(next)
+    report(next)
+  }
+  // Gone from the screen, gone from the form: a Cancel (or the field
+  // closing) must not leave a word nobody can see to be saved next time.
+  const reportRef = useRef(onDraftChange)
+  reportRef.current = onDraftChange
+  useEffect(() => () => reportRef.current?.(''), [])
   const [focused, setFocused] = useState(false)
   // Highlighted suggestion: Enter commits it (not the raw draft) so
   // "clim" becomes "Climbing crew" rather than a new "clim" value.
@@ -158,10 +195,15 @@ export default function ChipInput({
           onFocus={() => setFocused(true)}
           onBlur={(e) => {
             setFocused(false)
-            // Commit a real word left in the field, not a stray keystroke,
-            // and not when the blur is a tap on Cancel/Save.
-            const toButton = (e.relatedTarget as HTMLElement | null)?.tagName === 'BUTTON'
-            if (draft.trim().length >= 2 && !toButton) add(draft)
+            // Never grow the field on the way to a button. Committing
+            // here adds a chip, the chip wraps onto a new line, the
+            // button moves out from under the finger between press and
+            // release — and the tap is never delivered at all: measured
+            // at 33px of drift and no click event. The word is not lost
+            // either: the form takes it with `withDraft` on save.
+            if ((e.relatedTarget as HTMLElement | null)?.tagName === 'BUTTON') return
+            // Otherwise commit a real word left behind, not a stray key.
+            if (draft.trim().length >= 2) add(draft)
             else if (draft.trim().length < 2) setDraft('')
           }}
         />

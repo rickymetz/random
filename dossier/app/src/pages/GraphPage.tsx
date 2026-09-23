@@ -22,6 +22,7 @@ import { createPortal } from 'react-dom'
 import PersonPicker from '../components/PersonPicker'
 import Sheet from '../components/Sheet'
 import DangerConfirm from '../components/DangerConfirm'
+import { distanceToHull, rimAnchors, type RimAnchor } from '../lib/hullLabel'
 import { familyOf, lineStyle, pairKey, roleDates, roleLabel, type LineStyle } from '../lib/relationships'
 import { chipAction, toggleIsolate } from '../lib/chipIsolate'
 import { quietLabel, quietMonths } from '../lib/quiet'
@@ -194,6 +195,30 @@ function saveFilters(
   } catch {
     // ignore
   }
+}
+
+/**
+ * The graph's view buttons as drawn icons, in the tab bar's stroke. They
+ * were Unicode glyphs, and a glyph is whatever the system font makes of
+ * it: on iOS "⤢" came out at half the size of "◎" and "☰" beside it.
+ */
+function ViewIcon({ d, circle = false }: { d: string; circle?: boolean }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {circle && <circle cx="12" cy="12" r="5" />}
+      <path d={d} />
+    </svg>
+  )
 }
 
 /** Convex hull (monotone chain); returns points in CCW order. */
@@ -1055,18 +1080,18 @@ export default function GraphPage() {
             />
             <div className="graph-view-controls" role="group" aria-label="View">
               <button className="fine-only" onClick={() => viewApiRef.current?.zoom(1.25)} aria-label="Zoom in">
-                +
+                <ViewIcon d="M12 5v14M5 12h14" />
               </button>
               <button className="fine-only" onClick={() => viewApiRef.current?.zoom(1 / 1.25)} aria-label="Zoom out">
-                −
+                <ViewIcon d="M5 12h14" />
               </button>
               {hasSelfNode && selfId && (
                 <button onClick={() => viewApiRef.current?.center(selfId, 1)} aria-label="Centre on me">
-                  ◎
+                  <ViewIcon d="M12 3v3M12 18v3M3 12h3M18 12h3" circle />
                 </button>
               )}
               <button onClick={() => viewApiRef.current?.fit()} aria-label="Fit everyone in view">
-                ⤢
+                <ViewIcon d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
               </button>
               <button
                 onClick={() => setListOpen((v) => !v)}
@@ -1074,7 +1099,7 @@ export default function GraphPage() {
                 aria-expanded={listOpen}
                 aria-controls="graph-list"
               >
-                ☰
+                <ViewIcon d="M5 7h14M5 12h14M5 17h14" />
               </button>
             </div>
           </>
@@ -1753,6 +1778,10 @@ function useCanvasGraph(
     const simLinks: GraphLink[] = links.map((l) => ({ ...l }))
     // Last-drawn bubble outlines, for tap hit-testing.
     const hulls = new Map<string, { x: number; y: number }[]>()
+    // Where the last frame put its labels (graph units), for tests: a
+    // circle's name must touch its bubble, and names must not be crossed.
+    type LabelBox = { x: number; y: number; w: number; h: number }
+    let lastLabels: { names: LabelBox[]; circles: (LabelBox & { id: string })[] } = { names: [], circles: [] }
     // Several roles on one pair fan out as parallel strands: each link
     // knows its offset among its siblings (0 for a lone link).
     const strand = new Map<string, number>()
@@ -1986,6 +2015,8 @@ function useCanvasGraph(
       positions,
       transform,
       size: () => ({ width, height }),
+      labels: () => lastLabels,
+      hulls: () => Object.fromEntries(hulls),
     }
     canvas.dataset.layout = reduceMotion ? 'settled' : 'running'
     onLayout(!reduceMotion)
@@ -2208,6 +2239,219 @@ function useCanvasGraph(
       ctx.globalAlpha = 1
       ctx.lineWidth = 1.5 / k
 
+      // Labels are placed before a single edge is drawn. A name's halo
+      // only hugs its letters, so a line running between them showed
+      // straight through ("Alex K|im", "Del|gado"); knowing where every
+      // name will sit lets the edges below be cut around them, the way a
+      // map knocks roads out under a town's name. Painting still happens
+      // last, over the discs.
+      //
+      // Names get a budget from screen area, like map labels: the most
+      // important people are named first (the card's subject, you, the
+      // focus, lit neighbours, then hubs) and zooming in frees budget for
+      // the rest. Dots are never named; a lit neighbourhood is always
+      // named, whatever the zoom.
+      type Box = { x: number; y: number; w: number; h: number }
+      const overlaps = (b: Box) => (o: Box) =>
+        b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y
+      const grow = (b: Box, m: number): Box => ({ x: b.x - m, y: b.y - m, w: b.w + m * 2, h: b.h + m * 2 })
+      const namePlan: { text: string; x: number; y: number; fill: string }[] = []
+      const nameBoxes: Box[] = []
+      {
+        const nameBudget = Math.max(8, Math.floor(cells * 1.1))
+        // At reduced detail names dodge only the people drawn in full: the
+        // dots are minor, and a hub's name matters more than a dot under it.
+        const nodeBoxes = inViewNodes
+          .filter((nd) => !dots.has(nd.id))
+          .map((nd) => {
+            const r = radiusOf(nd)
+            return { id: nd.id, x: nd.x! - r, y: nd.y! - r, w: r * 2, h: r * 2 }
+          })
+        // Screen-sized: 12px at every zoom, like a map label.
+        ctx.font = `500 ${(12 * dt) / k}px system-ui`
+        const lineH = (14 * dt) / k
+        const rank = (nd: GraphNode) =>
+          (nd.id === selectedId || nd.id === active?.anchor ? 4000 : 0) +
+          (nd.isSelf ? 3000 : 0) +
+          (nd.id === focusId ? 2000 : 0) +
+          (active && active.nodes.has(nd.id) ? 1000 : 0) +
+          nd.r
+        const order = inViewNodes.slice().sort((a, b) => rank(b) - rank(a))
+        let named = 0
+        for (const node of order) {
+          const litNode = isLitNode(node.id)
+          if (active && !litNode) continue
+          if (dots.has(node.id)) continue
+          const exempt =
+            node.id === selectedId || node.id === active?.anchor || (active?.nodes.has(node.id) ?? false)
+          if (!exempt && named >= nameBudget) continue
+          const text = node.isSelf ? `${node.name} (you)` : node.name
+          const w = ctx.measureText(text).width
+          // Below the disc, else above it; skip when both would overprint.
+          const nr = radiusOf(node)
+          const candidates = [node.y! + nr + 13 / k, node.y! - nr - 5 / k]
+          for (const y of candidates) {
+            // A little taller than the glyphs so two names never abut.
+            const box = { x: node.x! - w / 2 - 2 / k, y: y - lineH, w: w + 4 / k, h: lineH * 1.3 }
+            if (nameBoxes.some(overlaps(box))) continue
+            if (nodeBoxes.some((o) => o.id !== node.id && overlaps(box)(o))) continue
+            nameBoxes.push(box)
+            namePlan.push({
+              text,
+              x: node.x!,
+              y,
+              fill: node.id === selectedId || node.id === active?.anchor ? '#ece8e1' : '#b5afa5',
+            })
+            if (!exempt) named++
+            break
+          }
+        }
+      }
+      // Circle names: small caps in the bubble's hue toned toward the
+      // caption grey. Every candidate spot touches the bubble's own rim
+      // (`rimAnchors`), over the top first, then the sides, then below —
+      // never a line or seven away, where it would read as the label of
+      // whoever it landed next to. It keeps a clear margin from people
+      // and their names for the same reason, and prefers not to sit
+      // inside another circle's bubble. They shrink with zoom (floor 9px)
+      // and vanish far out or when there are too many bubbles to name.
+      const circlePlan: { text: string; x: number; y: number; align: CanvasTextAlign; color: string }[] = []
+      const circleBoxes: Box[] = []
+      const circleIds: string[] = []
+      const circleFontPx = (Math.min(11, Math.max(9, 11 * k)) * dt) / k
+      if (k >= 0.45 && (circlesNow.length <= 8 || k >= 0.8)) {
+        const lineH = circleFontPx * 1.3
+        ctx.font = `600 ${circleFontPx}px system-ui`
+        const spaced = ctx as CanvasRenderingContext2D & { letterSpacing?: string }
+        if ('letterSpacing' in spaced) spaced.letterSpacing = '0.06em'
+        const margin = 7 / k
+        const keepClear: Box[] = [
+          ...nameBoxes.map((b) => grow(b, margin)),
+          ...inViewNodes.map((nd) => grow({ x: nd.x! - radiusOf(nd), y: nd.y! - radiusOf(nd), w: radiusOf(nd) * 2, h: radiusOf(nd) * 2 }, margin)),
+        ]
+        // On screen, clear of the chip rail's shadow at the very top.
+        const view = {
+          x0: (-width / 2 - transform.x) / k + 4 / k,
+          x1: (width / 2 - transform.x) / k - 4 / k,
+          y0: (-height / 2 - transform.y) / k + 8 / k,
+          y1: (height / 2 - transform.y) / k - 4 / k,
+        }
+        const onScreen = (b: Box) => b.x >= view.x0 && b.x + b.w <= view.x1 && b.y >= view.y0 && b.y + b.h <= view.y1
+        // A bubble off the screen has no name to place: on a big vault
+        // zoomed in, that is nearly all of them, every frame.
+        const inViewCircles = circlesNow.filter((c) => {
+          const hull = hulls.get(c.id)
+          if (!hull || hull.length === 0) return false
+          const xs = hull.map((pt) => pt.x)
+          const ys = hull.map((pt) => pt.y)
+          return !(
+            Math.max(...xs) + HULL_PAD < view.x0 ||
+            Math.min(...xs) - HULL_PAD > view.x1 ||
+            Math.max(...ys) + HULL_PAD < view.y0 ||
+            Math.min(...ys) - HULL_PAD > view.y1
+          )
+        })
+        // One search budget per frame, shared: a few bubbles on screen
+        // each get a near-exhaustive search; a crowd gets a floor each.
+        const perCircleBudget = Math.max(24, Math.floor(600 / Math.max(1, inViewCircles.length)))
+        for (const c of inViewCircles) {
+          const hull = hulls.get(c.id)!
+          const xs = hull.map((pt) => pt.x)
+          const bubbleW = Math.max(...xs) - Math.min(...xs) + HULL_PAD * 2
+          let text = c.name.toUpperCase()
+          while (text.length > 3 && ctx.measureText(text).width > Math.max(bubbleW - 16 / k, 140 / k)) {
+            text = text.slice(0, -2).trimEnd() + '…'
+          }
+          const w = ctx.measureText(text).width
+          const h = lineH * 1.25
+          // From each rim point a name may hang straight out, or slide
+          // along it (its start, middle or end on the point), and may
+          // step out one line further — no more, or it stops belonging
+          // to this bubble. The rim is where the outermost members' own
+          // names sit, so a name pinned dead-centre on it rarely fits.
+          type Spot = { box: Box; x: number; y: number; align: CanvasTextAlign }
+          const spotsAt = (a: RimAnchor, step: number): Spot[] => {
+            const out: Spot[] = []
+            const ax = a.x + a.ux * step
+            const ay = a.y + a.uy * step
+            if (a.uy <= -0.6 || a.uy >= 0.6) {
+              const y = a.uy < 0 ? ay - h : ay
+              for (const align of ['center', 'left', 'right'] as const) {
+                const x = align === 'center' ? ax - w / 2 : align === 'left' ? ax - 8 / k : ax - w + 8 / k
+                out.push({ box: { x, y, w, h }, x: align === 'center' ? ax : align === 'left' ? x : x + w, y: y + lineH, align })
+              }
+            } else {
+              const align: CanvasTextAlign = a.ux > 0 ? 'left' : 'right'
+              const x = a.ux > 0 ? ax : ax - w
+              for (const dy of [0, -h / 2, h / 2]) {
+                const y = ay - h / 2 + dy
+                out.push({ box: { x, y, w, h }, x: a.ux > 0 ? x : x + w, y: y + lineH, align })
+              }
+            }
+            return out
+          }
+          const inOtherBubble = (b: Box) => {
+            const mid = { x: b.x + b.w / 2, y: b.y + b.h / 2 }
+            for (const [id, other] of hulls) {
+              if (id !== c.id && distanceToHull(mid, other) < HULL_PAD) return true
+            }
+            return false
+          }
+          // Only what is near this bubble can be in the way.
+          const ys = hull.map((pt) => pt.y)
+          const reach = HULL_PAD + lineH * 2 + w
+          const near = {
+            x: Math.min(...xs) - reach,
+            y: Math.min(...ys) - reach,
+            w: Math.max(...xs) - Math.min(...xs) + reach * 2,
+            h: Math.max(...ys) - Math.min(...ys) + reach * 2,
+          }
+          const blockers = [...keepClear.filter(overlaps(near)), ...circleBoxes]
+          const free = (b: Box) => onScreen(b) && !blockers.some(overlaps(b))
+          // Stop at the first spot that fits — this runs every frame for
+          // every bubble — hugging the rim before stepping a line out, top
+          // before sides before below (rimAnchors' order), and preferring
+          // not to sit inside another bubble before settling for it.
+          const anchors = rimAnchors(hull, HULL_PAD, 3 / k)
+          // One pass: the first free spot outside other bubbles wins; the
+          // first free one inside another is kept in case none is.
+          let fallback: Spot | undefined
+          // A bounded search: the likeliest spots come first, and on a
+          // crowded screen where none fits, trying all of them every
+          // frame for every bubble is what made panning a big vault stutter.
+          let budget = perCircleBudget
+          const pick = (): Spot | undefined => {
+            for (const step of [0, lineH]) {
+              for (const a of anchors) {
+                for (const sp of spotsAt(a, step)) {
+                  if (--budget < 0) return fallback
+                  if (!free(sp.box)) continue
+                  if (!inOtherBubble(sp.box)) return sp
+                  fallback ??= sp
+                }
+              }
+            }
+            return fallback
+          }
+          const chosen = pick()
+          if (!chosen) continue
+          circleBoxes.push(chosen.box)
+          circleIds.push(c.id)
+          circlePlan.push({ text, x: chosen.x, y: chosen.y, align: chosen.align, color: tonedColor(c.color) })
+        }
+        if ('letterSpacing' in spaced) spaced.letterSpacing = '0px'
+      }
+
+      lastLabels = { names: nameBoxes, circles: circleBoxes.map((b, i) => ({ ...b, id: circleIds[i] })) }
+      // Cut the edges (and their arrowheads) around every label.
+      ctx.save()
+      if (nameBoxes.length + circleBoxes.length > 0) {
+        ctx.beginPath()
+        ctx.rect(minX - 1e4, minY - 1e4, maxX - minX + 2e4, maxY - minY + 2e4)
+        for (const b of nameBoxes) ctx.rect(b.x, b.y, b.w, b.h)
+        for (const b of circleBoxes) ctx.rect(b.x, b.y, b.w, b.h)
+        ctx.clip('evenodd')
+      }
       const dash: [number, number] = [4 / k, 4 / k]
       const solid: never[] = []
       // Edges batched by style — one stroke per (color, dashed, highlight,
@@ -2303,6 +2547,7 @@ function useCanvasGraph(
         }
       }
 
+      ctx.restore()
       ctx.globalAlpha = 1
       ctx.setLineDash(solid)
       ctx.lineWidth = 1 / k
@@ -2443,152 +2688,32 @@ function useCanvasGraph(
         }
       }
       ctx.lineWidth = 1 / k
-      // Pass 2: name labels get a budget from screen area, like map
-      // labels: the most important people are named first (the card's
-      // subject, you, the focus, lit neighbours, then hubs) and zooming
-      // in frees budget for the rest. Dots are never named; a lit
-      // neighbourhood is always named, whatever the zoom.
-      const nameBudget = Math.max(8, Math.floor(cells * 1.1))
-      // At reduced detail names dodge only the people drawn in full: the
-      // dots are minor, and a hub's name matters more than a dot under it.
-      const nodeBoxes = visibleNodes
-        .filter((nd) => !dots.has(nd.id))
-        .map((nd) => {
-          const r = radiusOf(nd)
-          return { id: nd.id, x: nd.x! - r, y: nd.y! - r, w: r * 2, h: r * 2 }
-        })
-      const overlaps = (b: { x: number; y: number; w: number; h: number }) => (o: typeof b) =>
-        b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y
-      const nameBoxes: { x: number; y: number; w: number; h: number }[] = []
-      {
-        // Names read as captions: `--text-2` on a halo of the canvas
-        // colour, and the people who matter most are named first — the
-        // card's subject, you, the focus, lit neighbours, then hubs.
-        // Screen-sized: 12px at every zoom, like a map label.
-        ctx.font = `500 ${(12 * dt) / k}px system-ui`
-        ctx.lineJoin = 'round'
-        ctx.lineWidth = 3 / k
-        ctx.strokeStyle = 'rgba(18, 17, 16, 0.9)'
-        ctx.textBaseline = 'alphabetic'
-        const lineH = (14 * dt) / k
-        const rank = (nd: GraphNode) =>
-          (nd.id === selectedId || nd.id === active?.anchor ? 4000 : 0) +
-          (nd.isSelf ? 3000 : 0) +
-          (nd.id === focusId ? 2000 : 0) +
-          (active && active.nodes.has(nd.id) ? 1000 : 0) +
-          nd.r
-        const order = visibleNodes.slice().sort((a, b) => rank(b) - rank(a))
-        let named = 0
-        for (const node of order) {
-          const litNode = isLitNode(node.id)
-          if (active && !litNode) continue
-          if (dots.has(node.id)) continue
-          const exempt =
-            node.id === selectedId || node.id === active?.anchor || (active?.nodes.has(node.id) ?? false)
-          if (!exempt && named >= nameBudget) continue
-          const text = node.isSelf ? `${node.name} (you)` : node.name
-          const w = ctx.measureText(text).width
-          // Below the disc, else above it; skip when both would overprint.
-          const nr = radiusOf(node)
-          const candidates = [node.y! + nr + 13 / k, node.y! - nr - 5 / k]
-          let placed = false
-          for (const y of candidates) {
-            // A little taller than the glyphs so two names never abut.
-            const box = { x: node.x! - w / 2 - 2 / k, y: y - lineH, w: w + 4 / k, h: lineH * 1.3 }
-            if (nameBoxes.some(overlaps(box))) continue
-            if (nodeBoxes.some((o) => o.id !== node.id && overlaps(box)(o))) continue
-            nameBoxes.push(box)
-            ctx.strokeText(text, node.x!, y)
-            ctx.fillStyle = node.id === selectedId || node.id === active?.anchor ? '#ece8e1' : '#b5afa5'
-            ctx.fillText(text, node.x!, y)
-            placed = true
-            break
-          }
-          if (placed && !exempt) named++
-        }
+      // Names, placed before the edges were drawn (so each edge was cut
+      // where a name sits) and painted now, over the discs.
+      ctx.font = `500 ${(12 * dt) / k}px system-ui`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'alphabetic'
+      ctx.lineJoin = 'round'
+      ctx.lineWidth = 3 / k
+      ctx.strokeStyle = 'rgba(18, 17, 16, 0.9)'
+      for (const n of namePlan) {
+        ctx.strokeText(n.text, n.x, n.y)
+        ctx.fillStyle = n.fill
+        ctx.fillText(n.text, n.x, n.y)
       }
-      // Circle names last: small caps in the bubble's hue toned toward
-      // the caption grey, hung off the bubble's top edge wherever they
-      // don't cover anyone. They shrink with zoom (floor 9px) and vanish
-      // far out or when there are too many bubbles to name.
-      if (k >= 0.45 && (circlesNow.length <= 8 || k >= 0.8)) {
-        const fontPx = (Math.min(11, Math.max(9, 11 * k)) * dt) / k
-        const lineH = fontPx * 1.3
-        ctx.font = `600 ${fontPx}px system-ui`
+      if (circlePlan.length > 0) {
+        ctx.font = `600 ${circleFontPx}px system-ui`
         const spaced = ctx as CanvasRenderingContext2D & { letterSpacing?: string }
         if ('letterSpacing' in spaced) spaced.letterSpacing = '0.06em'
-        ctx.textBaseline = 'alphabetic'
-        ctx.lineJoin = 'round'
-        ctx.lineWidth = 3 / k
         ctx.strokeStyle = 'rgba(18, 17, 16, 0.8)'
-        const placed: { x: number; y: number; w: number; h: number }[] = [...nameBoxes]
-        const captionBoxes = visibleNodes.map((nd) => {
-          const r = radiusOf(nd)
-          return {
-            x: nd.x! - r - 4 / k,
-            y: nd.y! - r - 4 / k,
-            w: r * 2 + 8 / k,
-            h: r * 2 + 18 / k,
-          }
-        })
-        const hits = (b: { x: number; y: number; w: number; h: number }) =>
-          placed.some(overlaps(b)) || captionBoxes.some(overlaps(b))
-        for (const c of circlesNow) {
-          const hull = hulls.get(c.id)
-          if (!hull || hull.length === 0) continue
-          const xs = hull.map((p) => p.x)
-          const ys = hull.map((p) => p.y)
-          const left = Math.min(...xs) - HULL_PAD
-          const right = Math.max(...xs) + HULL_PAD
-          const top = Math.min(...ys) - HULL_PAD
-          const bubbleW = right - left
-          let text = c.name.toUpperCase()
-          while (text.length > 3 && ctx.measureText(text).width > Math.max(bubbleW - 16 / k, 140 / k)) {
-            text = text.slice(0, -2).trimEnd() + '…'
-          }
-          const w = ctx.measureText(text).width
-          // The hull's corners are its members, so a name inside the
-          // bubble always sits on someone: it hangs just above the top
-          // edge instead — at the left corner, the middle, the right
-          // corner — and climbs a line at a time when those are taken.
-          const inset = 6 / k
-          const bottom = Math.max(...ys) + HULL_PAD
-          const aboveY = Math.max(top - 5 / k, minY + NODE_R * 2 + lineH)
-          const belowY = bottom + lineH
-          const cx = (left + right) / 2
-          const options: { x: number; y: number; align: CanvasTextAlign }[] = [
-            { x: left + inset, y: aboveY, align: 'left' },
-            { x: cx, y: aboveY, align: 'center' },
-            { x: right - inset, y: aboveY, align: 'right' },
-            { x: left + inset, y: belowY, align: 'left' },
-            { x: cx, y: belowY, align: 'center' },
-            { x: right - inset, y: belowY, align: 'right' },
-            { x: left + inset, y: aboveY - lineH, align: 'left' },
-            { x: cx, y: aboveY - lineH, align: 'center' },
-          ]
-          // Past the fixed slots, step away a line at a time above and
-          // below so two bubbles sharing an edge never print over each
-          // other; as a last resort take a slot that only crosses lines,
-          // never a person or their name.
-          for (let extra = 2; extra < 8; extra++) {
-            options.push({ x: cx, y: aboveY - lineH * extra, align: 'center' })
-            options.push({ x: cx, y: belowY + lineH * extra, align: 'center' })
-          }
-          const boxFor = (o: { x: number; y: number; align: CanvasTextAlign }) => {
-            const bx = o.align === 'left' ? o.x : o.align === 'right' ? o.x - w : o.x - w / 2
-            return { x: bx, y: o.y - lineH, w, h: lineH * 1.25 }
-          }
-          let chosen = options.find((o) => !hits(boxFor(o)))
-          if (!chosen) chosen = options.find((o) => !captionBoxes.some(overlaps(boxFor(o))))
-          if (!chosen) continue
-          placed.push(boxFor(chosen))
-          ctx.textAlign = chosen.align
-          ctx.globalAlpha = active ? 0.6 : 1
-          ctx.strokeText(text, chosen.x, chosen.y)
-          ctx.fillStyle = tonedColor(c.color)
-          ctx.fillText(text, chosen.x, chosen.y)
-          ctx.globalAlpha = 1
+        ctx.globalAlpha = active ? 0.6 : 1
+        for (const c of circlePlan) {
+          ctx.textAlign = c.align
+          ctx.strokeText(c.text, c.x, c.y)
+          ctx.fillStyle = c.color
+          ctx.fillText(c.text, c.x, c.y)
         }
+        ctx.globalAlpha = 1
         if ('letterSpacing' in spaced) spaced.letterSpacing = '0px'
         ctx.textAlign = 'center'
       }

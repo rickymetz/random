@@ -10,6 +10,7 @@
  * second, explicit act that says how many it will destroy.
  */
 import { useMemo, useState } from 'react'
+import ChipInput, { withDraft } from './ChipInput'
 import DangerConfirm from './DangerConfirm'
 import {
   FIELD_PACKS,
@@ -49,7 +50,9 @@ export default function FormEditor() {
   const [adding, setAdding] = useState(false)
   const [label, setLabel] = useState('')
   const [type, setType] = useState<FieldType>('text')
-  const [options, setOptions] = useState('')
+  const [options, setOptions] = useState<string[]>([])
+  /** What is still in the chip field when Add row is tapped (see ChipInput). */
+  const [optionDraft, setOptionDraft] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
 
@@ -59,15 +62,13 @@ export default function FormEditor() {
     const result = await addField({
       label,
       type,
-      options:
-        type === 'choice'
-          ? options.split(',').map((o) => o.trim()).filter(Boolean)
-          : undefined,
+      options: type === 'choice' ? withDraft(options, optionDraft) : undefined,
     })
     if (result === 'name-taken') return setMsg('That name is already a row on the form.')
     if (result === 'full') return setMsg(`A form holds ${MAX_FIELDS} rows. Retire one first.`)
     setLabel('')
-    setOptions('')
+    setOptions([])
+    setOptionDraft('')
     setAdding(false)
   }
 
@@ -188,15 +189,17 @@ export default function FormEditor() {
             </select>
           </label>
           {type === 'choice' && (
-            <label>
-              Choices
-              <input
-                value={options}
+            <div className="field-label">
+              <span id="new-choices-label">Choices</span>
+              <ChipInput
+                label="Choices"
+                labelId="new-choices-label"
+                values={options}
+                onChange={setOptions}
+                onDraftChange={setOptionDraft}
                 placeholder="work, school, online"
-                onChange={(e) => setOptions(e.target.value)}
               />
-              <span className="hint desc">Separated by commas.</span>
-            </label>
+            </div>
           )}
           <div className="row">
             <button
@@ -204,6 +207,8 @@ export default function FormEditor() {
               className="quiet"
               onClick={() => {
                 setAdding(false)
+                setOptions([])
+                setOptionDraft('')
                 setMsg(null)
               }}
             >
@@ -303,7 +308,8 @@ function FieldRowEditor({
   onRetire: () => void
 }) {
   const [label, setLabel] = useState(def.label)
-  const [options, setOptions] = useState((def.options ?? []).join(', '))
+  const [options, setOptions] = useState(def.options ?? [])
+  const [optionDraft, setOptionDraft] = useState('')
   const [remind, setRemind] = useState(Boolean(def.remindYearly))
   const [lead, setLead] = useState(def.remindLeadDays ?? 0)
   const [error, setError] = useState<string | null>(null)
@@ -317,10 +323,7 @@ function FieldRowEditor({
           await onSave({
             ...def,
             label,
-            options:
-              def.type === 'choice'
-                ? options.split(',').map((o) => o.trim()).filter(Boolean)
-                : undefined,
+            options: def.type === 'choice' ? withDraft(options, optionDraft) : undefined,
             remindYearly: def.type === 'date' && remind ? true : undefined,
             remindLeadDays: def.type === 'date' && remind ? lead : undefined,
           }),
@@ -336,13 +339,23 @@ function FieldRowEditor({
         <span className="hint desc">Holds {FIELD_TYPE_LABELS[def.type].toLowerCase()}.</span>
       </label>
       {def.type === 'choice' && (
-        <label>
-          Choices
-          <input value={options} onChange={(e) => setOptions(e.target.value)} />
-          <span className="hint desc">
-            Separated by commas. Changing them never rewrites an answer.
-          </span>
-        </label>
+        <div className="field-label">
+          <span id={`choices-${def.id}`}>Choices</span>
+          {/* One chip per choice, not one long comma string: a list you
+              can read at a glance and edit a word of without hunting a
+              cursor through it — the same reason tags stopped being
+              comma text. A typed comma still commits, so the old habit
+              keeps working. */}
+          <ChipInput
+            label="Choices"
+            labelId={`choices-${def.id}`}
+            values={options}
+            onChange={setOptions}
+            onDraftChange={setOptionDraft}
+            placeholder="work, school, online"
+          />
+          <span className="hint desc">Changing them never rewrites an answer.</span>
+        </div>
       )}
       {def.type === 'date' && (
         <>

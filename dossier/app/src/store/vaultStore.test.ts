@@ -245,6 +245,64 @@ describe('vault store', () => {
     expect(selectNotes(store().records, ada.id)).toHaveLength(1)
   })
 
+  it('a note being written survives the page going away, and comes back on unlock', async () => {
+    const ada = await store().addPerson('Ada')
+    await store().persistDraft(ada.id, 'half a thought about the regatta')
+    // A reload runs no lock and flushes nothing: only what is on disk is left.
+    store().lock()
+    expect(await store().unlock('open sesame')).toBe(true)
+    expect(store().drafts.get(ada.id)).toBe('half a thought about the regatta')
+    // Encrypted at rest like everything else.
+    const rows = await db.records.toArray()
+    expect(JSON.stringify(rows)).not.toContain('regatta')
+    // Emptying the box forgets it.
+    await store().persistDraft(ada.id, '')
+    store().lock()
+    await store().unlock('open sesame')
+    expect(store().drafts.has(ada.id)).toBe(false)
+  })
+
+  it('a draft that became a note on lock does not come back as a draft too', async () => {
+    const ada = await store().addPerson('Ada')
+    const text = 'met at the harbour'
+    await store().persistDraft(ada.id, text)
+    store().registerDraft(ada.id, () => text)
+    await store().flushDrafts()
+    store().lock()
+    await store().unlock('open sesame')
+    expect(selectNotes(store().records, ada.id).map((n) => n.body)).toEqual([text])
+    expect(store().drafts.has(ada.id)).toBe(false)
+  })
+
+  it('deleting a person takes their unfinished note with them', async () => {
+    const ada = await store().addPerson('Ada')
+    const bo = await store().addPerson('Bo')
+    await store().persistDraft(ada.id, 'about Ada')
+    await store().persistDraft(bo.id, 'about Bo')
+    await store().removePerson(ada.id)
+    // …and a late write for someone gone is refused.
+    await store().persistDraft(ada.id, 'again')
+    store().lock()
+    await store().unlock('open sesame')
+    expect([...store().drafts.entries()]).toEqual([[bo.id, 'about Bo']])
+  })
+
+  it('drafts never join the records — so never a backup, and never a re-render', async () => {
+    const ada = await store().addPerson('Ada')
+    const before = store().records
+    await store().persistDraft(ada.id, 'not for export')
+    expect(store().records).toBe(before)
+    store().lock()
+    await store().unlock('open sesame')
+    expect([...store().records.values()].some((r) => (r as { kind: string }).kind === 'draft')).toBe(false)
+    expect(JSON.stringify([...store().records.values()])).not.toContain('not for export')
+    // A backup claiming to carry one doesn't bring it in.
+    await store().importRecords([
+      { kind: 'draft', id: 'd1', personId: ada.id, body: 'smuggled', updatedAt: 1 },
+    ])
+    expect(JSON.stringify([...store().records.values()])).not.toContain('smuggled')
+  })
+
   it('updateNote re-derives mention edges from the new text', async () => {
     const ada = await store().addPerson('Ada')
     const bob = await store().addPerson('Bob')

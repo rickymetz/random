@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App'
+import { markUpdateReady, wireUpdate } from './lib/appUpdate'
 import { applyDisguise } from './lib/disguise'
 import { requestPersistentStorage } from './lib/platform'
 import './styles.css'
@@ -22,17 +23,20 @@ applyDisguise()
 // the result is surfaced on the Settings page.
 void requestPersistentStorage()
 
-// Auto-update the service worker, checking hourly — an installed PWA that
-// is never fully closed (and a hash router that never navigates) would
-// otherwise run a stale build indefinitely. The function registerSW
-// returns does NOT poll in autoUpdate mode; registration.update() does.
-registerSW({
-  immediate: true,
-  onRegisteredSW(_url, registration) {
-    if (!registration) return
-    setInterval(() => void registration.update().catch(() => undefined), 60 * 60 * 1000)
-  },
-})
+// Check for a new build hourly — an installed PWA that is never fully
+// closed (and a hash router that never navigates) would otherwise run a
+// stale build indefinitely. A build that arrives waits to be taken at a
+// quiet moment (lib/appUpdate.ts) rather than reloading mid-sentence.
+wireUpdate(
+  registerSW({
+    immediate: true,
+    onNeedRefresh: markUpdateReady,
+    onRegisteredSW(_url, registration) {
+      if (!registration) return
+      setInterval(() => void registration.update().catch(() => undefined), 60 * 60 * 1000)
+    },
+  }),
+)
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

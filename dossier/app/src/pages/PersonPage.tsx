@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import BatchAddPanel from '../components/BatchAddPanel'
+import { useGrow } from '../components/useGrow'
 import PersonPicker from '../components/PersonPicker'
-import ChipInput from '../components/ChipInput'
+import ChipInput, { withDraft } from '../components/ChipInput'
 import CustomFieldInputs, { draftFrom, type DraftValue } from '../components/CustomFieldInputs'
 import { activeFields, hasValue } from '../lib/fieldDefs'
 import DangerConfirm from '../components/DangerConfirm'
@@ -387,6 +388,18 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     circles: selectCirclesOf(records, person.id).map((c) => c.name),
   }
   const [form, setForm] = useState(initial)
+  /**
+   * What each chip field still has in it, unchipped. A chip field cannot
+   * commit on its way out — growing by a row while your finger is down
+   * moves Save and eats the tap — so Save collects the leftovers here
+   * (`withDraft`). Keyed by field: built-ins by name, custom rows by id.
+   */
+  const [chipDrafts, setChipDrafts] = useState<Record<string, string>>({})
+  const noteDraft = (key: string) => (draft: string) =>
+    setChipDrafts((d) => (d[key] === draft ? d : { ...d, [key]: draft }))
+  // "How we met" is a paragraph often enough to deserve the room.
+  const howWeMetRef = useRef<HTMLTextAreaElement>(null)
+  useGrow(howWeMetRef, form.howWeMet)
   // The rows this vault added for itself (§8.1), in form order.
   const customDefs = useMemo(() => activeFields(selectFieldDefs(records)), [records])
   const initialCustom = useMemo(() => draftFrom(customDefs, person), [customDefs, person])
@@ -466,6 +479,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         labelId={`chip-label-${key}`}
         values={form[key]}
         onChange={(values) => setForm({ ...form, [key]: values })}
+        onDraftChange={noteDraft(key)}
         suggestions={suggestions}
         capitalize={opts.capitalize}
         placeholder={opts.placeholder ?? 'one per entry'}
@@ -494,7 +508,11 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     const customValues: Record<string, CustomValue> = {}
     const dateErrors: Record<string, string> = {}
     for (const def of customDefs) {
-      const draft = custom[def.id]
+      // A custom list row has the same leftover as the built-in ones.
+      const draft =
+        def.type === 'chips'
+          ? withDraft(Array.isArray(custom[def.id]) ? (custom[def.id] as string[]) : [], chipDrafts[def.id])
+          : custom[def.id]
       if (def.type === 'date') {
         const text = typeof draft === 'string' ? draft.trim() : ''
         if (!text) continue
@@ -544,7 +562,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
       await updatePerson({
         ...person,
         displayName: form.displayName.trim() || person.displayName,
-        nicknames: form.nicknames,
+        nicknames: withDraft(form.nicknames, chipDrafts.nicknames),
         pronouns: form.pronouns.trim() || undefined,
         jobTitle: form.jobTitle.trim() || undefined,
         employer: form.employer.trim() || undefined,
@@ -555,15 +573,15 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
           form.phone.trim() || form.email.trim()
             ? { phone: form.phone.trim() || undefined, email: form.email.trim() || undefined }
             : undefined,
-        likes: form.likes,
-        dislikes: form.dislikes,
-        tags: form.tags,
+        likes: withDraft(form.likes, chipDrafts.likes),
+        dislikes: withDraft(form.dislikes, chipDrafts.dislikes),
+        tags: withDraft(form.tags, chipDrafts.tags),
         custom: Object.keys(nextCustom).length > 0 ? nextCustom : undefined,
         isSelf: isSelf || undefined,
       })
       // Circle chips are names; unknown names become new circles.
       const ids: string[] = []
-      for (const name of form.circles) {
+      for (const name of withDraft(form.circles, chipDrafts.circles)) {
         const existing = selectCircles(useVaultStore.getState().records).find(
           (c) => c.name.toLowerCase() === name.toLowerCase(),
         )
@@ -655,6 +673,8 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
           <label className="span-2">
             How we met
             <textarea
+              ref={howWeMetRef}
+              className="grows"
               rows={2}
               value={form.howWeMet}
               onChange={(e) => setForm({ ...form, howWeMet: e.target.value })}
@@ -686,6 +706,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
             people={allPeople}
             draft={custom}
             onChange={(id, value) => setCustom((c) => ({ ...c, [id]: value }))}
+            onChipDraft={(id, d) => noteDraft(id)(d)}
             errors={customErrors}
             clearError={(id) =>
               setCustomErrors((e) => {
@@ -1085,6 +1106,46 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [person.id, registerDraft, unregisterDraft])
+  // …and it is kept on disk as it's typed, so a reload can't take it: an
+  // update applying itself, iOS closing the app from the switcher, a
+  // crash. A reload runs no lock and flushes nothing, so without this the
+  // half-written note was simply gone. It waits in this box on unlock.
+  const persistDraft = useVaultStore((s) => s.persistDraft)
+  const persistTimer = useRef<number | undefined>(undefined)
+  const flushPersist = useCallback(() => {
+    if (persistTimer.current === undefined) return
+    window.clearTimeout(persistTimer.current)
+    persistTimer.current = undefined
+    void persistDraft(person.id, draftRef.current)
+  }, [persistDraft, person.id])
+  useEffect(() => {
+    if (persistTimer.current !== undefined) window.clearTimeout(persistTimer.current)
+    persistTimer.current = undefined
+    // Emptied — saved, or cleared by hand — is forgotten at once: a reload
+    // in the next breath must not bring back a note that was just saved.
+    if (!draft.trim()) {
+      void persistDraft(person.id, '')
+      return
+    }
+    persistTimer.current = window.setTimeout(() => {
+      persistTimer.current = undefined
+      void persistDraft(person.id, draftRef.current)
+    }, 600)
+  }, [draft, person.id, persistDraft])
+  useEffect(() => {
+    // Going away is when the last keystrokes matter most: write now,
+    // don't wait for the pause.
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flushPersist()
+    }
+    window.addEventListener('pagehide', flushPersist)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', flushPersist)
+      document.removeEventListener('visibilitychange', onVisibility)
+      flushPersist()
+    }
+  }, [flushPersist])
   const others = useMemo(
     () => selectPeople(records).filter((p) => p.id !== person.id),
     [records, person.id],
@@ -1103,7 +1164,9 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
     draftRef.current = ''
     setDraft('')
     try {
-      const note = await saveNote(person.id, body)
+      // The note and the removal of its saved draft are one write: a
+      // reload in between can't bring the text back as a draft as well.
+      const note = await saveNote(person.id, body, { clearDraft: true })
       // Only offer names when the setting is on and the note has some;
       // an offer still showing for the previous note stays until it is
       // dealt with.
@@ -1156,6 +1219,9 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
         // The @ hint waits until there's a first note: to a newcomer it
         // means nothing yet.
         placeholder={isFresh ? `Jot a note about ${person.displayName.split(' ')[0]}…` : 'Jot something… @ links a person'}
+        // The capture bar rides above the keyboard: it may grow, but not
+        // until it is the whole screen.
+        maxRows={6}
         plain
         autoFocus={isFresh}
         // One row when idle: the bar sits on the tab bar and shouldn't
