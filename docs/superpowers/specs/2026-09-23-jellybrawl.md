@@ -102,6 +102,8 @@ kept). The selfie is sent as a 128×128 JPEG data URL, about 6 KB.
 | **Chomp Chase** | 1 vs rest | 2–5 | d-pad / swipe | chomper: clear the dots or survive 60 s. Hunters: catch it 3 times. |
 | **Sniper Plaza** | 1 vs rest | 2–8 | runners: stick + BLEND; sniper: trackpad + FIRE | runners: steal the loot target or survive 75 s; sniper: hit every runner |
 | **Sniper Blackout** | 1 vs rest | 2–8 | runners: stick + mini-map; sniper: trackpad + FIRE | same as Sniper Plaza, in the dark with cover |
+| **Infection** | 1 vs rest, flipping | 3–8 | stick + DASH | touched blobs turn; last clean blob (or anyone clean at 45 s) wins |
+| **Kaiju** | 1 vs rest | 2–8 | kaiju: stick + STOMP; city: stick + DASH | city: knock out the kaiju's HP with cannons; kaiju: squash everyone or outlast 60 s |
 | Mash Race | Free-for-all | 2–8 | mash one button | first to the finish |
 | Reaction Tap | Free-for-all | 2–8 | one button | fastest tap after "GO"; tapping early costs you the round |
 | Hot Potato | Free-for-all | 3–8 | tap a player to pass | whoever holds the bomb when it pops is out |
@@ -226,6 +228,36 @@ Picked in the lobby (Mode cycles Playlist → Board → Gauntlet). Built in
 - **Tests.** A Node rules check drives `makeBoard` directly (14 checks:
   moves, shop, items, duel payout, star purchase and relocation, the
   hand-off to the minigame).
+
+## Infection and Kaiju (asymmetric additions)
+
+**Infection** (`games/tag.js`):
+- Patient zero starts in the middle, among pillars to juke around.
+- A real touch (overlap, not a graze) infects you. Infected blobs turn
+  near-black with a toxic-green glow and a ☣ tag, a look no player colour
+  shares.
+- Speeds: patient zero 238, clean 230, the newly infected 205, so the horde
+  is slower than its leader. Everyone gets DASH (2.4× for 0.28 s, 2.5 s
+  cooldown).
+- Ranking: survivors first, then the infected, latest-turned first. Patient
+  zero gets +2 coins/points per tag. Award: Patient zero.
+
+**Kaiju** (`games/kaiju.js`):
+- A giant blob in a neon city walks through buildings, flattening them.
+- STOMP has a 0.7 s windup that roots the kaiju and shows a red ring, then
+  squashes everyone in the ring. It has a 1.6 s cooldown.
+- The city charges 4 cannon pads by standing on them (faster with more blobs
+  on a pad). A full pad fires at the kaiju for 1 HP.
+- HP is 1 + 1.5 per city blob, and charge time grows slightly with the
+  city's size, so bigger lobbies don't swamp it.
+- Awards: Stomper, Artillery and Wrecking ball.
+
+**Balance.** A headless simulation (25 all-bot rounds each at 3, 5 and 8
+players):
+- Kaiju wins 72% / 52% / 44% of rounds, down from a 80%-to-0% swing before
+  tuning.
+- Bot Infection rounds last 13–26 s. The rules favour the horde, and human
+  dodging should stretch them; a real playtest should decide.
 
 ## Microgame Gauntlet (second mode)
 

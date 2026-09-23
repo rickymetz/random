@@ -32,7 +32,7 @@ cycles Playlist → Board → Microgame Gauntlet, and 1–3 pick a game.
 | --- | --- |
 | `tv.html`, `tv.js` | The host: lobby, loser-picks, intro, game, results, podium. Authoritative for all game state. |
 | `index.html`, `controller.js`, `controller.css` | The phone: join, selfie/doodle, then renders the layouts the TV sends. |
-| `games/*.js` | Minigames: `flap` (free-for-all), `sling` (teams), `chomp` (1 vs rest), `snipe` (Sniper Plaza and Sniper Blackout, 1 vs rest, one engine), plus `gauntlet` (the Microgame Gauntlet mode: 9 microgames, lives, speed-ups). Each has a bot. |
+| `games/*.js` | Minigames: `flap` (free-for-all), `sling` (teams), `chomp` (1 vs rest), `snipe` (Sniper Plaza and Sniper Blackout, 1 vs rest, one engine), `tag` (Infection), `kaiju` (Kaiju), plus `gauntlet` (the Microgame Gauntlet mode: 9 microgames, lives, speed-ups). Each has a bot. |
 | `board.js` | Board mode: the loop, dice, coins and stars, shop and secret items, duel spaces. |
 | `net.js` | Transport: WebSocket relay, or BroadcastChannel when there's no relay. |
 | `server.mjs` | Static server plus room relay (a hand-rolled WebSocket, no deps). |

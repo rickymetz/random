@@ -304,6 +304,7 @@ function stick(l) {
     // "action", not "act": the TV reads "act" as a menu command
     act.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "action" }); navigator.vibrate?.(20); });
   }
+  if (l.radar === false) radar = null; // games where everything is on the TV
   add(radar, el("div", { className: "stickrow" + (act ? "" : " solo") }, pad, act), l.hint && el("p", { className: "hint", textContent: l.hint }));
 }
 
