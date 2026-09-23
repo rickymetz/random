@@ -148,6 +148,21 @@ function onInput(pid, m) {
     p.face = img;
     return;
   }
+  // every phone gets a message budget (60/s, bursts to 90), and a button
+  // press only counts after a release, at most 14 a second: two thumbs or a
+  // script can't out-mash a person
+  const now = performance.now();
+  p.budget = Math.min(90, (p.budget ?? 90) + ((now - (p.budgetAt ?? now)) / 1000) * 60); p.budgetAt = now;
+  if (p.budget < 1) return;
+  p.budget--;
+  if (m.t === "btn") {
+    if (m.down) {
+      if (p.held) return;
+      p.taps = (p.taps || []).filter((x) => now - x < 1000);
+      if (p.taps.length >= 14) return;
+      p.taps.push(now); p.held = true;
+    } else p.held = false;
+  }
   if (m.t === "act") return act(m.id, p);
   if (m.t === "pick" && S.scene === "choose" && pid === S.chooser && !S.picked) return pick(m.id);
   if ((S.scene === "game" || S.scene === "duel") && S.game && !p.bot) S.game.input(pid, m);
@@ -207,8 +222,10 @@ function refreshMenus() {
 }
 
 function finalLine(p) {
-  const place = standings().indexOf(p) + 1;
-  return place === 1 ? "You won! 🏆" : `You finished #${place}`;
+  const top = tiedTop();
+  if (top.includes(p)) return top.length > 1 ? "Co-champions! 🏆" : "You won! 🏆";
+  const s = standings(), place = s.findIndex((q) => rankKey(q) === rankKey(p) && tieKey(q) === tieKey(p)) + 1; // tied players share a place
+  return `You finished #${place}`;
 }
 
 /* ----------------------------------------------------------------- scenes */
@@ -229,7 +246,10 @@ const sessionRounds = () => (S.mode === "gauntlet" ? 1 : S.rounds);
 
 // board mode ranks by stars, then coins (p.score)
 const rankKey = (p) => (S.mode === "board" ? (p.stars || 0) * 1e6 : 0) + p.score;
-function standings() { return [...S.players].sort((a, b) => rankKey(b) - rankKey(a)); }
+// ties: more minigame wins, then the better finish last game (never join order)
+const tieKey = (p) => (p.stats.wins || 0) * 100 - (p.lastPlace ?? 99);
+function standings() { return [...S.players].sort((a, b) => rankKey(b) - rankKey(a) || tieKey(b) - tieKey(a)); }
+const tiedTop = () => { const s = standings(); return s.filter((p) => rankKey(p) === rankKey(s[0]) && tieKey(p) === tieKey(s[0])); };
 
 const boardApi = {
   players: () => S.players,
@@ -292,6 +312,7 @@ function gameCtx(seats) {
     shake: (n) => { S.shake = Math.max(S.shake || 0, n); if (n >= 25) S.hitstop = 0.09; }, // big hits freeze a beat
     buzz: (pid, ms) => send(byPid(pid), { t: "buzz", ms }),
     stat: (pid, k, n) => { const p = byPid(pid); if (p) p.stats[k] = (p.stats[k] || 0) + n; },
+    lag: (pid) => Math.min(0.15, (byPid(pid)?.rtt || 0) / 2000), // one-way delay, for timing games
     pickOne: () => {
       const min = Math.min(...seats.map((p) => S.roleCounts[p.pid] || 0));
       const c = seats.filter((p) => (S.roleCounts[p.pid] || 0) === min);
@@ -312,7 +333,7 @@ function finishGame() {
   const winners = r.tie ? [] : r.winners || r.ranking[0];
   for (const pid of winners) { const p = byPid(pid); if (p) p.stats.wins = (p.stats.wins || 0) + 1; }
   S.deltas = [...deltas].map(([pid, d]) => ({ p: byPid(pid), d })).filter((x) => x.p).sort((a, b) => b.d - a.d);
-  for (const { p, d } of S.deltas) p.score += d;
+  for (const { p, d } of S.deltas) { p.score += d; p.lastPlace = S.deltas.findIndex((x) => x.d === d); } // a tie-breaker for the final
   S.result = r;
   S.game = null;
   go("results");

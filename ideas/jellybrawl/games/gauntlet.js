@@ -520,7 +520,8 @@ export default {
       st = { def, sp: sp(), D: def.dur / sp(), pids, p: {}, players, ctx };
       st.lanes = pids.map((pid, i) => [pid, W / 2 + (i - (pids.length - 1) / 2) * gap]);
       st.relayout = () => { for (const pid of st.pids) ctx.layout(pid, { ...def.layout(st, pid), command: def.cmd, lives: lives[pid] }); };
-      st.input = (pid, m) => phase === "play" && st.p[pid] && def.input(st, pid, m, t);
+      // judge a tap by when it left the phone, not when it arrived
+      st.input = (pid, m) => phase === "play" && st.p[pid] && def.input(st, pid, m, t - (ctx.lag?.(pid) ?? 0));
       def.setup(st);
       n++;
       phase = "show"; t = 0;

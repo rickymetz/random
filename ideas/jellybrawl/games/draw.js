@@ -76,7 +76,7 @@ export default {
         }
         if (phase === "vote" && !b.vote) {
           b.bot.v = (b.bot.v ?? rnd(2, 8)) - dt;
-          if (b.bot.v <= 0) { const opts = order.filter((o) => o !== b); const pick = opts.sort((a, c) => c.strokes.length * rnd(0.5, 1.5) - a.strokes.length * rnd(0.5, 1.5))[0]; vote(b, letter(pick)); }
+          if (b.bot.v <= 0) { const opts = order.filter((o) => o !== b); vote(b, letter(opts[Math.floor(Math.random() * opts.length)])); } // bots can't judge art: uniform, so scribbling more can't farm them
         }
       },
       update(dt) {

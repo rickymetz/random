@@ -14,7 +14,7 @@ import { W, H, INK, text, outlined, shout, rrect, circle, blob, star, tag, fit }
 import { MAPS } from "./boards.js";
 import { drawRoads, drawTile, glow } from "./boardart.js";
 
-const STAR_COST = 20, BLUE = 3, RED = 3, DUEL_POT = 10, MAX_ITEMS = 3, STEP = 0.24, TOLL = 6, ERUPT = 3;
+const STAR_COST = 20, BLUE = 3, RED = 3, DUEL_POT = 10, MAX_ITEMS = 3, STEP = 0.24, TOLL = 6, ERUPT = 3, ERUPT_MAX = 10;
 const ITEMS = {
   double: { name: "Double dice", price: 5, blurb: "Roll two dice this turn." },
   warp: { name: "Warp", price: 8, blurb: "Swap places with a random rival." },
@@ -104,7 +104,7 @@ export function makeBoard(api) {
       say(`${p.name} slides down the pipe!`, "#39ff14", 1.3); B.phase = "next";
     } else if (s.k === "V") {
       let got = 0;
-      for (const q of P()) if (q !== p) { const n = Math.min(ERUPT, q.score); q.score -= n; got += n; }
+      for (const q of P()) if (q !== p) { const n = Math.min(ERUPT, q.score, ERUPT_MAX - got); q.score -= n; got += n; } // capped: less than a star
       p.score += got; api.sfx.hit(); api.shake(28);
       say(`ERUPTION! ${p.name} collects ${got} coins`, "#ff6b00", 1.8); B.phase = "next";
     } else B.phase = "next"; // toll spaces were paid on the way in
@@ -186,7 +186,7 @@ export function makeBoard(api) {
     },
     startTurn() {
       for (const p of P()) if (!p.items) { p.pos = map.start; p.stars = 0; p.items = []; p.dbl = false; } // joined mid-game
-      B.order = P().map((p) => p.pid);
+      B.order = [...P()].sort((a, b) => (a.stars - b.stars) || (a.score - b.score)).map((p) => p.pid); // last place moves first
       B.cur = 0; B.turn++;
       say(`TURN ${B.turn}`, "#fff", 1.1);
       B.phase = "intro"; B.t = 0;

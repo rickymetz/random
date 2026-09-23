@@ -266,14 +266,16 @@ function tilt(l) {
   tiltOff?.();
   const msg = el("p", { className: "hint", textContent: l.hint || "Tilt to roll" });
   const dot = el("i"), bubble = el("div", { className: "level" }, dot);
-  let base = null, last = 0;
+  let base = null, last = 0, trail = null;
   const on = (e) => {
     if (e.beta == null) return;
     if (!base) base = [e.gamma, e.beta];
     const x = Math.max(-1, Math.min(1, (e.gamma - base[0]) / 25)), y = Math.max(-1, Math.min(1, (e.beta - base[1]) / 25));
     dot.style.transform = `translate(${x * 60}px, ${y * 60}px)`;
     const now = performance.now();
+    clearTimeout(trail);
     if (now - last > 50) { last = now; conn.send({ t: "move", x: +x.toFixed(2), y: +y.toFixed(2) }); }
+    else trail = setTimeout(() => { last = performance.now(); conn.send({ t: "move", x: +x.toFixed(2), y: +y.toFixed(2) }); }, 60);
   };
   const start = () => { addEventListener("deviceorientation", on); tiltOff = () => removeEventListener("deviceorientation", on); };
   const level = el("button", { type: "button", textContent: "LEVEL HERE" });
@@ -415,9 +417,11 @@ function stick(l) {
   pad.append(knob);
   let o = null, last = 0, sent = [0, 0];
   const R = 70;
+  let trail = null;
   const send = (x, y, force) => {
     const now = performance.now();
-    if (!force && now - last < 50 && Math.hypot(x - sent[0], y - sent[1]) < 0.25) return;
+    clearTimeout(trail);
+    if (!force && now - last < 50 && Math.hypot(x - sent[0], y - sent[1]) < 0.25) { trail = setTimeout(() => send(x, y, true), 60); return; } // never leave a stale value on the TV
     last = now; sent = [x, y];
     conn.send({ t: "move", x: +x.toFixed(2), y: +y.toFixed(2) });
   };

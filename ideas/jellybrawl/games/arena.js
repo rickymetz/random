@@ -27,9 +27,10 @@ export function arena(ctx, o) {
   const makeBody = (p, team = -1) => ({ p, get pid() { return this.p.pid; }, team, x: 0, y: 0, vx: 0, vy: 0, mx: 0, my: 0, dash: 0, dashCool: 0, face: [1, 0], out: false, ghost: !!p.ghost, hit: 0, bot: {} });
   const bodies = [];
   if (o.teams) {
-    seats.forEach((p, i) => bodies.push(makeBody(p, i % 2)));
-    if (seats.length % 2) { // a bot evens the teams; it plays but doesn't score
-      const t = 1;
+    const off = Math.random() < 0.5 ? 0 : 1; // which side gets the odd human varies
+    seats.forEach((p, i) => bodies.push(makeBody(p, (i + off) % 2)));
+    if (seats.length % 2) { // a bot evens the teams (on the short side); it plays but doesn't score
+      const t = bodies.filter((b) => b.team === 0).length < bodies.filter((b) => b.team === 1).length ? 0 : 1;
       bodies.push(makeBody({ pid: `ghost${ghostN++}`, name: "Bot", color: "#8a8aa0", ghost: true }, t));
     }
   } else seats.forEach((p) => bodies.push(makeBody(p)));

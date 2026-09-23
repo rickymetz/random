@@ -57,6 +57,7 @@ export default {
           pops.push({ x: king.x, y: king.y - king.r - 50, t: 0, word: "TOPPLED!" }); ctx.sfx.crunch(); ctx.shake(24);
           if (!king.ghost) ctx.buzz(king.pid, 400);
           king.shrink = true; king = null; relayout();
+          for (const b of A.bodies) b.onT = 0; // a fresh scramble: loitering at the edge earns nothing
         }
         for (const b of A.bodies) b.onT = onHill(b) ? b.onT + dt : 0;
         const claim = on.filter((b) => b.onT >= 1).sort((p, q) => q.onT - p.onT)[0];
