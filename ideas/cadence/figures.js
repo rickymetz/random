@@ -438,7 +438,7 @@
         g.appendChild(svgEl('circle', { class: 'fig-rod', cx: pr.rod[0], cy: -pr.rod[1], r: 2.2 }));
       }
       if (pr.wall != null) {
-        g.appendChild(svgEl('path', { class: 'fig-prop', d: 'M' + pr.wall + ' 0V' + (-Math.min(fit.top + 4, 110)) }));
+        g.appendChild(svgEl('path', { class: 'fig-prop', d: 'M' + pr.wall + ' 0V' + (-Math.min(fit.top + 4, 132)) }));
       }
     });
     if (def.floor !== false) {
@@ -595,10 +595,10 @@
     "tuck-l-sit": "Hands on two sturdy chairs, push down hard and lift the knees to the chest.",
     "dead-hang": "Full grip, shoulders active — not shrugged to the ears.",
     "scapular-pulls": "From a hang, pull the shoulder blades down and back without bending the elbows.",
-    "pullup-negatives": "Jump or step to the top, then lower for three to five seconds. Stop if the elbows ache.",
+    "pullup-negatives": "Jump or step to the top, then lower for 3–5 sec. Stop if the elbows ache.",
     "chin-ups": "Palms facing you. Chest toward the bar, full hang at the bottom.",
     "hanging-knee-raises": "No swinging — knees up with a slight curl of the pelvis, then lower under control.",
-    "express-squats": "Steady pace, full depth. Forty seconds, then breathe.",
+    "express-squats": "Steady pace, full depth. 40 sec, then breathe.",
     "express-pushups": "Any version that keeps a straight line — knees down is fine by the second round.",
     "express-lunges": "Alternate legs, back knee toward the floor.",
     "mountain-climbers": "Hands under the shoulders, hips level, knees driving in turn.",
@@ -634,8 +634,19 @@
     cobra: "Hips heavy, shoulders away from the ears. Straighten the arms only if the low back is happy.",
     camel: "Hands on the low back first, hips pushed forward. Reach for the heels only when that feels easy.",
     plow: "Weight on the shoulders, never the neck, and don’t turn your head. Legs up the wall instead if your neck complains.",
-    "pelvic-floor": "Lift and hold for three seconds, then let it go completely. Keep breathing; don’t clench the glutes.",
-    recovery: "Nothing scheduled. Walk, breathe, let it repair."
+    "pelvic-floor": "Lift and hold for 3 sec, then let it go completely. Keep breathing; don’t clench the glutes.",
+    recovery: "Nothing scheduled. Walk, breathe, let it repair.",
+    "cervical-retraction": "Tuck your chin straight back — a double chin. Head stays down; hold 5–10 sec.",
+    "horizontal-abduction": "Tuck your chin, then pull the band apart to your sides, elbows straight. Slow back; relax the tuck.",
+    "supine-external-rotation": "Elbows pinned at your sides. Turn your forearms out as far as the band allows; slow back.",
+    "pnf-d2-flexion": "Hand by the opposite hip, then sweep up and out like drawing a sword. Slow back.",
+    "thoracic-extension": "Arch your upper back over the towel roll, chin tucked; hold 5 sec, come up slowly.",
+    scaption: "Thumbs up, arms slightly forward. Up to shoulder height — straight elbows, no shrug.",
+    "row-head-turn": "Elbow tucked, pull back, look over the opposite shoulder. Only your head turns.",
+    touchdowns: "Forearms on the wall. Slide up on a diagonal, lift the hands off, no shrug.",
+    "underhand-rows": "Palms facing you, body straight — pull your chest to the edge, elbows tight to your sides.",
+    "single-arm-rows": "One hand on the edge, the other by your side. Pull without letting your hips twist.",
+    "legs-up-wall": "Seat close to the wall, legs resting up it. Arms loose — breathe slow and long."
   };
 
   /* ---------- shared positions ---------- */
@@ -716,6 +727,9 @@
       legs: [flat(22, 0, '+y'), flat(21, 0, '+y')]
     }, extra);
   }
+
+  // Lying on your back, arms long on the floor by your sides.
+  var SIDE_ARMS = [[91, 91], [90, 90]];
 
   /* Face down, head to the right, legs long behind. */
   function prone(extra) {
@@ -1670,6 +1684,146 @@
       ]
     },
 
+    /* ---------- Neck & shoulders ---------- */
+
+
+    'cervical-retraction': {
+      // On your back, a rolled towel under the neck; tuck the chin straight
+      // back — a double chin — head staying down. A small movement.
+      cycle: 5,
+      props: [{ box: [-37, -31.5, 4] }],
+      keys: [
+        onBack({ head: 0, arms: SIDE_ARMS, hands: [90, 90], hold: 0.1 }),
+        onBack({ head: 13, arms: SIDE_ARMS, hands: [90, 90], hold: 0.4 })
+      ]
+    },
+    'horizontal-abduction': {
+      // Chin tucked, arms straight up over the chest; pull them apart and
+      // down to the floor either side (toward and away from you, so they
+      // look short), then back up.
+      cycle: 3.4,
+      keys: [
+        onBack({ head: 12, arms: [[0, 0], [0, 0]], hands: [0, 0] }),
+        onBack({ head: 12, arms: [[0, 0], [0, 0]], armLen: [[0.1, 0.1], [0.1, 0.1]], hands: [0, 0], hold: 0.12 })
+      ]
+    },
+    'supine-external-rotation': {
+      // Elbows tucked at the sides and bent to 90°, forearms pointing up;
+      // turn the forearms out toward the sides (toward and away from you)
+      // as far as a band allows — about halfway — elbows staying down.
+      cycle: 3.2,
+      keys: [
+        onBack({ head: 6, arms: [[90, 0], [90, 0]], hands: [0, 0] }),
+        onBack({ head: 6, arms: [[90, 0], [90, 0]], armLen: [[1, 0.57], [1, 0.57]], hands: [0, 0], hold: 0.12 })
+      ]
+    },
+    'pnf-d2-flexion': {
+      // One arm: from the opposite hip, sweep it up and out overhead on a
+      // diagonal — drawing a sword — then back.
+      cycle: 3.6,
+      keys: [
+        onBack({ head: 6, arms: [[82, 90], SIDE_ARMS[1]], hands: [95, 91], d3: { abd: { arms: [-26, 0] } } }),
+        onBack({ head: 6, arms: [[300, 296], SIDE_ARMS[1]], hands: [296, 91], d3: { abd: { arms: [38, 0] } }, hold: 0.12 })
+      ]
+    },
+    'thoracic-extension': {
+      // Sitting tall, arms crossed over the chest, a towel roll across the
+      // chair back at shoulder-blade height; arch the upper back over it
+      // and hold, then come back upright. The head stays in line with the
+      // upper back, chin lightly tucked — not thrown back.
+      cycle: 5,
+      props: [{ box: [-16, 6, 25] }, { box: [-19, -15, 52] }],
+      keys: (function () {
+        var hip = [-4, 30];
+        var at = function (spine, head, extra) {
+          var sh = step(step(hip, spine[0], LEN.spineLow), spine[1], LEN.spineHigh);
+          // Hands on the chest, just below the opposite shoulder.
+          var hand = step(step(sh, spine[1] + 90, 7), spine[1] + 180, 5);
+          return merge({ hip: hip, spine: spine, head: head, arms: [ik(hand[0], hand[1], '-y'), ik(hand[0] - 0.5, hand[1] - 1, '-y')],
+            hands: [spine[1] + 170, spine[1] + 170], legs: [flat(20, 0, '+y'), flat(19, 0, '+y')],
+            d3: { reach: { arms: [[0, 0, -2 * SHOULDER_3D + 4], [0, 0, 2 * SHOULDER_3D - 4]] } } }, extra);
+        };
+        return [at([2, 2], 2, { hold: 0.1 }), at([356, 328], 6, { hold: 0.3 })];
+      })()
+    },
+    'scaption': {
+      // Standing, thumbs up; raise the arms to shoulder height a little
+      // forward of the sides (in the plane of the shoulder blades), then
+      // lower slowly.
+      cycle: 3.2,
+      keys: [
+        standing({ arms: [[180, 180], [182, 182]], hands: [180, 182] }),
+        standing({ arms: [[90, 90], [92, 92]], armLen: [[0.87, 0.87], [0.85, 0.85]], hands: [90, 92], hold: 0.1 })
+      ]
+    },
+    'row-head-turn': {
+      // Staggered stance, band anchored in front: row the far arm back to the
+      // ribs, elbow close, turning the head the other way — toward you.
+      cycle: 3.2,
+      keys: (function () {
+        var legs = [flat(8), flat(-11)];
+        return [
+          { hip: [-1, 52], spine: 4, head: 0, arms: [HANG[0], ik(31, 74, '-y')], hands: [180, 94], legs: legs },
+          { hip: [-1, 52], spine: 3, head: 0, turn: 0.35, arms: [HANG[0], ik(3, 67, '-x')], hands: [180, 94], legs: legs, hold: 0.12 }
+        ];
+      })()
+    },
+    'touchdowns': {
+      // Facing a wall, forearms and hands on it in a goalpost, elbows out to
+      // the sides (so the upper arms point partly toward and away from you,
+      // and look short). Slide up the wall on a diagonal until the arms are
+      // straight, lift the hands a few inches off the wall, then back down.
+      cycle: 5,
+      props: [{ wall: 12.5 }],
+      keys: (function () {
+        var fore = 12.5 - 2.4;                    // forearm against the wall
+        var goal = function (dy, extra) {
+          var d = Math.sqrt(fore * fore + dy * dy);
+          var a = angleOf(fore, dy);
+          return standing(merge({ head: -2, arms: [[a, 0], [a + 1, 0]], armLen: [[d / LEN.upperArm, 1], [d / LEN.upperArm, 1]], hands: [0, 0] }, extra));
+        };
+        // Arms straight up the wall on a diagonal: drawn a little short.
+        var straight = function (x, extra) {
+          var up = 30, d = Math.sqrt(x * x + up * up), s = d / (LEN.upperArm + LEN.foreArm), a = angleOf(x, up);
+          return standing(merge({ head: -4, arms: [[a, a], [a + 1, a + 1]], armLen: [[s, s], [s, s]], hands: [a, a + 1] }, extra));
+        };
+        return [goal(-2, { hold: 0.08 }), straight(fore - 1), straight(fore - 5.5, { hold: 0.15 }), straight(fore - 1)];
+      })()
+    },
+
+    'single-arm-rows': {
+      // The table row on one arm: the other lies along your side, and the
+      // body wants to turn toward the pulling side at the top — resist it.
+      cycle: 3.2,
+      props: [{ bar: [-40, TABLE] }],
+      keys: (function () {
+        var L = LEN.thigh + LEN.shin + LEN.spineLow + LEN.spineHigh;
+        var sLow = [-41, TABLE - 0.5 - LEN.upperArm - LEN.foreArm + 0.3];
+        var ank = [sLow[0] + Math.sqrt(L * L - Math.pow(sLow[1] - 4.5, 2)), 4.5];
+        var yHigh = TABLE - 9;
+        var sHigh = [ank[0] - Math.sqrt(L * L - Math.pow(yHigh - 4.5, 2)), yHigh];
+        var aLow = angleOf(sLow[0] - ank[0], sLow[1] - ank[1]), aHigh = angleOf(sHigh[0] - ank[0], sHigh[1] - ank[1]);
+        var legs = [ik(ank[0], ank[1], '+y'), ik(ank[0] + 1, ank[1], '+y')];
+        var pull = ik(-40, TABLE - 0.5, '-y');
+        var rest = function (a) { return [a + 180, a + 180]; };     // along your side
+        return [
+          { hip: line(ank, aLow).hip, spine: aLow, head: 10, arms: [pull, rest(aLow)], hands: [270, aLow + 180], legs: legs, feet: [0, 0], d3: { wide: { legs: [6, 6] } } },
+          { hip: line(ank, aHigh).hip, spine: aHigh, head: 16, arms: [pull, rest(aHigh)], hands: [270, aHigh + 180], legs: legs, feet: [0, 0],
+            d3: { wide: { legs: [6, 6] }, flare: { arms: [30, 0] }, twist: -8, twistArms: [0, 1] }, hold: 0.1 }
+        ];
+      })()
+    },
+    'legs-up-wall': {
+      // On your back, seat close to a wall, legs resting straight up it,
+      // arms loose by your sides. Nothing to do but breathe slowly.
+      cycle: 8,
+      props: [{ wall: 7 }],
+      keys: [
+        onBack({ head: 4, arms: SIDE_ARMS, hands: [90, 90], legs: [[4, 4], [5, 5]], feet: [274, 275], d3: { abd: { arms: [30, 30] } }, hold: 0.2 }),
+        onBack({ head: 4, spine: [270, 267], arms: SIDE_ARMS, hands: [90, 90], legs: [[4, 4], [5, 5]], feet: [274, 275], d3: { abd: { arms: [30, 30] } }, hold: 0.2 })
+      ]
+    },
+
     _default: {
       cycle: 4,
       keys: [standing(), standing({ spine: [1, 3], arms: [[186, 180], [174, 180]] })]
@@ -1688,6 +1842,7 @@
     });
   })(FIGURES['seated-twist']);
 
+  FIGURES['underhand-rows'] = FIGURES['table-rows'];
   FIGURES['express-squats'] = FIGURES.squats;
   FIGURES['express-pushups'] = FIGURES.pushups;
   FIGURES['express-lunges'] = FIGURES['reverse-lunges'];

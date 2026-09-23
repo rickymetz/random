@@ -136,6 +136,8 @@
       rest: Math.round(num(ex.rest, 0, 600, 0))
     };
     if (out.max < out.min) out.max = out.min;
+    // Seconds to hold each rep (a counted rep that's really a short hold).
+    if (out.mode === 'reps' && ex.hold) out.hold = Math.round(num(ex.hold, 1, 60, 5));
     if (ex.perSide) {
       out.perSide = true;
       out.sideWord = ex.sideWord === 'leg' || ex.sideWord === 'arm' ? ex.sideWord : 'side';
@@ -324,7 +326,11 @@
     // archives it), so a missing one is new.
     if (out.routine) {
       R.DEFAULT_ROUTINE.workouts.forEach(function (w) {
-        if (R.findWorkout(out.routine, w.id)) return;
+        var have = R.findWorkout(out.routine, w.id);
+        // A retired built-in comes off an edited routine too (archived, so
+        // its logged days still read right).
+        if (have) { if (w.archived) have.archived = true; return; }
+        if (w.archived) return;
         var at = out.routine.workouts.map(function (v) { return v.id; }).indexOf('rest');
         out.routine.workouts.splice(at < 0 ? out.routine.workouts.length : at, 0, R.clone(w));
       });
