@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="random-nav" content="off">
+<meta name="theme-color" content="#1a1240">
+<title>Jellybrawl</title>
+<meta name="description" content="A Mario Party × Jackbox party game: the TV is the shared screen, phones are the controllers. Jelly blobs with your selfie as the face.">
+<link rel="stylesheet" href="controller.css">
+</head>
+<body>
+<main id="join" class="screen">
+  <h1 class="logo" aria-label="Jellybrawl"><span>J</span><span>E</span><span>L</span><span>L</span><span>Y</span><span>B</span><span>R</span><span>A</span><span>W</span><span>L</span></h1>
+  <form id="join-form" autocomplete="off">
+    <label>Room code <input id="code" maxlength="4" required pattern="[A-Za-z]{4}" autocapitalize="characters" spellcheck="false" placeholder="ABCD"></label>
+    <label>Your name <input id="name" maxlength="12" required placeholder="Blobby"></label>
+    <button class="big" type="submit">Join</button>
+    <p id="join-err" class="err" role="alert"></p>
+  </form>
+  <p class="host"><a href="tv.html">📺 On the big screen? Host a game</a></p>
+  <p class="host small"><a id="home" href="../../" hidden>← random</a></p>
+</main>
+
+<main id="face" class="screen" hidden>
+  <h2>Add your face</h2>
+  <p class="sub">It goes on your jelly blob.</p>
+  <div class="face-preview"><canvas id="doodle" width="256" height="256"></canvas></div>
+  <div id="face-pick" class="row">
+    <label class="btn big">📸 Selfie<input id="selfie" type="file" accept="image/*" capture="user" hidden></label>
+    <button id="draw-btn" class="btn big" type="button">✏️ Draw</button>
+  </div>
+  <div id="draw-tools" class="row" hidden>
+    <span class="swatches"></span>
+    <button id="clear" class="btn" type="button">Clear</button>
+  </div>
+  <button id="face-done" class="big" type="button" hidden>Looks good!</button>
+</main>
+
+<main id="pad" class="screen" hidden>
+  <header id="me"><i></i><b></b><span id="role"></span></header>
+  <section id="view"></section>
+</main>
+
+<script type="module" src="controller.js"></script>
+</body>
+</html>

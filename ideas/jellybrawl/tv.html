@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="random-nav" content="off">
+<title>Jellybrawl — TV</title>
+<meta name="description" content="The big-screen host for Jellybrawl.">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #07061a; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+  #tools { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  #tools button { font: 700 15px ui-rounded, system-ui, sans-serif; color: #fff; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); border-radius: 999px; padding: 8px 14px; cursor: pointer; }
+  #tools button:hover { background: rgba(255,255,255,.22); }
+  #tools #t-start { background: #ffd23f; color: #16182b; border-color: #ffd23f; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="screen" width="1920" height="1080"></canvas>
+<div id="tools" hidden>
+  <button id="t-tab" type="button" hidden>Open a controller tab</button>
+  <button id="t-bot" type="button">+ Bot (B)</button>
+  <button id="t-rmbot" type="button">− Bot (N)</button>
+  <button id="t-rounds" type="button">Rounds</button>
+  <button id="t-start" type="button">Start (Enter)</button>
+</div>
+<script type="module" src="tv.js"></script>
+</body>
+</html>

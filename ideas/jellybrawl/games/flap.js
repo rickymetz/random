@@ -1,0 +1,126 @@
+// Flap Frenzy — free-for-all. Everyone flaps through the same pillars on one
+// screen; placements are by elimination order, last blob flying wins.
+
+import { W, H, text, outlined, rrect, blob, tag, countdown } from "../gfx.js";
+
+const GROUND = H - 90, X = 560, R = 34, GRAV = 2300, FLAP = -760, PW = 130;
+
+export default {
+  id: "flap", title: "Flap Frenzy", kind: "Free-for-all", min: 1, max: 8,
+  blurb: "Flap through the pillars. Last blob flying wins.",
+  controls: "Tap FLAP on your phone",
+
+  create(ctx) {
+    const birds = ctx.players.map((p, i) => ({ p, y: 300 + (i * 480) / Math.max(1, ctx.players.length - 1 || 1), vy: 0, alive: true, diedAt: null, x: X - i * 14, phase: i, botCool: 0, botErr: 0 }));
+    let t = -3, dist = 0, nextPipe = 1100, pipes = [], endAt = null, lastTick = 3;
+    const speed = () => 400 + Math.max(0, t) * 5;
+    const gap = () => Math.max(250, 340 - Math.max(0, t) * 2.5);
+
+    const inst = {
+      result: null,
+      describe: () => [`${birds.length} blob${birds.length > 1 ? "s" : ""} take flight`],
+      start() {
+        for (const b of birds) ctx.layout(b.p.pid, { kind: "button", label: "FLAP", hint: "Tap to flap!" });
+      },
+      input(pid, m) {
+        if (m.t !== "btn" || !m.down || t < 0) return;
+        const b = birds.find((b) => b.p.pid === pid);
+        if (!b || !b.alive) return;
+        b.vy = FLAP;
+        ctx.stat(pid, "flaps", 1);
+        ctx.sfx.flap();
+      },
+      bot(pid, dt) {
+        const b = birds.find((b) => b.p.pid === pid);
+        if (!b || !b.alive || t < 0) return;
+        b.botCool -= dt;
+        const next = pipes.find((q) => q.x - dist + PW > b.x - R);
+        if (!b.botErr || Math.random() < dt * 0.6) b.botErr = (Math.random() - 0.5) * gap() * 0.45;
+        const target = (next ? next.gapY : H / 2) + b.botErr + 40;
+        if (b.botCool <= 0 && b.y > target && b.vy > -150) { inst.input(pid, { t: "btn", down: true }); b.botCool = 0.2 + Math.random() * 0.12; }
+      },
+      update(dt) {
+        t += dt;
+        if (t < 0) {
+          if (Math.ceil(-t) < lastTick) { lastTick = Math.ceil(-t); ctx.sfx.tick(); }
+          for (const b of birds) { b.phase += dt * 8; b.y += Math.sin(b.phase) * 0.8; }
+          return;
+        }
+        if (lastTick > 0) { lastTick = 0; ctx.sfx.go(); }
+        dist += speed() * dt;
+        while (nextPipe - dist < W + 200) {
+          pipes.push({ x: nextPipe, gapY: 260 + Math.random() * (GROUND - 520), gap: gap() });
+          nextPipe += 540;
+        }
+        pipes = pipes.filter((q) => q.x - dist > -PW - 40);
+        for (const b of birds) {
+          b.vy = Math.min(1100, b.vy + GRAV * dt);
+          b.y += b.vy * dt;
+          b.phase += dt * (b.vy < 0 ? 30 : 10);
+          if (!b.alive) { b.x -= speed() * dt; continue; }
+          let dead = b.y > GROUND - R || b.y < -R * 2;
+          for (const q of pipes) {
+            const px = q.x - dist;
+            if (b.x + R * 0.8 > px && b.x - R * 0.8 < px + PW && (b.y - R * 0.8 < q.gapY - q.gap / 2 || b.y + R * 0.8 > q.gapY + q.gap / 2)) dead = true;
+          }
+          if (dead) {
+            b.alive = false; b.diedAt = t; b.vy = -500;
+            ctx.stat(b.p.pid, "airtime", Math.round(t));
+            ctx.sfx.hit(); ctx.buzz(b.p.pid, 200);
+            ctx.layout(b.p.pid, { kind: "wait", text: "Splat!", sub: `You lasted ${t.toFixed(1)}s` });
+          }
+        }
+        const alive = birds.filter((b) => b.alive);
+        if (endAt == null && (alive.length === 0 || (birds.length > 1 && alive.length === 1) || t > 90)) endAt = t + (alive.length ? 1.2 : 0.8);
+        if (endAt != null && t >= endAt) {
+          for (const b of alive) ctx.stat(b.p.pid, "airtime", Math.round(t));
+          const order = [...birds].sort((a, b) => (b.diedAt ?? 1e9) - (a.diedAt ?? 1e9));
+          const ranking = [];
+          for (const b of order) {
+            const grp = ranking[ranking.length - 1];
+            if (grp && Math.abs((grp.at ?? 1e9) - (b.diedAt ?? 1e9)) < 0.05) grp.push(b.p.pid);
+            else { const ng = [b.p.pid]; ng.at = b.diedAt ?? 1e9; ranking.push(ng); }
+          }
+          inst.result = { ranking, headline: alive.length === 1 ? `${alive[0].p.name} flies highest!` : alive.length ? "Survivors share the sky!" : `${order[0].p.name} flew furthest!` };
+        }
+      },
+      draw(g) {
+        const sky = g.createLinearGradient(0, 0, 0, H);
+        sky.addColorStop(0, "#5ec8ff"); sky.addColorStop(1, "#c9f1ff");
+        g.fillStyle = sky; g.fillRect(0, 0, W, H);
+        g.fillStyle = "rgba(255,255,255,.8)";
+        for (let i = 0; i < 6; i++) {
+          const cx = ((i * 420 - dist * 0.2) % (W + 400) + W + 400) % (W + 400) - 200, cy = 120 + (i % 3) * 90;
+          g.beginPath(); g.ellipse(cx, cy, 110, 40, 0, 0, Math.PI * 2); g.ellipse(cx + 60, cy - 20, 70, 36, 0, 0, Math.PI * 2); g.fill();
+        }
+        g.fillStyle = "#7ed37a";
+        for (let i = 0; i < 8; i++) {
+          const hx = ((i * 330 - dist * 0.45) % (W + 330) + W + 330) % (W + 330) - 165;
+          g.beginPath(); g.ellipse(hx, GROUND, 220, 140, 0, Math.PI, 0); g.fill();
+        }
+        for (const q of pipes) {
+          const px = q.x - dist, top = q.gapY - q.gap / 2, bot = q.gapY + q.gap / 2;
+          for (const [y0, h] of [[-20, top + 20], [bot, GROUND - bot]]) {
+            rrect(g, px, y0, PW, h, 14, "#b86bff", "#5a2a8c", 6);
+            g.fillStyle = "rgba(255,255,255,.25)"; g.fillRect(px + 16, y0 + 10, 18, h - 20);
+          }
+          rrect(g, px - 12, top - 40, PW + 24, 40, 12, "#cf93ff", "#5a2a8c", 6);
+          rrect(g, px - 12, bot, PW + 24, 40, 12, "#cf93ff", "#5a2a8c", 6);
+        }
+        g.fillStyle = "#f2c572"; g.fillRect(0, GROUND, W, H - GROUND);
+        g.fillStyle = "#5dbb4f"; g.fillRect(0, GROUND, W, 22);
+        for (const b of [...birds].sort((a, c) => a.alive - c.alive)) {
+          const s = Math.min(0.25, Math.abs(b.vy) / 3000);
+          blob(g, b.p, b.x, b.y, R, { wings: b.phase, rot: Math.max(-0.5, Math.min(1.2, b.vy / 900)), sx: 1 - s, sy: 1 + s, alpha: b.alive ? 1 : 0.5 });
+          if (b.alive) tag(g, b.p.name, b.x, b.y - R - 30, b.p.color, 22);
+        }
+        const alive = birds.filter((b) => b.alive).length;
+        rrect(g, 30, 24, 380, 70, 35, "rgba(10,12,30,.55)");
+        text(g, `Flying: ${alive}/${birds.length}   ${Math.max(0, t).toFixed(1)}s`, 220, 60, 32);
+        countdown(g, -t);
+        if (t < 0) outlined(g, "Get ready to flap!", W / 2, H / 2 - 220, 70);
+      },
+    };
+    return inst;
+  },
+};
