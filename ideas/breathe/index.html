@@ -29,7 +29,7 @@
     min-height: 100vh;
     display: grid;
     place-items: center;
-    padding: 0 16px;
+    padding: 3.5rem 16px 2rem;
   }
   main { text-align: center; max-width: 30rem; }
   .circle {
@@ -51,14 +51,13 @@
     background: conic-gradient(rgba(255, 255, 255, 0.2) var(--sweep), transparent 0);
   }
   .phase { font-size: 1.3rem; letter-spacing: 0.04em; min-height: 1.6em; }
-  .hint { color: var(--muted); margin-top: 0.75rem; font-size: 0.85rem; min-height: 2.6em; }
+  .hint { color: var(--muted); margin-top: 0.75rem; font-size: 0.85rem; min-height: 1.5em; }
   .patterns {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     gap: 0.5rem;
     margin-top: 1.25rem;
-    transition: opacity 0.4s;
   }
   .patterns button {
     font: inherit;
@@ -75,7 +74,33 @@
     border-color: var(--glow);
   }
   .patterns button:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
-  body.running .patterns { opacity: 0; pointer-events: none; }
+  .about {
+    margin: 1.25rem auto 0;
+    padding: 1rem 1.1rem;
+    max-width: 26rem;
+    text-align: left;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    background: var(--chip);
+    border-radius: 14px;
+  }
+  .about h2 { font-size: 1rem; font-weight: 600; margin-bottom: 0.35rem; }
+  .about p + p, .about ul + p { margin-top: 0.6rem; }
+  .about ul { margin: 0.5rem 0 0; padding-left: 1.15rem; }
+  .about .label {
+    display: block;
+    color: var(--muted);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 0.75rem;
+  }
+  .about .fact { color: var(--muted); }
+  .note { color: var(--muted); font-size: 0.72rem; margin-top: 0.75rem; }
+  /* The exercise gets the screen to itself; the circle re-centres. */
+  body.running .patterns,
+  body.running .about,
+  body.running .note { display: none; }
   a.back {
     position: fixed;
     top: 1rem; left: 1.25rem;
@@ -93,12 +118,15 @@
   <div class="phase" id="phase">Press anywhere to begin</div>
   <div class="hint" id="hint"></div>
   <div class="patterns" id="patterns" role="group" aria-label="Breathing pattern"></div>
+  <section class="about" id="about" aria-live="polite"></section>
+  <p class="note">Benefits are as reported in studies and practice; evidence varies. Stop if you feel dizzy.</p>
 </main>
 <script>
   const circle = document.getElementById("circle");
   const phaseEl = document.getElementById("phase");
   const hintEl = document.getElementById("hint");
   const patternsEl = document.getElementById("patterns");
+  const aboutEl = document.getElementById("about");
 
   // Circle sizes: SMALL is empty lungs, BIG is full.
   const SMALL = 0.6, BIG = 1.0;
@@ -106,25 +134,59 @@
   const exhale = (s, from = BIG) => ({ label: "Breathe out", s, from, to: SMALL });
   const hold = (s, at) => ({ label: "Hold", s, from: at, to: at });
 
+  // `about` explains the technique, `benefits` are what practitioners and
+  // studies report, `fact` is where it comes from or something notable.
   const PATTERNS = [
     {
       id: "box", name: "Box",
-      hint: "Box breathing — 4s in, 4s hold, 4s out, 4s hold",
+      hint: "4s in · 4s hold · 4s out · 4s hold",
+      title: "Box breathing",
+      about: "Four equal sides: breathe in, hold, breathe out, hold — each for a count of four. The holds make the rhythm easy to keep without thinking.",
+      benefits: [
+        "Steadies you under pressure without making you drowsy",
+        "Gives a wandering mind something simple to count",
+        "Can be done anywhere, eyes open, unnoticed",
+      ],
+      fact: "Also called tactical breathing: it's taught to US Navy SEALs, police and first responders, and was popularised by former SEAL commander Mark Divine.",
       phases: [inhale(4), hold(4, BIG), exhale(4), hold(4, SMALL)],
     },
     {
       id: "478", name: "4-7-8",
-      hint: "Relaxing breath — 4s in, 7s hold, 8s out",
+      hint: "4s in · 7s hold · 8s out",
+      title: "4-7-8 breathing",
+      about: "In through the nose for four, hold for seven, then a slow whooshing breath out through the mouth for eight. The exhale is twice as long as the inhale.",
+      benefits: [
+        "A favourite for falling asleep",
+        "Reported to ease anxiety and slow a racing heart",
+        "Best kept to about four breaths when you're starting out",
+      ],
+      fact: "Popularised by integrative-medicine doctor Andrew Weil, who calls it a “natural tranquilizer for the nervous system”. It's adapted from yogic pranayama.",
       phases: [inhale(4), hold(7, BIG), exhale(8)],
     },
     {
       id: "coherent", name: "Coherent",
-      hint: "Resonant breathing — 5.5s in, 5.5s out, about six breaths a minute",
+      hint: "5.5s in · 5.5s out · ~6 breaths a minute",
+      title: "Coherent (resonance) breathing",
+      about: "Smooth, unbroken breaths at about six a minute — no holds, just a slow, even tide in and out.",
+      benefits: [
+        "Raises heart-rate variability (HRV), a marker of stress resilience",
+        "Studied for anxiety, depression and blood pressure",
+        "Gentle enough to keep up for 10–20 minutes",
+      ],
+      fact: "Around six breaths a minute, breathing and heart rhythm fall into step with the blood-pressure reflex — the “resonance” that HRV-biofeedback research is built on. Rosary prayer and yoga mantras have been found to slow breathing to about the same rate.",
       phases: [inhale(5.5), exhale(5.5)],
     },
     {
       id: "sigh", name: "Sigh",
-      hint: "Physiological sigh — a deep breath in, a short top-up sip, a long slow exhale",
+      hint: "2s in · 1s sip in more · 6s long out",
+      title: "Physiological sigh",
+      about: "A deep breath in through the nose, a second short sip on top to fill the lungs completely, then a long, slow breath out through the mouth.",
+      benefits: [
+        "Among the fastest ways to take the edge off stress — one to three sighs can do it",
+        "The top-up sip reopens collapsed air sacs, so the long exhale offloads more CO₂",
+        "In a Stanford study, five minutes a day improved mood more than mindfulness meditation",
+      ],
+      fact: "You already do this: people sigh spontaneously every few minutes, and more often when stressed. The 2023 Stanford study (Balban, Huberman, Spiegel et al.) called the practice “cyclic sighing”.",
       phases: [
         inhale(2, 0.9),
         { label: "Sip in more", s: 1, from: 0.9, to: BIG },
@@ -134,17 +196,41 @@
     },
     {
       id: "triangle", name: "Triangle",
-      hint: "Triangle breathing — 4s in, 4s hold, 4s out",
+      hint: "4s in · 4s hold · 4s out",
+      title: "Triangle breathing",
+      about: "Box breathing with one corner taken off: in, hold, out — then straight into the next breath.",
+      benefits: [
+        "Easier than box breathing if the empty-lung hold feels uncomfortable",
+        "A good first pattern for beginners and children",
+        "Keeps a steady, focusing rhythm",
+      ],
+      fact: "Often taught in classrooms and therapy with a drawn triangle — trace one side per phase.",
       phases: [inhale(4), hold(4, BIG), exhale(4)],
     },
     {
       id: "calm", name: "Long exhale",
-      hint: "Extended exhale — 4s in, 6s out, to settle the nervous system",
+      hint: "4s in · 6s out",
+      title: "Extended exhale",
+      about: "Simply make each breath out longer than the breath in. No holds, no counting tricks.",
+      benefits: [
+        "Shifts the body toward rest-and-digest (parasympathetic) mode",
+        "Slows the heart rate within a few breaths",
+        "Helpful before sleep, a hard conversation, or a presentation",
+      ],
+      fact: "Your heart naturally speeds up a little as you breathe in and slows as you breathe out (respiratory sinus arrhythmia) — so lengthening the exhale gives the slowing phase more time.",
       phases: [inhale(4), exhale(6)],
     },
     {
       id: "equal", name: "Equal",
-      hint: "Sama vritti — 4s in, 4s out, smooth and even",
+      hint: "4s in · 4s out",
+      title: "Equal breathing (sama vritti)",
+      about: "Breath in and breath out the same length, smooth and even, usually through the nose.",
+      benefits: [
+        "Balancing — calming without being sleepy",
+        "A classic way to settle in before meditation",
+        "Easy to lengthen (5, 6, 8 counts) as it gets comfortable",
+      ],
+      fact: "Sama vritti is Sanskrit for “equal fluctuation”; it's one of the foundational pranayama practices of yoga.",
       phases: [inhale(4), exhale(4)],
     },
   ];
@@ -161,10 +247,31 @@
   function select(p) {
     pattern = p;
     hintEl.textContent = p.hint;
+    renderAbout(p);
     for (const b of patternsEl.children) {
       b.setAttribute("aria-pressed", String(b.dataset.id === p.id));
     }
     try { localStorage.setItem(STORE_KEY, p.id); } catch (e) {}
+  }
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text) e.textContent = text;
+    return e;
+  }
+
+  function renderAbout(p) {
+    const list = el("ul");
+    for (const b of p.benefits) list.appendChild(el("li", "", b));
+    aboutEl.replaceChildren(
+      el("h2", "", p.title),
+      el("p", "", p.about),
+      el("span", "label", "Reported benefits"),
+      list,
+      el("span", "label", "Notable"),
+      el("p", "fact", p.fact),
+    );
   }
 
   for (const p of PATTERNS) {
