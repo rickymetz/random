@@ -96,7 +96,7 @@
        * the more ambitious pages of the Kama Sutra feel less like a dare. */
       {
         id: 'pretzel',
-        name: 'Pretzel Hour 🌶',
+        name: 'Kama Stretcha 🌶',
         kind: 'mobility',
         blocks: [
           { name: '', items: [Object.assign({}, WARMUP)] },
