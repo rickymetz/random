@@ -595,10 +595,10 @@
     "tuck-l-sit": "Hands on two sturdy chairs, push down hard and lift the knees to the chest.",
     "dead-hang": "Full grip, shoulders active — not shrugged to the ears.",
     "scapular-pulls": "From a hang, pull the shoulder blades down and back without bending the elbows.",
-    "pullup-negatives": "Jump or step to the top, then lower for three to five seconds. Stop if the elbows ache.",
+    "pullup-negatives": "Jump or step to the top, then lower for 3–5 sec. Stop if the elbows ache.",
     "chin-ups": "Palms facing you. Chest toward the bar, full hang at the bottom.",
     "hanging-knee-raises": "No swinging — knees up with a slight curl of the pelvis, then lower under control.",
-    "express-squats": "Steady pace, full depth. Forty seconds, then breathe.",
+    "express-squats": "Steady pace, full depth. 40 sec, then breathe.",
     "express-pushups": "Any version that keeps a straight line — knees down is fine by the second round.",
     "express-lunges": "Alternate legs, back knee toward the floor.",
     "mountain-climbers": "Hands under the shoulders, hips level, knees driving in turn.",
@@ -634,16 +634,16 @@
     cobra: "Hips heavy, shoulders away from the ears. Straighten the arms only if the low back is happy.",
     camel: "Hands on the low back first, hips pushed forward. Reach for the heels only when that feels easy.",
     plow: "Weight on the shoulders, never the neck, and don’t turn your head. Legs up the wall instead if your neck complains.",
-    "pelvic-floor": "Lift and hold for three seconds, then let it go completely. Keep breathing; don’t clench the glutes.",
+    "pelvic-floor": "Lift and hold for 3 sec, then let it go completely. Keep breathing; don’t clench the glutes.",
     recovery: "Nothing scheduled. Walk, breathe, let it repair.",
-    "cervical-retraction": "Towel under your neck. Tuck the chin straight back — a double chin — and hold 5–10 seconds. Small: the head stays down.",
-    "horizontal-abduction": "Chin tucked, band in both hands over your chest. Pull the arms apart and down toward the floor, squeezing the shoulder blades, then back slowly.",
-    "supine-external-rotation": "Elbows tucked at your sides, bent to 90°. Turn the forearms out against the band, elbows staying down — slow on the way back.",
-    "pnf-d2-flexion": "Start with the hand by the opposite hip. Sweep it up and out overhead like drawing a sword, thumb leading, then slowly back.",
-    "thoracic-extension": "Arms crossed over your chest, towel roll behind your shoulder blades. Arch back over it slowly, hold 5 seconds, then come upright.",
-    scaption: "Thumbs up, arms about 30° forward of your sides. Raise with straight elbows, no shrugging or arching the low back; lower slowly.",
-    "row-head-turn": "Staggered stance, band at chest height. Pull back with the elbow tucked and look over the opposite shoulder; squeeze the shoulder blades.",
-    touchdowns: "Face the wall, hands and forearms on it. Slide up on a diagonal until the arms are straight, lift the hands a few inches off, then back down — no shrugging."
+    "cervical-retraction": "Tuck your chin straight back — a double chin. Head stays down; hold 5–10 sec.",
+    "horizontal-abduction": "Tuck your chin, then pull the band apart to your sides, elbows straight. Slow back; relax the tuck.",
+    "supine-external-rotation": "Elbows pinned at your sides. Turn your forearms out as far as the band allows; slow back.",
+    "pnf-d2-flexion": "Hand by the opposite hip, then sweep up and out like drawing a sword. Slow back.",
+    "thoracic-extension": "Arch your upper back over the towel roll, chin tucked; hold 5 sec, come up slowly.",
+    scaption: "Thumbs up, arms slightly forward. Up to shoulder height — straight elbows, no shrug.",
+    "row-head-turn": "Elbow tucked, pull back, look over the opposite shoulder. Only your head turns.",
+    touchdowns: "Forearms on the wall. Slide up on a diagonal, lift the hands off, no shrug."
   };
 
   /* ---------- shared positions ---------- */
@@ -1691,7 +1691,7 @@
       props: [{ box: [-37, -31.5, 4] }],
       keys: [
         onBack({ head: 0, arms: SIDE_ARMS, hands: [90, 90], hold: 0.1 }),
-        onBack({ head: 9, arms: SIDE_ARMS, hands: [90, 90], hold: 0.4 })
+        onBack({ head: 13, arms: SIDE_ARMS, hands: [90, 90], hold: 0.4 })
       ]
     },
     'horizontal-abduction': {
@@ -1706,12 +1706,12 @@
     },
     'supine-external-rotation': {
       // Elbows tucked at the sides and bent to 90°, forearms pointing up;
-      // turn the forearms out to the sides (toward and away from you),
-      // elbows staying down.
+      // turn the forearms out toward the sides (toward and away from you)
+      // as far as a band allows — about halfway — elbows staying down.
       cycle: 3.2,
       keys: [
         onBack({ head: 6, arms: [[90, 0], [90, 0]], hands: [0, 0] }),
-        onBack({ head: 6, arms: [[90, 0], [90, 0]], armLen: [[1, 0.12], [1, 0.12]], hands: [0, 0], hold: 0.12 })
+        onBack({ head: 6, arms: [[90, 0], [90, 0]], armLen: [[1, 0.57], [1, 0.57]], hands: [0, 0], hold: 0.12 })
       ]
     },
     'pnf-d2-flexion': {
@@ -1726,7 +1726,8 @@
     'thoracic-extension': {
       // Sitting tall, arms crossed over the chest, a towel roll across the
       // chair back at shoulder-blade height; arch the upper back over it
-      // and hold, then come back upright.
+      // and hold, then come back upright. The head stays in line with the
+      // upper back, chin lightly tucked — not thrown back.
       cycle: 5,
       props: [{ box: [-16, 6, 25] }, { box: [-19, -15, 52] }],
       keys: (function () {
@@ -1734,12 +1735,12 @@
         var at = function (spine, head, extra) {
           var sh = step(step(hip, spine[0], LEN.spineLow), spine[1], LEN.spineHigh);
           // Hands on the chest, just below the opposite shoulder.
-          var hand = step(step(sh, spine[1] + 90, 6.5), spine[1] + 180, 9);
+          var hand = step(step(sh, spine[1] + 90, 7), spine[1] + 180, 5);
           return merge({ hip: hip, spine: spine, head: head, arms: [ik(hand[0], hand[1], '-y'), ik(hand[0] - 0.5, hand[1] - 1, '-y')],
-            hands: [spine[1] + 50, spine[1] + 50], legs: [flat(20, 0, '+y'), flat(19, 0, '+y')],
+            hands: [spine[1] + 170, spine[1] + 170], legs: [flat(20, 0, '+y'), flat(19, 0, '+y')],
             d3: { reach: { arms: [[0, 0, -2 * SHOULDER_3D + 4], [0, 0, 2 * SHOULDER_3D - 4]] } } }, extra);
         };
-        return [at([2, 2], -4, { hold: 0.1 }), at([356, 328], -12, { hold: 0.3 })];
+        return [at([2, 2], 2, { hold: 0.1 }), at([356, 328], 6, { hold: 0.3 })];
       })()
     },
     'scaption': {

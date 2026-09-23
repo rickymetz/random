@@ -241,13 +241,15 @@
             items: [
               { id: 'thoracic-extension', name: 'Seated thoracic lumbar extension', mode: 'reps', sets: 1, min: 5, max: 10, rest: 0 },
               { id: 'scaption', name: 'Scaption with dumbbells', mode: 'reps', sets: 2, min: 10, max: 12, rest: 20 },
-              { id: 'row-head-turn', name: 'Single arm row with opposite head turn', mode: 'reps', sets: 2, min: 12, max: 12, perSide: true, sideWord: 'arm', rest: 20 },
+              { id: 'row-head-turn', name: 'Single-arm row with opposite head turn', mode: 'reps', sets: 2, min: 12, max: 12, perSide: true, sideWord: 'arm', rest: 20 },
               { id: 'touchdowns', name: 'Touchdowns', mode: 'reps', sets: 2, min: 10, max: 12, rest: 20 }
             ]
           }
         ]
       },
-      /* The backs of the legs and the hips, for anyone who sits all day. */
+      /* The backs of the legs and the hips, for anyone who sits all day:
+       * kneeling first, then seated, finishing in a squat to stand up from.
+       * The 90/90 is the internal rotation sitting never gives you. */
       {
         id: 'hips',
         name: 'Hips & hamstrings',
@@ -255,26 +257,26 @@
         blocks: [
           { name: '', items: [Object.assign({}, WARMUP)] },
           {
-            name: 'Front and back',
+            name: 'Kneeling',
             items: [
+              { id: 'adductor-rock-backs', name: 'Adductor rock-backs', mode: 'reps', sets: 1, min: 8, max: 10, perSide: true, sideWord: 'side', rest: 0 },
               { id: 'hip-flexor', name: 'Hip-flexor stretch', mode: 'time', sets: 1, min: 30, max: 45, perSide: true, sideWord: 'side', rest: 0 },
-              { id: 'half-splits', name: 'Half splits', mode: 'time', sets: 1, min: 30, max: 45, perSide: true, sideWord: 'leg', rest: 0 },
-              { id: 'seated-fold', name: 'Seated forward fold', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 }
+              { id: 'half-splits', name: 'Half splits', mode: 'time', sets: 1, min: 45, max: 60, perSide: true, sideWord: 'leg', rest: 0 }
             ]
           },
           {
-            name: 'Out and around',
+            name: 'Seated',
             items: [
-              { id: 'adductor-rock-backs', name: 'Adductor rock-backs', mode: 'reps', sets: 1, min: 8, max: 10, perSide: true, sideWord: 'side', rest: 0 },
               { id: 'pigeon', name: 'Pigeon pose', mode: 'time', sets: 1, min: 45, max: 60, perSide: true, sideWord: 'side', rest: 0 },
-              { id: 'straddle', name: 'Straddle/butterfly', mode: 'time', sets: 1, min: 30, max: 45, rest: 0 },
+              { id: 'seated-fold', name: 'Seated forward fold', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
+              { id: 'hip-switches', name: '90/90 hip switches', mode: 'reps', sets: 1, min: 8, max: 8, perSide: true, sideWord: 'side', rest: 0 },
               { id: 'malasana', name: 'Deep squat (malasana)', mode: 'time', sets: 1, min: 30, max: 45, rest: 0 }
             ]
           }
         ]
       },
-      /* Ten minutes for the desk-bound: neck, upper back and hips, mostly
-       * standing, no mat needed. */
+      /* A short break for the desk-bound: neck, upper back and hips, mostly
+       * standing (the hip-flexor stretch kneels — a folded jacket will do). */
       {
         id: 'desk',
         name: 'Desk reset',
@@ -283,8 +285,8 @@
           {
             name: '',
             items: [
-              { id: 'neck-circles', name: 'Neck half-circles', mode: 'reps', sets: 1, min: 5, max: 5, perSide: true, sideWord: 'side', rest: 0 },
               { id: 'shoulder-rolls', name: 'Shoulder rolls', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
+              { id: 'neck-circles', name: 'Neck half-circles', mode: 'reps', sets: 1, min: 3, max: 3, perSide: true, sideWord: 'side', rest: 0 },
               { id: 'thoracic-extension', name: 'Seated thoracic lumbar extension', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
               { id: 'touchdowns', name: 'Touchdowns', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
               { id: 'reach-side-bend', name: 'Overhead reach and side bend', mode: 'reps', sets: 1, min: 5, max: 5, perSide: true, sideWord: 'side', rest: 0 },
@@ -306,10 +308,10 @@
             items: [
               { id: 'cat-cow', name: 'Cat-cow', mode: 'reps', sets: 1, min: 6, max: 8, rest: 0 },
               { id: 'thread-needle', name: 'Thread the needle', mode: 'time', sets: 1, min: 30, max: 45, perSide: true, sideWord: 'side', rest: 0 },
-              { id: 'childs-pose', name: 'Child’s-pose/lat stretch', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
+              { id: 'childs-pose', name: 'Child’s-pose/lat stretch', mode: 'time', sets: 1, min: 60, max: 90, rest: 0 },
               { id: 'seated-twist', name: 'Seated spinal twist', mode: 'time', sets: 1, min: 30, max: 45, perSide: true, sideWord: 'side', rest: 0 },
-              { id: 'butterfly-fold', name: 'Butterfly fold', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
-              { id: 'happy-baby', name: 'Happy baby', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 }
+              { id: 'butterfly-fold', name: 'Butterfly fold', mode: 'time', sets: 1, min: 60, max: 90, rest: 0 },
+              { id: 'happy-baby', name: 'Happy baby', mode: 'time', sets: 1, min: 60, max: 90, rest: 0 }
             ]
           }
         ]
@@ -411,54 +413,65 @@
   /* Fuller instructions for an exercise, where the one-line cue isn't
    * enough: how often it's prescribed, how to set up, the movement, and the
    * thing to watch. Shown under the figure as "How to". */
+  // A neck programme's stop rule, the same for every exercise in it.
+  var NECK_STOP = 'Pain, pins and needles or numbness spreading into your arm or hand; dizziness, blurred vision or a headache. Stop and check with your physio. (Symptoms easing back toward the neck are fine.)';
+
   var GUIDES = {
     'cervical-retraction': {
-      dose: 'Every day, up to 12 times a day: 1–2 sets of 10, holding each for 5–10 seconds.',
       setup: 'Lie on your back with a rolled towel under your neck, neck relaxed.',
-      movement: 'Gently tuck your chin straight back, as if making a double chin. Hold, then relax and repeat.',
-      tip: 'Don’t lift your head off the ground. If your shoulders lift, the movement is too big — it’s a small, subtle motion.'
+      movement: 'Gently tuck your chin straight back, as if making a double chin, pressing the back of your neck into the towel. Hold 5–10 seconds, then relax and repeat.',
+      tip: 'Your head stays on the floor. If your shoulders lift, make it smaller — it’s a small, subtle movement.',
+      dose: 'Every day, up to 12 times a day: 1–2 sets of 10, holding each for 5–10 seconds.',
+      stop: NECK_STOP
     },
     'horizontal-abduction': {
-      dose: 'Every day, twice a day: 2 sets of 12.',
       setup: 'Lie on your back with your knees bent and the ends of a resistance band in each hand, arms straight up toward the ceiling.',
-      movement: 'Tuck your chin first. Pull your arms apart against the band, straight out to your sides, then slowly bring them back to the start. Relax the chin tuck and repeat.',
-      tip: 'Keep your back flat on the floor throughout.'
+      movement: 'Tuck your chin first. Pull your arms apart against the band, elbows straight, out to your sides at shoulder level, then slowly bring them back. Relax the chin tuck between reps.',
+      tip: 'Keep your back flat on the floor throughout.',
+      dose: 'Every day, twice a day: 2 sets of 12.',
+      stop: NECK_STOP
     },
     'supine-external-rotation': {
+      setup: 'Lie on your back holding the ends of a resistance band in each hand, elbows at your sides and bent to 90°. A small towel under each elbow helps.',
+      movement: 'Rotate your hands outward, pulling the band apart, as far as the band allows without your elbows or shoulders lifting. Return slowly.',
+      tip: 'Keep your back flat and don’t shrug your shoulders.',
       dose: 'Every day, twice a day: 2 sets of 12.',
-      setup: 'Lie on your back holding the ends of a resistance band in each hand, elbows bent.',
-      movement: 'Rotate your hands outward, keeping your elbows bent, pulling the band apart. Return slowly.',
-      tip: 'Keep your back flat and don’t shrug your shoulders.'
+      stop: NECK_STOP
     },
     'pnf-d2-flexion': {
+      setup: 'Lie on your back with both knees bent, holding a resistance band in both hands. The working arm starts across your body, thumb pointing toward the opposite hip; the other hand holds the band still at that hip.',
+      movement: 'Lift the working arm up and out, overhead on its own side, against the band. As your hand goes overhead, turn it so the thumb points away from your body. Hold briefly, then slowly return and repeat.',
+      tip: 'Keep your back flat on the floor and don’t shrug your shoulder.',
       dose: 'Every day, twice a day: 2 sets of 12 with each arm.',
-      setup: 'Lie on your back with both knees bent, holding a resistance band in both hands, one arm across your body with the thumb pointing toward the opposite hip.',
-      movement: 'Lift that arm up and overhead to the other side, pulling against the band. As your hand goes overhead, turn it so the thumb points away from your body. Hold briefly, then slowly return and repeat.',
-      tip: 'Keep your back flat on the floor and don’t shrug your shoulder.'
+      stop: NECK_STOP
     },
     'thoracic-extension': {
+      setup: 'Sit upright in a chair with your arms crossed over your chest and a towel roll between your back and the backrest, at about shoulder-blade height.',
+      movement: 'Slowly arch your upper back over the towel roll and hold for 5 seconds, then return upright and repeat.',
+      tip: 'Keep your chin lightly tucked and your low back still — don’t throw your head back. Slow and controlled; don’t move through pain.',
       dose: 'Every day, once a day: 1 set of 5–10, holding each for 5 seconds.',
-      setup: 'Sit upright with your arms crossed over your chest and a towel roll across your back at about shoulder-blade height.',
-      movement: 'Slowly arch your trunk backward over the towel roll and hold, then return upright and repeat.',
-      tip: 'Keep it slow and controlled. Don’t move through pain.'
+      stop: NECK_STOP
     },
     'scaption': {
+      setup: 'Stand upright with your arms resting at your sides, holding light dumbbells (0.5–2 kg), thumbs up.',
+      movement: 'Slowly raise your arms in a V, about 30° forward of straight out to the sides, up to shoulder height and no higher. Lower them back to your sides.',
+      tip: 'Keep your elbows straight and don’t shrug. Try not to arch your low back. If you can’t do 12 without shrugging, go lighter.',
       dose: 'Every day, once a day: 1–2 sets of 10–12.',
-      setup: 'Stand upright with your arms resting at your sides, holding lightweight dumbbells.',
-      movement: 'Slowly raise your arms diagonally, at roughly 30° out from your body, then lower them back to your sides.',
-      tip: 'Keep your elbows straight and don’t shrug your shoulders. Try not to arch your low back as you raise and lower.'
+      stop: NECK_STOP
     },
     'row-head-turn': {
-      dose: 'Every day, once a day: 2 sets of 12 with each arm.',
       setup: 'Stand in a staggered stance holding one end of a resistance band anchored in front of you at chest height, palm facing in.',
-      movement: 'Pull your arm back with your elbow tucked at your side. As you pull, look over your opposite shoulder. Return to the start and repeat.',
-      tip: 'Keep your back straight, and think of squeezing your shoulder blades together as you pull.'
+      movement: 'Pull your arm back with your elbow tucked at your side. As you pull, turn your head to look over the opposite shoulder — only as far as is comfortable, chin level. Return to the start and repeat.',
+      tip: 'Keep your back straight and your trunk square to the anchor; only your head turns. Squeeze your shoulder blades together as you pull.',
+      dose: 'Every day, once a day: 2 sets of 12 with each arm.',
+      stop: NECK_STOP
     },
     'touchdowns': {
+      setup: 'Stand upright facing a wall, close enough to rest your forearms and palms flat on it.',
+      movement: 'Slide your hands up the wall on a diagonal. When your arms are straight, lift your hands a few inches off the wall, working the shoulder muscles. Bring your arms back down and repeat.',
+      tip: 'Keep your back straight and don’t shrug your shoulders.',
       dose: 'Every day, once a day: 1–2 sets of 10–12.',
-      setup: 'Stand upright facing a wall.',
-      movement: 'Rest both hands on the wall, palms facing in, and slide them up the wall on a diagonal. When your arms are straight, lift your hands a few inches off the wall, working the shoulder muscles. Bring your arms back down and repeat.',
-      tip: 'Keep your back straight and don’t shrug your shoulders.'
+      stop: NECK_STOP
     }
   };
 

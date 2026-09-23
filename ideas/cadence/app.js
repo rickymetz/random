@@ -516,11 +516,12 @@
       return text ? h('div', { class: 'demo-how-row' }, [h('b', { text: label }), h('p', { text: text })]) : null;
     };
     return h('details', { class: 'demo-how' }, [
-      h('summary', { text: 'How to' }),
-      row('Prescribed', g.dose),
+      h('summary', { text: 'How to do it' }),
       row('Setup', g.setup),
       row('Movement', g.movement),
-      row('Tip', g.tip)
+      row('Tip', g.tip),
+      row('Your physio’s dose', g.dose),
+      g.stop ? h('div', { class: 'demo-how-row demo-how-stop' }, [h('b', { text: 'Stop if' }), h('p', { text: g.stop })]) : null
     ]);
   }
 
@@ -2090,6 +2091,17 @@
       if (row.block) body.appendChild(h('div', { class: 'session-block', text: row.block }));
       body.appendChild(h('div', { class: 'session-name', text: ex.name }));
       body.appendChild(h('div', { class: 'session-target', text: R.targetLabel(ex) }));
+      if (R.guide && R.guide(ex.id)) {
+        body.appendChild(h('button', {
+          class: 'link-btn session-howto', type: 'button', text: 'How to do it ↓',
+          onclick: function () {
+            var d = document.querySelector('#session-root .demo-how');
+            if (!d) return;
+            d.open = true;
+            d.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          }
+        }));
+      }
 
       if (sets > 1 || step.sides > 1) {
         var line = [];
@@ -2342,7 +2354,7 @@
             h('div', { text: ex.name + ': three sessions at or above ' + R.amountLabel(ex) + '.' }),
             h('button', {
               class: 'btn btn-sm', type: 'button', style: 'margin-top:.5rem',
-              text: 'Raise the target to ' + (ex.min + step) + '–' + (ex.max + step) + (ex.mode === 'time' ? ' sec' : ''),
+              text: 'Raise the target to ' + R.amountLabel(Object.assign({}, ex, { min: ex.min + step, max: ex.max + step })),
               onclick: function () {
                 S.bumpTarget(ex.id, step);
                 toast(ex.name + ' target raised');

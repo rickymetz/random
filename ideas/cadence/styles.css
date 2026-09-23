@@ -40,7 +40,7 @@
     --line-strong: #3a3a3a;
     --accent: #e08554;
     --accent-ink: #1a1008;
-    --accent-wash: rgba(212, 120, 63, 0.14);
+    --accent-wash: rgba(212, 120, 63, 0.24);
     --accent-soft: rgba(212, 120, 63, 0.26);
     --good: #0ca30c;
     --series: #d4783f;    /* stepped for the dark surface, not the light hue reused */
@@ -63,7 +63,7 @@
   --line-strong: #3a3a3a;
   --accent: #e08554;
   --accent-ink: #1a1008;
-  --accent-wash: rgba(212, 120, 63, 0.14);
+  --accent-wash: rgba(212, 120, 63, 0.24);
   --accent-soft: rgba(212, 120, 63, 0.26);
   --good: #0ca30c;
   --series: #d4783f;
@@ -758,7 +758,7 @@ table.data td.num, table.data th.num { text-align: right; }
   flex-direction: column;
   overflow-y: auto;
 }
-.session-scroll > .session-body { flex: 1 0 auto; overflow: visible; }
+.session-scroll > .session-body { flex: 1 0 auto; overflow: visible; justify-content: flex-start; }
 .session-scroll > .session-actions { flex: none; padding-bottom: 0.75rem; }
 .session-scroll > .demo-notes { flex: none; }
 
@@ -967,9 +967,9 @@ body.is-session .toast { top: 4.5rem; bottom: auto; }
 .demo-cue {
   margin: 0;
   text-align: left;
-  font-size: 0.78rem;
-  line-height: 1.35;
-  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--ink);
 }
 .demo-controls { display: flex; gap: 0.3rem; flex: 0 0 auto; }
 .demo-how {
@@ -982,15 +982,32 @@ body.is-session .toast { top: 4.5rem; bottom: auto; }
   cursor: pointer;
   color: var(--accent);
   font-weight: 600;
-  min-height: 2rem;
+  min-height: var(--tap);
   display: flex;
   align-items: center;
+  list-style: none;
+}
+.demo-how summary::-webkit-details-marker { display: none; }
+.demo-how summary::after { content: '▾'; margin-left: 0.35rem; transition: transform 0.2s; }
+.demo-how[open] summary::after { transform: rotate(180deg); }
+.demo-how-stop { border-left: 3px solid var(--accent); padding-left: 0.6rem; }
+.session-howto {
+  align-self: center;
+  min-height: var(--tap);
+  padding: 0 0.8rem;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 .demo-how-row { margin-top: 0.45rem; }
 .demo-how-row b { display: block; font-size: 0.74rem; letter-spacing: 0.02em; color: var(--muted); font-weight: 600; }
 .demo-how-row p { margin: 0.1rem 0 0; }
 .demo-btn {
-  min-height: 2rem;
+  min-height: var(--tap);
   padding: 0 0.55rem;
   border: 1px solid var(--line);
   border-radius: 0.5rem;
@@ -1096,6 +1113,5 @@ body.is-session .toast { top: 4.5rem; bottom: auto; }
 
 /* The two things you read from arm's length were the smallest text here. */
 .session-setline { font-size: 1.2rem; }
-.demo-cue { font-size: 0.94rem; }
 
 .picker-goal { display: block; margin-top: 0.15rem; font-size: 0.78rem; color: var(--accent); font-weight: 500; }
