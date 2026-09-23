@@ -45,6 +45,22 @@
   },
   "shortcuts": [
     {
+      "name": "Jellybrawl",
+      "url": "ideas/jellybrawl/",
+      "icons": [
+        {
+          "src": "icons/jellybrawl-3d.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        },
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
       "name": "Cadence",
       "url": "ideas/cadence/",
       "icons": [
@@ -77,27 +93,11 @@
       ]
     },
     {
-      "name": "Ephemera",
-      "url": "ideas/ephemera/",
+      "name": "Breathe",
+      "url": "ideas/breathe/",
       "icons": [
         {
-          "src": "icons/ephemera-3d.svg",
-          "sizes": "any",
-          "type": "image/svg+xml"
-        },
-        {
-          "src": "icon-192.png",
-          "sizes": "192x192",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "Public Screening",
-      "url": "ideas/public-screening/",
-      "icons": [
-        {
-          "src": "icons/public-screening-3d.svg",
+          "src": "icons/breathe-3d.svg",
           "sizes": "any",
           "type": "image/svg+xml"
         },

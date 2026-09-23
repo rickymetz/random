@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Jellybrawl: a pink jelly blob squaring up to a cyan one, with a burst, flat -->
+  <ellipse cx="64" cy="114" rx="50" ry="5" fill="#12031f"/>
+  <path d="M92 16 L96 28 L108 24 L101 34 L112 40 L99 42 L101 55 L92 46 L84 55 L85 42 L73 40 L83 33 L77 23 L89 28 Z" fill="#f9f002"/>
+  <path d="M74 110 C74 84 82 64 98 64 C114 64 120 84 120 104 Q120 110 114 110 Z" fill="#05d9e8"/>
+  <circle cx="92" cy="84" r="4" fill="#12031f"/>
+  <circle cx="106" cy="84" r="4" fill="#12031f"/>
+  <path d="M91 96 Q99 91 107 96" fill="none" stroke="#12031f" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M10 104 C10 66 26 40 50 40 C74 40 88 66 88 102 C88 106 86 108 82 108 L78 108 C76 108 75 112 72 112 C69 112 68 108 66 108 L18 108 C13 108 10 108 10 104 Z" fill="#ff2a6d"/>
+  <ellipse cx="36" cy="72" rx="8" ry="9" fill="#ffffff"/>
+  <ellipse cx="60" cy="72" rx="8" ry="9" fill="#ffffff"/>
+  <circle cx="39" cy="74" r="4" fill="#12031f"/>
+  <circle cx="63" cy="74" r="4" fill="#12031f"/>
+  <path d="M26 60 L44 64 M72 60 L54 64" stroke="#12031f" stroke-width="4" stroke-linecap="round"/>
+  <path d="M34 90 Q48 100 62 90 Q48 94 34 90 Z" fill="#12031f" stroke="#12031f" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M24 56 Q30 46 40 44" fill="none" stroke="#ffb3c9" stroke-width="5" stroke-linecap="round"/>
+</svg>
