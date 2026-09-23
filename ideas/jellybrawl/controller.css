@@ -101,3 +101,4 @@ h2 { margin: 0; font: 48px var(--display); letter-spacing: 3px; color: #fff; tex
 .manual h3 { margin: 8px 0 4px; font: 22px var(--label); letter-spacing: 2px; color: var(--pink); }
 .manual p { margin: 0 0 4px; }
 .hit.bombbtn { width: min(52vw, 220px); font-size: clamp(26px, 8vw, 40px); }
+.radar.big { width: min(96vw, 460px); aspect-ratio: 480 / 280; }

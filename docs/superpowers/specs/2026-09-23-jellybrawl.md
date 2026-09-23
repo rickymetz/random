@@ -121,6 +121,12 @@ kept). The selfie is sent as a 128×128 JPEG data URL, about 6 KB.
 | **Bomb Squad** | Teams (2v2–4v4) | 2–8 | defuser: wires / keypad / button; the rest: the manual | defuse three modules first; three strikes and it blows |
 | **Tilt Maze** | Free-for-all | 1–8 | tilt (stick fallback) | first three to the goal place; the rest rank by distance |
 | **Draw Duel** | Free-for-all | 3–8 | draw, then vote | same prompt for all; anonymous gallery; most votes |
+| **Haunted House** | 1 vs rest | 3–8 | hunters: stick (beam follows); ghost: stick + VANISH, private map | hunters drain the invisible ghost with flashlight beams; the ghost spooks everyone or lasts 60 s |
+| **Whack-a-Blob** | 1 vs rest | 2–8 | pads: pop up / DUCK; hammer: tap a hole | moles bank a shared gem goal in 45 s; the hammer bonks them |
+| **Kraken** | 1 vs rest | 2–8 | rowers: stick (raft follows the average); kraken: aim + SLAM | three buoys then the dock; slams sink the raft |
+| **Tank vs Swarm** | 2 vs rest | 2–8 | driver: stick + SHAKE; gunner: aim + FIRE; swarm: stick + DASH | the tank lasts 50 s; the swarm gnaws through its armour |
+| **King of the Hill Giant** | Free-for-all | 2–8 | stick + SHOVE | the longest on the hill becomes a slow giant and scores; most seconds as king |
+| **Blind Pilot** | Teams (2v2–4v4) | 2–8 | pilot: stick; navigators: private track map | the TV only shows headlights; first car round the lap |
 
 The first three are in the slice. The four party classics are follow-ups
 (they're small, and they test the button, tilt and "phone shows a list"
@@ -469,3 +475,38 @@ and `bomb` (manual pages plus the defuser's wires, keypad or hold button).
 - **Draw Duel**: a secret prompt, 45 s to draw with a live TV gallery, 20 s
   to vote (you can't vote for yourself), then the reveal. Bots doodle a
   face and a few scribbles.
+
+## Asymmetric pack
+
+Picked from a multiple-choice round: Haunted House, Whack-a-Blob, Kraken
+(1 vs rest), Blind Pilot (hidden info), Tank vs Swarm and King of the Hill
+Giant (lopsided teams). The lone role rotates through the existing
+`pickOne()`, which picks whoever has played a lone role least this game.
+
+- The radar now draws walls, thick "road" lines, coloured dots and a target
+  ring. There's a new `nav` layout (a big private map, no stick) for Blind
+  Pilot's navigators. The ghost's map reuses the stick layout's radar.
+- **Haunted House**: the TV is dark except the flashlight cones (the lit
+  room is redrawn inside a clip of the cones). Tells: the ghost drips
+  glowing ectoplasm, and a hunter shivers (their phone buzzes) when it's
+  within 260 px. A spook takes 0.7 s of contact, plus 1.2 s ÷ hunters.
+- **Whack-a-Blob**: all phone pads. The hammer lands 0.42 s after the tap
+  with a closing ring. The gem goal per mole was tuned by bot play (crowds
+  are harder to bonk).
+- **Kraken**: the raft follows the average of every rower's stick. Two
+  tentacles, a 1.1 s shadow warning, and a hit only inside the ring.
+- **Tank vs Swarm**: the crew is two from 4 players up; below that, one
+  driver with an auto-aiming turret that fires faster, and a little extra
+  armour. Bot swarmers pad the swarm to 6 and never score. SHAKE flings
+  the hangers-on and leaves them dizzy.
+- **King of the Hill Giant**: whoever has been on the hill longest (at
+  least 1 s) is crowned. "Alone on the hill" deadlocked when everyone
+  rushed it. The giant grows to 2.3× size with more mass and less speed.
+- **Blind Pilot**: a loop of 10 waypoints. Off the road is mud (38%
+  speed). A pilot with no human navigator gets the map on their own phone.
+
+Balance: a scratch `boss.mjs` plays 24–40 all-bot rounds per player count
+and reports the lone role's win rate. It exposed frame-rate-dependent bot
+rolls (switched to rate × dt) and one-sided openings: the Kraken won 100%,
+the ghost 100% against one hunter, the swarm ~95%. All are now roughly
+20–65% across counts, which is about as tight as bots-vs-bots gets.

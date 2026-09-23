@@ -27,10 +27,16 @@ import stack from "./games/stack.js";
 import bombsquad from "./games/bombsquad.js";
 import maze from "./games/maze.js";
 import drawDuel from "./games/draw.js";
+import haunted from "./games/haunted.js";
+import whack from "./games/whack.js";
+import kraken from "./games/kraken.js";
+import tank from "./games/tank.js";
+import hill from "./games/hill.js";
+import pilot from "./games/pilot.js";
 import { makeBoard } from "./board.js";
 import { MAP_NAMES } from "./boards.js";
 
-const GAMES = [flap, sling, chomp, snipe, blackout, tagGame, kaiju, soccer, sumo, bumper, coinrush, potato, paint, crown, dodgeball, snake, tug, relay, stack, bombsquad, maze, drawDuel];
+const GAMES = [flap, sling, chomp, snipe, blackout, tagGame, kaiju, soccer, sumo, bumper, coinrush, potato, paint, crown, dodgeball, snake, tug, relay, stack, bombsquad, maze, drawDuel, haunted, whack, kraken, tank, hill, pilot];
 // canvas text only uses a web font once it's loaded; ask for both up front
 for (const f of [T.display, T.label]) document.fonts?.load(`40px ${f}`).catch(() => {});
 const COLORS = ["#ff2e63", "#00b7ff", "#ffd400", "#35e06b", "#b14dff", "#ff8a00", "#ff6ec7", "#00e0c6"];
@@ -50,6 +56,8 @@ const AWARDS = [
   ["painted", "Painter", "tiles painted"], ["splats", "Splatter", "rivals splatted"], ["crown", "Royalty", "s wearing the crown"], ["knocks", "Crown thief", "crowns knocked off"],
   ["hits", "Dodgeball ace", "hits"], ["snacks", "Big appetite", "snacks eaten"], ["cutoffs", "Cut-off artist", "snakes cut off"], ["heaves", "Heave-ho", "HEAVE! taps"],
   ["legs", "Anchor leg", "relay legs run"], ["perfects", "Steady hands", "perfect drops"], ["defused", "Bomb whisperer", "modules defused"], ["votes", "Crowd favourite", "votes"], ["plops", "Hole magnet", "falls down holes"],
+  ["spooks", "Poltergeist", "hunters spooked"], ["zaps", "Ghostbuster", "beam hits"], ["gems", "Gem hoarder", "gems"], ["bonks", "Bonk master", "moles bonked"],
+  ["slams", "Sea monster", "tentacle hits"], ["splatted", "Tank ace", "swarmers splatted"], ["gnaws", "Gnawer", "armour gnawed"], ["reign", "Giant", "s as king"], ["checkpoints", "Navigator", "checkpoints"],
   ["squashes", "Stomper", "blobs squashed"], ["cannon", "Artillery", "cannon shots"], ["wrecked", "Wrecking ball", "buildings flattened"], ["loot", "Master thief", "coins stolen"], ["catches", "Best hunter", "catches"], ["gulps", "Tables turned", "hunters gulped"],
 ];
 

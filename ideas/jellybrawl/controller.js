@@ -147,7 +147,7 @@ function render(l) {
   view.replaceChildren();
   view.onpointerdown = view.onpointermove = view.onpointerup = null;
   if (l.command && l.kind !== "wait") add(el("p", { className: "cmd", textContent: l.command }));
-  const kind = { wait, menu, choose, button, dpad, sling, pads, stick, scope, roll, tilt, draw, bomb }[l.kind] || wait;
+  const kind = { wait, menu, choose, button, dpad, sling, pads, stick, scope, roll, tilt, draw, bomb, nav }[l.kind] || wait;
   kind(l);
 }
 
@@ -362,17 +362,38 @@ function drawRadar(m) {
   }
   g.fillStyle = "#f9f002";
   for (const [x, y] of m.coins || []) { g.beginPath(); g.arc(x * w, y * h, 6, 0, Math.PI * 2); g.fill(); }
+  if (m.ring) { const [x, y, r] = m.ring; g.strokeStyle = "#39ff14"; g.lineWidth = 4; g.setLineDash([6, 6]); g.beginPath(); g.arc(x * w, y * h, r * w, 0, Math.PI * 2); g.stroke(); g.setLineDash([]); }
+  for (const [x, y, c, r = 8] of m.dots || []) { g.fillStyle = c; g.strokeStyle = "#000"; g.lineWidth = 2; g.beginPath(); g.arc(x * w, y * h, r, 0, Math.PI * 2); g.fill(); g.stroke(); }
+  if (m.x == null) return;
   g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--me");
   g.strokeStyle = "#fff"; g.lineWidth = 3;
   g.beginPath(); g.arc(m.x * w, m.y * h, 10, 0, Math.PI * 2); g.fill(); g.stroke();
 }
 
-// Blackout: the cover, so you can find your way in the dark
+// the fixed part of the map: Blackout's cover, or walls (rects) and lines
 function redrawCover(g, w, h) {
   g.fillStyle = "#1f7a3a";
-  for (const [x, y, r] of radarMap.bushes) { g.beginPath(); g.arc(x * w, y * h, r * w, 0, Math.PI * 2); g.fill(); }
+  for (const [x, y, r] of radarMap.bushes || []) { g.beginPath(); g.arc(x * w, y * h, r * w, 0, Math.PI * 2); g.fill(); }
   g.fillStyle = "#8a5a2b";
-  for (const [x, y, cw, ch] of radarMap.crates) g.fillRect(x * w, y * h, cw * w, ch * h);
+  for (const [x, y, cw, ch] of radarMap.crates || []) g.fillRect(x * w, y * h, cw * w, ch * h);
+  g.fillStyle = "#7d8ca3";
+  for (const [x, y, cw, ch] of radarMap.walls || []) g.fillRect(x * w, y * h, cw * w, ch * h);
+  g.strokeStyle = "#7d8ca3"; g.lineWidth = radarMap.lw ? radarMap.lw * w : 3; g.lineCap = "round"; // lw: a road's width, as a share of the map
+  for (const [x1, y1, x2, y2] of radarMap.lines || []) { g.beginPath(); g.moveTo(x1 * w, y1 * h); g.lineTo(x2 * w, y2 * h); g.stroke(); }
+}
+
+// Navigator: a big private map and nothing to steer with (Blind Pilot)
+function nav(l) {
+  radar = el("canvas", { className: "radar big", width: 480, height: 280 });
+  radarMap = l.map || null;
+  const g = radar.getContext("2d");
+  if (radarMap) redrawCover(g, radar.width, radar.height);
+  let act = null;
+  if (l.action) {
+    act = el("button", { type: "button", className: "hit fire", textContent: l.action });
+    act.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "action" }); navigator.vibrate?.(20); });
+  }
+  add(radar, l.hint && el("p", { className: "hint", textContent: l.hint }), act);
 }
 
 function stick(l) {
