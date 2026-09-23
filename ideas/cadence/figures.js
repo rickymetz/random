@@ -29,6 +29,8 @@
  * `feet`, optional angles (a foot defaults to square with its shin).
  * A reached-for limb can take `arc`: moving into or out of that keyframe,
  * the hand or foot travels on a curve that high instead of a straight line.
+ * `spineLen` (default 1) shortens the torso the same way, for a fold seen
+ * from the front.
  * `armLen` and `legLen` ([[upper, lower], [upper, lower]], default 1) draw a
  * bone shorter when it points toward you — a leg out to the side, seen from
  * the side, is mostly foreshortened.
@@ -40,7 +42,7 @@
 
   var LEN = {
     spineLow: 15, spineHigh: 15, neck: 5, headR: 6.5,
-    upperArm: 17, foreArm: 14, hand: 6,
+    upperArm: 18.5, foreArm: 15.5, hand: 8,
     thigh: 25, shin: 24
   };
   var ANKLE = 5;     // ankle height above the sole when the foot is flat
@@ -113,8 +115,9 @@
   function build(p) {
     var hip = p.hip;
     var sp = p.spine;
-    var waist = step(hip, sp[0], LEN.spineLow);
-    var shoulder = step(waist, sp[1], LEN.spineHigh);
+    var sl = p.spineLen == null ? 1 : p.spineLen;
+    var waist = step(hip, sp[0], LEN.spineLow * sl);
+    var shoulder = step(waist, sp[1], LEN.spineHigh * sl);
     var neckA = sp[1] + (p.head || 0);
     var neckTop = step(shoulder, neckA, LEN.neck);
     var head = step(neckTop, neckA, LEN.headR);
@@ -153,9 +156,10 @@
   function resolve(k) {
     var sp = spineOf(k);
     var hip = k.hip;
-    var shoulder = step(step(hip, sp[0], LEN.spineLow), sp[1], LEN.spineHigh);
+    var sl = k.spineLen == null ? 1 : k.spineLen;
+    var shoulder = step(step(hip, sp[0], LEN.spineLow * sl), sp[1], LEN.spineHigh * sl);
     var root = armRoot(shoulder, sp[1], k);
-    var out = { hip: hip, spine: sp, head: k.head || 0, turn: k.turn, shrug: k.shrug, roll: k.roll,
+    var out = { hip: hip, spine: sp, spineLen: k.spineLen, head: k.head || 0, turn: k.turn, shrug: k.shrug, roll: k.roll,
       armLen: k.armLen, legLen: k.legLen, arms: [], legs: [], hands: k.hands, feet: [null, null], toes: [null, null] };
     for (var i = 0; i < 2; i++) {
       var a = k.arms[i], l = k.legs[i];
@@ -210,6 +214,7 @@
       spine: [lerpAngle(sa[0], sb[0], u), lerpAngle(sa[1], sb[1], u)],
       head: lerp(ka.head || 0, kb.head || 0, u),
       turn: lerp(ka.turn == null ? 1 : ka.turn, kb.turn == null ? 1 : kb.turn, u),
+      spineLen: lerp(ka.spineLen == null ? 1 : ka.spineLen, kb.spineLen == null ? 1 : kb.spineLen, u),
       shrug: lerp(ka.shrug || 0, kb.shrug || 0, u),
       roll: lerp(ka.roll || 0, kb.roll || 0, u),
       armLen: lerpLens(ka.armLen, kb.armLen, u),
@@ -300,6 +305,7 @@
     (def.props || []).forEach(function (pr) {
       if (pr.box) { add([pr.box[0], pr.box[2]], 1); add([pr.box[1], 0], 1); }
       if (pr.bar) { add([pr.bar[0] - 6, pr.bar[1]], 2); add([pr.bar[0] + 6, pr.bar[1]], 2); }
+      if (pr.rod) { add(pr.rod, 3); }
       if (pr.wall != null) { add([pr.wall, 0], 1.5); }
     });
     if (def.floor !== false) minY = Math.min(minY, -2);
@@ -335,6 +341,10 @@
       }
       if (pr.bar) {
         g.appendChild(svgEl('path', { class: 'fig-prop', d: 'M' + (pr.bar[0] - 12) + ' ' + (-pr.bar[1]) + 'H' + (pr.bar[0] + 12) }));
+      }
+      if (pr.rod) {
+        // A pull-up bar runs across the body, so from the side you see its end.
+        g.appendChild(svgEl('circle', { class: 'fig-rod', cx: pr.rod[0], cy: -pr.rod[1], r: 2.2 }));
       }
       if (pr.wall != null) {
         g.appendChild(svgEl('path', { class: 'fig-prop', d: 'M' + pr.wall + ' 0V' + (-Math.min(fit.top + 4, 110)) }));
@@ -588,7 +598,8 @@
 
   /* All fours: knees under hips, hands under shoulders. */
   var Q_HIP = [0, KNEE + LEN.thigh];
-  var Q_SPINE = 79;
+  // Arms are longer than thighs, so the back slopes up to the shoulders.
+  var Q_SPINE = 90 - Math.asin((WRIST + LEN.upperArm + LEN.foreArm - 0.3 - Q_HIP[1]) / (LEN.spineLow + LEN.spineHigh)) * 180 / Math.PI;
   var Q_HAND = step(Q_HIP, Q_SPINE, LEN.spineLow + LEN.spineHigh)[0];
   var Q_LEGS = [ik(-LEN.shin, KNEE + 0.5, '-y'), ik(-LEN.shin - 1, KNEE + 0.5, '-y')];
   var Q_ARMS = [ik(Q_HAND, WRIST, '+x'), ik(Q_HAND + 1, WRIST, '+x')];
@@ -631,11 +642,14 @@
   /* Hanging from a bar at BAR_Y. */
   var BAR_Y = 128;
   var BAR_ARMS = [ik(1, BAR_Y - 1, '+x'), ik(-1, BAR_Y - 1, '+x')];
-  var HANG_HIP = [0, BAR_Y - 1 - LEN.upperArm - LEN.foreArm - LEN.spineLow - LEN.spineHigh + 0.5];
+  var HANG_HIP = [0, BAR_Y - 1 - LEN.upperArm - LEN.foreArm - LEN.spineLow - LEN.spineHigh - 0.1];
   function hanging(extra) {
     return merge({ hip: HANG_HIP, spine: 0, head: -4, arms: BAR_ARMS, hands: [0, 0],
       legs: [[182, 180], [178, 180]], feet: [120, 120] }, extra);
   }
+
+  /* Seen from the front: the eye sits in the middle of the face. */
+  var FRONT = { turn: 0 };
 
   var FIGURES = {
 
@@ -658,7 +672,7 @@
       cycle: 5,
       keys: [
         standing({ hold: 0.15 }),
-        standing({ spine: [2, 6], head: -12, arms: [[8, 4], [352, 356]], hold: 0.25 })
+        standing({ spine: [2, 6], head: -12, arms: [[8, 4], [4, 2]], hold: 0.25 })
       ]
     },
     recovery: {
@@ -673,17 +687,17 @@
       keys: [pushTop(), pushLow()]
     },
     'table-rows': {
-      // Under a table, heels down, body one line; pull the chest to the edge.
+      // Under a table, heels down, body one line; pull the chest up to the edge.
       cycle: 2.8,
-      props: [{ bar: [-37, 57] }],
+      props: [{ bar: [-40, 60] }],
       keys: (function () {
         var ank = [40, 4.5];
-        var low = line(ank, 285), high = line(ank, 299);
+        var low = line(ank, 284), high = line(ank, 296);
         var legs = [ik(ank[0], ank[1], '+y'), ik(ank[0] + 1, ank[1], '+y')];
-        var arms = [ik(-37, 56, '-y'), ik(-36, 56, '-y')];
+        var arms = [ik(-39, 59, '-y'), ik(-38, 59, '-y')];
         return [
-          { hip: low.hip, spine: 285, head: 18, arms: arms, hands: [0, 0], legs: legs, feet: [0, 0] },
-          { hip: high.hip, spine: 299, head: 20, arms: arms, hands: [0, 0], legs: legs, feet: [0, 0] }
+          { hip: low.hip, spine: 284, head: 14, arms: arms, hands: [0, 0], legs: legs, feet: [0, 0] },
+          { hip: high.hip, spine: 296, head: 22, arms: arms, hands: [0, 0], legs: legs, feet: [0, 0], hold: 0.1 }
         ];
       })()
     },
@@ -702,14 +716,15 @@
       ]
     },
     plank: {
-      // On the forearms, one line from heels to head.
+      // On the forearms, elbows under the shoulders, one line from heels to head.
       cycle: 4.5,
       keys: (function () {
-        var a = line(PU_ANKLE, 78), b = line(PU_ANKLE, 77);
-        var fore = function (s) { return [ik(s[0] + 14, WRIST, '-y'), ik(s[0] + 15, WRIST, '-y')]; };
+        var ang = lineForShoulderAt(PU_ANKLE, WRIST + LEN.upperArm + 0.3);
+        var a = line(PU_ANKLE, ang), b = line(PU_ANKLE, ang - 1);
+        var fore = [ik(a.shoulder[0] + LEN.foreArm, WRIST, '-y'), ik(a.shoulder[0] + LEN.foreArm + 1, WRIST, '-y')];
         return [
-          { hip: a.hip, spine: 78, head: 12, arms: fore(a.shoulder), hands: PALMS, legs: PU_LEGS },
-          { hip: b.hip, spine: 77, head: 12, arms: fore(a.shoulder), hands: PALMS, legs: PU_LEGS }
+          { hip: a.hip, spine: ang, head: 12, arms: fore, hands: PALMS, legs: PU_LEGS },
+          { hip: b.hip, spine: ang - 1, head: 12, arms: fore, hands: PALMS, legs: PU_LEGS }
         ];
       })()
     },
@@ -717,21 +732,28 @@
     /* ---------- Calisthenics B ---------- */
 
     'pike-pushups': {
-      // Hips high, head lowers toward the floor just in front of the hands.
-      cycle: 3,
-      keys: [
-        { hip: [-6, 60], spine: 148, head: 6, arms: [ik(20, WRIST, '+y'), ik(21, WRIST, '+y')], hands: PALMS,
-          legs: [toes(-34, 0, 165, '+x'), toes(-35, 0, 165, '+x')] },
-        { hip: [-3, 55], spine: 162, head: -10, arms: [ik(20, WRIST, '+y'), ik(21, WRIST, '+y')], hands: PALMS,
-          legs: [toes(-34, 0, 165, '+x'), toes(-35, 0, 165, '+x')] }
-      ]
+      // Feet walked in, hips high; bend the elbows and lower the head to the
+      // floor just in front of the hands — a tripod.
+      cycle: 3.2,
+      keys: (function () {
+        var legs = [toes(-8, 0, 150, '+x'), toes(-9, 0, 150, '+x')];
+        var arms = [ik(33, WRIST, '-x'), ik(34, WRIST, '-x')];
+        return [
+          { hip: [6, 57], spine: 162, head: -4, arms: arms, hands: PALMS, legs: legs },
+          { hip: [18, 48], spine: 155, head: -24, arms: arms, hands: PALMS, legs: legs, hold: 0.1 }
+        ];
+      })()
     },
     'prone-ytw': {
-      // Face down, arms overhead in a Y, lifted from the upper back.
-      cycle: 3,
+      // Face down, forehead low: lift the arms in a Y, then a T (out to the
+      // sides, toward you), then a W (elbows pulled to the ribs).
+      cycle: 7.5,
       keys: [
-        prone({ arms: [[85, 88], [88, 90]], hands: [90, 90] }),
-        prone({ spine: [92, 74], head: -16, arms: [[58, 52], [60, 54]], hands: [52, 54], hold: 0.15 })
+        prone({ arms: [[82, 84], [84, 86]], hands: [84, 86] }),
+        prone({ spine: [91, 82], head: -8, arms: [[62, 56], [64, 58]], hands: [56, 58], hold: 0.08 }),
+        prone({ arms: [[100, 100], [104, 104]], armLen: [[0.28, 0.28], [0.25, 0.25]], hands: [100, 104] }),
+        prone({ spine: [91, 82], head: -8, arms: [[62, 62], [66, 66]], armLen: [[0.28, 0.28], [0.25, 0.25]], hands: [62, 66], hold: 0.08 }),
+        prone({ spine: [91, 82], head: -8, arms: [[284, 58], [288, 62]], armLen: [[0.8, 0.5], [0.75, 0.45]], hands: [58, 62], hold: 0.08 })
       ]
     },
     'glute-bridges': {
@@ -796,15 +818,12 @@
       ]
     },
     'single-leg-bridges': {
-      // One foot planted, the other leg long; the hips rise in one line.
+      // One foot planted and driving; the other knee held in toward the chest.
       cycle: 2.8,
-      keys: (function () {
-        var up = angleOf(-B_SHOULDER[0], 26 - B_SHOULDER[1]);   // hip→away from the shoulder
-        return [
-          onBack({ legs: [flat(22, 0, '+y'), [60, 60]], feet: [null, 40] }),
-          onBack({ hip: [0, 26], shoulderAt: B_SHOULDER, head: 20, legs: [flat(22, 0, '+y'), [up, up]], feet: [null, up - 30] })
-        ];
-      })()
+      keys: [
+        onBack({ legs: [flat(22, 0, '+y'), [340, 80]], feet: [null, 350] }),
+        onBack({ hip: [0, 26], shoulderAt: B_SHOULDER, head: 20, legs: [flat(22, 0, '+y'), [325, 60]], feet: [null, 330], hold: 0.1 })
+      ]
     },
     'towel-leg-curls': {
       // Hips up, heels on a towel; pull them in and slide them out.
@@ -819,7 +838,7 @@
       props: [{ box: [16, 46, 22] }],
       keys: [
         standing({ hip: [-2, STAND], spine: 6, arms: [[160, 150], [200, 190]], legs: [flat(26, 22, '+y'), flat(-2)] }),
-        standing({ hip: [26, STAND + 22], spine: 0, arms: [[200, 190], [160, 150]], legs: [flat(27, 22), ik(40, 44, '+x')] })
+        standing({ hip: [26, STAND + 22], spine: 0, arms: [[200, 190], [160, 150]], legs: [flat(27, 22), arced(ik(40, 44, '+x'), 18)] })
       ]
     },
     'wall-sit': {
@@ -832,16 +851,18 @@
       ]
     },
     'calf-raises': {
-      cycle: 2.4,
-      keys: [
-        standing({ legs: [flat(0), flat(-1)] }),
-        (function () {
-          // The ball of the foot stays where it was; the heel lifts and the
-          // whole body rises straight up over it — not forward.
-          var fa = 140, a = ankleOnToes(0 + 7.5, 0, fa);
-          return standing({ hip: [a[0], a[1] + LEN.thigh + LEN.shin - 0.05], legs: [toes(7.5, 0, fa), toes(6.5, 0, fa)], hold: 0.12 });
-        })()
-      ]
+      // One foot on a step edge, the other hooked behind: the heel drops
+      // below the step, then rises high onto the ball of the foot.
+      cycle: 3,
+      props: [{ box: [7, 34, 12] }],
+      keys: (function () {
+        var bx = 8;
+        var at = function (fa, extra) {
+          var a = ankleOnToes(bx, 12, fa);
+          return standing(merge({ hip: [a[0] - 0.5, a[1] + LEN.thigh + LEN.shin - 0.05], legs: [toes(bx, 12, fa), [192, 240]], feet: [null, 150] }, extra));
+        };
+        return [at(64, { hold: 0.08 }), at(142, { hold: 0.12 })];
+      })()
     },
 
     /* ---------- Core ---------- */
@@ -870,41 +891,47 @@
       ]
     },
     'side-plank': {
-      // On one forearm, top arm to the ceiling; lift the hips into one line.
-      cycle: 4,
+      // Facing you on one forearm, top arm to the ceiling: hold one straight
+      // line from heels to head, breathing.
+      cycle: 5,
       keys: (function () {
         var ank = [-47, 4.5];
-        var top = line(ank, 78);
+        var top = line(ank, 76), low = line(ank, 77);
         var legs = [ik(ank[0], ank[1], '+y'), ik(ank[0] + 2, ank[1] + 3, '+y')];
-        var elbowArm = ik(top.shoulder[0] + 12, WRIST, '-y');
+        var elbowArm = ik(top.shoulder[0] + LEN.foreArm - 2, WRIST, '-y');
         return [
-          { hip: [ank[0] + 46, 7.5], shoulderAt: top.shoulder, head: 10, arms: [elbowArm, [0, 0]], hands: [90, 0], legs: legs, feet: [84, 84] },
-          { hip: top.hip, spine: 78, head: 10, arms: [elbowArm, [0, 0]], hands: [90, 0], legs: legs, feet: [84, 84], hold: 0.2 }
+          { hip: top.hip, spine: 76, head: 12, turn: 0, arms: [elbowArm, [0, 0]], hands: [90, 0], legs: legs, feet: [84, 84], hold: 0.3 },
+          { hip: low.hip, spine: 77, head: 12, turn: 0, arms: [elbowArm, [0, 0]], hands: [90, 0], legs: legs, feet: [84, 84], hold: 0.3 }
         ];
       })()
     },
     'reverse-crunch': {
-      // Knees over hips; curl the hips off the floor.
-      cycle: 2.8,
+      // Knees bent at 90° over the hips; curl them toward the chest and peel
+      // the pelvis off the floor — no swinging.
+      cycle: 3,
       keys: [
-        onBack({ legs: [[5, 95], [6, 96]], feet: [5, 6] }),
-        onBack({ hip: [-4, 13], spine: [248, 266], head: 6, legs: [[322, 40], [323, 41]], feet: [320, 321] })
+        onBack({ legs: [[8, 98], [9, 99]], feet: [8, 9] }),
+        onBack({ hip: [-5, 17], spine: [246, 262], head: 6, legs: [[318, 48], [319, 49]], feet: [318, 319], hold: 0.1 })
       ]
     },
 
     /* ---------- Calisthenics C ---------- */
 
     'archer-pushups': {
-      // Lower toward one hand while the other arm stays long, then the other.
+      // Hands wide. Lower toward one hand while the other arm stays straight
+      // out to the side — foreshortened here, as it points toward you.
       cycle: 4.4,
       keys: (function () {
-        var far = ik(PU_HAND + 26, WRIST, '+y');
-        var low = { hip: [puLow.hip[0] + 2, puLow.hip[1]], spine: 88, head: 8, hands: PALMS, legs: PU_LEGS };
+        // Out to the side, a straight arm shows only its drop to the floor.
+        var reach = LEN.upperArm + LEN.foreArm;
+        var sTop = (puTop.shoulder[1] - WRIST) / reach, sLow = (puLow.shoulder[1] - WRIST) / reach * 0.98;
+        var wide = ik(PU_HAND - 1, WRIST, '+y');
+        var low = { hip: puLow.hip, spine: 87, head: 8, legs: PU_LEGS };
         return [
-          pushTop({ arms: [PU_ARMS[0], far] }),
-          merge(low, { arms: [PU_ARMS[0], far] }),
-          pushTop({ arms: [far, PU_ARMS[1]] }),
-          merge(low, { arms: [far, PU_ARMS[1]] })
+          pushTop({ arms: [PU_ARMS[0], wide], armLen: [[1, 1], [sTop, sTop]], hands: [90, 90] }),
+          merge(low, { arms: [PU_ARMS[0], wide], armLen: [[1, 1], [sLow, sLow]], hands: [90, 90], hold: 0.08 }),
+          pushTop({ arms: [wide, PU_ARMS[1]], armLen: [[sTop, sTop], [1, 1]], hands: [90, 90] }),
+          merge(low, { arms: [wide, PU_ARMS[1]], armLen: [[sLow, sLow], [1, 1]], hands: [90, 90], hold: 0.08 })
         ];
       })()
     },
@@ -918,17 +945,20 @@
       ]
     },
     'planche-lean': {
-      // Arms locked, shoulders slide forward past the hands.
+      // Arms locked straight; the whole body slides forward so the shoulders
+      // pass in front of the hands and the arms slant back. The balls of the
+      // feet stay put; the ankles roll over them.
       cycle: 4.5,
       keys: (function () {
-        // The balls of the feet stay put; the ankles roll over them as the
-        // whole straight body shifts forward past the hands.
-        var ank2 = ankleOnToes(-47, 0, 185);
-        var lean = line(ank2, 76);
+        var reach = LEN.upperArm + LEN.foreArm - 0.1;
+        var sh = step([PU_HAND, WRIST], 22, reach);             // shoulder ahead of the hand
+        var ang = 74;
+        var hip = step(sh, ang + 180, LEN.spineLow + LEN.spineHigh);
+        var ank = step(hip, ang + 180, LEN.thigh + LEN.shin);
         var arms = [ik(PU_HAND, WRIST, '+y'), ik(PU_HAND + 1, WRIST, '+y')];
         return [
           pushTop({ hands: [70, 70] }),
-          { hip: lean.hip, spine: 76, head: 10, arms: arms, hands: [70, 70], legs: [onToes(ank2, '+y', 185), onToes([ank2[0] - 1, ank2[1]], '+y', 185)], hold: 0.25 }
+          { hip: hip, spine: ang, head: 10, arms: arms, hands: [70, 70], legs: [onToes(ank, '+y', 190), onToes([ank[0] - 1, ank[1]], '+y', 190)], hold: 0.3 }
         ];
       })()
     },
@@ -948,114 +978,132 @@
       })()
     },
     'tuck-l-sit': {
-      // Hands pressing down on two chairs, knees pulled up.
+      // Hands pressing down on two chairs either side of the hips (seen here
+      // just behind them), arms locked, shoulders pushed down; the feet leave
+      // the floor and the knees come up — the hips hover, not sit.
       cycle: 4,
-      props: [{ box: [-9, 9, 30] }],
-      keys: [
-        { hip: [0, 31], spine: 0, head: -4, arms: [ik(1, 32.5, '-x'), ik(2, 32.5, '-x')], hands: [90, 90], legs: [flat(16, 0, '+y'), flat(15, 0, '+y')] },
-        { hip: [0, 34], spine: -3, head: -4, arms: [ik(1, 32.5, '-x'), ik(2, 32.5, '-x')], hands: [90, 90], legs: [[62, 178], [64, 180]], feet: [120, 120], hold: 0.3 }
-      ]
+      props: [{ box: [-16, -8, 30] }],
+      keys: (function () {
+        var hand = [-10, 30.5];
+        var sh = step(hand, 12, LEN.upperArm + LEN.foreArm - 0.1);
+        var hip = [sh[0] + 1, sh[1] - LEN.spineLow - LEN.spineHigh];
+        var arms = [ik(hand[0], hand[1], '-x'), ik(hand[0] - 1, hand[1], '-x')];
+        return [
+          { hip: hip, spine: -2, head: -4, shrug: 2, arms: arms, hands: [270, 270], legs: [flat(20, 0, '+y'), flat(19, 0, '+y')] },
+          { hip: [hip[0], hip[1] + 2], spine: -4, head: -4, shrug: -1, arms: arms, hands: [270, 270], legs: [[56, 176], [58, 178]], feet: [130, 130], hold: 0.35 }
+        ];
+      })()
     },
 
     /* ---------- Pull-up bar ---------- */
 
     'dead-hang': {
       cycle: 5,
-      props: [{ bar: [0, BAR_Y] }],
+      props: [{ rod: [0, BAR_Y] }],
       keys: [hanging(), hanging({ hip: [1.5, HANG_HIP[1]], spine: -1 })]
     },
     'scapular-pulls': {
-      // Arms straight; pull the shoulder blades down and the body rises.
+      // Arms stay straight. Shoulders shrugged to the ears, then pulled down
+      // — the body rises a few centimetres without the elbows bending.
       cycle: 2.8,
-      props: [{ bar: [0, BAR_Y] }],
-      keys: [hanging({ shrug: 3 }), hanging({ hip: [0, HANG_HIP[1] + 3], shrug: -1, head: -8 })]
+      props: [{ rod: [0, BAR_Y] }],
+      keys: [
+        hanging({ hip: [0, HANG_HIP[1] - 3], shrug: 3 }),
+        hanging({ hip: [0, HANG_HIP[1] + 1.5], shrug: -1.5, head: -8, hold: 0.1 })
+      ]
     },
     'pullup-negatives': {
-      // Start at the top, lower slowly, step back up.
-      cycle: 5.5,
+      // Chin over the bar, lower as slowly as you can to a full hang, then
+      // step back up to the top from a box.
+      cycle: 6,
       still: 0,
-      props: [{ bar: [0, BAR_Y] }],
+      props: [{ rod: [0, BAR_Y] }, { box: [-10, 14, 30] }],
       keys: [
-        hanging({ hip: [3, HANG_HIP[1] + 22], spine: 4, head: -10, legs: [[176, 215], [174, 213]], feet: [140, 140], hold: 0.15 }),
-        hanging({ legs: [[178, 212], [176, 210]], feet: [140, 140], hold: 0.05 })
+        hanging({ hip: [-5, HANG_HIP[1] + 24], spine: 6, head: -16, legs: [[176, 196], [174, 194]], feet: [140, 140], hold: 0.12 }),
+        hanging({ legs: [[178, 190], [176, 188]], feet: [140, 140] }),
+        hanging({ legs: [flat(4, 30, '+x'), flat(2, 30, '+x')], hip: [-2, HANG_HIP[1] + 8], spine: 4, head: -10 })
       ]
     },
     'chin-ups': {
       cycle: 3,
-      props: [{ bar: [0, BAR_Y] }],
+      props: [{ rod: [0, BAR_Y] }],
       keys: [
         hanging({ legs: [[176, 178], [174, 178]] }),
-        hanging({ hip: [3, HANG_HIP[1] + 23], spine: 6, head: -12, legs: [[170, 176], [168, 176]], hold: 0.1 })
+        hanging({ hip: [-5, HANG_HIP[1] + 24], spine: 8, head: -18, legs: [[170, 176], [168, 176]], hold: 0.1 })
       ]
     },
     'hanging-knee-raises': {
+      // Knees up past hip height with a small curl of the pelvis; no swing.
       cycle: 3,
-      props: [{ bar: [0, BAR_Y] }],
+      props: [{ rod: [0, BAR_Y] }],
       keys: [
         hanging(),
-        hanging({ hip: [-1, HANG_HIP[1] + 2], spine: -6, legs: [[82, 175], [84, 177]], feet: [95, 95], hold: 0.1 })
+        hanging({ hip: [-2, HANG_HIP[1] + 3], spine: [-14, -6], legs: [[68, 172], [70, 174]], feet: [100, 100], hold: 0.1 })
       ]
     },
 
     /* ---------- Express 15 ---------- */
 
     'mountain-climbers': {
-      // High plank, knees driving in turn.
-      cycle: 1.2,
+      // High plank; each knee drives up toward the chest, foot off the floor,
+      // the other leg long on its toes. The hips lift a little as the knee
+      // comes through, as they do for real.
+      cycle: 1.4,
       keys: [
-        // Both targets bend the knee down, so the foot travels along the
-        // floor instead of the leg swinging up through the air between them.
-        // The knee drives in under the chest; the foot trails just behind it.
-        // The hips lift a little as each knee comes through, as they do for
-        // real — with the hips at plank height a thigh passing straight down
-        // would hit the floor.
-        pushTop({ hip: [puTop.hip[0] + 1, puTop.hip[1] + 6], spine: PU_ANGLE + 4, legs: [arced(ik(puTop.hip[0] - 1, 14, '+x'), 10), onToes([PU_ANKLE[0] - 1, PU_ANKLE[1]], '+x', PU_FOOT)], feet: [160, null] }),
-        pushTop({ hip: [puTop.hip[0] + 1, puTop.hip[1] + 6], spine: PU_ANGLE + 4, legs: [onToes(PU_ANKLE, '+x', PU_FOOT), arced(ik(puTop.hip[0] - 2, 14, '+x'), 10)], feet: [null, 160] })
+        pushTop({ hip: [puTop.hip[0] + 1, puTop.hip[1] + 5], spine: PU_ANGLE + 3, legs: [arced(ik(puTop.hip[0] + 2, 20, '+x'), 10), onToes([PU_ANKLE[0] - 1, PU_ANKLE[1]], '+x', PU_FOOT)], feet: [150, null] }),
+        pushTop({ hip: [puTop.hip[0] + 1, puTop.hip[1] + 5], spine: PU_ANGLE + 3, legs: [onToes(PU_ANKLE, '+x', PU_FOOT), arced(ik(puTop.hip[0] + 1, 20, '+x'), 10)], feet: [null, 150] })
       ]
     },
 
     /* ---------- Flexibility ---------- */
 
     'hip-switches': {
-      // Seen from the front, sitting tall on the hands: the knees swing from
-      // one side to the other — each time one shin ends up across the front
-      // (thigh toward you, foreshortened) and the other out to the side.
-      cycle: 4,
+      // 90/90, seen from the front, sitting tall: the knees sweep from one
+      // side to the other like windscreen wipers. Each side, one shin lies
+      // across the front (its thigh toward you) and the other leg is out to
+      // the side (its shin pointing back, away from you). In-between keys
+      // route each shin up over its knee, as a real leg goes, rather than
+      // through the floor.
+      cycle: 5,
       keys: (function () {
-        var base = { hip: [0, 7], spine: 0, head: 0, turn: 0,
-          arms: [ik(15, WRIST, '+x'), ik(-15, WRIST, '-x')], hands: [150, 210] };
-        return [
-          merge(base, { legs: [[98, 188], [118, 94]], legLen: [[1, 0.35], [0.45, 1]], feet: [170, 94] }),
-          merge(base, { legs: [ik(18, 5, '+y'), ik(-18, 5, '+y')], feet: [120, 240] }),
-          merge(base, { legs: [[242, 266], [262, 172]], legLen: [[0.45, 1], [1, 0.35]], feet: [266, 190] }),
-          merge(base, { legs: [ik(18, 5, '+y'), ik(-18, 5, '+y')], feet: [120, 240] })
-        ];
+        var base = merge(FRONT, { hip: [0, 9], spine: 0, head: 0, arms: [ik(7, 21, '-y'), ik(-7, 21, '-y')], hands: [300, 60] });
+        var A = merge(base, { legs: [[94, 22], [232, 92]], legLen: [[1, 0.3], [0.3, 1]], feet: [22, 92], hold: 0.1 });
+        var B = merge(base, { legs: [[128, 268], [266, 338]], legLen: [[0.3, 1], [1, 0.3]], feet: [268, 338], hold: 0.1 });
+        var up = merge(base, { legs: [[32, 158], [328, 202]], feet: [110, 250] });
+        var t1 = merge(base, { legs: [[62, 95], [290, 20]], legLen: [[1, 0.7], [0.7, 1]], feet: [60, 20] });
+        var t2 = merge(base, { legs: [[80, 20], [300, 270]], legLen: [[0.7, 1], [1, 0.7]], feet: [20, 270] });
+        return [A, t1, up, t2, B, t2, up, t1];
       })()
     },
     'hip-flexor': {
-      // Half-kneeling; tuck the tail and press the hips forward.
+      // Half-kneeling; tuck the tail and press the hips forward, torso tall.
       cycle: 4.5,
       keys: [
         { hip: [-4, 29.5], spine: 0, head: -2, arms: [[182, 176], [178, 184]], legs: [flat(21, 0, '+y'), ik(-30, KNEE + 0.5, '-y')], feet: [null, 270] },
-        { hip: [3, 28.5], spine: 358, head: -2, arms: [[182, 176], [178, 184]], legs: [flat(21, 0, '+y'), ik(-30, KNEE + 0.5, '-y')], feet: [null, 270], hold: 0.25 }
+        { hip: [3, 28.5], spine: 0, head: -2, arms: [[182, 176], [178, 184]], legs: [flat(21, 0, '+y'), ik(-30, KNEE + 0.5, '-y')], feet: [null, 270], hold: 0.25 }
       ]
     },
     'adductor-rock-backs': {
-      // All fours with one leg out to the side; rock the hips back.
-      cycle: 3.8,
+      // All fours with one leg straight out to the side (toward you, so it
+      // looks short), foot flat; rock the hips back toward the heel.
+      cycle: 4,
       keys: [
-        fours({ legs: [[160, 160], Q_LEGS[1]], legLen: [[0.55, 0.55], [1, 1]], feet: [78, 270] }),
-        // Rocking back pivots on the planted knee, like the frog.
-        fours({ hip: step([0, KNEE], 335, LEN.thigh), spine: 72, legs: [[140, 140], [155, 270]], legLen: [[0.46, 0.46], [1, 1]], feet: [95, 270], hold: 0.15 })
+        fours({ legs: [[160, 160], Q_LEGS[1]], legLen: [[0.55, 0.55], [1, 1]], feet: [66, 270] }),
+        fours({ hip: step([0, KNEE], 322, LEN.thigh), spine: 62, head: 18, legs: [[130, 130], [142, 270]], legLen: [[0.46, 0.46], [1, 1]], feet: [78, 270], hold: 0.15 })
       ]
     },
     straddle: {
-      // Legs long, hinge from the hips, hands walking forward.
+      // Seen from the front: legs wide in a V, then hinge forward from the
+      // hips with a long back — the torso comes toward you.
       cycle: 5,
-      keys: [
-        seated({ arms: [ik(20, WRIST, '+y'), ik(19, WRIST, '+y')], hands: PALMS }),
-        seated({ spine: [58, 76], head: 18, arms: [ik(44, WRIST, '+y'), ik(43, WRIST, '+y')], hands: PALMS, hold: 0.25 })
-      ]
+      keys: (function () {
+        var base = merge(FRONT, { hip: [0, 7.5], legs: [[93, 93], [267, 267]], feet: [4, 356],
+          arms: [ik(14, WRIST, '+y'), ik(-14, WRIST, '+y')], hands: [90, 270] });
+        return [
+          merge(base, { spine: 0 }),
+          merge(base, { spine: 0, spineLen: 0.62, head: 0, arms: [ik(22, WRIST, '+y'), ik(-22, WRIST, '+y')], hold: 0.25 })
+        ];
+      })()
     },
     'knee-to-wall-rocks': {
       // Half-kneeling at a wall; the front knee drives forward over the toes.
@@ -1084,11 +1132,12 @@
       ]
     },
     'cat-cow': {
-      // Round the back up, then let it sag and look up.
-      cycle: 4.5,
+      // Hands and knees stay put: round the whole back up and tuck the chin,
+      // then let the belly sink and look forward.
+      cycle: 5,
       keys: [
-        fours({ spine: [60, 104], head: 42, hold: 0.1 }),
-        fours({ spine: [100, 64], head: -34, hold: 0.1 })
+        fours({ spine: [Q_SPINE - 24, Q_SPINE + 30], head: 44, hold: 0.12 }),
+        fours({ spine: [Q_SPINE + 24, Q_SPINE - 18], head: -34, hold: 0.12 })
       ]
     },
     'open-book': {
@@ -1103,37 +1152,41 @@
       ]
     },
     'childs-pose': {
-      // Sitting back on the heels, chest to the thighs, arms long.
+      // Knees folded fully, hips sitting back on the heels — the highest point
+      // — torso sloping down over the thighs, forehead to the floor, arms long.
       cycle: 5,
       keys: (function () {
-        var hip = step([0, KNEE], 285, LEN.thigh);
-        var legs = [[105, 270], [105, 270]];
+        var knee = [0, KNEE];
+        var hip = step(knee, 293, LEN.thigh);
+        var legs = [[113, 270], [113, 270]];
         return [
-          { hip: hip, spine: [78, 100], head: 0, arms: [ik(38, WRIST, '+y'), ik(37, WRIST, '+y')], hands: PALMS, legs: legs, feet: [270, 270] },
-          { hip: [hip[0] - 0.5, hip[1] - 0.6], spine: [80, 103], head: -2, arms: [ik(40, WRIST, '+y'), ik(39, WRIST, '+y')], hands: PALMS, legs: legs, feet: [270, 270] }
+          { hip: hip, spine: [98, 104], head: -10, arms: [ik(46, WRIST, '+y'), ik(45, WRIST, '+y')], hands: PALMS, legs: legs, feet: [270, 270] },
+          { hip: [hip[0] - 0.4, hip[1] - 0.5], spine: [99, 105], head: -10, arms: [ik(46, WRIST, '+y'), ik(45, WRIST, '+y')], hands: PALMS, legs: legs, feet: [270, 270] }
         ];
       })()
     },
     'focus-stretch': {
-      // One leg long, the other tucked; fold over the long one.
+      // One leg long, the other foot to the inner thigh; hinge from the hips
+      // over the long leg, back long, hands to the shin.
       cycle: 5,
       keys: [
-        seated({ legs: [[90, 90], [60, 230]], feet: [5, 82], arms: [ik(20, 12, '-y'), ik(10, WRIST, '-x')], hands: [90, 90] }),
-        seated({ spine: [60, 78], head: 16, legs: [[90, 90], [60, 230]], feet: [5, 82], arms: [ik(44, 9, '+y'), ik(40, 9, '+y')], hands: [90, 90], hold: 0.25 })
+        seated({ legs: [[90, 90], [68, 248]], feet: [5, 110], arms: [ik(22, 12, '-y'), ik(10, WRIST, '-x')], hands: [90, 90] }),
+        seated({ spine: [46, 52], head: 6, legs: [[90, 90], [68, 248]], feet: [5, 110], arms: [ik(34, 10, '+y'), ik(33, 10, '+y')], hands: [95, 95], hold: 0.25 })
       ]
     },
 
     /* ---------- Morning stretch ---------- */
 
     'neck-circles': {
-      // Chin to chest, then ear toward shoulder and back up.
-      cycle: 5,
+      // Chin to chest, then roll ear toward one shoulder and the other —
+      // half-circles only, never tipping the head back.
+      cycle: 6,
       still: 0,
       keys: [
-        standing({ head: 48, turn: 1, hold: 0.08 }),
-        standing({ head: 12, turn: 0 }),
-        standing({ head: -14, turn: 1, hold: 0.08 }),
-        standing({ head: 12, turn: 0 })
+        standing({ head: 44, turn: 1, hold: 0.1 }),
+        standing({ head: 16, turn: 0.35 }),
+        standing({ head: 0, turn: 0 }),
+        standing({ head: 16, turn: -0.35 })
       ]
     },
     'shoulder-rolls': {
@@ -1147,13 +1200,20 @@
       ]
     },
     'reach-side-bend': {
-      // Reach tall, then lean over.
-      cycle: 5,
-      keys: [
-        standing(),
-        standing({ arms: [[2, 0], [358, 0]], hands: [0, 0], head: -6 }),
-        standing({ spine: [352, 338], head: -8, arms: [[340, 334], [336, 330]], hands: [334, 330], hold: 0.15 })
-      ]
+      // Seen from the front: reach tall, then bend over to one side and the
+      // other, hips level — a side bend, not a backbend.
+      cycle: 7,
+      keys: (function () {
+        var base = standing(merge(FRONT, { legs: [[172, 180], [188, 180]], feet: [92, 268] }));
+        var up = merge(base, { arms: [[10, 4], [350, 356]], hands: [4, 356] });
+        return [
+          merge(base, { arms: [[172, 176], [188, 184]] }),
+          up,
+          merge(up, { spine: [352, 332], head: -8, arms: [[334, 322], [316, 306]], hands: [322, 306], hold: 0.12 }),
+          up,
+          merge(up, { spine: [8, 28], head: 8, arms: [[44, 54], [26, 38]], hands: [54, 38], hold: 0.12 })
+        ];
+      })()
     },
     'hip-circles': {
       // Hands on hips; the hips trace a slow circle.
@@ -1169,23 +1229,28 @@
       })()
     },
     ragdoll: {
-      // Folded forward, knees soft, holding the elbows; sway a little.
+      // A hairpin: legs long with soft knees, the low back rounding forward
+      // over the hips and the upper back hanging, so the trunk falls in front
+      // of the thighs; head toward the shins, holding the elbows; sway.
       cycle: 5,
       keys: [
-        { hip: [-13, 51], spine: [124, 158], head: 16, arms: [[176, 272], [180, 88]], hands: [272, 88], legs: [flat(0), flat(-2)] },
-        { hip: [-12, 50], spine: [130, 166], head: 18, arms: [[184, 272], [188, 88]], hands: [272, 88], legs: [flat(0), flat(-2)] }
+        { hip: [-6, 52], spine: [115, 172], head: 5, arms: [[178, 92], [182, 268]], armLen: [[1, 0.35], [1, 0.35]], hands: [92, 268], legs: [flat(-1), flat(-3)] },
+        { hip: [-5, 51.5], spine: [118, 180], head: 6, arms: [[186, 92], [190, 268]], armLen: [[1, 0.35], [1, 0.35]], hands: [92, 268], legs: [flat(-1), flat(-3)] }
       ]
     },
     'worlds-greatest': {
-      // Lunge, hands down; elbow to the instep; rotate and reach up.
-      cycle: 6,
+      // Long lunge, back knee straight and off the floor, both hands down
+      // inside the front foot; drop the inside elbow to the instep; then
+      // rotate and reach that same arm to the ceiling.
+      cycle: 6.5,
       still: 2,
       keys: (function () {
-        var legs = [flat(24, 0, '+y'), toes(-42, 0, 150, '-y')];
+        var legs = [flat(26, 0, '+y'), toes(-46, 0, 150, '+y')];
+        var far = ik(24, WRIST, '+x');
         return [
-          { hip: [0, 23], spine: 74, head: 10, arms: [ik(18, WRIST, '+x'), ik(19, WRIST, '+x')], hands: PALMS, legs: legs },
-          { hip: [0, 21], spine: [80, 100], head: 30, arms: [ik(22, 10, '-y'), ik(19, WRIST, '+x')], hands: [150, 90], legs: legs, hold: 0.1 },
-          { hip: [0, 23], spine: 70, head: -40, turn: -0.2, arms: [ik(19, WRIST, '+x'), [2, 0]], hands: [90, 0], legs: legs, hold: 0.15 }
+          { hip: [0, 26], spine: 72, head: 10, arms: [ik(20, WRIST, '+x'), far], hands: PALMS, legs: legs },
+          { hip: [0, 24], spine: [78, 98], head: 28, arms: [ik(24, 12, '-y'), far], hands: [150, 90], legs: legs, hold: 0.1 },
+          { hip: [0, 26], spine: 64, head: -40, turn: 0.1, arms: [[4, 0], far], hands: [0, 90], legs: legs, hold: 0.15 }
         ];
       })()
     },
@@ -1206,29 +1271,30 @@
         return [at(360), at(345), at(332, { hold: 0.2 }), at(345)];
       })()
     },
-    pigeon: {
-      // Front shin across the mat, back leg long; sit tall, then fold.
+    'pigeon': {
+      // Front shin across the mat (pointing toward you, so it looks short),
+      // back leg long behind; sit tall, then fold forward over the front leg.
       cycle: 5.5,
       keys: [
-        { hip: [0, 13], spine: 0, head: -2, arms: [ik(12, WRIST, '-x'), ik(-6, WRIST, '-x')], hands: PALMS,
-          legs: [[102, 262], [262, 270]], feet: [345, 270] },
-        { hip: [0, 12], spine: [62, 84], head: 30, arms: [ik(42, WRIST, '+y'), ik(41, WRIST, '+y')], hands: PALMS,
-          legs: [[102, 262], [262, 270]], feet: [345, 270], hold: 0.2 }
+        { hip: [0, 12], spine: 0, head: -2, arms: [ik(12, WRIST, '-x'), ik(-6, WRIST, '-x')], hands: PALMS,
+          legs: [[104, 250], [263, 270]], legLen: [[1, 0.42], [1, 1]], feet: [310, 270] },
+        { hip: [0, 11], spine: [58, 80], head: 24, arms: [ik(46, WRIST, '+y'), ik(45, WRIST, '+y')], hands: PALMS,
+          legs: [[104, 250], [263, 270]], legLen: [[1, 0.42], [1, 1]], feet: [310, 270], hold: 0.2 }
       ]
     },
     'happy-baby': {
-      // On your back, knees toward the armpits, shins stacked over the knees,
-      // holding the feet; rock gently.
+      // Flat on your back, head down; knees wide toward the armpits, shins
+      // straight up, soles to the ceiling, hands holding the feet; rock.
       cycle: 4.5,
       keys: (function () {
         var hip = [0, LYING];
-        var pose = function (th, sh, spine) {
-          var ankle = step(step(hip, th, LEN.thigh), sh, LEN.shin);
-          return { hip: hip, spine: spine, head: -22,
-            arms: [ik(ankle[0] + 2, ankle[1] + 2, '+y'), ik(ankle[0] + 3, ankle[1] + 2, '+y')], hands: [0, 0],
-            legs: [[th, sh], [th + 1, sh + 1]], feet: [270, 271] };
+        var pose = function (th, extra) {
+          var ankle = step(step(hip, th, LEN.thigh), 0, LEN.shin);
+          return merge({ hip: hip, spine: 270, head: 4,
+            arms: [ik(ankle[0] - 1, ankle[1] - 3, '+y'), ik(ankle[0], ankle[1] - 3, '+y')], hands: [5, 5],
+            legs: [[th, 0], [th + 1, 1]], feet: [270, 271] }, extra);
         };
-        return [pose(315, 352, [270, 306]), pose(310, 346, [270, 310])];
+        return [pose(302), pose(298, { hip: [0.6, LYING] })];
       })()
     },
     malasana: {
@@ -1240,21 +1306,24 @@
       ]
     },
     'seated-fold': {
-      // Hinge from the hips over straight legs.
+      // Sit tall, then hinge from the hips over straight legs with a long
+      // back, hands sliding to the shins.
       cycle: 5,
       keys: [
         seated({ arms: [[10, 6], [6, 2]], hands: [4, 0], head: -4 }),
-        seated({ spine: [62, 80], head: 20, arms: [ik(50, 9, '+y'), ik(49, 9, '+y')], hands: [95, 95], hold: 0.25 })
+        seated({ spine: [48, 54], head: 6, arms: [ik(36, 10, '+y'), ik(35, 10, '+y')], hands: [95, 95], hold: 0.25 })
       ]
     },
     'butterfly-fold': {
-      // Soles together, knees wide; fold toward the feet.
+      // Seen from the front: soles together, knees falling out to the sides —
+      // a diamond — then the chest walks forward toward the feet.
       cycle: 5,
       keys: (function () {
-        var legs = [[58, 228], [56, 230]];
+        var base = merge(FRONT, { hip: [0, 9], legs: [[99, 268], [261, 92]], feet: [22, 338],
+          arms: [ik(5, 11, '+y'), ik(-5, 11, '+y')], hands: [180, 180] });
         return [
-          seated({ spine: 0, head: -4, arms: [ik(8, 8, '+y'), ik(9, 8, '+y')], hands: [120, 120], legs: legs, feet: [86, 86] }),
-          seated({ spine: [52, 70], head: 24, arms: [ik(12, 5, '+y'), ik(13, 5, '+y')], hands: [120, 120], legs: legs, feet: [86, 86], hold: 0.25 })
+          merge(base, { spine: 0 }),
+          merge(base, { spine: 0, spineLen: 0.65, head: 0, hold: 0.25 })
         ];
       })()
     },
@@ -1277,57 +1346,76 @@
       ]
     },
     'half-lotus': {
-      // One ankle on the other thigh; sit tall, then lean in.
+      // Seen from the front: one foot resting on top of the opposite thigh,
+      // the other tucked under; knees dropping, hands on the knees, sit tall
+      // then fold a little. The turn comes from the hip, not the knee.
       cycle: 5,
-      keys: [
-        seated({ head: -2, arms: [ik(24, 13, '-y'), ik(22, 9, '-y')], hands: [100, 100], legs: [[93, 280], [92, 262]], feet: [30, 270] }),
-        seated({ spine: [22, 26], head: 8, arms: [ik(28, 11, '-y'), ik(26, 7, '-y')], hands: [100, 100], legs: [[93, 280], [92, 262]], feet: [30, 270], hold: 0.25 })
-      ]
+      keys: (function () {
+        var base = merge(FRONT, { hip: [0, 9], legs: [[99, 276], [262, 90]], legLen: [[1, 0.9], [1, 0.85]], feet: [300, 60],
+          arms: [ik(20, 9, '-y'), ik(-20, 9, '-y')], hands: [100, 260] });
+        return [
+          merge(base, { spine: 0 }),
+          merge(base, { spine: 0, spineLen: 0.85, head: 0, hold: 0.25 })
+        ];
+      })()
     },
     'thread-needle': {
-      // From all fours, one arm slides under and that shoulder rests down.
+      // From all fours, one arm slides under the chest to the other side and
+      // that shoulder and temple rest down; the other hand stays planted.
       cycle: 5,
       keys: [
         fours(),
-        fours({ spine: [84, 118], head: 30, turn: 0, arms: [arced(ik(-6, WRIST + 1.5, '+x'), 6), ik(Q_HAND + 1, WRIST, '+x')], hands: [270, 90], hold: 0.25 })
+        fours({ spine: [Q_SPINE + 8, 124], head: 34, turn: 0, arms: [arced(ik(Q_HAND - 8, WRIST + 1.5, '+x'), 6), ik(Q_HAND + 1, WRIST, '+x')],
+          armLen: [[0.55, 0.55], [1, 1]], hands: [255, 90], hold: 0.25 })
       ]
     },
-    cobra: {
-      // Face down, hands by the ribs; lift the chest, then the hips a little.
-      cycle: 5.5,
-      keys: [
-        prone({ arms: [ik(26, WRIST, '+y'), ik(27, WRIST, '+y')], hands: PALMS }),
-        prone({ spine: [82, 42], head: -18, arms: [ik(26, WRIST, '+y'), ik(27, WRIST, '+y')], hands: PALMS, hold: 0.1 }),
-        prone({ hip: [0, 11], spine: [68, 30], head: -24, arms: [ik(26, WRIST, '+y'), ik(27, WRIST, '+y')], hands: PALMS, legs: [[272, 272], [271, 271]], hold: 0.15 })
-      ]
-    },
-    camel: {
-      // Kneeling tall, hands on the low back; hips forward, open the chest,
-      // reach for the heels.
+    'cobra': {
+      // Face down, hands by the lower ribs, elbows hugging back; lift the
+      // chest with the hips down (cobra), then press to straight arms with
+      // the wrists under the shoulders (upward dog).
       cycle: 6,
       keys: [
-        { hip: [0, KNEE + LEN.thigh], spine: 0, head: -4, arms: [ik(-7, 33, '-y'), ik(-6, 32, '-y')], hands: [0, 0], legs: KNEELING_LEGS, feet: [270, 270], hold: 0.1 },
-        { hip: [4, KNEE + LEN.thigh - 1], spine: [322, 250], head: -50, arms: [ik(-22, 9, '-x'), ik(-21, 9, '-x')], hands: [180, 180], legs: KNEELING_LEGS, feet: [270, 270], hold: 0.2 }
+        prone({ arms: [ik(20, WRIST, '-x'), ik(21, WRIST, '-x')], hands: PALMS }),
+        prone({ spine: [82, 44], head: -16, arms: [ik(20, WRIST, '-x'), ik(21, WRIST, '-x')], hands: PALMS, hold: 0.1 }),
+        prone({ hip: [-2, 12], spine: [62, 22], head: -20, arms: [ik(20, WRIST, '-x'), ik(21, WRIST, '-x')], hands: PALMS, legs: [[272, 272], [271, 271]], hold: 0.15 })
       ]
     },
-    plow: {
-      // Shoulders down, hips over them; legs up, then over and down behind.
+    'camel': {
+      // Kneeling tall, toes tucked (heels higher, easier to reach), hands on
+      // the low back; hips press forward over the knees, the chest lifts up
+      // and back, then the hands reach for the heels. The head follows, but
+      // stays about level with the shoulders.
       cycle: 6,
       keys: (function () {
-        var sh = [-22, LYING], hip = [-14, 34];
-        var arms = [ik(12, WRIST, '+y'), ik(13, WRIST, '+y')];
+        var ank = ankleOnToes(-27, 0, 170);
+        var legs = [onToes(ank, '-y', 170), onToes([ank[0] - 1, ank[1]], '-y', 170)];
+        var heel = [ank[0] + 2, ank[1] + 3];
         return [
-          { hip: hip, shoulderAt: sh, head: 78, arms: arms, hands: PALMS, legs: [[2, 2], [4, 4]], feet: [10, 12] },
-          { hip: hip, shoulderAt: sh, head: 78, arms: arms, hands: PALMS, legs: [ik(-62, 9, '+y'), ik(-63, 10, '+y')], feet: [215, 215], hold: 0.25 }
+          { hip: [0, KNEE + LEN.thigh], spine: 0, head: -4, arms: [ik(-7, 34, '-y'), ik(-6, 33, '-y')], hands: [0, 0], legs: legs, hold: 0.1 },
+          { hip: [5, KNEE + LEN.thigh - 0.6], spine: [334, 292], head: -18, arms: [ik(heel[0] + 1, heel[1] + 2, '-x'), ik(heel[0] + 2, heel[1] + 2, '-x')], hands: [180, 180], legs: legs, hold: 0.25 }
+        ];
+      })()
+    },
+    'plow': {
+      // Shoulders on the floor, hips stacked over them. The legs go up once,
+      // then over into plow and hold — not rolling back and forth.
+      cycle: 9,
+      keys: (function () {
+        var sh = [-22, LYING], hip = [-21, LYING + LEN.spineLow + LEN.spineHigh - 0.5];
+        var arms = [ik(10, WRIST, '+y'), ik(11, WRIST, '+y')];
+        return [
+          { hip: hip, shoulderAt: sh, head: 90, arms: arms, hands: PALMS, legs: [[4, 4], [6, 6]], feet: [14, 16] },
+          { hip: hip, shoulderAt: sh, head: 90, arms: arms, hands: PALMS, legs: [ik(-66, 10, '+y'), ik(-67, 11, '+y')], feet: [215, 215], hold: 0.55 }
         ];
       })()
     },
     'pelvic-floor': {
-      // On your back, knees bent: lift and hold, then let go completely.
+      // On your back, knees bent, pelvis staying down: a slow lift and hold
+      // from inside, then let go completely. Only the breath shows.
       cycle: 6,
       keys: [
-        onBack({ hold: 0.15 }),
-        onBack({ hip: [0, LYING + 1.2], spine: [268, 270], hold: 0.35 })
+        onBack({ hold: 0.2 }),
+        onBack({ spine: [270, 268], head: 2, hold: 0.35 })
       ]
     },
 

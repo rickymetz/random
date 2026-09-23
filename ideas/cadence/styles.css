@@ -908,6 +908,7 @@ body.is-session .toast { top: 4.5rem; bottom: auto; }
   vector-effect: non-scaling-stroke;
   fill: none;
 }
+.fig-rod { fill: var(--line-strong); }
 .fig-box {
   fill: var(--card);
   stroke: var(--line-strong);
