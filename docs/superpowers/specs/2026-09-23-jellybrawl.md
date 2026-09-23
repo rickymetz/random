@@ -53,14 +53,14 @@ filter: neon, dirty and a bit violent (the violence is jelly).
 - **Palette.** Neon on near-black: `#ff2a6d #05d9e8 #f9f002 #39ff14 #b026ff
   #ff6b00` over `#0d0221`. Scene backgrounds are slow-turning dark sunbursts
   whose hue drifts over time, over a synthwave perspective grid.
-- **Type** (option A of six mocked up): the title is a **neon script sign**
-  (Mr Dafoe) in hot pink with a glow and an occasional flicker. Everything
-  shouted (command words, headings, labels, name tags) is **Anton**:
-  condensed caps, tracked out, in one colour (white, or ink on paper) with a
-  hard pink offset shadow. Secondary labels are cyan Anton. Body copy (blurbs,
-  hints) stays in the system sans for legibility. No multi-coloured
-  lettering. Both fonts are Latin subsets bundled in `fonts/` (SIL OFL 1.1,
-  `fonts/OFL.txt`). Panels are dirty paper with a hard pink shadow.
+- **Type** ("P1 · Punk brush", picked from six open-foundry pairings shown
+  in the real UI): **Knewave** (a heavy brush face) for the neon title (hot
+  pink, glow, occasional flicker) and for every shouted word (command words,
+  headings), in white with a hard pink shadow. **League Gothic**, tracked-out
+  condensed caps, is used for labels, name tags and UI (cyan for secondary
+  labels). Body copy stays in the system sans. Both faces come from The
+  League of Moveable Type (SIL OFL 1.1, `fonts/OFL.txt`); no multi-coloured
+  lettering. Panels are dirty paper with a hard pink shadow.
 - **CRT pass** (`post()` in `tv.js`): the scene is drawn at 1920×1080, then
   dropped to half resolution and scaled back up without smoothing (chunky
   pixels). Red and cyan channel copies are screened on offset (chromatic
@@ -74,7 +74,7 @@ filter: neon, dirty and a bit violent (the violence is jelly).
 - **Copy.** Mean: "No bones. No mercy.", "Your friends are the enemy
   tonight.", "SPLATTERED", "DEAD KING".
 
-Helpers live in `gfx.js` (`neon`, `outlined`, `shout`, `sunburst`, `grid`, `panel`,
+Helpers live in `gfx.js` (`T` type settings, `neon`, `outlined`, `shout`, `sunburst`, `grid`, `panel`,
 `bomb`, `makeSplat`/`drawSplat`, `fit`). The phone CSS mirrors them with
 scanlines, the same two fonts and neon hard shadows.
 

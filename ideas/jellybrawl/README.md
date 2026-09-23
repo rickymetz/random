@@ -35,7 +35,7 @@ too: Enter starts, B / N add or remove a bot, R changes the round count, and
 | `games/*.js` | Minigames: `flap` (free-for-all), `sling` (teams), `chomp` (1 vs rest). Each has a bot. |
 | `net.js` | Transport: WebSocket relay, or BroadcastChannel when there's no relay. |
 | `server.mjs` | Static server plus room relay (a hand-rolled WebSocket, no deps). |
-| `fonts/` | Candidate type sets from open foundries (Velvetyne, League of Moveable Type, Manufactura Independente) plus Anton / Mr Dafoe, all SIL OFL 1.1 (`fonts/OFL.txt`), declared in `fonts/fonts.css`. Pick a set with `?type=A`…`P6` or **T** in the lobby; unused faces get pruned once one is chosen. |
+| `fonts/` | Knewave (title, command words) and League Gothic (labels), The League of Moveable Type, SIL OFL 1.1 (`fonts/OFL.txt`). |
 | `gfx.js`, `qr.js`, `sfx.js` | Canvas helpers and the blob renderer, a QR encoder, and synthesised SFX. |
 
 ## Adding a minigame

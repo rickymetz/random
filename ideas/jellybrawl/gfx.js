@@ -3,30 +3,17 @@
 
 export const W = 1920, H = 1080;
 export const FONT = 'ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif'; // body copy
-// fonts/: every face is SIL OFL 1.1 (fonts/OFL.txt), declared in fonts/fonts.css.
-
-// Type sets: title = the neon sign, display = command words and headings,
-// label = small caps UI. Scales even out the faces' very different widths.
-// Pick one with ?type=P1 (TV and phones) or T in the lobby.
-export const TYPES = {
-  A: { name: "Neon script", title: '"Mr Dafoe"', display: '"Anton"', label: '"Anton"' },
-  P1: { name: "Punk brush", title: '"Knewave"', display: '"Knewave"', label: '"League Gothic"', labelScale: 1.15, displayScale: 0.9, titleScale: 0.8 },
-  P2: { name: "Occult arcade", title: '"Ouroboros"', display: '"Le Murmure"', label: '"VG5000"', labelScale: 0.8, displayScale: 1.15, titleScale: 0.85 },
-  P3: { name: "VHS arcade", title: '"Le Jerk"', titleCaps: true, display: '"Acidente"', label: '"Le Jerk"', displayScale: 0.8, titleScale: 0.8, labelScale: 1.1 },
-  P4: { name: "Tarot grime", title: '"Basteleur"', display: '"Basteleur"', label: '"Format 1452"', displayScale: 0.85, titleScale: 0.8, labelScale: 1.05 },
-  P5: { name: "Sharp condensed", title: '"Le Murmure"', display: '"League Gothic"', label: '"VG5000"', labelScale: 0.8, displayScale: 1.1, titleScale: 1.05 },
-  P6: { name: "Brush + glyphic", title: '"Knewave"', display: '"BackOut"', label: '"VG5000"', labelScale: 0.8, displayScale: 1.05, titleScale: 0.8 },
-};
+// Type: Knewave (brush, title and command words) + League Gothic (labels),
+// both from The League of Moveable Type, SIL OFL 1.1 (fonts/OFL.txt,
+// declared in fonts/fonts.css). Scales even out their widths.
 const FALLBACK = 'Impact, "Arial Narrow", sans-serif';
-export const T = {};
-export function setType(id) {
-  if (!TYPES[id]) id = "A";
-  Object.assign(T, { titleScale: 1, displayScale: 1, labelScale: 1, titleCaps: false }, TYPES[id], { id });
-}
-setType("A");
+export const T = {
+  title: '"Knewave"', display: '"Knewave"', label: '"League Gothic"',
+  titleScale: 0.8, displayScale: 0.9, labelScale: 1.15, titleCaps: false,
+};
 const DISPLAY = () => `${T.display}, ${FALLBACK}`;
 
-/** Body text; weight 900 means a display label (Anton, tracked out). */
+/** Body text; weight 900 means a display label (League Gothic, tracked out). */
 export function text(g, str, x, y, size, color = "#fff", align = "center", weight = 800) {
   const display = weight >= 900;
   g.font = display ? `${Math.round(size * T.labelScale)}px ${T.label}, ${FALLBACK}` : `${weight} ${size}px ${FONT}`;
@@ -45,7 +32,7 @@ export const INK = "#0b0710";
 export const POP = ["#ff2a6d", "#f9f002", "#05d9e8", "#39ff14", "#b026ff", "#ff6b00"];
 export const PAPER = "#efe6d2";
 
-/** Display type: Anton caps, tracked out, with a hard offset shadow (pink unless told otherwise). */
+/** Display type: Knewave caps, tracked out, with a hard offset shadow (pink unless told otherwise). */
 export function outlined(g, str, x, y, size, color = "#fff", align = "center", rot = 0, shadow = "#ff2a6d") {
   g.save();
   g.translate(x, y);
@@ -63,7 +50,7 @@ export function outlined(g, str, x, y, size, color = "#fff", align = "center", r
   g.restore();
 }
 
-/** The neon-sign title in script: glow, a dark drop, and the odd flicker. */
+/** The neon-sign title: glow, a dark drop, and the odd flicker. */
 export function neon(g, str, x, y, size, color = "#ff2a6d", rot = -0.1, t = 0) {
   const flick = Math.sin(t * 37) > 0.97 || Math.sin(t * 13.3) > 0.985 ? 0.35 : 1;
   g.save();
