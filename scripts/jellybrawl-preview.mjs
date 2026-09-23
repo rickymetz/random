@@ -80,10 +80,10 @@ async function wiggle(ms) {
         await ph.mouse.move(b.x + b.width / 2 + Math.cos(a) * 60, b.y + b.height / 2 + Math.sin(a) * 60, { steps: 2 });
         await sleep(220); await ph.mouse.up();
       }
-      if (Math.random() < 0.3) await ph.locator(".act").dispatchEvent("pointerdown").catch(() => {});
+      if (Math.random() < 0.3) await ph.locator(".act").dispatchEvent("pointerdown", null, { timeout: 300 }).catch(() => {});
     } else if (await ph.$(".hit")) {
-      await ph.locator(".hit").first().dispatchEvent("pointerdown").catch(() => {});
-      await ph.locator(".hit").first().dispatchEvent("pointerup").catch(() => {});
+      await ph.locator(".hit").first().dispatchEvent("pointerdown", null, { timeout: 300 }).catch(() => {});
+      await ph.locator(".hit").first().dispatchEvent("pointerup", null, { timeout: 300 }).catch(() => {});
     }
     await sleep(160);
   }
@@ -165,6 +165,7 @@ const REC = () => {
   };
 };
 let sizzleMs = 0;
+const cutDone = new Set(); // a retried game doesn't get a second cut
 // MediaRecorder's WebM has no duration (it's written as it goes), so players
 // show a broken seek bar. Add one to the Segment's Info element.
 function withDuration(buf, ms) {
@@ -179,8 +180,10 @@ function withDuration(buf, ms) {
 }
 async function cut(o, ms, during = sleep) {
   await tv.evaluate((o) => window.__rec.on(o), o);
-  await during(ms);
+  const busy = during(ms); // the phone keeps playing, but the cut ends on time
+  await sleep(ms);
   await tv.evaluate(() => window.__rec.off());
+  await busy;
 }
 
 // ---------------------------------------------------------------- screens
@@ -272,9 +275,9 @@ for (let i = 0; i < queue.length; i++) {
   }
   let phoneShot = null;
   for (const [k, at] of when.entries()) {
-    if (k === 0 && SIZZLE.includes(def.id)) { // this game's cut for the sizzle, just before the first picture
+    if (k === 0 && SIZZLE.includes(def.id) && !cutDone.has(def.id)) { // this game's cut for the sizzle, just before the first picture
       await wiggle(Math.max(0, at * 1000 - CUT - 150 - (Date.now() - t0)));
-      if (await S(() => window.__jelly.scene === "game")) await cut({ label: def.title, sub: def.kind }, CUT, wiggle);
+      if (await S(() => window.__jelly.scene === "game")) cutDone.add(def.id), await cut({ label: def.title, sub: def.kind }, CUT, wiggle);
     }
     await wiggle(Math.max(0, at * 1000 - (Date.now() - t0)));
     if (await S(() => window.__jelly.scene !== "game")) { console.log(`\n${def.id}: left the game scene early (${await S(() => window.__jelly.scene)})`, await S(() => [window.__jelly.def?.id, window.__jelly.result?.headline, window.__jelly.round])); break; }
