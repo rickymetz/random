@@ -225,13 +225,25 @@ function pads(l) {
   add(grid, l.hint && el("p", { className: "hint", textContent: l.hint }));
 }
 
-// Runner (Sniper Plaza): private radar, thumbstick and an action button
-let radar = null;
+// Runner (sniper games): private radar / mini-map, thumbstick, optional action
+let radar = null, radarMap = null;
 function drawRadar(m) {
   if (!radar || !radar.isConnected) return;
   const g = radar.getContext("2d"), w = radar.width, h = radar.height;
   g.clearRect(0, 0, w, h);
   g.strokeStyle = "rgba(5,217,232,.35)"; g.lineWidth = 2; g.strokeRect(1, 1, w - 2, h - 2);
+  if (radarMap) { // Blackout: the cover, so you can find your way in the dark
+    g.fillStyle = "#1f7a3a";
+    for (const [x, y, r] of radarMap.bushes) { g.beginPath(); g.arc(x * w, y * h, r * w, 0, Math.PI * 2); g.fill(); }
+    g.fillStyle = "#8a5a2b";
+    for (const [x, y, cw, ch] of radarMap.crates) g.fillRect(x * w, y * h, cw * w, ch * h);
+  }
+  if (m.scope) { // where the sniper is looking
+    const [x, y, r] = m.scope;
+    g.fillStyle = "rgba(255,42,109,.18)"; g.strokeStyle = "#ff2a6d"; g.lineWidth = 3;
+    g.beginPath(); g.arc(x * w, y * h, r * w, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(x * w - 8, y * h); g.lineTo(x * w + 8, y * h); g.moveTo(x * w, y * h - 8); g.lineTo(x * w, y * h + 8); g.stroke();
+  }
   g.fillStyle = "#f9f002";
   for (const [x, y] of m.coins || []) { g.beginPath(); g.arc(x * w, y * h, 6, 0, Math.PI * 2); g.fill(); }
   g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--me");
@@ -241,6 +253,7 @@ function drawRadar(m) {
 
 function stick(l) {
   radar = el("canvas", { className: "radar", width: 320, height: 186 });
+  radarMap = l.map || null;
   const pad = el("div", { className: "stick" }), knob = el("i");
   pad.append(knob);
   let o = null, last = 0, sent = [0, 0];
@@ -263,9 +276,12 @@ function stick(l) {
   const stop = () => { o = null; knob.style.transform = ""; send(0, 0, true); };
   pad.addEventListener("pointerup", stop);
   pad.addEventListener("pointercancel", stop);
-  const act = el("button", { type: "button", className: "act", textContent: l.action || "ACT" });
-  act.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "act" }); navigator.vibrate?.(20); });
-  add(radar, el("div", { className: "stickrow" }, pad, act), l.hint && el("p", { className: "hint", textContent: l.hint }));
+  let act = null;
+  if (l.action) {
+    act = el("button", { type: "button", className: "act", textContent: l.action });
+    act.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "act" }); navigator.vibrate?.(20); });
+  }
+  add(radar, el("div", { className: "stickrow" + (act ? "" : " solo") }, pad, act), l.hint && el("p", { className: "hint", textContent: l.hint }));
 }
 
 // Sniper: a trackpad (relative drag) and a FIRE button with the reload shown

@@ -9,9 +9,9 @@ import flap from "./games/flap.js";
 import sling from "./games/sling.js";
 import chomp from "./games/chomp.js";
 import gauntlet from "./games/gauntlet.js";
-import snipe from "./games/snipe.js";
+import snipe, { blackout } from "./games/snipe.js";
 
-const GAMES = [flap, sling, chomp, snipe];
+const GAMES = [flap, sling, chomp, snipe, blackout];
 // canvas text only uses a web font once it's loaded; ask for both up front
 for (const f of [T.display, T.label]) document.fonts?.load(`40px ${f}`).catch(() => {});
 const COLORS = ["#ff2e63", "#00b7ff", "#ffd400", "#35e06b", "#b14dff", "#ff8a00", "#ff6ec7", "#00e0c6"];

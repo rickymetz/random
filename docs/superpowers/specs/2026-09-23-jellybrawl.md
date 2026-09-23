@@ -101,6 +101,7 @@ kept). The selfie is sent as a 128×128 JPEG data URL, about 6 KB.
 | **Sling Siege** | Teams (even split) | 2–8 | drag back and release | pop every enemy king first; after the shot limit, the team with more kings left wins |
 | **Chomp Chase** | 1 vs rest | 2–5 | d-pad / swipe | chomper: clear the dots or survive 60 s. Hunters: catch it 3 times. |
 | **Sniper Plaza** | 1 vs rest | 2–8 | runners: stick + BLEND; sniper: trackpad + FIRE | runners: steal the loot target or survive 75 s; sniper: hit every runner |
+| **Sniper Blackout** | 1 vs rest | 2–8 | runners: stick + mini-map; sniper: trackpad + FIRE | same as Sniper Plaza, in the dark with cover |
 | Mash Race | Free-for-all | 2–8 | mash one button | first to the finish |
 | Reaction Tap | Free-for-all | 2–8 | one button | fastest tap after "GO"; tapping early costs you the round |
 | Hot Potato | Free-for-all | 3–8 | tap a player to pass | whoever holds the bomb when it pops is out |
@@ -151,6 +152,34 @@ A hide-in-the-crowd sniper game, decided in a short Q&A on 2026-09-23.
 - **Bots.** A bot sniper only suspects whoever is standing nearest a grab
   it happened to notice (grabs near its scope are noticed more often), so it
   can be fooled. Bot runners wander like NPCs and sneak toward nearby coins.
+
+## Sniper Blackout (Sniper Plaza variant)
+
+The same engine as Sniper Plaza (`makeSniper` in `games/snipe.js`), with
+these differences:
+
+- **Players only.** No NPC crowd. Everyone is their real blob (colour and
+  selfie).
+- **Blackout.** The TV is black outside the scope, a 210 px lens at 1.35×.
+  Everyone in the room, sniper included, sees only that circle. Loot pops
+  only appear if the grab happens inside it.
+- **Cover.** Each round places about 9 crates and 7 bushes at random.
+  - *Crates* are solid: blobs slide off them, and a crate standing in front
+    of a blob hides it (painter's order by ground line) and stops the shot
+    ("THUNK!", leaving a bullet hole).
+  - *Bushes* can be walked into. They hide the north half of whoever is
+    inside, but rustle when anything moves in them, and they don't stop
+    bullets.
+- **Mini-map.** The runner's phone shows the crates, bushes, coins, your own
+  dot and the live scope circle, so you can see the sniper coming.
+- **Loot target** is 2 + 2 per runner (the sniper can camp coins). There's
+  no BLEND button.
+- **Bots.** A blackout bot sniper only reacts to runners inside its scope
+  who aren't behind a crate (in a bush, only when it rustles), taking 0.8 to
+  1.5 s to shoot. Otherwise it sweeps toward coins or random spots. Bot
+  runners bolt when the scope closes in, heading for the nearest crate.
+- **Rules check.** A headless rules check drives the game in Node and
+  confirms the cover logic over 20 random maps.
 
 ## Microgame Gauntlet (second mode)
 

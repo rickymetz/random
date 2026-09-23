@@ -81,3 +81,5 @@ h2 { margin: 0; font: 48px var(--display); letter-spacing: 3px; color: #fff; tex
 .trackpad span { font: 22px var(--label); letter-spacing: 4px; color: rgba(255,255,255,.4); pointer-events: none; }
 .hit.fire { width: min(56vw, 240px); }
 .hit.fire:disabled { background: #444; color: #aaa; }
+.stickrow.solo { justify-content: center; }
+.stickrow.solo .stick { width: 230px; height: 230px; }
