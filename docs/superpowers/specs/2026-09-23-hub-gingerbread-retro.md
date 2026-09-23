@@ -312,6 +312,33 @@ copied system artwork. Everything is drawn fresh in the era's style.
 10. `scripts/test/hub-e2e.mjs` gains retro coverage for 1–7, and the
     existing modern checks still pass.
 
+## Implementation notes
+
+Built in four stages, each reviewed and covered by
+`scripts/test/hub-e2e.mjs` before the next:
+
+1. Look switch, home screens, dock and drawer (`retro.js`, `retro.css`,
+   Droid Sans in `fonts/`).
+2. Widgets, live wallpaper, status bar and shade.
+3. Chrome and menus (`nav.js`'s retro skin, the ≡ panel, era dialogs, the
+   icon context menu, the retro offline page).
+4. Boot animation, zoom launch with a loading card, haptics and sounds,
+   and the Settings app.
+
+Where the build deviated from, or refined, the requirements:
+
+- The modern hub has a "Retro look" header button as its way in (G1).
+- Save offline, offline status and shade events live in `nav.js`, so the
+  launcher's menus, idea pages' ≡ and the modern cards share them.
+- The drawer and Settings sit below the status bar, so the shade can be
+  pulled down over them. The dialog scrim stops above the bar, so the keys
+  stay live. Back is shown on the hub while anything is open.
+- Launch uses a CSS/Web Animations zoom rather than cross-document View
+  Transitions, which would need ideas to opt in.
+- Cadence treated its first install as an update (the hub worker already
+  controlled its page) and reloaded once. It now only counts its own
+  worker (`cadence-v5`).
+
 ## Open questions
 
 None. Every requirement question has been answered. Smaller visual

@@ -21,7 +21,7 @@
  */
 'use strict';
 
-var VERSION = "034fd61432c1";
+var VERSION = "44978a5ffe28";
 var SHELL = ["./","manifest.webmanifest","ideas.json","nav.js","hub.js","retro.js","retro.css","fonts/DroidSans.woff2","fonts/DroidSans-Bold.woff2","offline.html","icon.svg","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png"];
 // Ideas small enough to save whole at install: [{ slug, paths }], where
 // "ideas/<slug>/" stands for its index.html (the URL a visit requests).
@@ -74,6 +74,9 @@ self.addEventListener('message', function (event) {
   else if (msg.type === 'PIN' && msg.slug) {
     event.waitUntil(pin(msg.slug, !!msg.on).then(status).then(function (s) { if (port) port.postMessage(s); }));
   }
+  else if (msg.type === 'CLEAR_CACHED') {
+    event.waitUntil(clearUnpinned().then(status).then(function (s) { if (port) port.postMessage(s); }));
+  }
 });
 
 /* ------------------------------------------------------ saved for offline */
@@ -96,6 +99,22 @@ function pin(slug, on) {
         else delete index.pinned[slug];
         index.used[slug] = Date.now();
         return saveIndex(cache, index);
+      });
+    });
+  });
+}
+
+// Settings → Storage → "Clear cached ideas": drop every idea not saved for
+// offline.
+function clearUnpinned() {
+  return serial(function () {
+    return caches.open(IDEAS_CACHE).then(function (cache) {
+      return loadIndex(cache).then(function (index) {
+        var doomed = Object.keys(index.entries).filter(function (u) { return !index.pinned[index.entries[u].slug]; });
+        doomed.forEach(function (u) { delete index.entries[u]; });
+        Object.keys(index.used).forEach(function (s) { if (!index.pinned[s]) delete index.used[s]; });
+        return Promise.all(doomed.map(function (u) { return cache.delete(u); }))
+          .then(function () { return saveIndex(cache, index); });
       });
     });
   });

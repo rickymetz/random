@@ -4,7 +4,8 @@
  * pull-down notification shade, a live wallpaper, three swipeable home
  * screens holding every idea as an era icon beside four widgets (search,
  * clock, new ideas, power control), page dots, a dock with the app-drawer
- * button and two favourites, and the drawer itself. It is only
+ * button and two favourites, the drawer, a Settings app, a boot animation
+ * on a cold start and a zoom into each idea you open. It is only
  * drawn while the look is 'retro' (nav.js owns the look and fires a
  * 'randomlook' event when it changes); the modern hub markup is untouched.
  * Spec: docs/superpowers/specs/2026-09-23-hub-gingerbread-retro.md
@@ -147,8 +148,11 @@
     });
   }
   var scrollTimer = null;
+  var lastPage = CENTRE;
   function onScroll() {
-    markDot(currentPage());
+    var p = currentPage();
+    if (p !== lastPage) { lastPage = p; nav.feedback('swipe'); }
+    markDot(p);
     clearTimeout(scrollTimer);
     scrollTimer = setTimeout(function () { markDot(currentPage()); }, 120);
   }
@@ -312,14 +316,7 @@
     });
     return w;
   }
-  function showStorage() {
-    if (window.randomRetro && window.randomRetro.openSettings) { window.randomRetro.openSettings('storage'); return; }
-    if (!navigator.storage || !navigator.storage.estimate) { nav.toast('Storage details unavailable'); return; }
-    navigator.storage.estimate().then(function (e) {
-      var mb = function (b) { return (b / 1048576).toFixed(1) + ' MB'; };
-      nav.toast('Using ' + mb(e.usage || 0) + (e.quota ? ' of ' + mb(e.quota) : ''), 3500);
-    });
-  }
+  function showStorage() { openSettings('storage'); }
 
   /* --------------------------------------------------------------- dock */
 
@@ -436,6 +433,7 @@
     var state = history.state && history.state.rt;
     if ((state === 'drawer') !== drawerOpen()) showDrawer(state === 'drawer');
     if ((state === 'shade') !== shadeOpen()) showShade(state === 'shade');
+    if ((state === 'settings') !== settingsOpen()) showSettings(state === 'settings');
   });
 
   // The bar's ● on the launcher: close whatever is open, back to centre.
@@ -445,6 +443,7 @@
     // history entries).
     var steps = 0;
     if (shadeOpen()) { if (history.state && history.state.rt === 'shade') steps++; else showShade(false); }
+    if (settingsOpen()) steps++;
     if (drawerOpen()) steps++;
     if (steps) history.go(-steps);
     if (ui.search) { ui.search.value = ''; ui.search.dispatchEvent(new Event('input')); }
@@ -791,6 +790,7 @@
   }, true);
 
   function iconMenu(slug) {
+    nav.feedback('long');
     var idea = ideas.filter(function (i) { return i.slug === slug; })[0];
     if (!idea) return;
     var inDock = dockSlugs().indexOf(slug) !== -1;
@@ -831,6 +831,240 @@
     }, function () { nav.toast("Couldn't reach offline storage"); });
   }
 
+  /* ------------------------------------------------------------ launch */
+
+  // Tapping an icon zooms its tile up to fill the screen, then opens the
+  // idea; if the idea is slow to arrive, a "Loading…" card appears. With
+  // reduced motion it's a plain, instant switch.
+  var LAUNCHABLE = 'a.rt-icon';
+  root.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest(LAUNCHABLE);
+    if (!a || !root.contains(a) || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    launch(a);
+  });
+
+  function launch(a) {
+    var href = a.href;
+    var tile = a.querySelector('.rt-tile');
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches || !tile || !tile.animate) { location.href = href; return; }
+    nav.feedback('key');
+    var r = tile.getBoundingClientRect();
+    var z = el('div', 'rt-zoom', { 'aria-hidden': 'true' });
+    z.style.left = r.left + 'px';
+    z.style.top = r.top + 'px';
+    z.style.width = r.width + 'px';
+    z.style.height = r.height + 'px';
+    z.style.background = getComputedStyle(tile).backgroundImage;
+    z.textContent = tile.textContent;
+    root.appendChild(z);
+    var anim = z.animate([
+      { transform: 'none', borderRadius: '13px', fontSize: '30px' },
+      { transform: 'translate(' + -r.left + 'px,' + -r.top + 'px) scale(' + window.innerWidth / r.width + ',' + window.innerHeight / r.height + ')',
+        borderRadius: '0px', fontSize: '0px' }
+    ], { duration: 240, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)', fill: 'forwards' });
+    var go = function () {
+      location.href = href;
+      // Still here after a moment? The idea is on its way: say so.
+      setTimeout(function () {
+        if (!z.isConnected) return;
+        var card = el('div', 'rt-loading', { role: 'status' });
+        var label = a.querySelector('.rt-label');
+        card.innerHTML = '<span class="rt-spinner" aria-hidden="true"></span><span></span>';
+        card.lastChild.textContent = 'Loading ' + (label ? label.textContent : '') + '…';
+        root.appendChild(card);
+      }, 600);
+    };
+    anim.onfinish = go;
+    anim.oncancel = go;
+  }
+
+  /* -------------------------------------------------------------- boot */
+
+  // A cold start of the installed app (the first page of a new session)
+  // plays a short boot animation: the "r" drawing itself in rust light,
+  // then "random". A tap skips it. Never on in-app navigation, never in
+  // modern, a plain fade with reduced motion.
+  var BOOTED = 'random-hub:booted';
+  function installed() {
+    try { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (e) { return false; }
+  }
+  function boot() {
+    var seen = true;
+    try { seen = sessionStorage.getItem(BOOTED) === '1'; sessionStorage.setItem(BOOTED, '1'); } catch (e) {}
+    if (seen || !installed()) return;
+    var still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var b = el('div', 'rt-boot' + (still ? ' rt-boot-still' : ''), { role: 'img', 'aria-label': 'random is starting' });
+    b.innerHTML =
+      '<svg viewBox="0 0 512 512" aria-hidden="true"><g transform="translate(256 256) scale(1.3) translate(-256 -262)" fill="none" stroke-width="46" stroke-linecap="round">' +
+      '<path class="rt-boot-stem" pathLength="1" d="M204 186V342"/><path class="rt-boot-arm" pathLength="1" d="M204 262C206 214 246 186 310 190"/></g></svg>' +
+      '<span class="rt-boot-word">random</span>';
+    document.body.appendChild(b);
+    document.documentElement.setAttribute('data-booting', '');
+    var done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      b.classList.add('rt-boot-out');
+      document.documentElement.removeAttribute('data-booting');
+      nav.feedback('unlock');
+      setTimeout(function () { b.remove(); }, 320);
+    }
+    b.addEventListener('click', finish);
+    setTimeout(finish, still ? 400 : 1500);
+  }
+
+  /* ---------------------------------------------------------- settings */
+
+  // The in-hub Settings app, Gingerbread list style. A history entry, like
+  // the drawer: Back closes it.
+  function settingsOpen() { return ui.settings && ui.settings.classList.contains('rt-open'); }
+  var pendingSettings = null;
+
+  function openSettings(section) {
+    if (!mounted || !ui.drawer) { pendingSettings = section || 'top'; return; }
+    if (!settingsOpen()) {
+      history.pushState({ rt: 'settings' }, '');
+      showSettings(true);
+    }
+    var target = section && ui.settings.querySelector('[data-section="' + section + '"]');
+    if (target) target.scrollIntoView({ block: 'start' });
+  }
+  function closeSettings() {
+    if (!settingsOpen()) return;
+    if (history.state && history.state.rt === 'settings') history.back();
+    else showSettings(false);
+  }
+
+  function buildSettings() {
+    ui.settings = el('div', 'rt-settings', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Settings', 'aria-hidden': 'true' });
+    var head = el('div', 'rt-settings-head');
+    var h = el('h2');
+    h.textContent = 'Settings';
+    head.appendChild(h);
+    ui.settingsBody = el('div', 'rt-settings-body');
+    ui.settings.appendChild(head);
+    ui.settings.appendChild(ui.settingsBody);
+    ui.settings.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); closeSettings(); } });
+  }
+
+  function showSettings(on) {
+    if (on) renderSettings();
+    ui.settings.classList.toggle('rt-open', on);
+    ui.settings.setAttribute('aria-hidden', on ? 'false' : 'true');
+    ui.pages.inert = on || drawerOpen() || shadeOpen();
+    ui.dock.inert = on || drawerOpen() || shadeOpen();
+    if (nav.refreshBack) nav.refreshBack();
+    wallpaperPaused(on);
+    if (on) { var first = ui.settingsBody.querySelector('button, a'); if (first) first.focus({ preventScroll: true }); }
+  }
+
+  function sectionHead(title, id) {
+    var h3 = el('h3', 'rt-set-section', { 'data-section': id });
+    h3.textContent = title;
+    ui.settingsBody.appendChild(h3);
+  }
+  // A row: title, summary, and a checkbox (switch) or nothing (an action).
+  function row(o) {
+    var tag = o.href ? 'a' : 'button';
+    var r = el(tag, 'rt-set-row', o.href ? { href: o.href, 'data-row': o.id, target: '_blank', rel: 'noopener' } : { type: 'button', 'data-row': o.id });
+    if (o.checked != null) { r.setAttribute('role', 'switch'); r.setAttribute('aria-checked', o.checked ? 'true' : 'false'); }
+    var text = el('span', 'rt-set-text');
+    var t = el('span', 'rt-set-title');
+    t.textContent = o.title;
+    text.appendChild(t);
+    if (o.summary != null) {
+      var sm = el('span', 'rt-set-summary');
+      sm.textContent = o.summary;
+      text.appendChild(sm);
+      r._summary = sm;
+    }
+    r.appendChild(text);
+    if (o.checked != null) r.appendChild(el('span', 'rt-check', { 'aria-hidden': 'true' }));
+    if (o.run) r.addEventListener('click', function () { o.run(r); });
+    ui.settingsBody.appendChild(r);
+    return r;
+  }
+  function toggleRow(id, title, name, on, off) {
+    return row({ id: id, title: title, summary: setting(name) ? on : off, checked: setting(name), run: function (r) {
+      var v = !setting(name);
+      setSetting(name, v);
+      r.setAttribute('aria-checked', v ? 'true' : 'false');
+      r._summary.textContent = v ? on : off;
+    } });
+  }
+
+  function renderSettings() {
+    var body = ui.settingsBody;
+    var top = body.scrollTop;
+    body.textContent = '';
+
+    sectionHead('Display', 'display');
+    row({ id: 'look', title: 'Retro look', summary: 'The Gingerbread launcher. Turn off for the modern card grid.', checked: true,
+      run: function () { nav.setLook('modern'); } });
+    toggleRow('motion', 'Wallpaper motion', 'motion', 'The live wallpaper drifts', 'The wallpaper stays still');
+    row({ id: 'clock', title: 'Clock style', summary: clockStyle() === 'analog' ? 'Analog' : 'Digital', run: function (r) {
+      lset(KEY.clock, clockStyle() === 'analog' ? 'digital' : 'analog');
+      paintClock();
+      r._summary.textContent = clockStyle() === 'analog' ? 'Analog' : 'Digital';
+    } });
+
+    sectionHead('Sound & feedback', 'feedback');
+    toggleRow('sounds', 'UI sounds', 'sounds', 'Clicks and chimes', 'Silent');
+    toggleRow('haptics', 'Haptic feedback', 'haptics', 'A tick on key presses (Android)', 'No vibration');
+
+    sectionHead('Home screen', 'home');
+    row({ id: 'reset-dock', title: 'Reset dock', summary: 'Back to your two most recent ideas', run: function () {
+      try { localStorage.removeItem(KEY.dock); } catch (e) {}
+      fillDock();
+      nav.toast('Dock reset');
+    } });
+
+    sectionHead('Storage', 'storage');
+    var used = row({ id: 'usage', title: 'Space used', summary: 'Measuring…' });
+    used.disabled = true;
+    if (navigator.storage && navigator.storage.estimate) {
+      navigator.storage.estimate().then(function (e) {
+        var mb = function (b) { return (b / 1048576).toFixed(1) + ' MB'; };
+        used._summary.textContent = mb(e.usage || 0) + (e.quota ? ' of ' + mb(e.quota) + ' available' : '');
+      }, function () { used._summary.textContent = 'Unavailable'; });
+    } else used._summary.textContent = 'Unavailable';
+    var savedHolder = el('div', 'rt-set-group', { 'data-group': 'saved' });
+    body.appendChild(savedHolder);
+    nav.offlineStatus().then(function (st) {
+      savedHolder.textContent = '';
+      var saved = ideas.filter(function (i) { return st.saved.indexOf(i.slug) !== -1; });
+      if (!saved.length) {
+        var none = el('p', 'rt-set-none');
+        none.textContent = 'No ideas saved for offline. Long-press an icon to save one.';
+        savedHolder.appendChild(none);
+      }
+      saved.forEach(function (idea) {
+        var r = row({ id: 'saved:' + idea.slug, title: idea.title, summary: 'Saved for offline', checked: true, run: function (rr) {
+          rr.disabled = true;
+          nav.saveOffline(idea.slug, false).then(function () { renderSettings(); });
+        } });
+        savedHolder.appendChild(r); // row() appended to body; move it into the group
+      });
+    }, function () { savedHolder.textContent = ''; });
+    row({ id: 'clear-cache', title: 'Clear cached ideas', summary: 'Frees space; ideas saved for offline stay', run: function (r) {
+      r.disabled = true;
+      nav.clearCached().then(function () { nav.toast('Cached ideas cleared'); renderSettings(); },
+        function () { nav.toast("Couldn't reach offline storage"); r.disabled = false; });
+    } });
+
+    sectionHead('About', 'about');
+    var ver = row({ id: 'version', title: 'Version', summary: '…' });
+    ver.disabled = true;
+    nav.offlineStatus().then(function (st) { ver._summary.textContent = st.version || 'unknown'; }, function () { ver._summary.textContent = 'unknown'; });
+    var count = row({ id: 'ideas', title: 'Ideas', summary: ideas.length + ' small ideas, each one a tiny page' });
+    count.disabled = true;
+    row({ id: 'source', title: 'Source', summary: 'github.com/rickymetz/random', href: 'https://github.com/rickymetz/random' });
+    row({ id: 'licences', title: 'Licences', summary: 'Droid Sans © The Android Open Source Project, Apache 2.0',
+      href: new URL('fonts/LICENSE-DroidSans.txt', location.href).href });
+    body.scrollTop = top;
+  }
+
   /* ------------------------------------------------------ mount, look */
 
   // The device's own status bar is painted black under the retro look, so
@@ -848,6 +1082,7 @@
     if (mounted) return;
     mounted = true;
     root.hidden = false;
+    boot();
     paintSystemBar(true);
     nav.ideas().then(function (list) {
       if (!mounted) return;
@@ -859,12 +1094,14 @@
       buildDock();
       buildDrawer();
       buildShade();
+      buildSettings();
       root.appendChild(ui.wall);
       root.appendChild(ui.status);
       root.appendChild(ui.pages);
       root.appendChild(ui.dots);
       root.appendChild(ui.dock);
       root.appendChild(ui.drawer);
+      root.appendChild(ui.settings);
       root.appendChild(ui.shade);
       // Open on the centre screen, after layout gives the pages a width.
       requestAnimationFrame(function () {
@@ -875,6 +1112,13 @@
       var state = history.state && history.state.rt;
       if (state === 'drawer') showDrawer(true);
       if (state === 'shade') showShade(true);
+      if (state === 'settings') showSettings(true);
+      // An idea page's ≡ → Settings arrives as #settings.
+      if (location.hash === '#settings') {
+        history.replaceState(history.state, '', location.pathname + location.search);
+        pendingSettings = pendingSettings || 'top';
+      }
+      if (pendingSettings) { var sec = pendingSettings; pendingSettings = null; openSettings(sec === 'top' ? null : sec); }
       // Clocks tick on the minute; the shade's live items follow events.
       paintStatusClock();
       clockTimer = setInterval(function () { paintStatusClock(); paintClock(); }, 15000);
@@ -901,6 +1145,13 @@
   window.addEventListener('randomlook', onLook);
   window.addEventListener('randomupdate', function () { refreshShade(); });
   window.addEventListener('randomevent', function () { refreshShade(); });
+  window.addEventListener('randomsettings', function () { openSettings(); });
+  // Settings and the power widget show the same switches.
+  window.addEventListener('randomsetting', function (e) {
+    if (!ui.grid || !e.detail) return;
+    var key = root.querySelector('.rt-power-key[data-power="' + e.detail.name + '"]');
+    if (key) key.setAttribute('aria-pressed', e.detail.on ? 'true' : 'false');
+  });
   // ≡ → Search: to the centre screen, into the search box.
   window.addEventListener('randomsearch', function () {
     if (!mounted || !ui.search) return;
@@ -923,6 +1174,7 @@
   window.randomRetro = {
     notify: notify,
     setting: setting,
-    setSetting: setSetting
+    setSetting: setSetting,
+    openSettings: openSettings
   };
 })();

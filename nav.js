@@ -47,7 +47,9 @@
     trail: 'random-hub:trail',
     look: 'random-hub:look',
     events: 'random-hub:events',
-    dismissed: 'random-hub:shade-dismissed'
+    dismissed: 'random-hub:shade-dismissed',
+    sounds: 'random-hub:sounds',
+    haptics: 'random-hub:haptics'
   };
   var MAX_RECENTS = 8;
   var BAR_H = 48;
@@ -480,7 +482,7 @@
       location.href = HUB.href;
     });
     // Long-press ●: retro, Gingerbread's recent-apps dialog; modern, Share.
-    onLongPress(ui.home, function () { if (look === 'retro') recentsDialog(); else share(); });
+    onLongPress(ui.home, function () { if (look === 'retro') { feedback('long'); recentsDialog(); } else share(); });
     var shareBtn = ui.sheet.querySelector('[data-act="share"]');
     if (shareBtn) shareBtn.addEventListener('click', function () { toggleTray(false); share(); });
     ui.handle.addEventListener('click', function () { show(); });
@@ -505,6 +507,10 @@
       if (e.key !== 'Escape') return;
       if (layer) closeLayer();
       else if (wrap.classList.contains('open')) toggleTray(false);
+    });
+
+    ui.bar.addEventListener('pointerdown', function (e) {
+      if (e.target.closest && e.target.closest('button:not([disabled])')) feedback('key');
     });
 
     // The bar is its own UI: a tap on it must not also reach the page (on
@@ -655,14 +661,58 @@
     // saving one (loads it in a hidden frame unless it's this page).
     offlineStatus: offlineStatus,
     saveOffline: saveOffline,
+    clearCached: function () { return ask({ type: 'CLEAR_CACHED' }); },
     // Things that happened, for the launcher's notification shade.
     addEvent: addEvent,
     // Era dialogs, shared by the launcher and idea pages.
     menu: menuDialog,
     aboutIdea: aboutIdea,
-    tileVars: tileVars
+    tileVars: tileVars,
+    feedback: function (kind) { feedback(kind); },
+    lastSound: function () { return feedback.last || null; }
   };
   var pendingUpdate = null;
+
+  /* ------------------------------------------------ sound and haptics */
+
+  // Retro only. Haptics: a 10 ms tick on keys, a 25 ms buzz for long-press
+  // menus (Android; a silent no-op elsewhere). Sounds: synthesised with Web
+  // Audio, no files; off by default. The launcher's Settings write both.
+  var audio = null;
+  function feedbackOn(name, dflt) {
+    var v = lget(KEY[name], null);
+    return look === 'retro' && (typeof v === 'boolean' ? v : dflt);
+  }
+  function feedback(kind) {
+    if (feedbackOn('haptics', true) && navigator.vibrate) {
+      try { navigator.vibrate(kind === 'long' ? 25 : 10); } catch (e) {}
+    }
+    if (!feedbackOn('sounds', false)) return;
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    try {
+      audio = audio || new Ctx(); // only ever after a user gesture
+      if (audio.state === 'suspended') audio.resume();
+      var t = audio.currentTime;
+      var notes = kind === 'unlock' ? [[660, 0, 0.09], [990, 0.09, 0.16]]
+        : kind === 'swipe' ? [[1800, 0, 0.018]]
+        : kind === 'long' ? [[520, 0, 0.05]]
+        : [[1250, 0, 0.028]];
+      notes.forEach(function (n) {
+        var o = audio.createOscillator();
+        var g = audio.createGain();
+        o.type = kind === 'unlock' ? 'sine' : 'triangle';
+        o.frequency.value = n[0];
+        g.gain.setValueAtTime(0.0001, t + n[1]);
+        g.gain.exponentialRampToValueAtTime(kind === 'unlock' ? 0.12 : 0.07, t + n[1] + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + n[1] + n[2]);
+        o.connect(g).connect(audio.destination);
+        o.start(t + n[1]);
+        o.stop(t + n[1] + n[2] + 0.02);
+      });
+      feedback.last = kind; // for tests: the last sound actually played
+    } catch (e) { /* no audio: fine */ }
+  }
 
   /* ----------------------------------------------------------- tiles */
 

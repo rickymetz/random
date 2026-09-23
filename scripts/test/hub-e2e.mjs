@@ -27,16 +27,17 @@ const B = `http://localhost:${PORT}/random/`;
 
 /* ------------------------------------------------------------- server */
 
-const server = { offline: false, bump: 0, capBytes: null };
+const server = { offline: false, bump: 0, capBytes: null, slow: null };
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript",
   ".css": "text/css", ".json": "application/json", ".webmanifest": "application/manifest+json",
   ".png": "image/png", ".svg": "image/svg+xml", ".jpg": "image/jpeg", ".webp": "image/webp",
   ".wasm": "application/wasm", ".woff2": "font/woff2",
 };
-const httpServer = http.createServer((req, res) => {
+const httpServer = http.createServer(async (req, res) => {
   if (server.offline) return req.socket.destroy();
   const url = new URL(req.url, "http://x");
+  if (server.slow && url.pathname === server.slow) await new Promise((r) => setTimeout(r, 2500));
   if (!url.pathname.startsWith("/random/")) { res.writeHead(404); return res.end(); }
   let file = path.join(root, decodeURIComponent(url.pathname.slice("/random/".length)));
   if (!file.startsWith(root)) { res.writeHead(403); return res.end(); }
@@ -178,6 +179,10 @@ try {
   section("an idea that brings its own worker");
   await page.goto(B + "ideas/cadence/");
   await page.waitForSelector("random-nav", { state: "attached" });
+  await page.evaluate(() => { window.__firstLoad = true; });
+  await page.waitForFunction(() => /ideas\/cadence\/sw\.js$/.test(navigator.serviceWorker.controller?.scriptURL || ""), null, { timeout: 15000 });
+  await page.waitForTimeout(800);
+  check(await page.evaluate(() => window.__firstLoad === true), "Cadence's first install takes over without reloading the page");
   check(!(await page.$("[data-random-nav-spacer]")), "Cadence has the bar, overlay mode");
   const keys = await page.evaluate(() => caches.keys());
   check(keys.filter((k) => k.startsWith("random-hub-shell-")).length === 1 && keys.some((k) => k.startsWith("cadence-")),
@@ -583,6 +588,196 @@ try {
     check((await page.locator(".signal").isVisible()) && (await page.locator("#cached .card .rt-tile").first().isVisible()),
       "offline, the retro 'no connection' screen lists cached ideas as tiles");
     server.offline = false;
+    await ctx.close();
+  }
+
+  /* ------------------------- retro feel: boot, launch, feedback (stage 4) */
+
+  const installedRetro = async (opts = {}) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, ...opts });
+    await ctx.addInitScript(() => {
+      Object.defineProperty(navigator, "standalone", { get: () => true });
+      window.__vibes = [];
+      navigator.vibrate = (ms) => { window.__vibes.push(ms); return true; };
+    });
+    const page = await ctx.newPage();
+    page.on("pageerror", (e) => pageErrors.push(`${page.url()}: ${e.message}`));
+    return { ctx, page };
+  };
+
+  section("retro boot animation");
+  {
+    const { ctx, page } = await installedRetro();
+    await page.goto(B);
+    check(await page.locator(".rt-boot").isVisible(), "a cold start of the installed app boots");
+    const t0 = Date.now();
+    await page.waitForSelector(".rt-boot", { state: "detached", timeout: 5000 });
+    const took = Date.now() - t0;
+    check(took > 900 && took < 2600, `for about a second and a half (${took} ms)`);
+    await page.reload();
+    await page.waitForSelector("#retro[data-ready]");
+    check((await page.locator(".rt-boot").count()) === 0, "not again in the same session");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await installedRetro();
+    await page.goto(B);
+    await page.waitForSelector(".rt-boot");
+    await page.waitForTimeout(200);
+    await page.click(".rt-boot");
+    await page.waitForSelector(".rt-boot", { state: "detached", timeout: 800 });
+    check(true, "a tap skips it");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await installedRetro({ reducedMotion: "reduce" });
+    await page.goto(B);
+    check((await page.getAttribute(".rt-boot", "class")).includes("rt-boot-still"), "reduced motion: a still logo");
+    await page.waitForSelector(".rt-boot", { state: "detached", timeout: 1500 });
+    check(true, "and a short fade");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await installedRetro();
+    await ctx.addInitScript(() => localStorage.setItem("random-hub:look", '"modern"'));
+    await page.goto(B);
+    await page.waitForTimeout(300);
+    check((await page.locator(".rt-boot").count()) === 0, "never in the modern look");
+    await ctx.close();
+  }
+
+  section("retro launch, haptics and sounds");
+  {
+    const { ctx, page } = await installedRetro();
+    await ctx.addInitScript(() => sessionStorage.setItem("random-hub:booted", "1"));
+    await page.goto(B);
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+    await page.waitForSelector("#retro[data-ready]");
+    const vibes = () => page.evaluate(() => window.__vibes.slice());
+
+    await bar(page, "button.menu").click();
+    await page.keyboard.press("Escape");
+    check((await vibes()).includes(10), "a key press ticks (10 ms)");
+    await page.click('.rt-pages .rt-icon[data-slug="breathe"]', { button: "right" });
+    await bar(page, ".dlg-item").first().waitFor();
+    check((await vibes()).includes(25), "a long-press menu buzzes (25 ms)");
+    await page.keyboard.press("Escape");
+    check((await page.evaluate(() => window.randomNav.lastSound())) === null, "sounds are off by default");
+
+    await page.evaluate(() => window.randomRetro.setSetting("sounds", true));
+    await bar(page, "button.menu").click();
+    await page.keyboard.press("Escape");
+    check((await page.evaluate(() => window.randomNav.lastSound())) === "key", "with sounds on, keys click");
+    await page.click(".rt-dots button:nth-child(3)");
+    await page.waitForFunction(() => window.randomNav.lastSound() === "swipe", null, { timeout: 3000 }).catch(() => {});
+    check((await page.evaluate(() => window.randomNav.lastSound())) === "swipe", "and a swipe ticks");
+    await page.click(".rt-dots button:nth-child(2)");
+    await page.waitForTimeout(400);
+
+    await page.evaluate(() => { window.randomRetro.setSetting("haptics", false); window.__vibes.length = 0; });
+    await bar(page, "button.menu").click();
+    await page.keyboard.press("Escape");
+    check((await vibes()).length === 0, "haptics off: no vibration");
+
+    // Launch: the tile zooms up, then the idea opens.
+    await Promise.all([page.waitForURL(B + "ideas/breathe/"), page.click('.rt-pages .rt-icon[data-slug="breathe"]').then(async () => {
+      check((await page.locator(".rt-zoom").count()) === 1, "tapping an icon zooms its tile up");
+    })]);
+    check(true, "and opens the idea");
+    await page.goto(B);
+    await page.waitForSelector("#retro[data-ready]");
+    server.slow = "/random/ideas/container-compound/";
+    // The page is mid-navigation while the card shows, so it notes the card
+    // in sessionStorage for the next page to report.
+    await page.evaluate(() => new MutationObserver(() => {
+      const card = document.querySelector(".rt-loading");
+      if (card) sessionStorage.setItem("sawLoading", card.textContent);
+    }).observe(document.getElementById("retro"), { childList: true }));
+    await page.click('.rt-pages .rt-icon[data-slug="container-compound"]');
+    await page.waitForURL(B + "ideas/container-compound/", { timeout: 10000 });
+    server.slow = null;
+    check(((await page.evaluate(() => sessionStorage.getItem("sawLoading"))) || "").includes("Loading Container Compound"),
+      "a slow idea shows the loading card");
+
+    // Modern: no feedback at all.
+    await page.evaluate(() => { window.randomRetro && window.randomRetro.setSetting("haptics", true); window.randomNav.setLook("modern"); window.__vibes.length = 0; });
+    await bar(page, 'button[aria-label="Recent ideas"]').click();
+    await page.keyboard.press("Escape");
+    check((await vibes()).length === 0, "the modern look stays silent and still");
+    await ctx.close();
+  }
+  {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
+    await ctx.addInitScript(() => localStorage.setItem("random-hub:look", '"retro"'));
+    const page = await ctx.newPage();
+    await page.goto(B);
+    await page.waitForSelector("#retro[data-ready]");
+    await Promise.all([page.waitForURL(B + "ideas/breathe/"), page.click('.rt-pages .rt-icon[data-slug="breathe"]')]);
+    check(true, "reduced motion: a plain switch");
+    await ctx.close();
+  }
+
+  section("retro Settings");
+  {
+    const { ctx, page } = await freshPage();
+    await ctx.addInitScript(() => { if (!localStorage.getItem("random-hub:look")) localStorage.setItem("random-hub:look", '"retro"'); });
+    await installHub(page);
+    await page.waitForSelector("#retro[data-ready]");
+    const settingsOpen = () => page.locator(".rt-settings.rt-open").count().then((n) => n === 1);
+    const rowSel = (id) => `.rt-set-row[data-row="${id}"]`;
+
+    await bar(page, "button.menu").click();
+    await bar(page, '.opt[data-opt="settings"]').click();
+    check(await settingsOpen(), "≡ → Settings opens the Settings app");
+    const sections = await page.$$eval(".rt-set-section", (els) => els.map((e) => e.dataset.section));
+    check(sections.join() === "display,feedback,home,storage,about", `sections: ${sections.join(", ")}`);
+
+    await page.click(rowSel("motion"));
+    check((await page.getAttribute(rowSel("motion"), "aria-checked")) === "false"
+      && (await page.getAttribute('.rt-power-key[data-power="motion"]', "aria-pressed")) === "false", "a switch here updates the power widget too");
+    await page.click(rowSel("clock"));
+    check((await page.getAttribute(".rt-clock", "data-style")) === "analog", "Clock style flips the clock");
+    await page.click(rowSel("sounds"));
+    check(await page.evaluate(() => window.randomRetro.setting("sounds")), "UI sounds switches on");
+    await page.waitForFunction(() => /[0-9a-f]{12}/.test(document.querySelector('.rt-set-row[data-row="version"] .rt-set-summary').textContent));
+    check(true, "About shows the version");
+
+    await page.waitForSelector(rowSel("saved:breathe"));
+    check((await page.getAttribute(rowSel("saved:breathe"), "aria-checked")) === "true", "Storage lists saved ideas");
+    await page.click(rowSel("saved:breathe"));
+    await page.waitForFunction(() => window.randomNav.offlineStatus().then((s) => !s.saved.includes("breathe")), null, { polling: 300, timeout: 5000 });
+    check(true, "and unchecking one unsaves it");
+
+    await bar(page, 'button[aria-label="Back"]').click();
+    await page.waitForSelector(".rt-settings:not(.rt-open)");
+    check(page.url() === B, "Back closes Settings");
+
+    await page.goto(B + "ideas/container-compound/");
+    await page.waitForTimeout(1500);
+    await bar(page, "button.menu").click();
+    await bar(page, '.opt[data-opt="settings"]').click();
+    await page.waitForURL(B);
+    await page.waitForSelector(".rt-settings.rt-open");
+    check(true, "≡ → Settings on an idea page opens the hub's Settings");
+    check((await page.evaluate(() => window.randomNav.offlineStatus().then((s) => s.cached.includes("container-compound")))), "(that idea is cached)");
+    await page.click(rowSel("clear-cache"));
+    await page.waitForFunction(() => window.randomNav.offlineStatus().then((s) => !s.cached.includes("container-compound")), null, { polling: 300, timeout: 5000 });
+    check(true, "Clear cached ideas drops what isn't saved");
+
+    await bar(page, 'button[aria-label^="Home"]').click();
+    await page.waitForSelector(".rt-settings:not(.rt-open)");
+    check(true, "● closes Settings");
+    await page.click(".rt-dots button:nth-child(3)");
+    await page.waitForTimeout(500);
+    await page.click('.rt-power-key[data-power="storage"]');
+    await page.waitForSelector(".rt-settings.rt-open");
+    check(true, "the power widget's storage key opens Settings");
+
+    await page.evaluate(() => localStorage.setItem("random-hub:dock", JSON.stringify(["ephemera"])));
+    await page.click(rowSel("reset-dock"));
+    check(await page.evaluate(() => localStorage.getItem("random-hub:dock") === null), "Reset dock forgets the chosen favourites");
+    await page.click(rowSel("look"));
+    check((await page.evaluate(() => document.documentElement.dataset.look)) === "modern", "and Retro look off returns to modern");
     await ctx.close();
   }
 

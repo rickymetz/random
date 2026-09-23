@@ -289,7 +289,9 @@ html:not([data-look="retro"]) #retro { display: none !important; }
   z-index: 0;
   pointer-events: none;
 }
-#retro > :not(.rt-wallpaper) { position: relative; z-index: 1; }
+/* :where() keeps this at #retro's specificity, so the absolute layers
+   below (drawer, shade, settings) still win. */
+#retro > :where(:not(.rt-wallpaper, .rt-zoom, .rt-loading)) { position: relative; z-index: 1; }
 #retro > .rt-drawer, #retro > .rt-shade { position: absolute; }
 /* The status bar stays visible above the drawer, as on the phone, so the
    shade can be pulled down over it. */
@@ -525,7 +527,159 @@ html:not([data-look="retro"]) #retro { display: none !important; }
   background: #777;
 }
 
+/* ------------------------------------------------------------ settings */
+
+#retro > .rt-settings { position: absolute; z-index: 25; top: calc(env(safe-area-inset-top, 0px) + var(--rt-status-h)); }
+.rt-settings {
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--rt-bg);
+  transform: translateX(100%);
+  transition: transform 0.24s cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s linear 0.24s;
+  visibility: hidden;
+}
+.rt-settings.rt-open { transform: none; visibility: visible; transition-delay: 0s; }
+.rt-settings-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: linear-gradient(180deg, var(--rt-panel-hi), var(--rt-panel));
+  border-bottom: 1px solid var(--rt-line);
+}
+.rt-settings-head h2 { margin: 0; font-size: 18px; font-weight: 700; }
+.rt-settings-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 16px; }
+.rt-set-section {
+  margin: 0;
+  padding: 5px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--rt-ink-2);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rt-ink-2) 30%, var(--rt-bg)), color-mix(in srgb, var(--rt-ink-2) 18%, var(--rt-bg)));
+}
+.rt-set-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--rt-line);
+  background: none;
+  color: var(--rt-ink);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.rt-set-row:disabled { cursor: default; color: var(--rt-ink); }
+.rt-set-row:not(:disabled):active { background: var(--rt-hl); color: var(--rt-hl-ink); }
+.rt-set-row:not(:disabled):active .rt-set-summary { color: inherit; }
+.rt-set-text { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rt-set-title { font-size: 17px; }
+.rt-set-summary { font-size: 13px; color: var(--rt-ink-2); }
+.rt-set-none { margin: 0; padding: 14px 16px; color: var(--rt-ink-2); font-size: 14px; border-bottom: 1px solid var(--rt-line); }
+/* Gingerbread's square checkbox, a green tick when on. */
+.rt-check {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 3px;
+  border: 2px solid #8a8a8a;
+  background: linear-gradient(180deg, #fafafa, #cfcfcf);
+  position: relative;
+}
+.rt-set-row[aria-checked="true"] .rt-check::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 1px;
+  width: 8px;
+  height: 16px;
+  border: solid #5c9a00;
+  border-width: 0 4px 4px 0;
+  transform: rotate(40deg);
+}
+
+/* --------------------------------------------------- launch, boot */
+
+.rt-zoom {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  border-radius: 13px;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.rt-loading {
+  position: fixed;
+  z-index: 41;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 220px;
+  padding: 18px 20px;
+  border-radius: 4px;
+  border: 1px solid #5a5a5a;
+  background: #1b1b1b;
+  color: #fff;
+  font-size: 15px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+.rt-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #9fd01d;
+  animation: rt-spin 0.8s linear infinite;
+}
+@keyframes rt-spin { to { transform: rotate(360deg); } }
+
+.rt-boot {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: #000;
+  cursor: pointer;
+  transition: opacity 0.3s;
+}
+.rt-boot svg { width: 150px; height: 150px; overflow: visible; }
+.rt-boot path {
+  stroke: #e08554;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  filter: drop-shadow(0 0 10px rgba(224, 133, 84, 0.9)) drop-shadow(0 0 26px rgba(224, 133, 84, 0.5));
+  animation: rt-draw 0.6s cubic-bezier(0.5, 0, 0.3, 1) forwards;
+}
+.rt-boot .rt-boot-arm { animation-delay: 0.45s; }
+.rt-boot-word {
+  font-family: "Droid Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size: 30px;
+  letter-spacing: 0.08em;
+  color: #fff;
+  opacity: 0;
+  animation: rt-fade 0.4s ease 0.95s forwards;
+}
+.rt-boot-out { opacity: 0; }
+.rt-boot-still path, .rt-boot-still .rt-boot-word { animation: none; stroke-dashoffset: 0; opacity: 1; }
+@keyframes rt-draw { to { stroke-dashoffset: 0; } }
+@keyframes rt-fade { to { opacity: 1; } }
+
 @media (prefers-reduced-motion: reduce) {
+  .rt-settings { transition: none; }
   .rt-shade { transition: none; }
   .rt-drawer { transition: none; }
   .rt-pages { scroll-behavior: auto; }
