@@ -18,4 +18,16 @@ describe('sanitizer: notes being written', () => {
     ]
     expect(sanitizeRecords(bad).records).toEqual([])
   })
+  it('keeps where it was written: a note being edited, or the Edit form', () => {
+    const edit = { kind: 'draft', id: id(9), personId: id(1), slot: `note:${id(3)}`, body: 'reworded', updatedAt: 5 }
+    const form = { kind: 'draft', id: id(8), personId: id(1), slot: 'details', body: 'x'.repeat(60_000), updatedAt: 5 }
+    expect(sanitizeRecords([edit, form]).records).toEqual([edit, form])
+    const bad = [
+      { kind: 'draft', id: id(7), personId: id(1), slot: 'note:../../etc', body: 'x', updatedAt: 1 },
+      { kind: 'draft', id: id(6), personId: id(1), slot: 'settings', body: 'x', updatedAt: 1 },
+      { kind: 'draft', id: id(5), personId: id(1), slot: 7, body: 'x', updatedAt: 1 },
+      { kind: 'draft', id: id(4), personId: id(1), slot: 'details', body: 'x'.repeat(200_001), updatedAt: 1 },
+    ]
+    expect(sanitizeRecords(bad).records).toEqual([])
+  })
 })

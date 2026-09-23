@@ -1114,6 +1114,14 @@ body:has(.facts-form) .app-bar .back {
   color: var(--text);
   margin: 0;
 }
+/* "Your unsaved changes are back" belongs to the title, not the gap
+   between sections. */
+.facts-form .restored-hint {
+  margin: calc(var(--s2) - var(--s5)) 0 0;
+}
+.note-editor .restored-hint {
+  margin: 0;
+}
 .field-group {
   border: 0;
   margin: 0;

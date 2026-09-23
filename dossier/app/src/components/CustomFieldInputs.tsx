@@ -76,6 +76,7 @@ export default function CustomFieldInputs({
   draft,
   onChange,
   onChipDraft,
+  chipInitialDrafts,
   errors,
   clearError,
 }: {
@@ -85,6 +86,8 @@ export default function CustomFieldInputs({
   onChange: (fieldId: string, value: DraftValue) => void
   /** The half-typed value in a list row, for the form to keep on save. */
   onChipDraft?: (fieldId: string, draft: string) => void
+  /** Half-typed text each list row starts with (a kept draft restored). */
+  chipInitialDrafts?: Record<string, string>
   errors: Record<string, string>
   clearError: (fieldId: string) => void
 }) {
@@ -111,6 +114,7 @@ export default function CustomFieldInputs({
                   values={Array.isArray(value) ? value : []}
                   onChange={(values) => onChange(def.id, values)}
                   onDraftChange={(d) => onChipDraft?.(def.id, d)}
+                  initialDraft={chipInitialDrafts?.[def.id]}
                   suggestions={vocab[def.id] ?? []}
                   placeholder="one per entry"
                   suggestOnFocus

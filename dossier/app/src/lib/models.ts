@@ -203,9 +203,17 @@ export interface NoteDraft {
   kind: 'draft'
   id: string
   personId: string
+  /**
+   * Where it was being written: absent for the note box, `note:<id>` for
+   * a note being edited, `details` for the Edit form (its body is then
+   * the changed fields, as JSON).
+   */
+  slot?: DraftSlot
   body: string
   updatedAt: number
 }
+
+export type DraftSlot = 'details' | `note:${string}`
 
 /** How many recently opened dossiers the home screen remembers. */
 export const RECENT_LIMIT = 8
