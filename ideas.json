@@ -19,11 +19,29 @@
     "private": true
   },
   {
+    "slug": "breathe",
+    "title": "Breathe",
+    "description": "A one-minute box-breathing circle.",
+    "emoji": "🫧",
+    "date": "2026-09-01T03:25:55.000Z",
+    "url": "ideas/breathe/",
+    "saveable": true
+  },
+  {
+    "slug": "container-compound",
+    "title": "Container Compound",
+    "description": "Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.",
+    "emoji": "📦",
+    "date": "2026-09-01T03:25:55.000Z",
+    "url": "ideas/container-compound/",
+    "saveable": true
+  },
+  {
     "slug": "ephemera",
     "title": "Ephemera",
     "description": "Browse 8,038 industrial, educational and advertising films from the Prelinger Archives, and watch them in the page.",
     "emoji": "📽️",
-    "date": "2026-08-31T19:19:09.000Z",
+    "date": "2026-09-01T03:25:55.000Z",
     "url": "ideas/ephemera/",
     "saveable": true
   },
@@ -32,26 +50,8 @@
     "title": "Public Screening",
     "description": "Browse 1,186 public domain films and watch hundreds of them in the page.",
     "emoji": "🎞️",
-    "date": "2026-08-27T02:30:33.000Z",
+    "date": "2026-09-01T03:25:55.000Z",
     "url": "ideas/public-screening/",
-    "saveable": true
-  },
-  {
-    "slug": "container-compound",
-    "title": "Container Compound",
-    "description": "Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.",
-    "emoji": "📦",
-    "date": "2026-08-13T05:59:34.000Z",
-    "url": "ideas/container-compound/",
-    "saveable": true
-  },
-  {
-    "slug": "breathe",
-    "title": "Breathe",
-    "description": "A one-minute box-breathing circle.",
-    "emoji": "🫧",
-    "date": "2026-08-13T04:03:58.000Z",
-    "url": "ideas/breathe/",
     "saveable": true
   }
 ]

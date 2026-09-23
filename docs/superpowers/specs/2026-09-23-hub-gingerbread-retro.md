@@ -333,8 +333,13 @@ Where the build deviated from, or refined, the requirements:
 - The drawer and Settings sit below the status bar, so the shade can be
   pulled down over them. The dialog scrim stops above the bar, so the keys
   stay live. Back is shown on the hub while anything is open.
-- Launch uses a CSS/Web Animations zoom rather than cross-document View
-  Transitions, which would need ideas to opt in.
+- Launch uses a Web Animations zoom rather than cross-document View
+  Transitions, which would need ideas to opt in. After review it was
+  redone to match Gingerbread: the app's black "starting window" (a title
+  bar with the idea's icon and name) grows uniformly out of the tapped
+  icon while the home screen zooms slightly and dims, and a slow idea's
+  spinner appears inside that window. (The first version stretched the
+  tile non-uniformly to fill the screen, smearing its corners and emoji.)
 - Cadence treated its first install as an update (the hub worker already
   controlled its page) and reloaded once. It now only counts its own
   worker (`cadence-v5`).
