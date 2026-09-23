@@ -58,7 +58,7 @@ copied system artwork. Everything is drawn fresh in the era's style.
   `navigator.standalone`), **modern in a browser tab**. A saved choice
   always wins, so a browser user can opt into retro and an installed user
   can opt out.
-- The toggle lives in Settings (G11), the ≡ menu and the power-control
+- The toggle lives in Settings (G16), the ≡ menu and the power-control
   widget. Switching applies at once: no reload, no flash of the wrong
   look on the next start. `<html data-look>` is set by an inline
   head script before first paint.
