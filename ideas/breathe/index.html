@@ -96,6 +96,14 @@
     margin-top: 0.75rem;
   }
   .about .fact { color: var(--muted); }
+  .about .warning {
+    margin: 0.75rem 0;
+    padding: 0.7rem 0.85rem;
+    border-left: 3px solid #e6a23c;
+    border-radius: 8px;
+    background: rgba(230, 162, 60, 0.12);
+  }
+  .about .warning strong { display: block; color: #f0b95c; margin-bottom: 0.2rem; }
   .note { color: var(--muted); font-size: 0.72rem; margin-top: 0.75rem; }
   /* The exercise gets the screen to itself; the circle re-centres. */
   body.running .patterns,
@@ -233,6 +241,31 @@
       fact: "Sama vritti is Sanskrit for “equal fluctuation”; it's one of the foundational pranayama practices of yoga.",
       phases: [inhale(4), exhale(4)],
     },
+    {
+      id: "wimhof", name: "Wim Hof",
+      hint: "30 breaths · hold on empty · 15s recovery · 3 rounds",
+      title: "Wim Hof breathing",
+      about: "Thirty deep, fast breaths — fully in, then just let go — followed by a breath hold on empty lungs for as long as is comfortable (tap when you need to breathe). Then one big recovery breath, held for 15 seconds. Three rounds.",
+      warning: "Sit or lie down. Never do this in or near water, while driving, or standing: it can make you faint without warning, and people have drowned practising it in water. Tingling and light-headedness are common; stop if you feel unwell. Skip it if you're pregnant or have epilepsy, a heart condition, high blood pressure or a history of fainting — ask a doctor first.",
+      benefits: [
+        "Practitioners report a burst of energy, alertness and calm afterwards",
+        "Studied for stress resilience and dampening inflammation",
+        "Longer breath holds than you'd expect — overbreathing lowers CO₂, which delays the urge to breathe",
+      ],
+      fact: "Developed by Dutch “Iceman” Wim Hof, who pairs it with cold exposure. In a 2014 Radboud University study (Kox et al., PNAS), trained volunteers injected with a bacterial toxin had fewer flu-like symptoms, a surge of adrenaline and a stronger anti-inflammatory response than untrained ones.",
+      rounds: 3,
+      phases: [
+        ...Array.from({ length: 30 }, (_, n) => [
+          { label: `In · ${n + 1}`, s: 1.5, from: SMALL, to: BIG },
+          { label: `Let go · ${n + 1}`, s: 1.5, from: BIG, to: SMALL },
+        ]).flat(),
+        // Open-ended: ends on a tap, or at the cap (s) as a safety net.
+        { label: "Hold", s: 180, from: SMALL, to: SMALL, open: true },
+        { ...inhale(2), label: "Recovery breath in" },
+        hold(15, BIG),
+        { ...exhale(2), label: "Let go" },
+      ],
+    },
   ];
 
   const STORE_KEY = "breathe:pattern";
@@ -243,6 +276,15 @@
 
   let running = false;
   let current = [];
+  let ticker = 0;
+  let advance = null; // set during an open-ended hold: a tap moves on
+
+  function clearPhase() {
+    for (const a of current) a.cancel();
+    current = [];
+    clearInterval(ticker);
+    advance = null;
+  }
 
   function select(p) {
     pattern = p;
@@ -261,12 +303,20 @@
     return e;
   }
 
+  function warningEl(text) {
+    const w = el("div", "warning", text);
+    w.setAttribute("role", "note");
+    w.prepend(el("strong", "", "⚠ Safety first"));
+    return w;
+  }
+
   function renderAbout(p) {
     const list = el("ul");
     for (const b of p.benefits) list.appendChild(el("li", "", b));
     aboutEl.replaceChildren(
       el("h2", "", p.title),
       el("p", "", p.about),
+      ...(p.warning ? [warningEl(p.warning)] : []),
       el("span", "label", "Reported benefits"),
       list,
       el("span", "label", "Notable"),
@@ -285,20 +335,39 @@
   select(pattern);
 
   function run(i) {
-    const p = pattern.phases[i % pattern.phases.length];
+    clearPhase();
+    const len = pattern.phases.length;
+    if (pattern.rounds && i >= pattern.rounds * len) return stop("Done — breathe normally");
+    const p = pattern.phases[i % len];
     const ms = p.s * 1000;
+    const round = pattern.rounds ? `Round ${Math.floor(i / len) + 1} of ${pattern.rounds}` : "";
+    const next = () => { if (running) run(i + 1); };
     phaseEl.textContent = p.label;
-    // Linear, so the wedge doubles as a countdown; ::after inherits --sweep.
-    const sweep = circle.animate(
-      [{ "--sweep": "0deg" }, { "--sweep": "360deg" }],
-      { duration: ms, easing: "linear" }
-    );
+    if (round) hintEl.textContent = round;
+    if (p.open) {
+      // Count up rather than down: the hold lasts as long as it's comfortable.
+      const t0 = performance.now();
+      const tick = () => {
+        const sec = Math.floor((performance.now() - t0) / 1000);
+        phaseEl.textContent = `${p.label} · ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+      };
+      tick();
+      ticker = setInterval(tick, 250);
+      hintEl.textContent = `${round} · tap when you need to breathe`;
+      advance = next;
+    } else {
+      // Linear, so the wedge doubles as a countdown; ::after inherits --sweep.
+      current.push(circle.animate(
+        [{ "--sweep": "0deg" }, { "--sweep": "360deg" }],
+        { duration: ms, easing: "linear" }
+      ));
+    }
     const grow = circle.animate(
       [{ transform: `scale(${p.from})` }, { transform: `scale(${p.to})` }],
       { duration: ms, fill: "forwards", easing: "ease-in-out" }
     );
-    grow.onfinish = () => { if (running) run(i + 1); };
-    current = [sweep, grow];
+    grow.onfinish = next;
+    current.push(grow);
   }
 
   function start() {
@@ -310,19 +379,21 @@
     run(0);
   }
 
-  function stop() {
+  function stop(message = "Press anywhere to begin") {
     running = false;
     document.body.classList.remove("running");
-    for (const a of current) a.cancel();
-    current = [];
-    phaseEl.textContent = "Press anywhere to begin";
+    clearPhase();
+    phaseEl.textContent = message;
+    hintEl.textContent = pattern.hint;
     if (window.randomNav) window.randomNav.show();
   }
 
-  // Tap anywhere to start; tap again to stop and pick another pattern.
+  // Tap anywhere to start; tap again to stop and pick another pattern
+  // (or, during an open-ended hold, to breathe again).
   document.body.addEventListener("pointerdown", (e) => {
     if (e.target.closest("button, a")) return;
-    if (running) stop();
+    if (advance) advance();
+    else if (running) stop();
     else start();
   });
   document.addEventListener("keydown", (e) => {
