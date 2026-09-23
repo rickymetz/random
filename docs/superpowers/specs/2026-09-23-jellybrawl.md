@@ -116,7 +116,11 @@ kept). The selfie is sent as a 128×128 JPEG data URL, about 6 KB.
 | **Jelly Dodgeball** | Teams (2v2–4v4) | 2–8 | stick + THROW | two lives each, halves of the court; last team standing, or players then lives at 75 s |
 | **Snake Pit** | Free-for-all | 2–8 | stick + BOOST | tails grow when you eat; bonk a wall or a tail and you're out; last snake, or the longest at 60 s |
 | **Tug of Jelly** | Teams (2v2–4v4) | 2–8 | mash PULL | drag the other team into the goo pit; taps during HEAVE! count triple; ahead at 40 s wins |
-| Tilt Maze | Free-for-all | 1–8 | tilt | first to the goal |
+| **Relay Race** | Teams (2v2–4v4) | 2–8 | stick + JUMP | four legs in your lane (hurdles, goo, bumpers); the baton passes on at the flag; first team home |
+| **Tower Stack** | Teams (2v2–4v4) | 2–8 | DROP (turns rotate) | overhang is sliced off; tallest tower at 45 s or first to 16 |
+| **Bomb Squad** | Teams (2v2–4v4) | 2–8 | defuser: wires / keypad / button; the rest: the manual | defuse three modules first; three strikes and it blows |
+| **Tilt Maze** | Free-for-all | 1–8 | tilt (stick fallback) | first three to the goal place; the rest rank by distance |
+| **Draw Duel** | Free-for-all | 3–8 | draw, then vote | same prompt for all; anonymous gallery; most votes |
 
 The first three are in the slice. The four party classics are follow-ups
 (they're small, and they test the button, tilt and "phone shows a list"
@@ -441,6 +445,27 @@ and Tug of Jelly. Dodgeball needed the most tuning: with one life and full
 aim-lead it was over in 10 s; two lives, slower throws, half the lead and a
 lives tie-break give 40–75 s rounds that mostly end with a winner.
 
-Batch 3: Relay Race, Tower Stack, Bomb Squad (the manual lives on the
-defusers' phones), Tilt Maze (the first tilt control, with the iOS motion
-permission) and Draw Duel (draw on the phone, vote on the TV).
+Batch 3 (built) added three phone layouts: `tilt` (DeviceOrientation, with
+the iOS permission tap, re-levelling, and a thumbstick fallback), `draw` (a
+square canvas that streams finished strokes, normalised to 0–1, to the TV)
+and `bomb` (manual pages plus the defuser's wires, keypad or hold button).
+`pads` gained `multi`, `cols` and per-pad label colours.
+
+- **Relay Race**: both lanes share one mirrored course. The runner rotates
+  each leg (1v1 runs all four). Bots fluff about one hurdle in eight.
+- **Tower Stack**: turns rotate within the team. The swing speeds up with
+  height. A clean miss costs 1.6 s.
+- **Bomb Squad**: modules are wires (3–5, KTANE-style rules keyed on count,
+  colours and serial parity), a keypad (four of six symbol columns, where
+  exactly one column holds all four), and a button (tap or hold; on a hold,
+  release on the strip colour's digit). The defuser rotates per module. The
+  manual is split between the human teammates who aren't defusing; with
+  nobody to read to, the defuser gets all of it.
+- **Tilt Maze**: a recursive-backtracker maze with extra loops. Holes sit
+  only in straight corridors, pushed to one side, never next to each other
+  or on a checkpoint. Blobs pass through each other. Bot testing found
+  three traps: holes on corners, back-to-back holes on opposite sides, and
+  a crowd shoving each other in at a respawn.
+- **Draw Duel**: a secret prompt, 45 s to draw with a live TV gallery, 20 s
+  to vote (you can't vote for yourself), then the reveal. Bots doodle a
+  face and a few scribbles.

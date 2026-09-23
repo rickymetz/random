@@ -22,10 +22,15 @@ import crown from "./games/crown.js";
 import dodgeball from "./games/dodgeball.js";
 import snake from "./games/snake.js";
 import tug from "./games/tug.js";
+import relay from "./games/relay.js";
+import stack from "./games/stack.js";
+import bombsquad from "./games/bombsquad.js";
+import maze from "./games/maze.js";
+import drawDuel from "./games/draw.js";
 import { makeBoard } from "./board.js";
 import { MAP_NAMES } from "./boards.js";
 
-const GAMES = [flap, sling, chomp, snipe, blackout, tagGame, kaiju, soccer, sumo, bumper, coinrush, potato, paint, crown, dodgeball, snake, tug];
+const GAMES = [flap, sling, chomp, snipe, blackout, tagGame, kaiju, soccer, sumo, bumper, coinrush, potato, paint, crown, dodgeball, snake, tug, relay, stack, bombsquad, maze, drawDuel];
 // canvas text only uses a web font once it's loaded; ask for both up front
 for (const f of [T.display, T.label]) document.fonts?.load(`40px ${f}`).catch(() => {});
 const COLORS = ["#ff2e63", "#00b7ff", "#ffd400", "#35e06b", "#b14dff", "#ff8a00", "#ff6ec7", "#00e0c6"];
@@ -44,6 +49,7 @@ const AWARDS = [
   ["goals", "Striker", "goals"], ["shoves", "Sumo slammer", "big shoves"], ["coins", "Coin magnet", "coins grabbed"], ["passes", "Hot hands", "bomb passes"],
   ["painted", "Painter", "tiles painted"], ["splats", "Splatter", "rivals splatted"], ["crown", "Royalty", "s wearing the crown"], ["knocks", "Crown thief", "crowns knocked off"],
   ["hits", "Dodgeball ace", "hits"], ["snacks", "Big appetite", "snacks eaten"], ["cutoffs", "Cut-off artist", "snakes cut off"], ["heaves", "Heave-ho", "HEAVE! taps"],
+  ["legs", "Anchor leg", "relay legs run"], ["perfects", "Steady hands", "perfect drops"], ["defused", "Bomb whisperer", "modules defused"], ["votes", "Crowd favourite", "votes"], ["plops", "Hole magnet", "falls down holes"],
   ["squashes", "Stomper", "blobs squashed"], ["cannon", "Artillery", "cannon shots"], ["wrecked", "Wrecking ball", "buildings flattened"], ["loot", "Master thief", "coins stolen"], ["catches", "Best hunter", "catches"], ["gulps", "Tables turned", "hunters gulped"],
 ];
 

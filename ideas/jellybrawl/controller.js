@@ -1,5 +1,6 @@
 // The phone controller: join a room, add a face, then render whatever layout
-// the TV sends. Intents go back as small messages (btn, dir, aim, fire, pick, act).
+// the TV sends. Intents go back as small messages (btn, dir, move, action, aim,
+// fire, pad, pick, stroke/undo/done for drawing; act is for TV menus).
 
 import { joinRoom } from "./net.js";
 
@@ -142,10 +143,11 @@ function render(l) {
     document.querySelector('meta[name="theme-color"]').content = l.you.color;
   }
   $("role").textContent = l.role || "";
+  tiltOff?.(); tiltOff = null;
   view.replaceChildren();
   view.onpointerdown = view.onpointermove = view.onpointerup = null;
   if (l.command && l.kind !== "wait") add(el("p", { className: "cmd", textContent: l.command }));
-  const kind = { wait, menu, choose, button, dpad, sling, pads, stick, scope, roll }[l.kind] || wait;
+  const kind = { wait, menu, choose, button, dpad, sling, pads, stick, scope, roll, tilt, draw, bomb }[l.kind] || wait;
   kind(l);
 }
 
@@ -220,22 +222,122 @@ function roll(l) {
   })));
 }
 
-// big coloured/numbered pads (microgames: MATCH!, COUNT!)
-function pads(l) {
-  const grid = el("div", { className: "pads" });
-  for (const p of l.pads) {
-    const b = el("button", { type: "button", textContent: p.label || "" });
+// big coloured/numbered pads (microgames: MATCH!, COUNT!; votes; wires).
+// One press locks the rest, unless multi (a keypad you press several of).
+function padGrid(list, o = {}) {
+  const grid = el("div", { className: "pads" + (o.small ? " small" : "") });
+  if (o.cols) grid.style.gridTemplateColumns = `repeat(${o.cols}, 1fr)`;
+  for (const p of list) {
+    const b = el("button", { type: "button", textContent: p.label || "", disabled: !!p.off });
     b.style.background = p.color;
+    if (p.fg) b.style.color = p.fg;
     b.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
+      if (b.disabled) return;
       conn.send({ t: "pad", id: p.id });
       navigator.vibrate?.(20);
+      if (o.multi) { b.disabled = true; return; }
       grid.querySelectorAll("button").forEach((x) => { x.disabled = x !== b; });
       b.classList.add("down");
     });
     grid.append(b);
   }
-  add(grid, l.hint && el("p", { className: "hint", textContent: l.hint }));
+  return grid;
+}
+function pads(l) { add(l.text && el("p", { className: "msg", textContent: l.text }), padGrid(l.pads, l), l.hint && el("p", { className: "hint", textContent: l.hint })); }
+
+// Tilt: steer by tilting the phone (iOS asks permission on a tap). Level is
+// wherever you hold it when you start. A thumbstick stands in when there's
+// no motion sensor.
+let tiltOff = null;
+function tilt(l) {
+  tiltOff?.();
+  const msg = el("p", { className: "hint", textContent: l.hint || "Tilt to roll" });
+  const dot = el("i"), bubble = el("div", { className: "level" }, dot);
+  let base = null, last = 0;
+  const on = (e) => {
+    if (e.beta == null) return;
+    if (!base) base = [e.gamma, e.beta];
+    const x = Math.max(-1, Math.min(1, (e.gamma - base[0]) / 25)), y = Math.max(-1, Math.min(1, (e.beta - base[1]) / 25));
+    dot.style.transform = `translate(${x * 60}px, ${y * 60}px)`;
+    const now = performance.now();
+    if (now - last > 50) { last = now; conn.send({ t: "move", x: +x.toFixed(2), y: +y.toFixed(2) }); }
+  };
+  const start = () => { addEventListener("deviceorientation", on); tiltOff = () => removeEventListener("deviceorientation", on); };
+  const level = el("button", { type: "button", textContent: "LEVEL HERE" });
+  level.addEventListener("click", () => { base = null; });
+  if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+    const ask = el("button", { type: "button", className: "big", textContent: "TAP TO ENABLE TILT" });
+    ask.addEventListener("click", async () => { try { if (await DeviceOrientationEvent.requestPermission() === "granted") { start(); ask.remove(); } else msg.textContent = "No tilt? Use the stick."; } catch { msg.textContent = "No tilt? Use the stick."; } });
+    add(ask);
+  } else start();
+  add(bubble, level, msg);
+  // fallback stick, always there (desktop, or tilt refused)
+  const pad = el("div", { className: "stick mini" }), knob = el("i");
+  pad.append(knob);
+  let o = null;
+  const at = (e) => {
+    let dx = e.clientX - o[0], dy = e.clientY - o[1]; const d = Math.hypot(dx, dy), R = 50;
+    if (d > R) { dx *= R / d; dy *= R / d; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    conn.send({ t: "move", x: +(dx / R).toFixed(2), y: +(dy / R).toFixed(2) });
+  };
+  pad.addEventListener("pointerdown", (e) => { const r = pad.getBoundingClientRect(); o = [r.left + r.width / 2, r.top + r.height / 2]; pad.setPointerCapture(e.pointerId); at(e); });
+  pad.addEventListener("pointermove", (e) => o && at(e));
+  const stop = () => { o = null; knob.style.transform = ""; conn.send({ t: "move", x: 0, y: 0 }); };
+  pad.addEventListener("pointerup", stop); pad.addEventListener("pointercancel", stop);
+  add(el("p", { className: "hint", textContent: "No tilt? Use the stick" }), pad);
+}
+
+// Draw: a square canvas; each finished stroke goes to the TV (normalised 0–1)
+function draw(l) {
+  add(l.prompt && el("p", { className: "prompt", textContent: l.prompt }));
+  const c = el("canvas", { className: "sketch", width: 600, height: 600 }), g = c.getContext("2d");
+  g.fillStyle = "#fff"; g.fillRect(0, 0, 600, 600); g.lineCap = g.lineJoin = "round";
+  const colors = ["#0b0710", "#ff2a6d", "#05d9e8", "#39ff14", "#f9f002", "#ff6b00", "#8a5cff", "#ffffff"];
+  let color = colors[0], width = 10, pts = null, strokes = [];
+  const pos = (e) => { const r = c.getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; };
+  const paint = (s) => { g.strokeStyle = s.c; g.lineWidth = s.w; g.beginPath(); s.pts.forEach(([x, y], i) => (i ? g.lineTo(x * 600, y * 600) : g.moveTo(x * 600, y * 600))); if (s.pts.length === 1) g.lineTo(s.pts[0][0] * 600 + 0.1, s.pts[0][1] * 600); g.stroke(); };
+  const redraw = () => { g.fillStyle = "#fff"; g.fillRect(0, 0, 600, 600); strokes.forEach(paint); };
+  c.addEventListener("pointerdown", (e) => { c.setPointerCapture(e.pointerId); pts = [pos(e)]; });
+  c.addEventListener("pointermove", (e) => { if (!pts) return; const p = pos(e), q = pts[pts.length - 1]; if (Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.006) return; pts.push(p); paint({ c: color, w: width, pts: pts.slice(-2) }); });
+  const end = () => {
+    if (!pts) return;
+    const s = { c: color, w: width, pts: pts.slice(0, 200).map(([x, y]) => [+x.toFixed(3), +y.toFixed(3)]) };
+    pts = null; strokes.push(s); paint(s);
+    conn.send({ t: "stroke", ...s });
+  };
+  c.addEventListener("pointerup", end); c.addEventListener("pointercancel", end);
+  const sw = el("div", { className: "swatches" }, ...colors.map((col) => {
+    const b = el("button", { type: "button", className: col === color ? "on" : "" });
+    b.style.background = col;
+    b.addEventListener("click", () => { color = col; sw.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); });
+    return b;
+  }));
+  const size = el("button", { type: "button", textContent: "THIN" });
+  size.addEventListener("click", () => { width = width === 10 ? 4 : width === 4 ? 22 : 10; size.textContent = width === 10 ? "THIN" : width === 4 ? "THICK" : "MEDIUM"; });
+  const undo = el("button", { type: "button", textContent: "UNDO" });
+  undo.addEventListener("click", () => { if (strokes.pop()) { redraw(); conn.send({ t: "undo" }); } });
+  const done = el("button", { type: "button", className: "big", textContent: "DONE" });
+  done.addEventListener("click", () => { conn.send({ t: "done" }); render({ kind: "wait", text: "Nice!", sub: "Waiting for the other artists…" }); });
+  add(c, sw, el("div", { className: "row" }, size, undo, done));
+}
+
+// Bomb Squad: your slice of the manual (scrolls), and, if you're the one
+// holding the bomb, the wires / keypad / button
+function bomb(l) {
+  if (l.manual?.length) add(el("div", { className: "manual" }, ...l.manual.map((sec) => el("section", {}, el("h3", { textContent: sec.title }), ...sec.lines.map((t) => el("p", { textContent: t }))))));
+  if (l.wires) add(el("p", { className: "hint", textContent: "CUT A WIRE" }), padGrid(l.wires, { cols: l.wires.length, small: true }));
+  if (l.keys) add(el("p", { className: "hint", textContent: "PRESS THE SYMBOLS IN ORDER" }), padGrid(l.keys, { cols: 4, multi: true }));
+  if (l.hold) {
+    const b = el("button", { type: "button", className: "hit bombbtn", textContent: l.hold.label });
+    b.style.background = l.hold.color;
+    const down = (e) => { e.preventDefault(); b.classList.add("down"); conn.send({ t: "btn", down: true }); navigator.vibrate?.(15); };
+    const up = () => { if (!b.classList.contains("down")) return; b.classList.remove("down"); conn.send({ t: "btn", down: false }); };
+    b.addEventListener("pointerdown", down); b.addEventListener("pointerup", up); b.addEventListener("pointercancel", up); b.addEventListener("pointerleave", up);
+    add(b);
+  }
+  if (l.hint) add(el("p", { className: "hint", textContent: l.hint }));
 }
 
 // Runner (sniper games): private radar / mini-map, thumbstick, optional action
