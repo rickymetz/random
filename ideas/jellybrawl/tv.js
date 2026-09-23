@@ -4,7 +4,7 @@
 import { hostRoom } from "./net.js";
 import { W, H, INK, POP, T, fit, grid, neon, text, outlined, rrect, shout, sunburst, halftone, panel, bomb, circle, blob, tag, star, shade, CRISP, flushCrisp, FX, PREFS } from "./gfx.js";
 import { qr } from "./qr.js";
-import { sfx, unlock } from "./sfx.js";
+import { sfx, unlock, music, setMix } from "./sfx.js";
 import flap from "./games/flap.js";
 import sling from "./games/sling.js";
 import chomp from "./games/chomp.js";
@@ -66,16 +66,19 @@ const SETTINGS = {
   marks: { label: "Colour-blind shapes", values: [false, true], names: { false: "Off", true: "On" } },
   bright: { label: "Brightness boost", values: [false, true], names: { false: "Off", true: "On" } },
   haptics: { label: "Phone buzz", values: [true, false], names: { true: "On", false: "Off" } },
+  music: { label: "Music", values: [true, false], names: { true: "On", false: "Off" } },
+  sounds: { label: "Sound effects", values: [true, false], names: { true: "On", false: "Off" } },
 };
 function loadSettings() {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem("jb-settings") || "{}"); } catch {}
   const reduced = matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  return { motion: reduced ? "reduced" : "full", crt: "full", text: 1, marks: false, bright: false, haptics: true, ...saved };
+  return { motion: reduced ? "reduced" : "full", crt: "full", text: 1, marks: false, bright: false, haptics: true, music: true, sounds: true, ...saved };
 }
 function applySettings() {
   PREFS.motion = S.opt.motion === "reduced" ? 0.25 : 1;
   PREFS.marks = S.opt.marks; PREFS.text = S.opt.text;
+  setMix({ music: S.opt.music ? 1 : 0, sfx: S.opt.sounds ? 1 : 0 });
   try { localStorage.setItem("jb-settings", JSON.stringify(S.opt)); } catch {}
 }
 const BOT_NAMES = ["Wobbles", "Gloop", "Jiggly", "Squish", "Blorp", "Mochi", "Puddin", "Boing"];
@@ -821,7 +824,7 @@ function frame(now) {
   S.frameMs = (S.frameMs ?? 16) * 0.97 + dt * 1000 * 0.03;
   if (S.frameMs > 24) S.slowFor = (S.slowFor || 0) + dt; else S.slowFor = 0;
   if (S.slowFor > 3) S.slow = true;
-  try { tick(dt); draw(); syncNav(); }
+  try { tick(dt); draw(); syncNav(); syncMusic(); }
   catch (err) {
     console.error(err);
     // a minigame that throws is abandoned as a tie rather than taking the night down with it
@@ -887,6 +890,21 @@ function playHere() {
   const f = document.getElementById("solo");
   if (!document.body.classList.contains("solo")) { f.src = `index.html?room=${S.net.code}`; f.hidden = false; document.body.classList.add("solo"); }
   f.focus();
+}
+
+// The music follows the scene: a laid-back groove in the lobby and between
+// games, a driving track for each game (its tempo and key from the game),
+// a bouncy one on the board and a victory lap at the end. Paused, it ducks.
+let ducked = false;
+function syncMusic() {
+  const sc = S.scene;
+  if (sc === "gate") return;
+  if (sc === "intro" || sc === "game") music.play("game", S.def?.id || "game");
+  else if (sc === "duel") music.play("game", "duel");
+  else if (sc === "board" || (S.mode === "board" && sc === "results")) music.play("board");
+  else if (sc === "final") music.play("final");
+  else music.play("lobby");
+  if (!!S.paused !== ducked) { ducked = !!S.paused; music.duck(ducked); }
 }
 
 // The hub's bottom bar shows on the title, lobby and final screens and tucks

@@ -54,6 +54,9 @@
   .stage:hover .arrow, .stage .arrow:focus-visible { opacity: 1; }
   .stage .prev { left: 0; } .stage .next { right: 0; }
   @media (hover: none) { .stage .arrow { opacity: .8; } }
+  .stage .sound { position: absolute; right: 10px; top: 10px; z-index: 1; font: 18px/1 var(--label); letter-spacing: 2px; text-transform: uppercase;
+    color: #fff; background: rgba(11,6,22,.78); border: 2px solid var(--cyan); padding: 8px 12px; cursor: pointer; box-shadow: 3px 3px 0 var(--pink); }
+  .stage .sound:hover { background: #2a0845; }
   .caption { font-size: 14px; color: var(--dim); margin: 6px 0 0; min-height: 1.5em; }
   .thumbs { display: flex; gap: 6px; overflow-x: auto; padding: 8px 0 10px; scrollbar-color: var(--line) transparent; scroll-snap-type: x proximity; }
   .thumbs button { position: relative; flex: 0 0 auto; width: 116px; aspect-ratio: 16 / 9; padding: 0; border: 2px solid transparent; background: #000; cursor: pointer; opacity: .6; scroll-snap-align: start; }
@@ -304,12 +307,18 @@ function show(i) {
   const it = items[at];
   clearTimeout(timer);
   stage.querySelector("video, img")?.remove();
+  stage.querySelector(".sound")?.remove();
   let media;
   if (it.video) {
     media = el("video", { src: it.video, poster: it.poster, muted: true, playsInline: true, controls: true, preload: "metadata" });
     media.muted = true; // the attribute alone doesn't count for autoplay everywhere
     media.addEventListener("ended", () => auto && show(at + 1));
     if (auto) media.play().catch(() => { auto && (timer = setTimeout(() => show(at + 1), DWELL)); }); // autoplay blocked: treat it like a picture
+    // browsers only autoplay muted: one clear button to hear the soundtrack
+    const sound = el("button", { type: "button", className: "sound", textContent: "🔇 Sound on" });
+    sound.addEventListener("click", () => { media.muted = !media.muted; if (!media.muted) media.play().catch(() => {}); });
+    media.addEventListener("volumechange", () => { sound.textContent = media.muted ? "🔇 Sound on" : "🔊 Sound off"; });
+    stage.append(sound);
   } else {
     media = el("img", { src: it.src, alt: it.caption, width: 1920, height: 1080 });
     media.addEventListener("click", () => { stop(); open(it.lb); });

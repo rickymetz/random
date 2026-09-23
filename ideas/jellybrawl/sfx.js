@@ -1,12 +1,50 @@
-// Synthesised sound effects (WebAudio) — no asset files. The TV unlocks audio
-// on its first click or key press.
+// Synthesised sound effects and music (WebAudio) — no asset files. The TV
+// unlocks audio on its first click or key press.
+//
+// Everything goes through two buses, sound effects and music, into a master
+// gain: the settings switch each on or off, and tap() hands the master mix
+// to a recorder (the preview's sizzle reel).
 
-let ac = null;
+import { createMusic } from "./music.js";
+
+let ac = null, master = null, fxBus = null, musicBus = null, tune = null;
+let mix = { sfx: 1, music: 1 }, want = null; // the song asked for before audio was unlocked
 export function unlock() {
   try {
-    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (!ac) {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      master = ac.createGain(); master.connect(ac.destination);
+      fxBus = ac.createGain(); fxBus.connect(master);
+      musicBus = ac.createGain(); musicBus.gain.value = 0.55; musicBus.connect(master);
+      tune = createMusic(ac, musicBus);
+      setMix(mix);
+      if (want) music.play(...want);
+    }
     if (ac.state === "suspended") ac.resume();
   } catch { ac = null; }
+}
+
+// { sfx: 0..1, music: 0..1 }
+export function setMix(m) {
+  mix = { ...mix, ...m };
+  if (!ac) return;
+  fxBus.gain.setTargetAtTime(mix.sfx, ac.currentTime, 0.05);
+  musicBus.gain.setTargetAtTime(0.55 * mix.music, ac.currentTime, 0.1);
+}
+
+export const music = {
+  play(name, seed = "") { want = [name, seed]; tune?.play(name, seed); },
+  stop() { want = null; tune?.stop(); },
+  duck(on) { tune?.duck(on); },
+};
+
+// the master mix as a MediaStream (for recording), or null before unlock
+let tapNode = null;
+export function tap() {
+  if (!ac) return null;
+  tapNode ??= ac.createMediaStreamDestination();
+  master.connect(tapNode);
+  return tapNode.stream;
 }
 
 function tone(freq, dur, { type = "square", vol = 0.08, slide = 0, delay = 0 } = {}) {
@@ -18,7 +56,7 @@ function tone(freq, dur, { type = "square", vol = 0.08, slide = 0, delay = 0 } =
   if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
   g.gain.setValueAtTime(vol, t);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g).connect(ac.destination);
+  o.connect(g).connect(fxBus);
   o.start(t);
   o.stop(t + dur + 0.02);
 }
@@ -30,7 +68,7 @@ function noise(dur, vol = 0.15) {
   for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
   const s = ac.createBufferSource(), g = ac.createGain();
   s.buffer = buf; g.gain.value = vol;
-  s.connect(g).connect(ac.destination);
+  s.connect(g).connect(fxBus);
   s.start();
 }
 
