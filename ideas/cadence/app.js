@@ -223,6 +223,15 @@
     ]);
   }
 
+  /* A goal of zero is no goal: its meter only shows once there's something
+   * on it, so a week of bonus sessions still shows up. */
+  function goalMeters(stats, suffix) {
+    return [
+      stats.strengthTarget || stats.strength ? meter('Calisthenics' + (suffix || ''), stats.strength, stats.strengthTarget) : null,
+      stats.mobilityTarget || stats.mobility ? meter('Mobility' + (suffix || ''), stats.mobility, stats.mobilityTarget) : null
+    ];
+  }
+
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
   /* Ticking a box used to store nothing at all, so the "I already know these
@@ -594,26 +603,18 @@
 
     var nudge = nudgeFor(date, stats);
     if (nudge) {
-      var content = [
+      root.appendChild(h('div', { class: 'banner' }, [
         h('span', { class: 'banner-glyph', 'aria-hidden': true, text: nudge.glyph }),
         h('span', { text: nudge.text })
-      ];
-      root.appendChild(nudge.date
-        ? h('button', {
-            class: 'banner banner-action', type: 'button',
-            onclick: function () { session.start(nudge.date, nudge.workout.id, null); }
-          }, content)
-        : h('div', { class: 'banner' }, content));
+      ]));
     }
 
     var streak = S.streakInfo();
     root.appendChild(h('div', { class: 'stat-grid' }, [
       h('section', { class: 'card' }, [
         h('div', { class: 'eyebrow', text: 'This week' }),
-        h('div', { style: 'height:.6rem' }),
-        meter('Calisthenics', stats.strength, stats.strengthTarget),
-        meter('Mobility', stats.mobility, stats.mobilityTarget)
-      ]),
+        h('div', { style: 'height:.6rem' })
+      ].concat(goalMeters(stats))),
       /* A bare zero under "a week counts when both targets are met" is the
        * same card a brand-new install shows — five good weeks and one missed
        * one rendered as though none of it had happened. The streak only
@@ -662,6 +663,15 @@
   function programMeta(workout) {
     return kindLabel(workout) + ' · ' + plural(R.flatten(workout).length, 'exercise', 'exercises') +
       ' · about ' + estimateMinutes(workout) + ' min';
+  }
+
+  /* "Counts toward the 2 mobility still to go" — so picking a la carte is
+   * picking toward the week. */
+  function goalHint(workout, stats) {
+    if (workout.kind !== 'strength' && workout.kind !== 'mobility') return '';
+    var left = workout.kind === 'strength' ? stats.strengthTarget - stats.strength : stats.mobilityTarget - stats.mobility;
+    if (left <= 0) return '';
+    return 'Counts toward the ' + left + ' ' + (workout.kind === 'strength' ? 'calisthenics' : 'mobility') + ' still to go';
   }
 
   /* Taking a program off a day throws away whatever was logged in it. */
@@ -748,6 +758,7 @@
       })
     ]));
     var choices = S.programs().filter(function (w) { return inPlan.indexOf(w.id) < 0; });
+    var stats = S.weekStats(S.mondayOf(date));
     if (!choices.length) {
       card.appendChild(h('p', { class: 'small muted', text: 'Every program is already on today. You can make a new one in Settings.' }));
     }
@@ -768,7 +779,8 @@
         }
       }, [
         h('span', { class: 'picker-name', text: w.name }),
-        h('span', { class: 'small muted', text: programMeta(w) })
+        h('span', { class: 'small muted', text: programMeta(w) }),
+        goalHint(w, stats) ? h('span', { class: 'picker-goal', text: goalHint(w, stats) }) : null
       ]));
     });
     card.appendChild(h('button', {
@@ -785,7 +797,7 @@
     }
     if (stats.complete) return 'This week is already complete.';
     if (streak.best > streak.current) return 'Best run so far: ' + plural(streak.best, 'week', 'weeks') + '.';
-    return 'A week counts when both targets are met.';
+    return 'A week counts when you hit your goals.';
   }
 
   function firstUndone(date, workout) {
@@ -810,46 +822,32 @@
    * session could still save the week — then start counting your debt once
    * the week was already lost, including on the rest day, where it once read
    * "behind by 3 sessions with 1 days left" above a meter showing 3 of 3. */
+  /* A la carte: what's left is counted against your goals, not against a
+   * plan, and any day can take one session of each kind. */
   function nudgeFor(date, stats) {
-    if (stats.complete) return { glyph: '✦', text: 'Both targets met this week. Anything else is a bonus.' };
+    if (stats.complete) return { glyph: '✦', text: 'Goals met this week. Anything else is a bonus.' };
 
-    // A day with nothing that counts toward the week — a rest day, or only
-    // the morning stretch — is not the day to be told you're behind.
-    var counted = S.workoutsFor(date).some(function (w) { return w.kind === 'strength' || w.kind === 'mobility'; });
-    if (!counted) return null;
+    var needStrength = Math.max(0, stats.strengthTarget - stats.strength);
+    var needMobility = Math.max(0, stats.mobilityTarget - stats.mobility);
+    if (!needStrength && !needMobility) return null;
 
-    var short = (stats.strengthTarget - stats.strength) + (stats.mobilityTarget - stats.mobility);
-    if (short <= 0) return null;
-
-    var monday = S.mondayOf(date);
-    var todayIdx = S.dayIndex(date);
-
-    function openOn(day) {
-      return S.workoutsFor(day).filter(function (w) {
-        return (w.kind === 'strength' || w.kind === 'mobility') && !S.isSessionDone(day, w.id);
-      });
-    }
-
-    var open = null;
-    for (var i = 0; i < todayIdx && !open; i++) {
-      var past = S.addDays(monday, i);
-      var pastOpen = openOn(past);
-      if (pastOpen.length) open = { date: past, workout: pastOpen[0], day: R.DAYS[i] };
-    }
-
-    var remaining = 0;
-    for (var j = todayIdx; j < 7; j++) remaining += openOn(S.addDays(monday, j)).length;
-
-    if (short > remaining) {
+    var daysLeft = 7 - S.dayIndex(date);
+    // Anything already done today has used today up for its kind.
+    var doneToday = S.workoutsFor(date).filter(function (w) { return S.isSessionDone(date, w.id); });
+    var usedStrength = doneToday.some(function (w) { return w.kind === 'strength'; });
+    var usedMobility = doneToday.some(function (w) { return w.kind === 'mobility'; });
+    if (needStrength > daysLeft - (usedStrength ? 1 : 0) || needMobility > daysLeft - (usedMobility ? 1 : 0)) {
       return { glyph: '○', text: 'This one isn’t going to be a full week. Get one good session in and start clean on Monday.' };
     }
-    if (open) {
-      return {
-        glyph: '◑', date: open.date, workout: open.workout,
-        text: open.day.long + '’s ' + open.workout.name + ' is still open. Do it today and the week’s still on.'
-      };
-    }
-    return { glyph: '◑', text: plural(short, 'session', 'sessions') + ' to go, with ' + plural(remaining, 'session', 'sessions') + ' planned to do ' + (short === 1 ? 'it' : 'them') + '.' };
+
+    var parts = [];
+    if (needStrength) parts.push(needStrength + ' calisthenics');
+    if (needMobility) parts.push(needMobility + ' mobility');
+    return {
+      glyph: '◑',
+      text: parts.join(' and ') + ' to go, with ' + plural(daysLeft, 'day', 'days') + ' left' +
+        (daysLeft === 1 ? '.' : ' — any program, any day.')
+    };
   }
 
   /* ---------- week ---------- */
@@ -971,10 +969,8 @@
     }
 
     root.appendChild(h('section', { class: 'card', style: 'margin-top:1rem' }, [
-      h('div', { class: 'card-head' }, [h('h2', { text: 'Week ' + weekNo + ' tally' }), pattern.length ? h('span', { class: 'small muted', text: pattern.join(' · ').replace(/cal/g, '') }) : null]),
-      meter('Calisthenics sessions', stats.strength, stats.strengthTarget),
-      meter('Mobility sessions', stats.mobility, stats.mobilityTarget)
-    ]));
+      h('div', { class: 'card-head' }, [h('h2', { text: 'Week ' + weekNo + ' tally' }), pattern.length ? h('span', { class: 'small muted', text: pattern.join(' · ').replace(/cal/g, '') }) : null])
+    ].concat(goalMeters(stats, ' sessions'))));
   }
 
   /* ---------- progress ---------- */
@@ -1153,7 +1149,38 @@
   var editingItem = null;
   var deferredInstall = null;
 
-  /* ---------- the weekly schedule ---------- */
+  /* ---------- weekly goals ---------- */
+
+  function goalsCard() {
+    var g = S.goals();
+    function picker(id, label, key) {
+      var options = [];
+      for (var n = 0; n <= 7; n++) options.push(h('option', { value: String(n), selected: g[key] === n, text: n === 0 ? 'No goal' : plural(n, 'session', 'sessions') }));
+      return h('div', { class: 'field' }, [
+        h('label', { for: id, text: label }),
+        h('select', {
+          id: id,
+          onchange: function (e) {
+            var next = { strength: g.strength, mobility: g.mobility };
+            next[key] = Number(e.target.value);
+            S.setGoals(next.strength, next.mobility);
+            toast('Goals updated for this week on');
+          }
+        }, options)
+      ]);
+    }
+    return h('section', { class: 'card' }, [
+      h('div', { class: 'card-head' }, [h('h2', { text: 'Weekly goals' })]),
+      h('p', { class: 'small muted', style: 'margin-bottom:.8rem', text: 'Do any program on any day — every finished session counts toward its kind. A week counts when you hit both. Daily habits like the morning stretch don’t count toward either.' }),
+      h('div', { class: 'field-row' }, [
+        picker('goal-strength', 'Calisthenics a week', 'strength'),
+        picker('goal-mobility', 'Mobility a week', 'mobility')
+      ]),
+      h('p', { class: 'small muted', text: 'Changes apply from this week on; weeks behind you keep the goals they had.' })
+    ]);
+  }
+
+  /* ---------- the weekly plan ---------- */
 
   function scheduleName(token) {
     if (token === R.ROTATION) return 'Calisthenics A/B';
@@ -1179,7 +1206,7 @@
 
     var card = h('section', { class: 'card' }, [
       h('div', { class: 'card-head' }, [
-        h('h2', { text: 'Weekly schedule' }),
+        h('h2', { text: 'Weekly plan' }),
         S.state.schedules.length ? h('button', {
           class: 'btn btn-sm btn-ghost', type: 'button', text: 'Reset',
           onclick: function () {
@@ -1189,7 +1216,7 @@
           }
         }) : null
       ]),
-      h('p', { class: 'small muted', text: 'What each day runs. Changes apply from this week on; a day you’ve already started keeps its programs. To change a single day, use Today.' })
+      h('p', { class: 'small muted', text: 'What Today suggests each day — a starting point, not the goal. Pick something else on the day whenever you like. Changes apply from this week on; a day you’ve already started keeps its programs.' })
     ]);
 
     var rows = h('div', { class: 'sched' });
@@ -1245,6 +1272,7 @@
     var root = views.settings;
     clear(root);
 
+    root.appendChild(goalsCard());
     root.appendChild(scheduleEditor());
 
     root.appendChild(h('section', { class: 'card' }, [
@@ -2318,10 +2346,7 @@
 
       // The weekly meters on a session you bailed out of only twist the knife.
       if (complete) {
-        body.appendChild(h('div', { style: 'text-align:left;margin-top:1rem' }, [
-          meter('Calisthenics', stats.strength, stats.strengthTarget),
-          meter('Mobility', stats.mobility, stats.mobilityTarget)
-        ]));
+        body.appendChild(h('div', { style: 'text-align:left;margin-top:1rem' }, goalMeters(stats)));
       }
 
       this.progressionCandidates().forEach(function (ex) {

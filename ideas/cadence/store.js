@@ -10,6 +10,8 @@
   var KEY = 'cadence.v1';
   var DAY_MS = 86400000;
 
+  var DEFAULT_GOALS = { strength: 3, mobility: 3 };
+
   var listeners = [];
   var state = null;
 
@@ -77,6 +79,7 @@
       phaseOffset: 0,
       routine: null,
       schedules: [],
+      goals: [{ from: toISO(mondayOf(today())), strength: DEFAULT_GOALS.strength, mobility: DEFAULT_GOALS.mobility }],
       dayPlans: {},
       startedISO: toISO(today()),
       sessions: {},
@@ -246,6 +249,24 @@
     return Object.keys(byWeek).sort().slice(-200).map(function (from) { return { from: from, days: byWeek[from] }; });
   }
 
+  /* Weekly goals, versioned by the Monday they took effect like the plan is.
+   * A week with no goals entry predates goals: its target is what its plan
+   * scheduled, which is how it was scored at the time. */
+  function sanitizeGoals(raw) {
+    if (!Array.isArray(raw)) return null;
+    var byWeek = {};
+    raw.forEach(function (entry) {
+      if (!entry || typeof entry !== 'object' || !/^\d{4}-\d{2}-\d{2}$/.test(entry.from)) return;
+      byWeek[toISO(mondayOf(fromISO(entry.from)))] = {
+        strength: Math.round(num(entry.strength, 0, 7, DEFAULT_GOALS.strength)),
+        mobility: Math.round(num(entry.mobility, 0, 7, DEFAULT_GOALS.mobility))
+      };
+    });
+    return Object.keys(byWeek).sort().slice(-200).map(function (from) {
+      return { from: from, strength: byWeek[from].strength, mobility: byWeek[from].mobility };
+    });
+  }
+
   /* Data from before schedules could be edited followed the original week.
    * It keeps that week for everything already behind it and gets the current
    * default from this week on, so no past Sunday turns into a missed session. */
@@ -313,6 +334,7 @@
       phaseOffset: data.phaseOffset === 1 ? 1 : 0,
       routine: sanitizeRoutine(data.routine),
       schedules: Array.isArray(data.schedules) ? sanitizeSchedules(data.schedules) : legacySchedules(data),
+      goals: sanitizeGoals(data.goals) || [{ from: toISO(mondayOf(today())), strength: DEFAULT_GOALS.strength, mobility: DEFAULT_GOALS.mobility }],
       dayPlans: sanitizeDayPlans(data.dayPlans),
       sessions: sanitizeSessions(data.sessions),
       retired: sanitizeRetired(data.retired),
@@ -640,26 +662,50 @@
 
   /* ---------- weekly counters & streak ---------- */
 
-  /* A week's target is only the sessions that were actually available in it.
-   * Installing on a Wednesday used to leave week one needing 3 + 3 with four
-   * days gone, so a perfect first week still ended on a streak of zero.
+  function goalsAt(date) {
+    var monday = toISO(mondayOf(date));
+    var found = null;
+    state.goals.forEach(function (entry) { if (entry.from <= monday) found = entry; });
+    return found;
+  }
+
+  function goals() {
+    return goalsAt(today()) || DEFAULT_GOALS;
+  }
+
+  /* From this week on — changing a goal never re-scores a week behind you. */
+  function setGoals(strength, mobility) {
+    var from = toISO(mondayOf(today()));
+    state.goals = state.goals.filter(function (entry) { return entry.from < from; });
+    state.goals.push({
+      from: from,
+      strength: Math.round(num(strength, 0, 7, DEFAULT_GOALS.strength)),
+      mobility: Math.round(num(mobility, 0, 7, DEFAULT_GOALS.mobility))
+    });
+    emit();
+  }
+
+  /* Any program on any day counts toward the goal for its kind; habits and
+   * rest count toward nothing. Which day it was planned for doesn't matter.
    *
-   * The target comes from the weekly plan alone. A program you add to a day
-   * counts once it's done, but never raises the bar — an extra stretch on a
-   * Sunday shouldn't make the week harder to finish. */
+   * A week you only had part of — you installed on a Wednesday — asks for its
+   * share of the goal, not all of it: the old scoring left a perfect first
+   * week ending on a streak of zero. Weeks from before goals existed keep the
+   * target their plan gave them. */
   function weekStats(monday) {
     var strength = 0;
     var mobility = 0;
+    var available = 0;
     var planned = { strength: 0, mobility: 0 };
-    var partial = false;
     for (var i = 0; i < 7; i++) {
       var date = addDays(monday, i);
-      var available = !state.startedISO || toISO(date) >= state.startedISO;
+      var open = !state.startedISO || toISO(date) >= state.startedISO;
+      if (open) available++;
       scheduledIds(date).forEach(function (id) {
         var plannedWorkout = findWorkout(id);
-        if (!plannedWorkout || (plannedWorkout.kind !== 'strength' && plannedWorkout.kind !== 'mobility')) return;
-        if (available) planned[plannedWorkout.kind]++;
-        else partial = true;
+        if (open && plannedWorkout && (plannedWorkout.kind === 'strength' || plannedWorkout.kind === 'mobility')) {
+          planned[plannedWorkout.kind]++;
+        }
       });
       daySessions(date).forEach(function (entry) {
         var done = entry.done && findWorkout(entry.workoutId);
@@ -668,14 +714,18 @@
         if (done.kind === 'mobility') mobility++;
       });
     }
-    var total = planned.strength + planned.mobility;
+    var goal = goalsAt(monday);
+    var target = goal
+      ? { strength: Math.round(goal.strength * available / 7), mobility: Math.round(goal.mobility * available / 7) }
+      : planned;
+    var total = target.strength + target.mobility;
     return {
       strength: strength,
       mobility: mobility,
-      strengthTarget: planned.strength,
-      mobilityTarget: planned.mobility,
-      partial: partial,
-      complete: total > 0 && strength >= planned.strength && mobility >= planned.mobility
+      strengthTarget: target.strength,
+      mobilityTarget: target.mobility,
+      partial: available < 7,
+      complete: total > 0 && strength >= target.strength && mobility >= target.mobility
     };
   }
 
@@ -985,6 +1035,9 @@
     reopenSession: reopenSession,
     setSessionNote: setSessionNote,
     weekStats: weekStats,
+    goals: goals,
+    goalsAt: goalsAt,
+    setGoals: setGoals,
     streakInfo: streakInfo,
     lastLoggedDate: lastLoggedDate,
     toggleDemoHidden: toggleDemoHidden,

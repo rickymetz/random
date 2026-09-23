@@ -1046,3 +1046,5 @@ body.is-session .toast { top: 4.5rem; bottom: auto; }
 /* The two things you read from arm's length were the smallest text here. */
 .session-setline { font-size: 1.2rem; }
 .demo-cue { font-size: 0.94rem; }
+
+.picker-goal { display: block; margin-top: 0.15rem; font-size: 0.78rem; color: var(--accent); font-weight: 500; }
