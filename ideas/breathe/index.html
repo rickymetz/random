@@ -4,13 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Breathe</title>
-<meta name="description" content="A one-minute box-breathing circle.">
+<meta name="description" content="A breathing circle: box, 4-7-8, coherent, physiological sigh and more.">
 <style>
   :root {
     --bg: #0e1420;
     --ink: #dce6f2;
     --muted: #6f7f95;
     --glow: #5aa9e6;
+    --chip: rgba(220, 230, 242, 0.08);
+    --chip-on: rgba(90, 169, 230, 0.28);
   }
   /* Registered so the sweep angle can be animated; browsers without
      @property just skip the countdown overlay. */
@@ -27,8 +29,9 @@
     min-height: 100vh;
     display: grid;
     place-items: center;
+    padding: 0 16px;
   }
-  main { text-align: center; }
+  main { text-align: center; max-width: 30rem; }
   .circle {
     position: relative;
     width: 180px;
@@ -39,7 +42,7 @@
     box-shadow: 0 0 60px rgba(90, 169, 230, 0.35);
     transform: scale(0.6);
   }
-  /* Countdown: a wedge that sweeps around the circle once per 4s phase */
+  /* Countdown: a wedge that sweeps around the circle once per phase */
   .circle::after {
     content: "";
     position: absolute;
@@ -48,7 +51,31 @@
     background: conic-gradient(rgba(255, 255, 255, 0.2) var(--sweep), transparent 0);
   }
   .phase { font-size: 1.3rem; letter-spacing: 0.04em; min-height: 1.6em; }
-  .hint { color: var(--muted); margin-top: 0.75rem; font-size: 0.85rem; }
+  .hint { color: var(--muted); margin-top: 0.75rem; font-size: 0.85rem; min-height: 2.6em; }
+  .patterns {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+    transition: opacity 0.4s;
+  }
+  .patterns button {
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--ink);
+    background: var(--chip);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0.35rem 0.85rem;
+    cursor: pointer;
+  }
+  .patterns button[aria-pressed="true"] {
+    background: var(--chip-on);
+    border-color: var(--glow);
+  }
+  .patterns button:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+  body.running .patterns { opacity: 0; pointer-events: none; }
   a.back {
     position: fixed;
     top: 1rem; left: 1.25rem;
@@ -64,41 +91,135 @@
 <main>
   <div class="circle" id="circle"></div>
   <div class="phase" id="phase">Press anywhere to begin</div>
-  <div class="hint">Box breathing — 4s in, 4s hold, 4s out, 4s hold</div>
+  <div class="hint" id="hint"></div>
+  <div class="patterns" id="patterns" role="group" aria-label="Breathing pattern"></div>
 </main>
 <script>
   const circle = document.getElementById("circle");
   const phaseEl = document.getElementById("phase");
-  const SECONDS = 4;
-  const phases = [
-    { label: "Breathe in", from: 0.6, to: 1.0 },
-    { label: "Hold",       from: 1.0, to: 1.0 },
-    { label: "Breathe out", from: 1.0, to: 0.6 },
-    { label: "Hold",       from: 0.6, to: 0.6 },
-  ];
-  let running = false;
+  const hintEl = document.getElementById("hint");
+  const patternsEl = document.getElementById("patterns");
 
-  function run(i) {
-    const p = phases[i % phases.length];
-    phaseEl.textContent = p.label;
-    // Linear, so the wedge doubles as a countdown; ::after inherits --sweep.
-    circle.animate(
-      [{ "--sweep": "0deg" }, { "--sweep": "360deg" }],
-      { duration: SECONDS * 1000, easing: "linear" }
-    );
-    circle.animate(
-      [{ transform: `scale(${p.from})` }, { transform: `scale(${p.to})` }],
-      { duration: SECONDS * 1000, fill: "forwards", easing: "ease-in-out" }
-    ).onfinish = () => run(i + 1);
+  // Circle sizes: SMALL is empty lungs, BIG is full.
+  const SMALL = 0.6, BIG = 1.0;
+  const inhale = (s, to = BIG, from = SMALL) => ({ label: "Breathe in", s, from, to });
+  const exhale = (s, from = BIG) => ({ label: "Breathe out", s, from, to: SMALL });
+  const hold = (s, at) => ({ label: "Hold", s, from: at, to: at });
+
+  const PATTERNS = [
+    {
+      id: "box", name: "Box",
+      hint: "Box breathing — 4s in, 4s hold, 4s out, 4s hold",
+      phases: [inhale(4), hold(4, BIG), exhale(4), hold(4, SMALL)],
+    },
+    {
+      id: "478", name: "4-7-8",
+      hint: "Relaxing breath — 4s in, 7s hold, 8s out",
+      phases: [inhale(4), hold(7, BIG), exhale(8)],
+    },
+    {
+      id: "coherent", name: "Coherent",
+      hint: "Resonant breathing — 5.5s in, 5.5s out, about six breaths a minute",
+      phases: [inhale(5.5), exhale(5.5)],
+    },
+    {
+      id: "sigh", name: "Sigh",
+      hint: "Physiological sigh — a deep breath in, a short top-up sip, a long slow exhale",
+      phases: [
+        inhale(2, 0.9),
+        { label: "Sip in more", s: 1, from: 0.9, to: BIG },
+        exhale(6),
+        hold(1, SMALL),
+      ],
+    },
+    {
+      id: "triangle", name: "Triangle",
+      hint: "Triangle breathing — 4s in, 4s hold, 4s out",
+      phases: [inhale(4), hold(4, BIG), exhale(4)],
+    },
+    {
+      id: "calm", name: "Long exhale",
+      hint: "Extended exhale — 4s in, 6s out, to settle the nervous system",
+      phases: [inhale(4), exhale(6)],
+    },
+    {
+      id: "equal", name: "Equal",
+      hint: "Sama vritti — 4s in, 4s out, smooth and even",
+      phases: [inhale(4), exhale(4)],
+    },
+  ];
+
+  const STORE_KEY = "breathe:pattern";
+  let pattern = PATTERNS[0];
+  try {
+    pattern = PATTERNS.find((p) => p.id === localStorage.getItem(STORE_KEY)) || pattern;
+  } catch (e) {}
+
+  let running = false;
+  let current = [];
+
+  function select(p) {
+    pattern = p;
+    hintEl.textContent = p.hint;
+    for (const b of patternsEl.children) {
+      b.setAttribute("aria-pressed", String(b.dataset.id === p.id));
+    }
+    try { localStorage.setItem(STORE_KEY, p.id); } catch (e) {}
   }
 
-  document.body.addEventListener("pointerdown", () => {
-    if (running) return;
+  for (const p of PATTERNS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.id = p.id;
+    b.textContent = p.name;
+    b.addEventListener("click", () => select(p));
+    patternsEl.appendChild(b);
+  }
+  select(pattern);
+
+  function run(i) {
+    const p = pattern.phases[i % pattern.phases.length];
+    const ms = p.s * 1000;
+    phaseEl.textContent = p.label;
+    // Linear, so the wedge doubles as a countdown; ::after inherits --sweep.
+    const sweep = circle.animate(
+      [{ "--sweep": "0deg" }, { "--sweep": "360deg" }],
+      { duration: ms, easing: "linear" }
+    );
+    const grow = circle.animate(
+      [{ transform: `scale(${p.from})` }, { transform: `scale(${p.to})` }],
+      { duration: ms, fill: "forwards", easing: "ease-in-out" }
+    );
+    grow.onfinish = () => { if (running) run(i + 1); };
+    current = [sweep, grow];
+  }
+
+  function start() {
     running = true;
+    document.body.classList.add("running");
     // Tuck the hub's navbar away for the exercise (a handle at the bottom
     // edge brings it back).
     if (window.randomNav) window.randomNav.hide();
     run(0);
+  }
+
+  function stop() {
+    running = false;
+    document.body.classList.remove("running");
+    for (const a of current) a.cancel();
+    current = [];
+    phaseEl.textContent = "Press anywhere to begin";
+    if (window.randomNav) window.randomNav.show();
+  }
+
+  // Tap anywhere to start; tap again to stop and pick another pattern.
+  document.body.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button, a")) return;
+    if (running) stop();
+    else start();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && running) stop();
   });
 </script>
 </body>
