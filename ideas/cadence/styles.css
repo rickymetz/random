@@ -288,6 +288,104 @@ button { cursor: pointer; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .hero .btn { margin-top: 0.85rem; }
 
+.hero .hero-change { margin-top: 0.35rem; min-height: 2.5rem; font-size: 0.86rem; }
+
+/* More than one program today: a row of tabs to pick which the hero shows. */
+.program-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.7rem; }
+.program-tab {
+  min-height: 2.25rem;
+  padding: 0 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+.program-tab:hover { border-color: var(--accent); }
+.program-tab.is-active { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); }
+.program-tab-done { color: var(--good); }
+
+/* ---------- program picker ---------- */
+
+.picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.8rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.picker-main { min-width: 0; flex: 1 1 10rem; }
+.picker-name { display: block; font-weight: 500; }
+.picker-choice {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  margin-top: 0.45rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: var(--card-2);
+  color: var(--ink);
+  text-align: left;
+}
+.picker-choice:hover { border-color: var(--accent); }
+
+/* ---------- weekly schedule ---------- */
+
+.sched { margin-top: 0.7rem; }
+.sched-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.sched-row:last-child { border-bottom: 0; }
+.sched-day { width: 2.4rem; font-weight: 600; font-size: 0.85rem; }
+.sched-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; flex: 1 1 10rem; min-width: 0; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-height: 2rem;
+  padding: 0 0.2rem 0 0.7rem;
+  border-radius: 999px;
+  background: var(--accent-wash);
+  font-size: 0.82rem;
+}
+.chip-rest { padding-right: 0.7rem; background: var(--card-2); color: var(--muted); }
+.chip-x {
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.chip-x:hover { background: var(--accent-soft); color: var(--ink); }
+.sched-add {
+  min-height: 2.25rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.6rem;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+/* A day with more than one program in the Week view. */
+.day-program + .day-program { margin-top: 0.9rem; padding-top: 0.8rem; border-top: 1px solid var(--line); }
+.day-program-name { font-size: 0.92rem; font-weight: 600; margin-bottom: 0.3rem; }
+
+.program-fields { padding: 0.4rem 0 0.2rem; }
+.new-program { margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--line); }
+.new-program h3 { font-size: 0.95rem; margin-bottom: 0.6rem; }
+
 /* ---------- meters & stats ---------- */
 
 .stat-grid {

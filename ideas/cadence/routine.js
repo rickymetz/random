@@ -102,17 +102,22 @@
     ]
   };
 
-  /* Mon..Sun. The three calisthenics days take their workout from the week's
-   * pattern, so the A/B alternation lives in one place (see store.js). */
+  /* Mon..Sun. */
   var DAYS = [
-    { key: 'mon', label: 'Mon', long: 'Monday', slot: 'cal', calIndex: 0 },
-    { key: 'tue', label: 'Tue', long: 'Tuesday', slot: 'flex' },
-    { key: 'wed', label: 'Wed', long: 'Wednesday', slot: 'cal', calIndex: 1 },
-    { key: 'thu', label: 'Thu', long: 'Thursday', slot: 'flex' },
-    { key: 'fri', label: 'Fri', long: 'Friday', slot: 'cal', calIndex: 2 },
-    { key: 'sat', label: 'Sat', long: 'Saturday', slot: 'flex' },
-    { key: 'sun', label: 'Sun', long: 'Sunday', slot: 'rest' }
+    { key: 'mon', label: 'Mon', long: 'Monday' },
+    { key: 'tue', label: 'Tue', long: 'Tuesday' },
+    { key: 'wed', label: 'Wed', long: 'Wednesday' },
+    { key: 'thu', label: 'Thu', long: 'Thursday' },
+    { key: 'fri', label: 'Fri', long: 'Friday' },
+    { key: 'sat', label: 'Sat', long: 'Saturday' },
+    { key: 'sun', label: 'Sun', long: 'Sunday' }
   ];
+
+  /* The weekly plan: which programs each weekday runs. ROTATION is not a
+   * program but a stand-in that becomes Calisthenics A or B, so the A/B
+   * alternation lives in one place (see store.js). An empty day is a rest day. */
+  var ROTATION = 'rotation';
+  var DEFAULT_SCHEDULE = [[ROTATION], ['flex'], [ROTATION], ['flex'], [ROTATION], ['flex'], []];
 
   function formatSeconds(s) {
     if (s >= 60 && s % 60 === 0) return s / 60 + ' min';
@@ -191,6 +196,9 @@
   global.CadenceRoutine = {
     DEFAULT_ROUTINE: DEFAULT_ROUTINE,
     DAYS: DAYS,
+    ROTATION: ROTATION,
+    DEFAULT_SCHEDULE: DEFAULT_SCHEDULE,
+    defaultSchedule: function () { return clone(DEFAULT_SCHEDULE); },
     defaultRoutine: function () { return clone(DEFAULT_ROUTINE); },
     amountLabel: amountLabel,
     targetLabel: targetLabel,
