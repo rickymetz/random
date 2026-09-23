@@ -70,13 +70,15 @@ function accept(req, socket, onText, onClose) {
     close() { if (!closed) { socket.end(Buffer.from([0x88, 0])); } },
   };
   socket.on("data", (chunk) => {
-    buf = Buffer.concat([buf, chunk]);
+    buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
+    if (buf.length > MAX_FRAME + 14) return void socket.destroy(); // nobody needs more than a selfie
     for (;;) {
       if (buf.length < 2) return;
       const op = buf[0] & 15;
       let len = buf[1] & 127, off = 2;
       if (len === 126) { if (buf.length < 4) return; len = buf.readUInt16BE(2); off = 4; }
       else if (len === 127) { if (buf.length < 10) return; len = Number(buf.readBigUInt64BE(2)); off = 10; }
+      if (len > MAX_FRAME) return void socket.destroy();
       const masked = buf[1] & 128;
       const mask = masked ? buf.subarray(off, off + 4) : null;
       if (masked) off += 4;
@@ -97,7 +99,12 @@ function accept(req, socket, onText, onClose) {
 
 /* ------------------------------------------------------------------ rooms */
 
-const rooms = new Map(); // code -> { host, players: Map(pid -> conn) }
+const rooms = new Map(); // code -> { host, token, players: Map(pid -> conn), gone }
+const MAX_FRAME = 512 * 1024, MAX_ROOMS = 500, HOST_GRACE = 60_000;
+// per-IP budgets, refilled every minute: opening rooms is rare, joining less so
+const budget = new Map();
+setInterval(() => budget.clear(), 60_000).unref();
+function allow(ip, kind, max) { const k = ip + kind, n = (budget.get(k) || 0) + 1; budget.set(k, n); return n <= max; }
 const LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 function newCode() {
   let c;
@@ -111,21 +118,35 @@ server.on("upgrade", (req, socket) => {
   if (!url.pathname.endsWith("/ws")) return void socket.destroy();
   const role = url.searchParams.get("role");
 
+  const ip = req.socket.remoteAddress || "?";
+
   if (role === "host") {
-    const code = newCode();
-    const room = { host: null, players: new Map() };
+    // a TV that blipped comes back with its code and secret and keeps the room
+    const back = rooms.get((url.searchParams.get("code") || "").toUpperCase());
+    const resuming = back && back.token === url.searchParams.get("token") && back.gone;
+    if (!resuming && (!allow(ip, "host", 20) || rooms.size >= MAX_ROOMS)) return void socket.destroy();
+    const code = resuming ? url.searchParams.get("code").toUpperCase() : newCode();
+    const room = resuming ? back : { host: null, token: crypto.randomUUID(), players: new Map(), gone: null };
+    if (resuming) { clearTimeout(room.gone); room.gone = null; }
     rooms.set(code, room);
-    room.host = accept(req, socket, (msg) => {
+    const host = accept(req, socket, (msg) => {
       if (msg.t === "to") room.players.get(msg.pid)?.send(msg.m);
       else if (msg.t === "all") for (const p of room.players.values()) p.send(msg.m);
     }, () => {
-      rooms.delete(code);
-      for (const p of room.players.values()) { p.send({ t: "closed" }); p.close(); }
+      if (room.host !== host) return;
+      room.gone = setTimeout(() => { // no TV for a minute: close the room
+        rooms.delete(code);
+        for (const p of room.players.values()) { p.send({ t: "closed" }); p.close(); }
+      }, HOST_GRACE);
     });
-    room.host.send({ t: "room", code, urls: lanUrls() });
-    console.log(`room ${code} opened`);
+    room.host = host;
+    host.send({ t: "room", code, token: room.token, urls: lanUrls(), resumed: !!resuming });
+    if (resuming) for (const pid of room.players.keys()) host.send({ t: "join", pid, name: room.names?.get(pid) || "" });
+    console.log(`room ${code} ${resuming ? "resumed" : "opened"}`);
     return;
   }
+
+  if (!allow(ip, "join", 120)) return void socket.destroy();
 
   const room = rooms.get((url.searchParams.get("room") || "").toUpperCase());
   const pid = (url.searchParams.get("pid") || crypto.randomUUID()).slice(0, 40);
@@ -135,8 +156,10 @@ server.on("upgrade", (req, socket) => {
     if (room && room.players.get(pid) === conn) { room.players.delete(pid); room.host.send({ t: "leave", pid }); }
   });
   if (!room) { conn.send({ t: "error", msg: "No room with that code." }); return void conn.close(); }
-  room.players.get(pid)?.close(); // a reconnect from the same phone replaces the old socket
+  const old = room.players.get(pid);
+  if (old) { old.send({ t: "replaced" }); old.close(); } // the same seat opened again replaces the old socket
   room.players.set(pid, conn);
+  (room.names ??= new Map()).set(pid, name);
   conn.send({ t: "joined", pid });
   room.host.send({ t: "join", pid, name });
 });

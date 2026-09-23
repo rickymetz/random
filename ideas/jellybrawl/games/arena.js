@@ -23,7 +23,8 @@ export function arena(ctx, o) {
   const bounds = o.bounds ?? { x0: 90, y0: 160, x1: W - 90, y1: H - 50 };
   const seats = shuffle(ctx.players.slice());
   let ghostN = 0;
-  const makeBody = (p, team = -1) => ({ p, pid: p.pid, team, x: 0, y: 0, vx: 0, vy: 0, mx: 0, my: 0, dash: 0, dashCool: 0, face: [1, 0], out: false, ghost: !!p.ghost, hit: 0, bot: {} });
+  // pid is read through the player, so a seat reclaimed mid-game (new pid) follows along
+  const makeBody = (p, team = -1) => ({ p, get pid() { return this.p.pid; }, team, x: 0, y: 0, vx: 0, vy: 0, mx: 0, my: 0, dash: 0, dashCool: 0, face: [1, 0], out: false, ghost: !!p.ghost, hit: 0, bot: {} });
   const bodies = [];
   if (o.teams) {
     seats.forEach((p, i) => bodies.push(makeBody(p, i % 2)));

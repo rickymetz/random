@@ -185,6 +185,7 @@ export function makeBoard(api) {
       relocateStar();
     },
     startTurn() {
+      for (const p of P()) if (!p.items) { p.pos = map.start; p.stars = 0; p.items = []; p.dbl = false; } // joined mid-game
       B.order = P().map((p) => p.pid);
       B.cur = 0; B.turn++;
       say(`TURN ${B.turn}`, "#fff", 1.1);

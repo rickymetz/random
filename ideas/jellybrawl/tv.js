@@ -109,6 +109,13 @@ function onJoin(pid, name) {
     else if (l) send(p, l);
     return;
   }
+  // rescanned the QR (a new tab, so a new pid)? Take back your old seat by name.
+  const lost = S.players.find((q) => !q.bot && !q.connected && q.name.toLowerCase() === (name || "").slice(0, 12).toLowerCase());
+  if (lost) {
+    if (S.layouts.has(lost.pid)) { S.layouts.set(pid, S.layouts.get(lost.pid)); S.layouts.delete(lost.pid); }
+    lost.pid = pid; // games read the pid through the player object, so they follow along
+    return onJoin(pid, name);
+  }
   if (S.players.length >= MAX) {
     // a human bumps a bot in the lobby; otherwise the game is full
     if (S.scene !== "lobby" || !S.players.some((q) => q.bot)) {
@@ -605,12 +612,21 @@ function draw() {
 }
 
 let last = performance.now();
+let crashes = 0;
 function frame(now) {
+  requestAnimationFrame(frame); // first, so one bad frame can't freeze the TV
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  tick(dt);
-  draw();
-  requestAnimationFrame(frame);
+  try { tick(dt); draw(); }
+  catch (err) {
+    console.error(err);
+    // a minigame that throws is abandoned as a tie rather than taking the night down with it
+    if (++crashes < 50 && (S.scene === "game" || S.scene === "duel") && S.game && !S.game.result) {
+      const g = S.game;
+      g.update = g.bot = () => {}; g.draw = () => {};
+      g.result = { tie: true, ranking: [(g.players ?? S.players).map((p) => p.pid)], headline: "Glitch in the jelly! Nobody scores." };
+    }
+  }
 }
 requestAnimationFrame(frame);
 

@@ -32,17 +32,26 @@ function code4() {
 /** Opens a room. handlers: onJoin(pid, name), onLeave(pid), onInput(pid, msg). */
 export async function hostRoom({ onJoin, onLeave, onInput }) {
   const base = location.href.replace(/[^/]*([?#].*)?$/, "");
-  const ws = await openSocket(relayUrl() && relayUrl() + "?role=host");
+  let ws = await openSocket(relayUrl() && relayUrl() + "?role=host");
   if (ws) {
-    const room = await new Promise((resolve) => {
-      ws.onmessage = (e) => {
+    const listen = (sock, resolve) => {
+      sock.onmessage = (e) => {
         const msg = JSON.parse(e.data);
-        if (msg.t === "room") resolve(msg);
+        if (msg.t === "room") resolve?.(msg);
         else if (msg.t === "join") onJoin(msg.pid, msg.name);
         else if (msg.t === "leave") onLeave(msg.pid);
         else if (msg.t === "from") onInput(msg.pid, msg.m);
       };
-    });
+    };
+    const room = await new Promise((resolve) => listen(ws, resolve));
+    // the relay keeps the room for a minute if the TV drops; come back with the code and secret
+    let wait = 500;
+    const reconnect = async () => {
+      const next = await openSocket(`${relayUrl()}?role=host&code=${room.code}&token=${room.token}`);
+      if (!next) { wait = Math.min(8000, wait * 2); return void setTimeout(reconnect, wait); }
+      wait = 500; ws = next; listen(ws); ws.onclose = reconnect;
+    };
+    ws.onclose = reconnect;
     const joinUrl = new URLSearchParams(location.search).get("relay") ? base : (room.urls[0] || base);
     return {
       mode: "relay", code: room.code, joinUrl,
@@ -76,7 +85,8 @@ export async function joinRoom(code, name, pid, { onMsg, onClose }) {
         const msg = JSON.parse(e.data);
         if (msg.t === "joined") resolve();
         else if (msg.t === "error") reject(new Error(msg.msg));
-        else if (msg.t === "closed") onClose("The TV left the game.");
+        else if (msg.t === "closed") onClose("The TV left the game.", true);
+        else if (msg.t === "replaced") onClose("You opened this seat somewhere else.", true);
         else onMsg(msg);
       };
       ws.onclose = () => { reject(new Error("Couldn't join.")); onClose("Disconnected."); };

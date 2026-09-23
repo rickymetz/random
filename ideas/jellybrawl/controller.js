@@ -25,20 +25,32 @@ if ($("code").value.length === 4 && !$("name").value) $("name").focus();
 
 function show(id) { for (const s of ["join", "face", "pad"]) $(s).hidden = s !== id; }
 
+// one reconnect loop at a time (a failed attempt closes its socket too, which
+// used to start a second loop), backing off; "final" closes stop it for good
+let generation = 0, retrying = false, stopped = false;
 async function connect() {
+  const gen = ++generation;
   conn = await joinRoom(code, name, pid, {
     onMsg,
-    onClose: (why) => {
-      if (!joined) return;
+    onClose: (why, final) => {
+      if (!joined || gen !== generation || stopped) return; // an old socket closing late
+      if (final) { stopped = true; return render({ kind: "wait", text: "Disconnected", sub: why }); }
       render({ kind: "wait", text: "Reconnecting…", sub: why });
-      setTimeout(retry, 1500);
+      retry();
     },
   });
   joined = true;
 }
 
-async function retry() {
-  try { await connect(); if (faceDone && lastFace) conn.send({ t: "face", data: lastFace }); } catch { setTimeout(retry, 2500); }
+async function retry(wait = 1000) {
+  if (retrying || stopped) return;
+  retrying = true;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, wait));
+    try { await connect(); if (faceDone && lastFace) conn.send({ t: "face", data: lastFace }); break; }
+    catch { wait = Math.min(8000, wait * 1.6); }
+  }
+  retrying = false;
 }
 
 $("join-form").addEventListener("submit", async (e) => {
