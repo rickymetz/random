@@ -232,11 +232,12 @@ function drawRadar(m) {
   const g = radar.getContext("2d"), w = radar.width, h = radar.height;
   g.clearRect(0, 0, w, h);
   g.strokeStyle = "rgba(5,217,232,.35)"; g.lineWidth = 2; g.strokeRect(1, 1, w - 2, h - 2);
-  if (radarMap) { // Blackout: the cover, so you can find your way in the dark
-    g.fillStyle = "#1f7a3a";
-    for (const [x, y, r] of radarMap.bushes) { g.beginPath(); g.arc(x * w, y * h, r * w, 0, Math.PI * 2); g.fill(); }
-    g.fillStyle = "#8a5a2b";
-    for (const [x, y, cw, ch] of radarMap.crates) g.fillRect(x * w, y * h, cw * w, ch * h);
+  if (m.map) radarMap = m.map; // a crate broke
+  if (radarMap) redrawCover(g, w, h);
+  for (const [x, y, age] of m.shots || []) { // recent shots, fading
+    g.save(); g.globalAlpha = 1 - age; g.strokeStyle = "#ff2a6d"; g.lineWidth = 4;
+    g.beginPath(); g.moveTo(x * w - 7, y * h - 7); g.lineTo(x * w + 7, y * h + 7); g.moveTo(x * w + 7, y * h - 7); g.lineTo(x * w - 7, y * h + 7); g.stroke();
+    g.restore();
   }
   if (m.scope) { // where the sniper is looking
     const [x, y, r] = m.scope;
@@ -249,6 +250,14 @@ function drawRadar(m) {
   g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--me");
   g.strokeStyle = "#fff"; g.lineWidth = 3;
   g.beginPath(); g.arc(m.x * w, m.y * h, 10, 0, Math.PI * 2); g.fill(); g.stroke();
+}
+
+// Blackout: the cover, so you can find your way in the dark
+function redrawCover(g, w, h) {
+  g.fillStyle = "#1f7a3a";
+  for (const [x, y, r] of radarMap.bushes) { g.beginPath(); g.arc(x * w, y * h, r * w, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = "#8a5a2b";
+  for (const [x, y, cw, ch] of radarMap.crates) g.fillRect(x * w, y * h, cw * w, ch * h);
 }
 
 function stick(l) {
@@ -279,7 +288,8 @@ function stick(l) {
   let act = null;
   if (l.action) {
     act = el("button", { type: "button", className: "act", textContent: l.action });
-    act.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "act" }); navigator.vibrate?.(20); });
+    // "action", not "act": the TV reads "act" as a menu command
+    act.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "action" }); navigator.vibrate?.(20); });
   }
   add(radar, el("div", { className: "stickrow" + (act ? "" : " solo") }, pad, act), l.hint && el("p", { className: "hint", textContent: l.hint }));
 }
@@ -308,7 +318,12 @@ function scope(l) {
     if (left > 0) requestAnimationFrame(tick);
   };
   fire.addEventListener("pointerdown", (e) => { e.stopPropagation(); if (fire.disabled) return; conn.send({ t: "fire" }); navigator.vibrate?.(60); });
-  add(area, fire, l.hint && el("p", { className: "hint", textContent: l.hint }));
+  let flare = null;
+  if (l.flares != null) { // Blackout: light up the whole plaza for a second
+    flare = el("button", { type: "button", className: "flare", textContent: `FLARE ${"✦".repeat(l.flares) || "—"}`, disabled: !l.flares });
+    flare.addEventListener("pointerdown", (e) => { e.stopPropagation(); if (flare.disabled) return; conn.send({ t: "flare" }); flare.disabled = true; navigator.vibrate?.(40); });
+  }
+  add(area, flare ? el("div", { className: "firerow" }, fire, flare) : fire, l.hint && el("p", { className: "hint", textContent: l.hint }));
   tick(); // after add(): tick stops once the button leaves the page
 }
 

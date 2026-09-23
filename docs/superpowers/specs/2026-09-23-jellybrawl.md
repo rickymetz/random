@@ -156,30 +156,44 @@ A hide-in-the-crowd sniper game, decided in a short Q&A on 2026-09-23.
 ## Sniper Blackout (Sniper Plaza variant)
 
 The same engine as Sniper Plaza (`makeSniper` in `games/snipe.js`), with
-these differences:
+these differences. The second round of details came from a Q&A on
+2026-09-23.
 
 - **Players only.** No NPC crowd. Everyone is their real blob (colour and
   selfie).
-- **Blackout.** The TV is black outside the scope, a 210 px lens at 1.35×.
-  Everyone in the room, sniper included, sees only that circle. Loot pops
-  only appear if the grab happens inside it.
+- **Blackout.** The TV shows the scope (a 210 px lens at 1.35×) and, in the
+  dark around it, only:
+  - a **faint outline of the cover**, so the room can follow the chase, and
+  - **noise ripples**: rings spreading from bush rustles (green), coin grabs
+    (yellow), sprints (cyan), runner-on-runner bumps (pink) and a crate
+    breaking (orange).
+
+  Loot "+1" pops only show inside the scope.
 - **Cover.** Each round places about 9 crates and 7 bushes at random.
-  - *Crates* are solid: blobs slide off them, and a crate standing in front
-    of a blob hides it (painter's order by ground line) and stops the shot
-    ("THUNK!", leaving a bullet hole).
-  - *Bushes* can be walked into. They hide the north half of whoever is
-    inside, but rustle when anything moves in them, and they don't stop
-    bullets.
-- **Mini-map.** The runner's phone shows the crates, bushes, coins, your own
-  dot and the live scope circle, so you can see the sniper coming.
-- **Loot target** is 2 + 2 per runner (the sniper can camp coins). There's
-  no BLEND button.
-- **Bots.** A blackout bot sniper only reacts to runners inside its scope
-  who aren't behind a crate (in a bush, only when it rustles), taking 0.8 to
-  1.5 s to shoot. Otherwise it sweeps toward coins or random spots. Bot
-  runners bolt when the scope closes in, heading for the nearest crate.
-- **Rules check.** A headless rules check drives the game in Node and
-  confirms the cover logic over 20 random maps.
+  - *Crates* are solid: blobs slide off them, and a crate in front of a blob
+    hides it and stops the shot ("THUNK!", a bullet hole). A crate
+    **breaks after 2 hits** ("SMASH!"), so cover wears away, and the
+    runners' maps update.
+  - *Bushes* can be walked into. They hide part of whoever is inside, but
+    rustle when anything moves in them, and they don't stop bullets.
+- **Sniper: 2 flares** a round. A flare lights the whole plaza for 1 s,
+  then fades back to dark (FLARE button next to FIRE, with a counter on the
+  TV). Runners' phones buzz when one goes up.
+- **Runners: SPRINT.** 2× speed for 1 s, then a 4 s cooldown, and every
+  sprint leaves a trail of ripples.
+- **Mini-map** (runner's phone): the crates and bushes (updated when a crate
+  breaks), coins, your own dot, the live scope circle, and a red ✗ for each
+  recent shot, fading over 2.5 s.
+- **Loot target** is 2 + 2 per runner.
+- **Bots.**
+  - The blackout bot sniper only reacts to runners it can see: inside its
+    scope or lit by a flare, not behind a crate, and in a bush only when it
+    rustles. It chases fresh ripples and uses its flares when it's lost.
+  - Bot runners sprint away and head for a crate when the scope closes in.
+- **Rules check.** A headless Node check drives the game directly (20
+  checks): crate/bush/open-ground shots, crates breaking on the second
+  hit, the flare count and duration, sprint speed, cooldown and noise, and
+  bush rustle ripples.
 
 ## Microgame Gauntlet (second mode)
 

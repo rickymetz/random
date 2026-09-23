@@ -83,3 +83,7 @@ h2 { margin: 0; font: 48px var(--display); letter-spacing: 3px; color: #fff; tex
 .hit.fire:disabled { background: #444; color: #aaa; }
 .stickrow.solo { justify-content: center; }
 .stickrow.solo .stick { width: 230px; height: 230px; }
+.firerow { display: flex; align-items: center; justify-content: center; gap: 18px; width: 100%; }
+.firerow .hit.fire { width: min(48vw, 210px); }
+.flare { width: 120px; height: 120px; border-radius: 50%; font-size: 20px; background: var(--acid); color: var(--ink); border-color: var(--ink); box-shadow: 5px 5px 0 var(--pink); }
+.flare:disabled { background: #444; color: #999; }
