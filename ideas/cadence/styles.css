@@ -943,13 +943,18 @@ body.is-session .toast { top: 4.5rem; bottom: auto; }
 .demo-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 0.6rem;
   margin-top: 0.45rem;
 }
+.demo-notes {
+  max-width: 30rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 1.25rem calc(1.25rem + var(--sab));
+}
 .demo-cue {
-  flex: 1;
-  min-width: 0;
+  margin: 0;
   text-align: left;
   font-size: 0.78rem;
   line-height: 1.35;

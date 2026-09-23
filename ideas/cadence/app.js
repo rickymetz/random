@@ -494,10 +494,15 @@
 
     return h('div', { class: 'demo' }, [
       hidden ? null : h('div', { class: 'demo-stage' }, [demoStage(ex)]),
-      h('div', { class: 'demo-bar' }, [
-        h('span', { class: 'demo-cue', text: Figures.cue(ex.id) }),
-        h('span', { class: 'demo-controls' }, controls)
-      ]),
+      h('div', { class: 'demo-bar' }, [h('span', { class: 'demo-controls' }, controls)])
+    ]);
+  }
+
+  /* What to do, in words: the cue, and the fuller instructions where there
+   * are some. Below the set controls, so reading never pushes them down. */
+  function demoNotes(ex) {
+    return h('div', { class: 'demo-notes' }, [
+      h('p', { class: 'demo-cue', text: Figures.cue(ex.id) }),
       howTo(ex)
     ]);
   }
@@ -2173,6 +2178,7 @@
 
       root.appendChild(body);
       root.appendChild(actions);
+      root.appendChild(demoNotes(ex));
       if (ex.mode === 'time') this.paintTimer();
     },
 
