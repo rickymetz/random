@@ -6,7 +6,7 @@
 
 import { arena, clock, rnd, W, H, INK, text, outlined, shout, rrect, circle, blob, tag } from "./arena.js";
 
-const TIME = 60, HILL_R = 170, GROW = 0.35, MAX_S = 2.3, R0 = 28;
+const TIME = 60, HILL_R = 170, GROW = 0.35, MAX_S = 2.0, R0 = 28;
 
 export default {
   id: "hill", title: "King of the Hill Giant", command: "CLIMB!", kind: "Free-for-all", min: 2, max: 8,
@@ -20,7 +20,7 @@ export default {
     let king = null, endAt = null, crownT = 0;
     A.bodies.forEach((b, i) => { const a = (i / n) * Math.PI * 2; b.x = cx + Math.cos(a) * 560; b.y = cy + Math.sin(a) * 330; b.size = 1; b.score = 0; b.onT = 0; });
     const onHill = (b) => Math.hypot(b.x - cx, (b.y - cy) / 0.7) < HILL_R;
-    function setSize(b, s) { b.size = s; b.r = R0 * s; b.mass = s > 1.05 ? s * s * 1.4 : undefined; b.speedMul = 1 / Math.sqrt(s); }
+    function setSize(b, s) { b.size = s; b.r = R0 * s; b.mass = s > 1.05 ? 1 + (s - 1) * 1.6 : undefined; b.speedMul = 1 / Math.sqrt(s); }
     function relayout() { for (const b of A.bodies) if (!b.ghost) ctx.layout(b.pid, { kind: "stick", radar: false, action: "SHOVE", role: b === king ? "👑 THE GIANT" : "", hint: b === king ? "Stay on the hill! You're big and slow now." : king ? `Topple ${king.ghost ? "the bot" : king.p.name}! Gang up!` : "Get on the hill and stay there!" }); }
 
     const inst = {

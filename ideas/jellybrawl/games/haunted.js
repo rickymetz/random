@@ -138,10 +138,10 @@ export default {
       },
       draw(g) {
         const scene = (lit) => {
-          g.fillStyle = lit ? "#3b2a3f" : "#0c070f"; g.fillRect(F.x0, F.y0, F.x1 - F.x0, F.y1 - F.y0);
+          g.fillStyle = lit ? "#3b2a3f" : "#150d1a"; g.fillRect(F.x0, F.y0, F.x1 - F.x0, F.y1 - F.y0);
           if (lit) { g.strokeStyle = "rgba(0,0,0,.25)"; g.lineWidth = 3; for (let x = F.x0; x < F.x1; x += 60) { g.beginPath(); g.moveTo(x, F.y0); g.lineTo(x, F.y1); g.stroke(); } }
           for (const f of furn) {
-            rrect(g, f.x, f.y, f.w, f.h, 8, lit ? ["#6b3a2a", "#4a3a5a", "#2f4a3a"][f.kind] : "#140c16", INK, 5);
+            rrect(g, f.x, f.y, f.w, f.h, 8, lit ? ["#6b3a2a", "#4a3a5a", "#2f4a3a"][f.kind] : "#261a2c", INK, 5);
             if (lit && f.kind === 0) { g.fillStyle = "rgba(0,0,0,.25)"; g.fillRect(f.x + 10, f.y + 10, f.w - 20, 8); }
             if (lit && f.kind === 1) circle(g, f.x + f.w / 2, f.y + f.h / 2, Math.min(f.w, f.h) / 3, "#6a5a7a", INK, 3);
           }
