@@ -19,7 +19,7 @@
  */
 'use strict';
 
-var VERSION = "6f2a03c357a0";
+var VERSION = "63d300a7a962";
 var SHELL = ["./","manifest.webmanifest","ideas.json","nav.js","hub.js","offline.html","icon.svg","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png"];
 
 var PREFIX = 'random-hub-';

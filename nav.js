@@ -191,10 +191,12 @@
     '  font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;',
     '  color: var(--ink);',
     '}',
-    '@media (prefers-color-scheme: dark) { .wrap {',
-    '  --ink: #eceae6; --muted: #9a9a9a; --line: rgba(255,255,255,.08);',
+    // Dark ink etc. when the page underneath is dark (see matchPage), not
+    // merely when the system is: plenty of ideas are dark in a light OS.
+    '.wrap.dark {',
+    '  --ink: #eceae6; --muted: #9a9a9a; --line: rgba(255,255,255,.1);',
     '  --bar: rgba(20,20,20,.84); --sheet: #1a1a1a; --card: #242424; --accent: #e08554;',
-    '} }',
+    '}',
     '.bar {',
     '  position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483000;',
     '  display: flex; justify-content: space-around; align-items: center;',
@@ -305,6 +307,8 @@
     wrap.appendChild(ui.bar);
     root.appendChild(wrap);
     ui.wrap = wrap;
+    matchPage();
+    watchPage();
 
     if (isHub) {
       ui.home.disabled = true;
@@ -362,6 +366,71 @@
       var text = (a.textContent || '').trim();
       if (toHub && (text === '' || text.charAt(0) === '←')) a.style.setProperty('display', 'none', 'important');
     }
+  }
+
+  /* ------------------------------------------------------ page colours */
+
+  // The bar takes its colours from the page it sits on: the page's own
+  // background (body, else html, else the system scheme) tints the bar and
+  // the tray, and its lightness picks light or dark ink.
+  function parseColor(c) {
+    var m = /rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?/.exec(c || '');
+    if (!m) return null;
+    var a = m[4] == null ? 1 : (m[4].slice(-1) === '%' ? parseFloat(m[4]) / 100 : parseFloat(m[4]));
+    return { r: +m[1], g: +m[2], b: +m[3], a: a };
+  }
+
+  function pageBackground() {
+    var els = [document.body, document.documentElement];
+    for (var i = 0; i < els.length; i++) {
+      var c = els[i] && parseColor(getComputedStyle(els[i]).backgroundColor);
+      if (c && c.a > 0.5) return c;
+    }
+    return null;
+  }
+
+  function mix(c, toward, amount) {
+    return {
+      r: Math.round(c.r + (toward - c.r) * amount),
+      g: Math.round(c.g + (toward - c.g) * amount),
+      b: Math.round(c.b + (toward - c.b) * amount)
+    };
+  }
+  function rgb(c, a) { return 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + (a == null ? 1 : a) + ')'; }
+
+  function matchPage() {
+    if (!ui.wrap) return;
+    var bg = pageBackground();
+    var dark = bg
+      ? (0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b) / 255 < 0.5
+      : matchMedia('(prefers-color-scheme: dark)').matches;
+    ui.wrap.classList.toggle('dark', dark);
+    var style = ui.wrap.style;
+    if (!bg) {
+      ['--bar', '--sheet', '--card'].forEach(function (p) { style.removeProperty(p); });
+      return;
+    }
+    style.setProperty('--bar', rgb(bg, 0.86));
+    style.setProperty('--sheet', rgb(dark ? mix(bg, 255, 0.04) : bg));
+    style.setProperty('--card', rgb(dark ? mix(bg, 255, 0.09) : mix(bg, 255, 0.7)));
+  }
+
+  // Pages change colour under us: a theme toggle (Cadence's ◐), a class on
+  // body, the system switching to dark mode at dusk.
+  function watchPage() {
+    var pending = false;
+    function soon() {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(function () { pending = false; matchPage(); });
+    }
+    var opts = { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] };
+    var mo = new MutationObserver(soon);
+    mo.observe(document.documentElement, opts);
+    mo.observe(document.body, opts);
+    var mq = matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', soon);
+    window.addEventListener('load', soon);
   }
 
   /* ------------------------------------------------------------- tray */
