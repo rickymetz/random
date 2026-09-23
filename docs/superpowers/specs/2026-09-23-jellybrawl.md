@@ -199,35 +199,48 @@ these differences. The second round of details came from a Q&A on
 
 ## Board mode (third mode)
 
-Picked in the lobby (Mode cycles Playlist → Board → Gauntlet). Built in
-`board.js`, and set to 3 / 5 / 8 turns.
+Picked in the lobby (Mode cycles Playlist → Board → Gauntlet). It's set to
+3 / 5 / 8 turns and played on one of three themed maps: the VIP's
+**Board** button or **M** picks Neon City, Slime Sewers, Volcano Isle or
+Random. Logic is in `board.js`; the maps are in `boards.js`.
 
-- **The board.** A loop of 26 spaces: blue (+3 coins), red (−3), shop ($)
-  and duel (VS). Everyone starts on 10 coins.
-- **Turns.** On each turn every player, in order, gets a ROLL button on their
-  phone (15 s, then it auto-rolls) and hops round the loop.
-- **Stars.** Passing the star with 20 coins buys it automatically, and the
-  star then moves to another blue space.
-- **Shop.** Landing on it opens a menu on the phone:
-  - Double dice (5 coins): roll two dice this turn.
-  - Warp (8 coins): swap places with a random rival.
-  - Pickpocket (10 coins): steal 5 coins from the richest rival.
+**Maps are graphs with forks.** Each space is a node with one or two
+`next`s. When you pass a fork, your phone asks which way, labelling each
+path with its distance to the star (15 s, then it auto-picks; bots mostly
+head for the star and avoid tolls they can't afford). The TV pulses arrows
+and labels at the fork.
 
-  You can hold up to 3 items. What you bought stays secret (the TV only
-  says "bought something…"), and you use items from the roll screen.
-- **Duels.** Landing on VS lets you pick a rival for a 1v1 microgame (one
-  life, one microgame, from the gauntlet set). The winner takes up to 10 of
-  the loser's coins; a draw pays nothing.
-- **Minigames.** Once everyone has moved, there's a Playlist-style minigame
-  (the last-place player picks), and its points pay out as coins.
-- **Winning.** Most stars wins, with coins breaking ties. That ranking also
-  decides the last-place picker, and there are new awards: Star collector
-  and Duelist.
-- **Bots** roll, use their items about half the time, shop sensibly, and
-  duel the richest rival.
-- **Tests.** A Node rules check drives `makeBoard` directly (14 checks:
-  moves, shop, items, duel payout, star purchase and relocation, the
-  hand-off to the minigame).
+| Map | Layout | Gimmick |
+| --- | --- | --- |
+| **Neon City** | a stadium loop and a straight shortcut across the middle | the shortcut starts with a **TOLL** space: 6 coins every time you pass it |
+| **Slime Sewers** | a figure-8: two loops meeting at a junction (West or East tunnel each lap) | a **pipe** on each loop warps you to the other |
+| **Volcano Isle** | an island loop, a 5-space crater path through the volcano (vs 12 round the island) and an 11-space beach detour | the crater is lined with red spaces and has a **▲ volcano**: land on it and every rival pays you 3 |
+
+**Spaces** (all maps):
+- blue +3, red −3
+- shop, duel (VS)
+- **?** events: +6 coins, −5, a tailwind that hops you 3 more, or a mystery
+  item
+- plus each map's toll, pipe or volcano
+
+**Everything else is unchanged:**
+- The star costs 20 and is bought on passing, then moves to a random plain
+  blue space.
+- The shop sells Double dice, Warp and Pickpocket (secret items).
+- Duels are one gauntlet microgame for up to 10 coins.
+- After each turn there's a minigame whose points pay out as coins.
+- Most stars wins, with coins as the tiebreak.
+
+The HUD is now a top bar (turn and map, whose go, dice, standings), which
+leaves the middle of the screen free for paths.
+
+**Tests.** A Node rules check (22 checks):
+- every map is connected, on screen, has no overlapping spaces, and labels
+  every branch;
+- forks prompt the phone, and the toll charges;
+- pipes warp;
+- the volcano pays out, and the crater really is the shortcut;
+- shop, star and the minigame hand-off still work.
 
 ## Infection and Kaiju (asymmetric additions)
 
@@ -372,8 +385,8 @@ them.
 ## Follow-ups
 
 
-1. Board mode extras: bonus stars, event spaces, and a board theme or map
-   rotation.
+1. Board mode extras: bonus stars, more maps, and map-specific events
+   (e.g. a timed volcano eruption).
 2. Party classics: Mash Race, Reaction Tap, Hot Potato, Tilt Maze (with the
    iOS motion permission).
 3. Audience: seats past 8 (and anyone who opts in) get bets and emoji

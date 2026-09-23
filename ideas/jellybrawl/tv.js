@@ -13,6 +13,7 @@ import snipe, { blackout } from "./games/snipe.js";
 import tagGame from "./games/tag.js";
 import kaiju from "./games/kaiju.js";
 import { makeBoard } from "./board.js";
+import { MAP_NAMES } from "./boards.js";
 
 const GAMES = [flap, sling, chomp, snipe, blackout, tagGame, kaiju];
 // canvas text only uses a web font once it's loaded; ask for both up front
@@ -43,7 +44,7 @@ const sceneC = mkCanvas(W, H);
 const g = sceneC.getContext("2d");
 const S = {
   scene: "gate", t: 0, players: [], rounds: 5, round: 0, net: null, qr: null, joinUrl: "",
-  mode: "playlist", game: null, def: null, chooser: null, options: null, picked: null, lastGameId: null,
+  mode: "playlist", boardMap: "random", game: null, def: null, chooser: null, options: null, picked: null, lastGameId: null,
   result: null, deltas: [], roleCounts: {}, layouts: new Map(),
 };
 window.__jelly = S; // for tests and poking around in devtools
@@ -139,6 +140,7 @@ function act(id, p) {
   if (!isVip) return;
   if (id === "start" && S.scene === "lobby" && S.players.length >= 2) startSession();
   else if (id === "rounds" && S.scene === "lobby") { S.rounds = ROUND_CHOICES[(ROUND_CHOICES.indexOf(S.rounds) + 1) % ROUND_CHOICES.length]; refreshMenus(); }
+  else if (id === "map" && S.scene === "lobby") { const k = Object.keys(MAP_NAMES); S.boardMap = k[(k.indexOf(S.boardMap) + 1) % k.length]; refreshMenus(); }
   else if (id === "mode" && S.scene === "lobby") { S.mode = MODES[(MODES.indexOf(S.mode) + 1) % MODES.length]; refreshMenus(); }
   else if (id === "addbot" && S.scene === "lobby") addBot();
   else if (id === "rmbot" && S.scene === "lobby") removeBot();
@@ -154,6 +156,7 @@ function refreshMenus() {
         ? { kind: "menu", text: "You're the VIP", sub: S.players.length < 2 ? "Waiting for one more player…" : `${S.players.length} players ready`, actions: [
           ...(S.players.length >= 2 ? [{ id: "start", label: "▶ Start game", big: true }] : []),
           { id: "mode", label: `Mode: ${MODE_NAME[S.mode]}` },
+          ...(S.mode === "board" ? [{ id: "map", label: `Board: ${MAP_NAMES[S.boardMap]}` }] : []),
           ...(S.mode !== "gauntlet" ? [{ id: "rounds", label: `${S.mode === "board" ? "Turns" : "Rounds"}: ${S.rounds}` }] : []), { id: "addbot", label: "+ Add bot" }, { id: "rmbot", label: "− Remove bot" }] }
         : { kind: "menu", text: "You're in!", sub: `Waiting for ${v ? v.name : "the VIP"} to start…` });
     } else if (S.scene === "final") {
@@ -201,6 +204,7 @@ const boardApi = {
   shake: (n) => { S.shake = Math.max(S.shake || 0, n); },
   bg: (...a) => bg(...a),
   turns: () => S.rounds,
+  get map() { return S.boardMap === "random" ? null : S.boardMap; },
   minigame: () => startChoose(),
   // a 1v1 duel: a single gauntlet microgame for the two of them
   duel: (a, b, done) => {
@@ -379,7 +383,7 @@ function drawLobby() {
   }
   const v = vip();
   panel(g, 820, 905, 960, 70, INK, 35, 0);
-  text(g, `${S.mode === "gauntlet" ? "MICROGAME GAUNTLET · 3 LIVES" : S.mode === "board" ? `BOARD · ${S.rounds} TURNS` : `${S.rounds} ROUNDS`} · ${v ? `${v.name.toUpperCase()} (VIP) STARTS FROM THEIR PHONE` : "FIRST ONE IN IS THE VIP"}`, 1300, 940, 30, "#ffd400", "center", 900);
+  text(g, `${S.mode === "gauntlet" ? "MICROGAME GAUNTLET · 3 LIVES" : S.mode === "board" ? `${MAP_NAMES[S.boardMap].toUpperCase()} BOARD · ${S.rounds} TURNS` : `${S.rounds} ROUNDS`} · ${v ? `${v.name.toUpperCase()} (VIP) STARTS FROM THEIR PHONE` : "FIRST ONE IN IS THE VIP"}`, 1300, 940, 30, "#ffd400", "center", 900);
 }
 
 function scoreStrip(y = 1000) {
@@ -608,6 +612,7 @@ addEventListener("keydown", (e) => {
   else if (k === "n") act("rmbot");
   else if (k === "r") act("rounds");
   else if (k === "g") act("mode");
+  else if (k === "m") act("map");
   else if (S.scene === "choose" && ["1", "2", "3"].includes(k) && !S.picked && S.options[+k - 1]) pick(S.options[+k - 1].id);
 });
 
