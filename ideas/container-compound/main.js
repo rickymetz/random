@@ -1351,6 +1351,7 @@ document.getElementById("btn-fit").addEventListener("click", fit3D);
 // going *down*, and the needle swinging the other way.
 const SPIN_STEP = Math.PI / 4;
 const SPIN_MS = 250;
+const LONG_PRESS_MS = 500;
 const ON_MARK = 0.02;   // rad, ~1.1°: close enough to a mark to count as on it
 const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)");
 const HEADINGS = ["north", "north-east", "east", "south-east",
@@ -1368,16 +1369,37 @@ function setAzimuth(az) {
   controls.update();
 }
 
-function compassPress() {
+function spinTo(target) {
   const az = controls.getAzimuthalAngle();
-  const d = shortWay(az, stepHeading(az, SPIN_STEP, ON_MARK));
+  const d = shortWay(az, target);
   if (REDUCED_MOTION.matches) setAzimuth(az + d);
   else spin = { from: az, d, t0: performance.now() };
   sceneDirty = true;
   startLoop();
   announce(`Facing ${headingName(az + d)}`);
 }
-document.getElementById("compass").addEventListener("click", compassPress);
+
+// Holding the compass goes straight back to north — the one heading the
+// stepping is slowest to reach, four presses away from due south. Shift is the
+// same thing for a keyboard, which has no way to express a hold: a held Enter
+// on a button auto-repeats into a string of clicks, which would step, not
+// reset.
+const compassEl = document.getElementById("compass");
+let holdTimer = 0, holdFired = false;
+compassEl.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  holdFired = false;
+  clearTimeout(holdTimer);
+  holdTimer = setTimeout(() => { holdFired = true; spinTo(0); }, LONG_PRESS_MS);
+});
+for (const ev of ["pointerup", "pointercancel", "pointerleave"])
+  compassEl.addEventListener(ev, () => clearTimeout(holdTimer));
+compassEl.addEventListener("click", (e) => {
+  // the hold already acted; the release must not step on top of it
+  if (holdFired) { holdFired = false; return; }
+  if (e.shiftKey) spinTo(0);
+  else spinTo(stepHeading(controls.getAzimuthalAngle(), SPIN_STEP, ON_MARK));
+});
 // a drag is the user taking the wheel; the tween gets out of the way
 controls.addEventListener("start", () => { spin = null; });
 
@@ -4536,9 +4558,6 @@ setTimeout(() => toast(FINE_POINTER
   : "Drag to move · pinch to zoom · + to add", { queue: true }), 700);
 
 const clock = new THREE.Clock();
-// one angle drives both the needle and the N that rides its tip, so they
-// cannot disagree
-const compass = document.getElementById("compass");
 let lastAzimuth = null;
 
 // The plan sheet covers the canvas completely, so rendering behind it is pure
@@ -4569,7 +4588,9 @@ function animate() {
   }
   const az = controls.getAzimuthalAngle();
   if (az !== lastAzimuth) {
-    compass.style.setProperty("--az", `${az}rad`);
+    // one angle drives both the needle and the N that rides its tip, so
+    // they cannot disagree
+    compassEl.style.setProperty("--az", `${az}rad`);
     lastAzimuth = az;
     sceneDirty = true;
   }
