@@ -231,7 +231,9 @@ export default {
 
   create(ctx) {
     const players = Object.fromEntries(ctx.players.map((p) => [p.pid, p]));
-    const lives = Object.fromEntries(ctx.players.map((p) => [p.pid, LIVES]));
+    // a duel (board mode): one life each, a single microgame, then done
+    const LIVES_ = ctx.duel ? 1 : LIVES;
+    const lives = Object.fromEntries(ctx.players.map((p) => [p.pid, LIVES_]));
     const outAt = {};
     let n = 0, phase = "idle", t = 0, st = null, last = null, bag = [], marks = {}, speedLevel = 0;
     const alive = () => ctx.players.filter((p) => lives[p.pid] > 0).map((p) => p.pid);
@@ -271,7 +273,7 @@ export default {
       if (anyFail) ctx.shake(18);
       for (const pid of st.pids) ctx.layout(pid, lives[pid] <= 0
         ? { kind: "wait", text: "OUT!", sub: "So close. Not really." }
-        : { kind: "wait", text: marks[pid] ? "CLEARED" : "−1 LIFE", sub: "♥".repeat(lives[pid]) + "♡".repeat(LIVES - lives[pid]) });
+        : { kind: "wait", text: marks[pid] ? "CLEARED" : "−1 LIFE", sub: "♥".repeat(lives[pid]) + "♡".repeat(LIVES_ - lives[pid]) });
       phase = "judge"; t = 0;
     }
 
@@ -286,6 +288,7 @@ export default {
 
     const inst = {
       result: null,
+      players: ctx.players,
       state: () => ({ phase, micro: st?.def.id, n, p: st?.p, lives }), // read-only, for tests
       describe: () => [`${LIVES} lives each · speeds up every 5 microgames`, "Last blob standing wins"],
       start() { nextMicro(); },
@@ -298,7 +301,7 @@ export default {
         else if (phase === "play") { st.def.update?.(st, dt, t); if (t >= st.D) judge(); }
         else if (phase === "judge" && t >= JUDGE) {
           const a = alive();
-          if (a.length === 0 || (ctx.players.length > 1 && a.length <= 1) || n >= MAX_MICROS) return finish();
+          if (ctx.duel || a.length === 0 || (ctx.players.length > 1 && a.length <= 1) || n >= MAX_MICROS) return finish();
           if (n % 5 === 0) { speedLevel++; phase = "speedup"; t = 0; ctx.sfx.power(); for (const pid of a) ctx.layout(pid, { kind: "wait", text: "SPEED UP!", shout: true }); }
           else nextMicro();
         } else if (phase === "speedup" && t >= SPEEDUP) nextMicro();
@@ -329,7 +332,7 @@ export default {
         list.forEach((p, i) => {
           const x = W / 2 - (list.length * w) / 2 + i * w + w / 2, l = lives[p.pid];
           blob(g, p, x - 50, y, 30, { alpha: l > 0 ? 1 : 0.3 });
-          text(g, l > 0 ? "♥".repeat(l) + "♡".repeat(LIVES - l) : "OUT", x + 20, y - 12, l > 0 ? 30 : 26, l > 0 ? "#ff2a6d" : "#888", "center", l > 0 ? 800 : 900);
+          text(g, l > 0 ? "♥".repeat(l) + "♡".repeat(LIVES_ - l) : "OUT", x + 20, y - 12, l > 0 ? 30 : 26, l > 0 ? "#ff2a6d" : "#888", "center", l > 0 ? 800 : 900);
           text(g, p.name, x + 20, y + 24, 22, "#fff", "center", 900);
         });
         text(g, `SPEED ×${sp().toFixed(2)}`, W - 150, 95, 30, "#f9f002", "center", 900);

@@ -10,6 +10,7 @@ import sling from "./games/sling.js";
 import chomp from "./games/chomp.js";
 import gauntlet from "./games/gauntlet.js";
 import snipe, { blackout } from "./games/snipe.js";
+import { makeBoard } from "./board.js";
 
 const GAMES = [flap, sling, chomp, snipe, blackout];
 // canvas text only uses a web font once it's loaded; ask for both up front
@@ -19,10 +20,13 @@ const BOT_NAMES = ["Wobbles", "Gloop", "Jiggly", "Squish", "Blorp", "Mochi", "Pu
 const MAX = 8;
 const POINTS = [10, 6, 4, 2, 1, 1, 1, 1];
 const ROUND_CHOICES = [3, 5, 8];
+const MODES = ["playlist", "board", "gauntlet"];
+const MODE_NAME = { playlist: "Playlist", board: "Board", gauntlet: "Gauntlet" };
 const AWARDS = [
   ["wins", "Champion", "wins"], ["flaps", "Flappiest", "flaps"], ["airtime", "Frequent flyer", "s aloft"],
   ["kings", "Kingslayer", "kings popped"], ["blocks", "Demolition crew", "blocks smashed"],
   ["dots", "Hungriest", "dots eaten"], ["cleared", "Microgame machine", "microgames cleared"],
+  ["stars", "Star collector", "stars bought"], ["duels", "Duelist", "duels won"],
   ["snipes", "Deadeye", "runners sniped"], ["loot", "Master thief", "coins stolen"], ["catches", "Best hunter", "catches"], ["gulps", "Tables turned", "hunters gulped"],
 ];
 
@@ -108,7 +112,8 @@ function onInput(pid, m) {
   }
   if (m.t === "act") return act(m.id, p);
   if (m.t === "pick" && S.scene === "choose" && pid === S.chooser && !S.picked) return pick(m.id);
-  if (S.scene === "game" && S.game && !p.bot) S.game.input(pid, m);
+  if ((S.scene === "game" || S.scene === "duel") && S.game && !p.bot) S.game.input(pid, m);
+  if (S.scene === "board" && S.board && !p.bot) S.board.input(p, m);
 }
 
 function addBot() {
@@ -131,7 +136,7 @@ function act(id, p) {
   if (!isVip) return;
   if (id === "start" && S.scene === "lobby" && S.players.length >= 2) startSession();
   else if (id === "rounds" && S.scene === "lobby") { S.rounds = ROUND_CHOICES[(ROUND_CHOICES.indexOf(S.rounds) + 1) % ROUND_CHOICES.length]; refreshMenus(); }
-  else if (id === "mode" && S.scene === "lobby") { S.mode = S.mode === "playlist" ? "gauntlet" : "playlist"; refreshMenus(); }
+  else if (id === "mode" && S.scene === "lobby") { S.mode = MODES[(MODES.indexOf(S.mode) + 1) % MODES.length]; refreshMenus(); }
   else if (id === "addbot" && S.scene === "lobby") addBot();
   else if (id === "rmbot" && S.scene === "lobby") removeBot();
   else if (id === "rematch" && S.scene === "final") startSession();
@@ -145,8 +150,8 @@ function refreshMenus() {
       layout(p.pid, p === v
         ? { kind: "menu", text: "You're the VIP", sub: S.players.length < 2 ? "Waiting for one more player…" : `${S.players.length} players ready`, actions: [
           ...(S.players.length >= 2 ? [{ id: "start", label: "▶ Start game", big: true }] : []),
-          { id: "mode", label: S.mode === "gauntlet" ? "Mode: Gauntlet" : "Mode: Playlist" },
-          ...(S.mode === "playlist" ? [{ id: "rounds", label: `Rounds: ${S.rounds}` }] : []), { id: "addbot", label: "+ Add bot" }, { id: "rmbot", label: "− Remove bot" }] }
+          { id: "mode", label: `Mode: ${MODE_NAME[S.mode]}` },
+          ...(S.mode !== "gauntlet" ? [{ id: "rounds", label: `${S.mode === "board" ? "Turns" : "Rounds"}: ${S.rounds}` }] : []), { id: "addbot", label: "+ Add bot" }, { id: "rmbot", label: "− Remove bot" }] }
         : { kind: "menu", text: "You're in!", sub: `Waiting for ${v ? v.name : "the VIP"} to start…` });
     } else if (S.scene === "final") {
       layout(p.pid, { kind: "menu", text: finalLine(p), sub: p === v ? "Play again?" : `Waiting for ${v?.name}…`, actions: p === v ? [{ id: "rematch", label: "↻ Rematch", big: true }, { id: "lobby", label: "Back to lobby" }] : [] });
@@ -156,7 +161,7 @@ function refreshMenus() {
   el.hidden = !(S.scene === "lobby" || S.scene === "final");
   document.getElementById("t-start").textContent = S.scene === "final" ? "Rematch (Enter)" : "Start (Enter)";
   document.getElementById("t-rounds").textContent = `Rounds: ${S.rounds} (R)`;
-  document.getElementById("t-mode").textContent = `Mode: ${S.mode === "gauntlet" ? "Gauntlet" : "Playlist"} (G)`;
+  document.getElementById("t-mode").textContent = `Mode: ${MODE_NAME[S.mode]} (G)`;
   for (const id of ["t-tab", "t-mode", "t-rounds", "t-bot", "t-rmbot"]) document.getElementById(id).hidden = S.scene !== "lobby";
   if (S.mode === "gauntlet") document.getElementById("t-rounds").hidden = true;
 }
@@ -176,12 +181,32 @@ function startSession() {
   S.players = S.players.filter((p) => p.bot || p.connected);
   document.getElementById("tools").hidden = true;
   if (S.mode === "gauntlet") { S.picked = gauntlet; startIntro(); }
+  else if (S.mode === "board") { S.board = makeBoard(boardApi); S.board.newGame(); go("board"); S.board.startTurn(); }
   else startChoose();
 }
 
 const sessionRounds = () => (S.mode === "gauntlet" ? 1 : S.rounds);
 
-function standings() { return [...S.players].sort((a, b) => b.score - a.score); }
+// board mode ranks by stars, then coins (p.score)
+const rankKey = (p) => (S.mode === "board" ? (p.stars || 0) * 1e6 : 0) + p.score;
+function standings() { return [...S.players].sort((a, b) => rankKey(b) - rankKey(a)); }
+
+const boardApi = {
+  players: () => S.players,
+  byPid, layout, sfx,
+  send: (pid, m) => send(byPid(pid), m),
+  shake: (n) => { S.shake = Math.max(S.shake || 0, n); },
+  bg: (...a) => bg(...a),
+  turns: () => S.rounds,
+  minigame: () => startChoose(),
+  // a 1v1 duel: a single gauntlet microgame for the two of them
+  duel: (a, b, done) => {
+    S.duelDone = done;
+    S.game = gauntlet.create({ ...gameCtx([a, b]), duel: true });
+    go("duel");
+    S.game.start();
+  },
+};
 
 function startChoose() {
   const n = S.players.length;
@@ -190,9 +215,9 @@ function startChoose() {
   pool = pool.filter((d) => d.id !== S.lastGameId).sort(() => Math.random() - 0.5).concat(pool.filter((d) => d.id === S.lastGameId));
   S.options = pool.slice(0, 3);
   S.picked = null;
-  // loser picks: the lowest score chooses (random among ties); round 1 is a roulette
-  const low = Math.min(...S.players.map((p) => p.score));
-  const lows = S.players.filter((p) => p.score === low);
+  // loser picks: last place chooses (random among ties); round 1 is a roulette
+  const low = Math.min(...S.players.map(rankKey));
+  const lows = S.players.filter((p) => rankKey(p) === low);
   S.chooser = S.round === 0 ? null : lows[Math.floor(Math.random() * lows.length)].pid;
   go("choose");
   const c = byPid(S.chooser);
@@ -210,8 +235,15 @@ function pick(id) {
 function startIntro() {
   S.def = S.picked;
   S.lastGameId = S.def.id;
-  const seats = S.players.slice();
-  S.game = S.def.create({
+  S.game = S.def.create(gameCtx(S.players.slice()));
+  go("intro");
+  layoutAll(() => ({ kind: "wait", text: S.def.command, sub: S.def.controls, shout: true }));
+  setTimeout(() => sfx.slam(), 120);
+}
+
+// what a game gets to talk to the TV with
+function gameCtx(seats) {
+  return {
     players: seats,
     layout,
     sfx,
@@ -226,10 +258,7 @@ function startIntro() {
       S.roleCounts[one] = (S.roleCounts[one] || 0) + 1;
       return one;
     },
-  });
-  go("intro");
-  layoutAll(() => ({ kind: "wait", text: S.def.command, sub: S.def.controls, shout: true }));
-  setTimeout(() => sfx.slam(), 120);
+  };
 }
 
 function finishGame() {
@@ -246,7 +275,7 @@ function finishGame() {
   S.result = r;
   S.game = null;
   go("results");
-  for (const { p, d } of S.deltas) layout(p.pid, { kind: "wait", text: winners.includes(p.pid) ? "You won! 🎉" : `+${d} points`, sub: r.headline });
+  for (const { p, d } of S.deltas) layout(p.pid, { kind: "wait", text: winners.includes(p.pid) ? "You won! 🎉" : `+${d} ${S.mode === "board" ? "coins" : "points"}`, sub: r.headline });
   for (const { p } of S.deltas) send(p, { t: "buzz", ms: winners.includes(p.pid) ? 300 : 80 });
 }
 
@@ -264,10 +293,18 @@ function tick(dt) {
     for (const p of S.players) if (p.bot || !p.connected) S.game.bot(p.pid, dt);
     S.game.update(dt);
     if (S.game.result) finishGame();
+  } else if (S.scene === "board") {
+    S.board.tick(dt);
+  } else if (S.scene === "duel") {
+    if (S.hitstop > 0) { S.hitstop -= dt; return; }
+    for (const p of S.game.players || []) if (p.bot || !p.connected) S.game.bot(p.pid, dt);
+    S.game.update(dt);
+    if (S.game.result) { const r = S.game.result; S.game = null; go("board"); S.duelDone(r); }
   } else if (S.scene === "results") {
     if (S.t > 6.5) {
       S.round++;
       if (S.round >= sessionRounds()) { go("final"); sfx.win(); refreshMenus(); }
+      else if (S.mode === "board") { go("board"); S.board.startTurn(); }
       else startChoose();
     }
   }
@@ -339,7 +376,7 @@ function drawLobby() {
   }
   const v = vip();
   panel(g, 820, 905, 960, 70, INK, 35, 0);
-  text(g, `${S.mode === "gauntlet" ? "MICROGAME GAUNTLET · 3 LIVES" : `${S.rounds} ROUNDS`} · ${v ? `${v.name.toUpperCase()} (VIP) STARTS FROM THEIR PHONE` : "FIRST ONE IN IS THE VIP"}`, 1300, 940, 30, "#ffd400", "center", 900);
+  text(g, `${S.mode === "gauntlet" ? "MICROGAME GAUNTLET · 3 LIVES" : S.mode === "board" ? `BOARD · ${S.rounds} TURNS` : `${S.rounds} ROUNDS`} · ${v ? `${v.name.toUpperCase()} (VIP) STARTS FROM THEIR PHONE` : "FIRST ONE IN IS THE VIP"}`, 1300, 940, 30, "#ffd400", "center", 900);
 }
 
 function scoreStrip(y = 1000) {
@@ -438,7 +475,7 @@ function drawFinal() {
     const jump = rank === 0 ? Math.abs(Math.sin(S.t * 5)) * 50 : 0;
     blob(g, p, x, top - 90 - jump, rank === 0 ? 95 : 72, { crown: rank === 0 });
     text(g, p.name, x, top + 160, 38, INK, "center", 900);
-    text(g, `${p.score} pts`, x, top + 200, 30, INK, "center", 800);
+    text(g, S.mode === "board" ? `★ ${p.stars || 0} · ${p.score} coins` : `${p.score} pts`, x, top + 200, 30, INK, "center", 800);
   }
   list.slice(3).forEach((p, i) => outlined(g, `${i + 4}. ${p.name} · ${p.score}`, 820, 950 + i * 40, 30, "#fff"));
   g.save(); g.translate(1600, 560); g.rotate(0.025); g.translate(-1600, -560);
@@ -525,6 +562,8 @@ function draw() {
   else if (S.scene === "choose") drawChoose();
   else if (S.scene === "intro") drawIntro();
   else if (S.scene === "game") S.game.draw(g);
+  else if (S.scene === "board") S.board.draw(g, S.t);
+  else if (S.scene === "duel") { S.game.draw(g); outlined(g, "DUEL · WINNER TAKES 10", W / 2, 1050, 30, "#b026ff"); }
   else if (S.scene === "results") drawResults();
   else if (S.scene === "final") drawFinal();
   drawWipe();

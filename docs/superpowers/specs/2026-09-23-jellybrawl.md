@@ -195,6 +195,38 @@ these differences. The second round of details came from a Q&A on
   hit, the flare count and duration, sprint speed, cooldown and noise, and
   bush rustle ripples.
 
+## Board mode (third mode)
+
+Picked in the lobby (Mode cycles Playlist → Board → Gauntlet). Built in
+`board.js`, and set to 3 / 5 / 8 turns.
+
+- **The board.** A loop of 26 spaces: blue (+3 coins), red (−3), shop ($)
+  and duel (VS). Everyone starts on 10 coins.
+- **Turns.** On each turn every player, in order, gets a ROLL button on their
+  phone (15 s, then it auto-rolls) and hops round the loop.
+- **Stars.** Passing the star with 20 coins buys it automatically, and the
+  star then moves to another blue space.
+- **Shop.** Landing on it opens a menu on the phone:
+  - Double dice (5 coins): roll two dice this turn.
+  - Warp (8 coins): swap places with a random rival.
+  - Pickpocket (10 coins): steal 5 coins from the richest rival.
+
+  You can hold up to 3 items. What you bought stays secret (the TV only
+  says "bought something…"), and you use items from the roll screen.
+- **Duels.** Landing on VS lets you pick a rival for a 1v1 microgame (one
+  life, one microgame, from the gauntlet set). The winner takes up to 10 of
+  the loser's coins; a draw pays nothing.
+- **Minigames.** Once everyone has moved, there's a Playlist-style minigame
+  (the last-place player picks), and its points pay out as coins.
+- **Winning.** Most stars wins, with coins breaking ties. That ranking also
+  decides the last-place picker, and there are new awards: Star collector
+  and Duelist.
+- **Bots** roll, use their items about half the time, shop sensibly, and
+  duel the richest rival.
+- **Tests.** A Node rules check drives `makeBoard` directly (14 checks:
+  moves, shop, items, duel payout, star purchase and relocation, the
+  hand-off to the minigame).
+
 ## Microgame Gauntlet (second mode)
 
 Chosen in the lobby (VIP **Mode** button, or **G**), next to Playlist.
@@ -288,8 +320,8 @@ them.
 ## Follow-ups
 
 
-1. Board mode: a loop board, dice on phones, coin, red, duel and star
-   spaces, a shop, items kept secret on phones, bonus stars.
+1. Board mode extras: bonus stars, event spaces, and a board theme or map
+   rotation.
 2. Party classics: Mash Race, Reaction Tap, Hot Potato, Tilt Maze (with the
    iOS motion permission).
 3. Audience: seats past 8 (and anyone who opts in) get bets and emoji

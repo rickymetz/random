@@ -145,7 +145,7 @@ function render(l) {
   view.replaceChildren();
   view.onpointerdown = view.onpointermove = view.onpointerup = null;
   if (l.command && l.kind !== "wait") add(el("p", { className: "cmd", textContent: l.command }));
-  const kind = { wait, menu, choose, button, dpad, sling, pads, stick, scope }[l.kind] || wait;
+  const kind = { wait, menu, choose, button, dpad, sling, pads, stick, scope, roll }[l.kind] || wait;
   kind(l);
 }
 
@@ -205,6 +205,19 @@ function dpad(l) {
   };
   view.onpointerup = () => { start = null; };
   add(pad, el("p", { className: "hint", textContent: l.hint || "Swipe or tap the arrows" }));
+}
+
+// Board mode: roll the die; your items (secret: only on your phone) sit underneath
+function roll(l) {
+  add(el("p", { className: "msg", textContent: l.text }), l.sub && el("p", { className: "hint", textContent: l.sub }));
+  const b = el("button", { type: "button", className: "hit", textContent: l.dbl ? "ROLL ×2" : "ROLL" });
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); conn.send({ t: "roll" }); navigator.vibrate?.(40); b.disabled = true; });
+  add(b);
+  if (l.items?.length) add(el("div", { className: "items" }, ...l.items.map((it) => {
+    const x = el("button", { type: "button", textContent: `USE ${it.label}` });
+    x.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "use", id: it.id }); x.disabled = true; navigator.vibrate?.(20); });
+    return x;
+  })));
 }
 
 // big coloured/numbered pads (microgames: MATCH!, COUNT!)
