@@ -91,6 +91,34 @@
           }
         ]
       },
+      /* About eight minutes and no warm-up: the gentle moves are the warm-up.
+       * Half of it standing, half on a mat. Not on the weekly plan by default. */
+      {
+        id: 'morning',
+        name: 'Morning stretch',
+        kind: 'mobility',
+        blocks: [
+          {
+            name: 'Standing',
+            items: [
+              { id: 'neck-circles', name: 'Neck half-circles', mode: 'reps', sets: 1, min: 5, max: 5, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'shoulder-rolls', name: 'Shoulder rolls', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
+              { id: 'reach-side-bend', name: 'Overhead reach and side bend', mode: 'reps', sets: 1, min: 5, max: 5, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'hip-circles', name: 'Hip circles', mode: 'reps', sets: 1, min: 8, max: 8, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'ragdoll', name: 'Ragdoll forward fold', mode: 'time', sets: 1, min: 30, max: 45, rest: 0 }
+            ]
+          },
+          {
+            name: 'On the mat',
+            items: [
+              { id: 'cat-cow', name: 'Cat-cow', mode: 'reps', sets: 1, min: 8, max: 10, rest: 0 },
+              { id: 'worlds-greatest', name: 'World’s greatest stretch', mode: 'reps', sets: 1, min: 4, max: 4, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'hip-flexor', name: 'Hip-flexor stretch', mode: 'time', sets: 1, min: 30, max: 30, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'childs-pose', name: 'Child’s-pose/lat stretch', mode: 'time', sets: 1, min: 30, max: 45, rest: 0 }
+            ]
+          }
+        ]
+      },
       /* Not on the weekly plan by default — pick it from Today, or put it on a
        * day in Settings. Hips, folds, twists and arches: the range that makes
        * the more ambitious pages of the Kama Sutra feel less like a dare. */

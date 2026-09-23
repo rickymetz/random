@@ -454,6 +454,12 @@
   /* Cues for exercises that don't have a drawing yet. Where a stretch can
    * hurt, the cue says how. */
   var CUES = {
+    'neck-circles': 'Chin to chest, then roll ear to shoulder and back. Half-circles only — no rolling the head back.',
+    'shoulder-rolls': 'Up to the ears, back, and down. Big and slow, then reverse halfway.',
+    'reach-side-bend': 'Reach tall on the inhale, lean over on the exhale. Hips stay square, ribs open.',
+    'hip-circles': 'Hands on hips, feet planted, draw the biggest circle the hips will make.',
+    ragdoll: 'Soft knees, hold opposite elbows and let the head hang. Sway if it helps.',
+    'worlds-greatest': 'Lunge, same-side elbow toward the instep, then rotate that arm to the ceiling.',
     frog: 'Knees wide, shins parallel, ankles in line with the knees. Rock the hips back slowly.',
     pigeon: 'Front shin as square as your hip allows, back leg long. Square hips beat a deep hold.',
     'happy-baby': 'Hold the outsides of the feet, knees toward the armpits, and let the low back sink.',
