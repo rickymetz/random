@@ -25,7 +25,7 @@ const MODE_NAME = { playlist: "Playlist", board: "Board", gauntlet: "Gauntlet" }
 const AWARDS = [
   ["wins", "Champion", "wins"], ["flaps", "Flappiest", "flaps"], ["airtime", "Frequent flyer", "s aloft"],
   ["kings", "Kingslayer", "kings popped"], ["blocks", "Demolition crew", "blocks smashed"],
-  ["dots", "Hungriest", "dots eaten"], ["cleared", "Microgame machine", "microgames cleared"],
+  ["dots", "Hungriest", "dots eaten"], ["cleared", "Microgame machine", "microgames cleared"], ["bosses", "Boss slayer", "bosses beaten"],
   ["stars", "Star collector", "stars bought"], ["duels", "Duelist", "duels won"],
   ["snipes", "Deadeye", "runners sniped"], ["loot", "Master thief", "coins stolen"], ["catches", "Best hunter", "catches"], ["gulps", "Tables turned", "hunters gulped"],
 ];

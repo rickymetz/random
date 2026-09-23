@@ -250,6 +250,26 @@ machine") and rematch work unchanged. There's a cap of 60 microgames.
 | STOP! | button | stop the needle in the green zone |
 | HOLD IT! | button | press within the first ~half, and never let go |
 | FLOAT! | button (flap) | stay between the spikes and the lava |
+| TAP EXACTLY N! | button | exactly N taps (your count stays hidden until judging) |
+| BIGGER! | swipe | swipe toward the bigger number |
+| SIMON SAYS! | swipe | repeat the flashed arrow sequence (3, or 4 when fast) |
+| DODGE! | swipe | shift into the one safe spot before the rocks drop |
+| PUMP IT! | button | fill the leaking balloon into the green band; overfill pops it |
+| MATH! | 4 number pads | tap the answer |
+| ODD ONE OUT! | 4 pads | pick the blob with a different colour |
+| ON THE BEAT! | button | hit at least 3 of 4 beats (±0.22 s), at most 1 stray tap |
+| SWIPE THE WORD! | swipe | follow the word, not the arrow |
+| REMEMBER! | 4 colour pads | recall the colour that flashed, then hid |
+| GREEN LIGHT! | button | 5 taps on green; a tap on red fails, except in a 0.35 s grace just after it turns |
+| **BOSS: MEGA SIMON!** | swipe | 6 arrows, 9 s |
+| **BOSS: MEGA MASH!** | button | a big tap target over 6 s |
+
+That's 20 microgames plus 2 bosses. Every 10th microgame is a boss: a
+longer slam ("BOSS STAGE"), harder, and clearing it wins back a lost life
+(award: Boss slayer). A headless Node check runs every microgame with bots
+at normal and top speed, so each one runs, judges cleanly, and has a sane
+bot pass rate (it caught GREEN LIGHT! being unwinnable without the grace
+window).
 
 Each microgame is a small object in `games/gauntlet.js` (`setup`,
 `layout`, `input`, `update`, `draw`, `judge`, `bot`), so adding one doesn't
