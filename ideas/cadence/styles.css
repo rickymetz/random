@@ -2,6 +2,9 @@
 
 :root {
   color-scheme: light;
+  /* Space the bottom of the screen that isn't ours: the hub's navbar when
+     it is up (it already covers the home indicator), else the safe area. */
+  --sab: var(--random-nav-h, env(safe-area-inset-bottom));
   --bg: #faf9f7;
   --card: #ffffff;
   --card-2: #f4f2ee;
@@ -117,6 +120,9 @@ button { cursor: pointer; }
 }
 
 .app-bar h1 {
+  /* pinned, so the title stays centred when the hub navbar hides the
+     hub link in the first column */
+  grid-column: 2;
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -152,7 +158,7 @@ button { cursor: pointer; }
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 0.25rem;
-  padding: 0.35rem 0.4rem calc(0.35rem + env(safe-area-inset-bottom));
+  padding: 0.35rem 0.4rem calc(0.35rem + var(--sab));
   background: var(--bg);
   background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(12px);
@@ -698,7 +704,7 @@ table.data td.num, table.data th.num { text-align: right; }
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.5rem 1.25rem calc(1rem + env(safe-area-inset-bottom));
+  padding: 0.5rem 1.25rem calc(1rem + var(--sab));
   max-width: 30rem;
   width: 100%;
   margin: 0 auto;
@@ -725,7 +731,7 @@ table.data td.num, table.data th.num { text-align: right; }
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(4.75rem + env(safe-area-inset-bottom));
+  bottom: calc(4.75rem + var(--sab));
   transform: translateX(-50%);
   z-index: 30;
   padding: 0.55rem 0.9rem;

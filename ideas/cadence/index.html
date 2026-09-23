@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Our own bottom UI makes room for the hub navbar via --random-nav-h
+     (see --sab), so the bar needs no spacer after the page. -->
+<meta name="random-nav" content="overlay">
 <title>Cadence</title>
 <meta name="description" content="A weekly calisthenics and mobility tracker — guided sessions with timers, set-by-set logging, and progress over time. Installable, offline, all on your device.">
 <meta name="theme-color" content="#faf9f7" media="(prefers-color-scheme: light)">
@@ -52,5 +55,8 @@
   <script src="store.js"></script>
   <script src="charts.js"></script>
   <script src="app.js"></script>
+  <!-- The hub navbar. Cadence has its own service worker, which the hub's
+       worker can't inject into, so it asks for the bar itself. -->
+  <script src="../../nav.js" defer></script>
 </body>
 </html>

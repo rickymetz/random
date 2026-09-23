@@ -1,0 +1,139 @@
+<!doctype html>
+<!-- Served by sw.js in place of an idea that isn't cached yet. The worker
+     serves it at the idea's own URL and injects <base href> pointing at the
+     hub, so every relative URL below resolves against the hub root. -->
+<html lang="en" data-random-page="offline">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Offline · random</title>
+<meta name="theme-color" content="#faf9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #faf9f7;
+    --card: #ffffff;
+    --ink: #1a1a1a;
+    --muted: #6b6b6b;
+    --line: #e5e2dc;
+    --accent: #b3542e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141414;
+      --card: #1e1e1e;
+      --ink: #eceae6;
+      --muted: #9a9a9a;
+      --line: #2c2c2c;
+      --accent: #e08554;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 3rem 1.25rem 5rem;
+  }
+  main { max-width: 52rem; margin: 0 auto; }
+  header { margin-bottom: 2rem; }
+  h1 { font-size: 1.6rem; letter-spacing: -0.01em; }
+  header p { color: var(--muted); margin-top: 0.35rem; }
+  .retry {
+    margin-top: 1rem;
+    border: 0;
+    border-radius: 999px;
+    padding: 0.5rem 1.1rem;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  h2 { font-size: 1rem; margin-bottom: 0.9rem; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 1rem;
+  }
+  .card {
+    display: block;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    padding: 1.1rem 1.2rem 1.25rem;
+    text-decoration: none;
+    color: inherit;
+  }
+  .card:hover { border-color: var(--accent); }
+  .card-emoji { font-size: 1.3rem; display: block; margin-bottom: 0.5rem; }
+  .card h3 { font-size: 1.05rem; letter-spacing: -0.01em; }
+  .card p { color: var(--muted); font-size: 0.88rem; margin-top: 0.4rem; }
+  .none { color: var(--muted); }
+</style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>You're offline</h1>
+      <p>This idea hasn't been saved on this device yet. It will be once you open it with a connection.</p>
+      <button class="retry" type="button" onclick="location.reload()">Retry</button>
+    </header>
+    <section>
+      <h2>Available offline</h2>
+      <div class="grid" id="cached"></div>
+      <p class="none" id="none" hidden>Nothing yet. Ideas you open are kept here for next time.</p>
+    </section>
+  </main>
+<script>
+(function () {
+  var grid = document.getElementById('cached');
+  var none = document.getElementById('none');
+  function at(path) { return new URL(path, document.baseURI).href; }
+
+  // An idea counts as available when any cache on this origin holds its
+  // page: the hub worker's, or an app's own (Cadence, Ledger).
+  function available(idea) {
+    var candidates = [idea.url, idea.slug + '/', idea.slug + '/index.html'];
+    if (!('caches' in window)) return Promise.resolve(false);
+    return candidates.reduce(function (found, path) {
+      return found.then(function (hit) {
+        return hit || caches.match(at(path), { ignoreSearch: true }).then(Boolean);
+      });
+    }, Promise.resolve(false));
+  }
+
+  fetch(at('ideas.json'))
+    .then(function (r) { return r.json(); })
+    .then(function (ideas) {
+      return Promise.all(ideas.map(available)).then(function (flags) {
+        return ideas.filter(function (_, i) { return flags[i]; });
+      });
+    })
+    .catch(function () { return []; })
+    .then(function (list) {
+      none.hidden = list.length > 0;
+      list.forEach(function (idea) {
+        var a = document.createElement('a');
+        a.className = 'card';
+        a.href = at(idea.url);
+        var emoji = document.createElement('span');
+        emoji.className = 'card-emoji';
+        emoji.textContent = idea.emoji || '✦';
+        var h = document.createElement('h3');
+        h.textContent = idea.title;
+        a.appendChild(emoji);
+        a.appendChild(h);
+        if (idea.description) {
+          var p = document.createElement('p');
+          p.textContent = idea.description;
+          a.appendChild(p);
+        }
+        grid.appendChild(a);
+      });
+    });
+})();
+</script>
+</body>
+</html>

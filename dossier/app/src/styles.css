@@ -98,7 +98,9 @@
      is always 0 in a headless browser, where the standalone app's
      bottom inset is the thing most worth checking). */
   --sat: env(safe-area-inset-top, 0px);
-  --sab: env(safe-area-inset-bottom, 0px);
+  /* The random hub's navbar, when it is up, already covers the home
+     indicator: it is the bottom inset then. */
+  --sab: var(--random-nav-h, env(safe-area-inset-bottom, 0px));
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
 }

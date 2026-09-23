@@ -95,6 +95,9 @@
   document.body.addEventListener("pointerdown", () => {
     if (running) return;
     running = true;
+    // Tuck the hub's navbar away for the exercise (a handle at the bottom
+    // edge brings it back).
+    if (window.randomNav) window.randomNav.hide();
     run(0);
   });
 </script>
