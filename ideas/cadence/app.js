@@ -656,7 +656,7 @@
   }
 
   function kindLabel(workout) {
-    return workout.kind === 'strength' ? 'Calisthenics' : workout.kind === 'mobility' ? 'Mobility' : 'Rest';
+    return { strength: 'Calisthenics', mobility: 'Mobility', habit: 'Daily habit' }[workout.kind] || 'Rest';
   }
 
   function programMeta(workout) {
@@ -813,7 +813,10 @@
   function nudgeFor(date, stats) {
     if (stats.complete) return { glyph: '✦', text: 'Both targets met this week. Anything else is a bonus.' };
 
-    if (S.isRestDay(date)) return null;
+    // A day with nothing that counts toward the week — a rest day, or only
+    // the morning stretch — is not the day to be told you're behind.
+    var counted = S.workoutsFor(date).some(function (w) { return w.kind === 'strength' || w.kind === 'mobility'; });
+    if (!counted) return null;
 
     var short = (stats.strengthTarget - stats.strength) + (stats.mobilityTarget - stats.mobility);
     if (short <= 0) return null;
@@ -822,7 +825,9 @@
     var todayIdx = S.dayIndex(date);
 
     function openOn(day) {
-      return S.workoutsFor(day).filter(function (w) { return w.kind !== 'rest' && !S.isSessionDone(day, w.id); });
+      return S.workoutsFor(day).filter(function (w) {
+        return (w.kind === 'strength' || w.kind === 'mobility') && !S.isSessionDone(day, w.id);
+      });
     }
 
     var open = null;
@@ -1178,7 +1183,7 @@
         S.state.schedules.length ? h('button', {
           class: 'btn btn-sm btn-ghost', type: 'button', text: 'Reset',
           onclick: function () {
-            if (!global.confirm('Go back to the original week — A/B calisthenics on Mon / Wed / Fri, flexibility on Tue / Thu / Sat?')) return;
+            if (!global.confirm('Go back to the original week — morning stretch every day, A/B calisthenics on Mon / Wed / Fri, flexibility on Tue / Thu / Sat?')) return;
             S.resetSchedule();
             toast('Schedule reset');
           }
@@ -1461,7 +1466,8 @@
           }
         }, [
           h('option', { value: 'strength', selected: workout.kind === 'strength', text: 'Calisthenics' }),
-          h('option', { value: 'mobility', selected: workout.kind === 'mobility', text: 'Mobility' })
+          h('option', { value: 'mobility', selected: workout.kind === 'mobility', text: 'Mobility' }),
+          h('option', { value: 'habit', selected: workout.kind === 'habit', text: 'A daily habit — not toward the week' })
         ])
       ]),
       locked ? null : h('button', {
@@ -1499,7 +1505,8 @@
         h('label', { for: 'newprog-kind', text: 'Counts as' }),
         h('select', { id: 'newprog-kind', onchange: function (e) { newProgram.kind = e.target.value; } }, [
           h('option', { value: 'mobility', selected: newProgram.kind === 'mobility', text: 'Mobility' }),
-          h('option', { value: 'strength', selected: newProgram.kind === 'strength', text: 'Calisthenics' })
+          h('option', { value: 'strength', selected: newProgram.kind === 'strength', text: 'Calisthenics' }),
+          h('option', { value: 'habit', selected: newProgram.kind === 'habit', text: 'A daily habit — not toward the week' })
         ])
       ]),
       h('div', { class: 'field' }, [

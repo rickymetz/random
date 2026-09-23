@@ -156,7 +156,7 @@
       var out = {
         id: id,
         name: str(w.name, 60, id),
-        kind: w.kind === 'mobility' || w.kind === 'rest' ? w.kind : 'strength',
+        kind: w.kind === 'mobility' || w.kind === 'habit' || w.kind === 'rest' ? w.kind : 'strength',
         blocks: blocks
       };
       if (w.archived) out.archived = true;
@@ -246,6 +246,19 @@
     return Object.keys(byWeek).sort().slice(-200).map(function (from) { return { from: from, days: byWeek[from] }; });
   }
 
+  /* Data from before schedules could be edited followed the original week.
+   * It keeps that week for everything already behind it and gets the current
+   * default from this week on, so no past Sunday turns into a missed session. */
+  function legacySchedules(data) {
+    var anchor = /^\d{4}-\d{2}-\d{2}$/.test(data.anchorMonday) ? toISO(mondayOf(fromISO(data.anchorMonday))) : null;
+    var monday = toISO(mondayOf(today()));
+    if (!anchor || anchor >= monday) return [];
+    return [
+      { from: anchor, days: R.clone(R.LEGACY_SCHEDULE) },
+      { from: monday, days: R.defaultSchedule() }
+    ];
+  }
+
   function sanitizeDayPlans(raw) {
     var out = {};
     if (!raw || typeof raw !== 'object') return out;
@@ -299,7 +312,7 @@
       demoHidden: sanitizeFlags(data.demoHidden),
       phaseOffset: data.phaseOffset === 1 ? 1 : 0,
       routine: sanitizeRoutine(data.routine),
-      schedules: sanitizeSchedules(data.schedules),
+      schedules: Array.isArray(data.schedules) ? sanitizeSchedules(data.schedules) : legacySchedules(data),
       dayPlans: sanitizeDayPlans(data.dayPlans),
       sessions: sanitizeSessions(data.sessions),
       retired: sanitizeRetired(data.retired),
@@ -644,8 +657,8 @@
       var available = !state.startedISO || toISO(date) >= state.startedISO;
       scheduledIds(date).forEach(function (id) {
         var plannedWorkout = findWorkout(id);
-        if (!plannedWorkout || plannedWorkout.kind === 'rest') return;
-        if (available) planned[plannedWorkout.kind === 'strength' ? 'strength' : 'mobility']++;
+        if (!plannedWorkout || (plannedWorkout.kind !== 'strength' && plannedWorkout.kind !== 'mobility')) return;
+        if (available) planned[plannedWorkout.kind]++;
         else partial = true;
       });
       daySessions(date).forEach(function (entry) {
@@ -860,7 +873,7 @@
     var workout = {
       id: id,
       name: str(String(name || '').trim(), 60, 'New program'),
-      kind: kind === 'mobility' ? 'mobility' : 'strength',
+      kind: kind === 'mobility' || kind === 'habit' ? kind : 'strength',
       blocks: source
         ? R.clone(source.blocks)
         : [{ name: '', items: [R.clone(R.findExercise(R.DEFAULT_ROUTINE, 'warmup').ex), R.clone(R.findExercise(R.DEFAULT_ROUTINE, 'cooldown').ex)] }]

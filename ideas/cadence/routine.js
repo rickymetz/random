@@ -1,5 +1,8 @@
 /* Cadence — the routine itself, and the labels derived from it.
  *
+ * A workout's kind is 'strength' or 'mobility' (each counts toward its own
+ * weekly target), 'habit' (done daily, counts toward nothing), or 'rest'.
+ *
  * An exercise is described by what you have to do, not by a display string:
  *   mode     'reps' | 'time' | 'none'
  *   sets     how many rounds
@@ -92,11 +95,13 @@
         ]
       },
       /* About eight minutes and no warm-up: the gentle moves are the warm-up.
-       * Half of it standing, half on a mat. Not on the weekly plan by default. */
+       * Half of it standing, half on a mat. It's on every day, as a habit:
+       * habits get ticked off but never count toward the week's targets, or a
+       * week of eight-minute stretches would stand in for the real sessions. */
       {
         id: 'morning',
         name: 'Morning stretch',
-        kind: 'mobility',
+        kind: 'habit',
         blocks: [
           {
             name: 'Standing',
@@ -198,7 +203,13 @@
    * program but a stand-in that becomes Calisthenics A or B, so the A/B
    * alternation lives in one place (see store.js). An empty day is a rest day. */
   var ROTATION = 'rotation';
-  var DEFAULT_SCHEDULE = [[ROTATION], ['flex'], [ROTATION], ['flex'], [ROTATION], ['flex'], []];
+  var DEFAULT_SCHEDULE = [
+    ['morning', ROTATION], ['morning', 'flex'], ['morning', ROTATION], ['morning', 'flex'],
+    ['morning', ROTATION], ['morning', 'flex'], ['morning']
+  ];
+  /* The week before there was a morning stretch — what data from then was
+   * following, so its past days still read the way they did. */
+  var LEGACY_SCHEDULE = [[ROTATION], ['flex'], [ROTATION], ['flex'], [ROTATION], ['flex'], []];
 
   function formatSeconds(s) {
     if (s >= 60 && s % 60 === 0) return s / 60 + ' min';
@@ -279,6 +290,7 @@
     DAYS: DAYS,
     ROTATION: ROTATION,
     DEFAULT_SCHEDULE: DEFAULT_SCHEDULE,
+    LEGACY_SCHEDULE: LEGACY_SCHEDULE,
     defaultSchedule: function () { return clone(DEFAULT_SCHEDULE); },
     defaultRoutine: function () { return clone(DEFAULT_ROUTINE); },
     amountLabel: amountLabel,
