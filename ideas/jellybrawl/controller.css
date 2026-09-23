@@ -107,3 +107,5 @@ h2 { margin: 0; font: 48px var(--display); letter-spacing: 3px; color: #fff; tex
 .reacts button.pop { transform: scale(1.25); }
 .heckle { background: #39ff14; color: var(--ink); border-color: var(--ink); }
 .heckle:disabled { background: #444; color: #aaa; }
+#me #pause { margin-left: 10px; padding: 2px 12px; font-size: 22px; box-shadow: 3px 3px 0 var(--pink); }
+#face-skip { font-size: 16px; padding: 8px 14px; opacity: .85; }

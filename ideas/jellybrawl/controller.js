@@ -131,13 +131,22 @@ $("face-done").addEventListener("click", () => {
   render(current);
 });
 
+// no face? fine: a plain blob, and the TV stops waiting on you
+$("pause").addEventListener("click", () => { conn.send({ t: "act", id: "pause" }); navigator.vibrate?.(20); });
+$("face-skip").addEventListener("click", () => { conn.send({ t: "noface" }); faceDone = true; show("pad"); render(current); });
+
 /* ---------------------------------------------------------------- layouts */
 
 function onMsg(m) {
   if (m.t === "ping") return conn.send({ t: "pong", ts: m.ts });
   if (m.t === "buzz") return navigator.vibrate?.(m.ms || 100);
   if (m.t === "radar") return drawRadar(m);
-  if (m.t === "layout") { current = m; if (faceDone) render(m); }
+  if (m.t === "layout") {
+    current = m;
+    // still on the face screen when a game needs you: skip it rather than miss the game
+    if (!faceDone && (!["wait", "menu"].includes(m.kind) || m.actions?.some((a) => a.id === "ready"))) { faceDone = true; conn.send({ t: "noface" }); show("pad"); }
+    if (faceDone) render(m);
+  }
 }
 
 const view = $("view");
@@ -155,6 +164,7 @@ function render(l) {
     document.querySelector('meta[name="theme-color"]').content = l.you.color;
   }
   $("role").textContent = l.role || "";
+  $("pause").hidden = !l.vip;
   tiltOff?.(); tiltOff = null;
   view.replaceChildren();
   view.onpointerdown = view.onpointermove = view.onpointerup = null;

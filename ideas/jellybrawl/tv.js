@@ -75,6 +75,7 @@ const S = {
   result: null, deltas: [], roleCounts: {}, layouts: new Map(), reacts: [], gctx: null,
 };
 window.__jelly = S; // for tests and poking around in devtools
+window.__finish = () => finishGame(); // tests: settle S.game.result now
 
 /* ---------------------------------------------------------------- players */
 
@@ -87,6 +88,8 @@ function layout(pid, obj) {
   const p = byPid(pid);
   if (!p) return;
   const l = { t: "layout", ...obj, you: { name: p.name, color: p.color } };
+  if (S.capture) { S.capture.set(pid, l); return; } // the intro holds these back
+  if (p === vip() && ["choose", "intro", "game", "results", "board", "duel"].includes(S.scene)) l.vip = true; // ⏸ on the VIP's phone
   // anyone waiting mid-game can react; knocked out of an arena game, they can heckle too
   if (l.kind === "wait" && ["game", "duel", "board", "intro", "results"].includes(S.scene)) { l.react = true; l.heckle = !!S.gctx?.arena?.stepping && S.scene === "game"; }
   S.layouts.set(pid, l);
@@ -148,6 +151,7 @@ function onInput(pid, m) {
     const img = new Image();
     img.src = m.data;
     p.face = img;
+    if (S.scene === "lobby") refreshMenus();
     return;
   }
   // every phone gets a message budget (60/s, bursts to 90), and a button
@@ -167,6 +171,7 @@ function onInput(pid, m) {
   }
   if (m.t === "react" && REACTS.includes(m.e) && now - (p.reactAt || 0) > 500) { p.reactAt = now; S.reacts.push({ e: m.e, p, t: 0, x: 120 + (S.players.indexOf(p) + 0.5) * ((W - 240) / S.players.length) + (Math.random() - 0.5) * 40 }); return; }
   if (m.t === "heckle" && S.scene === "game" && now - (p.heckleAt || 0) > 4000 && S.gctx?.arena?.heckle(p)) { p.heckleAt = now; p.stats.heckles = (p.stats.heckles || 0) + 1; return; }
+  if (m.t === "noface") { p.noFace = true; if (S.scene === "lobby") refreshMenus(); return; }
   if (m.t === "act") return act(m.id, p);
   if (m.t === "pick" && S.scene === "choose" && pid === S.chooser && !S.picked) return pick(m.id);
   if ((S.scene === "game" || S.scene === "duel") && S.game && !p.bot) S.game.input(pid, m);
@@ -189,8 +194,18 @@ function removeBot() {
 /* ------------------------------------------------------------------ menus */
 
 function act(id, p) {
+  if (id === "ready" && S.scene === "intro" && p) { p.ready = true; return layout(p.pid, { kind: "wait", text: "READY!", sub: "Waiting for the others…" }); }
   const isVip = !p || p === vip();
   if (!isVip) return;
+  if (id === "pause" && !S.paused && S.scene !== "lobby" && S.scene !== "final") return pause(true);
+  if (id === "resume" && S.paused) return pause(false);
+  if (id === "skip" && S.paused && (S.scene === "game" || S.scene === "intro") && S.game) {
+    pause(false);
+    if (S.scene === "intro") go("game");
+    S.game.result = { skipped: true, tie: true, ranking: [(S.game.players ?? S.players).map((q) => q.pid)], headline: "Skipped! No points." };
+    return;
+  }
+  if (id === "end" && S.paused) { pause(false); S.game = null; go("final"); sfx.win(); return refreshMenus(); }
   if (id === "start" && S.scene === "lobby" && S.players.length >= 2) startSession();
   else if (id === "rounds" && S.scene === "lobby") { S.rounds = ROUND_CHOICES[(ROUND_CHOICES.indexOf(S.rounds) + 1) % ROUND_CHOICES.length]; refreshMenus(); }
   else if (id === "map" && S.scene === "lobby") { const k = Object.keys(MAP_NAMES); S.boardMap = k[(k.indexOf(S.boardMap) + 1) % k.length]; refreshMenus(); }
@@ -201,12 +216,18 @@ function act(id, p) {
   else if (id === "lobby" && S.scene === "final") { S.players = S.players.filter((q) => q.bot || q.connected); go("lobby"); refreshMenus(); }
 }
 
+// "3 players ready · Ben is still picking a face"
+function lobbyLine() {
+  const picking = humans().filter((p) => p.connected && !p.face && !p.noFace);
+  return `${S.players.length} players` + (picking.length ? ` · ${picking.map((p) => p.name).join(", ")} still picking a face` : " ready");
+}
+
 function refreshMenus() {
   const v = vip();
   for (const p of humans()) {
     if (S.scene === "lobby") {
       layout(p.pid, p === v
-        ? { kind: "menu", text: "You're the VIP", sub: S.players.length < 2 ? "Waiting for one more player…" : `${S.players.length} players ready`, actions: [
+        ? { kind: "menu", text: "You're the VIP", sub: S.players.length < 2 ? "Waiting for one more player…" : lobbyLine(), actions: [
           ...(S.players.length >= 2 ? [{ id: "start", label: "▶ Start game", big: true }] : []),
           { id: "mode", label: `Mode: ${MODE_NAME[S.mode]}` },
           ...(S.mode === "board" ? [{ id: "map", label: `Board: ${MAP_NAMES[S.boardMap]}` }] : []),
@@ -247,6 +268,8 @@ function startSession() {
 }
 
 const sessionRounds = () => (S.mode === "gauntlet" ? 1 : S.rounds);
+// the last playlist round counts double, so nobody's out of it
+const finalDouble = () => S.mode === "playlist" && S.rounds > 1 && S.round + 1 === S.rounds;
 
 // board mode ranks by stars, then coins (p.score)
 const rankKey = (p) => (S.mode === "board" ? (p.stars || 0) * 1e6 : 0) + p.score;
@@ -303,7 +326,16 @@ function startIntro() {
   S.gctx = gameCtx(S.players.slice());
   S.game = S.def.create(S.gctx);
   go("intro");
-  layoutAll(() => ({ kind: "wait", text: S.def.command, sub: S.def.controls, shout: true }));
+  // the game hands out its layouts now (so we know everyone's role); hold
+  // them back and show a role card with READY until play starts
+  S.capture = new Map();
+  S.game.start();
+  S.held = S.capture; S.capture = null;
+  for (const p of S.players) {
+    p.ready = false;
+    const l = S.held.get(p.pid) || {};
+    layout(p.pid, { kind: "menu", text: S.def.command, sub: `${l.role ? `${l.role} · ` : ""}${l.hint || S.def.controls}`, actions: [{ id: "ready", label: "READY!", big: true }], role: l.role });
+  }
   setTimeout(() => sfx.slam(), 120);
 }
 
@@ -320,6 +352,12 @@ function gameCtx(seats) {
     lag: (pid) => Math.min(0.15, (byPid(pid)?.rtt || 0) / 2000), // one-way delay, for timing games
     pickOne: () => {
       const min = Math.min(...seats.map((p) => S.roleCounts[p.pid] || 0));
+      // a clear leader often gets the lone role when they're due one: the room gangs up on them
+      const top = tiedTop();
+      if (S.mode === "playlist" && S.round > 0 && top.length === 1 && seats.includes(top[0]) && (S.roleCounts[top[0].pid] || 0) <= min + 1 && Math.random() < 0.6) {
+        S.roleCounts[top[0].pid] = (S.roleCounts[top[0].pid] || 0) + 1;
+        return top[0].pid;
+      }
       const c = seats.filter((p) => (S.roleCounts[p.pid] || 0) === min);
       const one = c[Math.floor(Math.random() * c.length)].pid;
       S.roleCounts[one] = (S.roleCounts[one] || 0) + 1;
@@ -331,14 +369,28 @@ function gameCtx(seats) {
 function finishGame() {
   const r = S.game.result;
   const deltas = new Map();
-  if (r.tie) for (const pid of r.ranking.flat()) deltas.set(pid, 5);
-  else if (r.winners) { r.winners.forEach((pid) => deltas.set(pid, 10)); r.losers.forEach((pid) => deltas.set(pid, 2)); }
+  const before = standings();
+  if (r.skipped) for (const pid of r.ranking.flat()) deltas.set(pid, 0);
+  else if (r.tie) for (const pid of r.ranking.flat()) deltas.set(pid, 5);
+  else if (r.winners) {
+    // the lone role (1 vs rest) is worth more to win and costs less to lose
+    const lone = r.winners.length === 1 && r.losers.length > 1 ? "won" : r.losers.length === 1 && r.winners.length > 1 ? "lost" : null;
+    r.winners.forEach((pid) => deltas.set(pid, lone === "won" ? 15 : 10));
+    r.losers.forEach((pid) => deltas.set(pid, lone === "lost" ? 5 : 2));
+  }
   else { let place = 0; for (const grp of r.ranking) { for (const pid of grp) deltas.set(pid, POINTS[place]); place += grp.length; } }
   for (const [pid, d] of Object.entries(r.bonus || {})) deltas.set(pid, (deltas.get(pid) || 0) + d); // e.g. top thief
+  S.double = finalDouble() && !r.skipped;
+  if (S.double) for (const [pid, d] of deltas) deltas.set(pid, d * 2);
   const winners = r.tie ? [] : r.winners || r.ranking[0];
   for (const pid of winners) { const p = byPid(pid); if (p) p.stats.wins = (p.stats.wins || 0) + 1; }
   S.deltas = [...deltas].map(([pid, d]) => ({ p: byPid(pid), d })).filter((x) => x.p).sort((a, b) => b.d - a.d);
   for (const { p, d } of S.deltas) { p.score += d; p.lastPlace = S.deltas.findIndex((x) => x.d === d); } // a tie-breaker for the final
+  // results list the whole race: rows slide from the old order to the new
+  const after = standings();
+  S.rows = after.map((p) => ({ p, d: deltas.get(p.pid) || 0, from: before.indexOf(p) }));
+  const lead = tiedTop();
+  S.leadChange = lead.length === 1 && lead[0] !== before[0] && lead[0].score > 0 ? lead[0] : null;
   S.result = r;
   S.game = null;
   go("results");
@@ -346,7 +398,18 @@ function finishGame() {
   for (const { p } of S.deltas) send(p, { t: "buzz", ms: winners.includes(p.pid) ? 300 : 80 });
 }
 
+// the VIP can pause any time from their phone (or P on the TV keyboard)
+function pause(on) {
+  S.paused = on;
+  const v = vip();
+  if (on) {
+    for (const p of humans()) send(p, { t: "layout", kind: "menu", text: "PAUSED", sub: p === v ? "Take five." : `${v?.name ?? "The VIP"} paused the game.`, you: { name: p.name, color: p.color },
+      actions: p === v ? [{ id: "resume", label: "▶ Resume", big: true }, ...(S.scene === "game" || S.scene === "intro" ? [{ id: "skip", label: "⏭ Skip this game" }] : []), { id: "end", label: "🏁 End the night" }] : [] });
+  } else for (const p of humans()) { const l = S.layouts.get(p.pid); if (l) send(p, l); }
+}
+
 function tick(dt) {
+  if (S.paused) return;
   S.t += dt;
   for (const p of S.players) p.bob += dt;
   if (S.scene === "choose") {
@@ -354,7 +417,13 @@ function tick(dt) {
     if (!S.picked && ((auto && S.t > 2.5) || S.t > 15)) pick(S.options[Math.floor(Math.random() * S.options.length)].id);
     if (S.picked && S.t - S.pickedAt > 1.4) startIntro();
   } else if (S.scene === "intro") {
-    if (S.t > 4.5) { go("game"); S.game.start(); }
+    // at least 4.5 s; then as soon as everyone's tapped READY (12 s at most)
+    const waiting = humans().filter((p) => p.connected && !p.ready);
+    if (S.t > 4.5 && (!waiting.length || S.t > 12)) {
+      go("game");
+      for (const [pid, l] of S.held) { const { t, you, ...rest } = l; layout(pid, rest); }
+      S.held = new Map();
+    }
   } else if (S.scene === "game") {
     if (S.hitstop > 0) { S.hitstop -= dt; return; }
     for (const p of S.players) if (p.bot || !p.connected) S.game.bot(p.pid, dt);
@@ -503,16 +572,23 @@ function drawIntro() {
     lines.forEach((l, i) => text(g, l, W / 2, 670 + i * 44, 32, "#555", "center", 900));
     tag(g, "🎮 " + S.def.controls, W / 2, 790 + lines.length * 44, "#ffd400", 36);
   }
-  bomb(g, 160, 960, 60, 1 - S.t / 4.5);
+  bomb(g, 160, 960, 60, 1 - S.t / 12);
+  if (finalDouble()) outlined(g, "FINAL ROUND · DOUBLE POINTS!", W / 2, 440, 50, "#f9f002", "center", -0.03);
+  // who's tapped READY
+  const hs = humans().filter((p) => p.connected);
+  hs.forEach((p, i) => { const x = W / 2 + (i - (hs.length - 1) / 2) * 110; blob(g, p, x, 1000, 34); if (p.ready) text(g, "✓", x + 34, 970, 40, "#39ff14", "center", 900); });
+  if (S.t > 4.5 && hs.some((p) => !p.ready)) text(g, "TAP READY ON YOUR PHONE", W / 2, 1060, 28, "#fff", "center", 900);
 }
 
 function drawResults() {
   bg(195);
   shout(g, S.result.headline || "RESULTS!", W / 2, 105, fit(g, S.result.headline || "RESULTS!", 80, W - 200), "#fff", S.t);
-  const rows = S.deltas, rh = Math.min(104, 760 / rows.length);
+  const rows = S.rows, rh = Math.min(104, 700 / rows.length);
   const winners = S.result.tie ? [] : S.result.winners || S.result.ranking[0];
-  rows.forEach(({ p, d }, i) => {
-    const y = 220 + i * rh, k = Math.min(1, Math.max(0, S.t * 3 - i * 0.3)), x = 420 - (1 - k) * 1600;
+  // rows arrive in the old order, then slide into the new standings
+  const slide = Math.min(1, Math.max(0, (S.t - 1.6) / 0.6)), ease = slide * slide * (3 - 2 * slide);
+  rows.forEach(({ p, d, from }, i) => {
+    const y = 220 + (from + (i - from) * ease) * rh, k = Math.min(1, Math.max(0, S.t * 3 - from * 0.3)), x = 420 - (1 - k) * 1600;
     const h = rh - 18, won = winners.includes(p.pid);
     g.save(); g.translate(x + 540, y + h / 2); g.rotate((i % 2 ? 1 : -1) * 0.012); g.translate(-(x + 540), -(y + h / 2));
     panel(g, x, y, 1080, h, won ? "#ffd400" : "#fff", 16, 6);
@@ -526,7 +602,9 @@ function drawResults() {
     }
     if (won && k >= 1) outlined(g, "WIN!", x - 60, y + h / 2, 44, "#ff2e63", "center", -0.3);
   });
-  outlined(g, S.round + 1 >= sessionRounds() ? "FINAL RESULTS NEXT…" : `NEXT: ROUND ${S.round + 2} OF ${S.rounds}`, W / 2, 1020, 36, "#fff", "center", -0.02);
+  if (S.double) outlined(g, "DOUBLE POINTS!", 1640, 150, 44, "#f9f002", "center", 0.12);
+  if (S.leadChange && S.t > 2.2) shout(g, `${S.leadChange.name} takes the lead!`, W / 2, 950, 60, "#f9f002", S.t - 2.2);
+  outlined(g, S.round + 1 >= sessionRounds() ? "FINAL RESULTS NEXT…" : `NEXT: ROUND ${S.round + 2} OF ${S.rounds}`, W / 2, 1030, 36, "#fff", "center", -0.02);
 }
 
 function drawFinal() {
@@ -651,6 +729,7 @@ function draw() {
   else if (S.scene === "results") drawResults();
   else if (S.scene === "final") drawFinal();
   drawReacts();
+  if (S.paused) { g.fillStyle = "rgba(8,4,16,.72)"; g.fillRect(0, 0, W, H); shout(g, "PAUSED", W / 2, H / 2 - 40, 200, "#fff", 1); text(g, "VIP: RESUME FROM YOUR PHONE · P TO RESUME", W / 2, H / 2 + 110, 34, "#f9f002", "center", 900); }
   if (S.wipe != null) flushCrisp(g, new DOMMatrix()); // the wipe covers everything, labels too
   drawWipe();
   post();
@@ -701,6 +780,8 @@ addEventListener("keydown", (e) => {
   else if (k === "r") act("rounds");
   else if (k === "g") act("mode");
   else if (k === "m") act("map");
+  else if (k === "p") act(S.paused ? "resume" : "pause");
+  else if (k === "s" && S.paused) act("skip");
   else if (S.scene === "choose" && ["1", "2", "3"].includes(k) && !S.picked && S.options[+k - 1]) pick(S.options[+k - 1].id);
 });
 
