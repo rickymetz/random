@@ -32,7 +32,7 @@ cycles Playlist → Board → Microgame Gauntlet, M picks the board map, and 1�
 | --- | --- |
 | `tv.html`, `tv.js` | The host: lobby, loser-picks, intro, game, results, podium. Authoritative for all game state. |
 | `index.html`, `controller.js`, `controller.css` | The phone: join, selfie/doodle, then renders the layouts the TV sends. |
-| `games/*.js` | Minigames: `flap` (free-for-all), `sling` (teams), `chomp` (1 vs rest), `snipe` (Sniper Plaza and Sniper Blackout, 1 vs rest, one engine), `tag` (Infection), `kaiju` (Kaiju), `soccer` (teams), `sumo`, `bumper`, `coinrush` and `potato` (free-for-all) on the shared `arena` engine, plus `gauntlet` (the Microgame Gauntlet mode: 9 microgames, lives, speed-ups). Each has a bot. |
+| `games/*.js` | Minigames: `flap` (free-for-all), `sling` (teams), `chomp` (1 vs rest), `snipe` (Sniper Plaza and Sniper Blackout, 1 vs rest, one engine), `tag` (Infection), `kaiju` (Kaiju), `soccer`, `paint`, `crown`, `dodgeball` and `tug` (teams) and `sumo`, `bumper`, `coinrush`, `potato` and `snake` (free-for-all) on the shared `arena` engine, plus `gauntlet` (the Microgame Gauntlet mode: 9 microgames, lives, speed-ups). Each has a bot. |
 | `board.js`, `boards.js`, `boardart.js` | Board mode: dice, forks, coins and stars, shop and secret items, duels, events; the three themed maps (Neon City, Slime Sewers, Volcano Isle); and the board art (tiles, roads, scenery). |
 | `net.js` | Transport: WebSocket relay, or BroadcastChannel when there's no relay. |
 | `server.mjs` | Static server plus room relay (a hand-rolled WebSocket, no deps). |

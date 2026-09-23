@@ -111,6 +111,11 @@ kept). The selfie is sent as a 128×128 JPEG data URL, about 6 KB.
 | **Bumper Blobs** | Free-for-all | 2–8 | stick + BOOST | 3 lives in a spiked pen; last blob with lives (or most lives at 60 s) |
 | **Coin Rush** | Free-for-all | 2–8 | stick + DASH | most coins after 45 s; spike rollers and dashes knock coins loose |
 | **Hot Potato** | Free-for-all | 3–8 | stick + DASH | bump to pass the bomb (no instant pass-backs); holder is out when the secret fuse pops |
+| **Paint the Town** | Teams (2v2–4v4) | 2–8 | stick + SPLAT | most floor painted after 60 s; SPLAT bursts paint and stuns rivals it hits |
+| **Capture the Crown** | Teams (2v2–4v4) | 2–8 | stick + DASH | 25 s of crown-time, or the most at 75 s; the carrier is slower, can't dash, and loses it to a hard bump |
+| **Jelly Dodgeball** | Teams (2v2–4v4) | 2–8 | stick + THROW | two lives each, halves of the court; last team standing, or players then lives at 75 s |
+| **Snake Pit** | Free-for-all | 2–8 | stick + BOOST | tails grow when you eat; bonk a wall or a tail and you're out; last snake, or the longest at 60 s |
+| **Tug of Jelly** | Teams (2v2–4v4) | 2–8 | mash PULL | drag the other team into the goo pit; taps during HEAVE! count triple; ahead at 40 s wins |
 | Tilt Maze | Free-for-all | 1–8 | tilt | first to the goal |
 
 The first three are in the slice. The four party classics are follow-ups
@@ -431,7 +436,11 @@ finishes and ghosts never place. Soccer bots aim at a moving spot in the goal
 mouth (identical aims deadlocked 1v1s), keep one keeper and push the rest up.
 Before those changes most rounds ended 0–0; now nearly all get a winner.
 
-Batch 2: Paint the Town, Capture the Crown, Jelly Dodgeball, Snake Pit, Tug of
-Jelly. Batch 3: Relay Race, Tower Stack, Bomb Squad (the manual lives on the
+Batch 2 (built): Paint the Town, Capture the Crown, Jelly Dodgeball, Snake Pit
+and Tug of Jelly. Dodgeball needed the most tuning: with one life and full
+aim-lead it was over in 10 s; two lives, slower throws, half the lead and a
+lives tie-break give 40–75 s rounds that mostly end with a winner.
+
+Batch 3: Relay Race, Tower Stack, Bomb Squad (the manual lives on the
 defusers' phones), Tilt Maze (the first tilt control, with the iOS motion
 permission) and Draw Duel (draw on the phone, vote on the TV).
