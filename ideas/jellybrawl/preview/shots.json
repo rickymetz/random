@@ -1,6 +1,46 @@
 {
- "generated": "2026-09-23T19:06:22.299Z",
- "commit": "2d9134b9",
+ "generated": "2026-09-23T20:45:22.258Z",
+ "commit": "e7b83452",
+ "video": {
+  "file": "bumper.webm",
+  "seconds": 32.1,
+  "poster": "shots/slide-poster.jpg"
+ },
+ "slides": [
+  {
+   "file": "shots/slide-ffa.jpg",
+   "caption": "Free-for-all: Flap Frenzy, Sumo Ring, Bumper Blobs, Coin Rush, Hot Potato, Snake Pit, Tilt Maze, Draw Duel, King of the Hill Giant, Greed Doors"
+  },
+  {
+   "file": "shots/slide-teams.jpg",
+   "caption": "Teams: Sling Siege, Blob Soccer, Paint the Town, Capture the Crown, Jelly Dodgeball, Tug of Jelly, Relay Race, Tower Stack, Bomb Squad, Blind Pilot"
+  },
+  {
+   "file": "shots/slide-asym.jpg",
+   "caption": "1 vs the rest: Chomp Chase, Sniper Plaza, Sniper Blackout, Infection, Kaiju, Haunted House, Whack-a-Blob, Kraken, Tank vs Swarm"
+  },
+  {
+   "file": "shots/slide-pair-snipe.jpg",
+   "caption": "Sniper Plaza: the TV and a phone"
+  },
+  {
+   "file": "shots/slide-pair-bombsquad.jpg",
+   "caption": "Bomb Squad: the TV and a phone"
+  },
+  {
+   "file": "shots/slide-pair-draw.jpg",
+   "caption": "Draw Duel: the TV and a phone"
+  },
+  {
+   "file": "shots/slide-pair-pilot.jpg",
+   "caption": "Blind Pilot: the TV and a phone"
+  },
+  {
+   "file": "shots/slide-modes.jpg",
+   "caption": "Modes: three Mario Party-style boards and a microgame gauntlet"
+  }
+ ],
+ "capsule": "shots/capsule.jpg",
  "screens": [
   {
    "file": "shots/screen-title.jpg",
@@ -29,7 +69,7 @@
   },
   {
    "file": "shots/phone-settings.jpg",
-   "caption": "Accessibility settings: motion, CRT filter, text size, colour-blind shapes\u2026",
+   "caption": "Accessibility settings: motion, CRT filter, text size, colour-blind shapes…",
    "kind": "phone"
   },
   {
@@ -39,7 +79,7 @@
   },
   {
    "file": "shots/phone-ready.jpg",
-   "caption": "\u2026while each phone shows your role, and READY",
+   "caption": "…while each phone shows your role, and READY",
    "kind": "phone"
   },
   {
@@ -49,7 +89,7 @@
   },
   {
    "file": "shots/phone-choose.jpg",
-   "caption": "\u2026on their phone",
+   "caption": "…on their phone",
    "kind": "phone"
   },
   {
@@ -64,7 +104,7 @@
   },
   {
    "file": "shots/phone-heckle.jpg",
-   "caption": "\u2026from the waiting screen",
+   "caption": "…from the waiting screen",
    "kind": "phone"
   },
   {
@@ -79,7 +119,7 @@
   },
   {
    "file": "shots/phone-final.jpg",
-   "caption": "\u2026and a rematch button for the VIP",
+   "caption": "…and a rematch button for the VIP",
    "kind": "phone"
   }
  ],
@@ -377,7 +417,7 @@
    "min": 2,
    "max": 8,
    "blurb": "One of you holds the bomb, the rest hold the manual. Talk it through!",
-   "controls": "Defuser: wires, keypad, button on your phone \u00b7 Everyone else: read your manual pages",
+   "controls": "Defuser: wires, keypad, button on your phone · Everyone else: read your manual pages",
    "tv": [
     "shots/bombsquad-tv-1.jpg",
     "shots/bombsquad-tv-2.jpg"
