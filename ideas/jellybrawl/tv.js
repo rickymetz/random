@@ -9,8 +9,9 @@ import flap from "./games/flap.js";
 import sling from "./games/sling.js";
 import chomp from "./games/chomp.js";
 import gauntlet from "./games/gauntlet.js";
+import snipe from "./games/snipe.js";
 
-const GAMES = [flap, sling, chomp];
+const GAMES = [flap, sling, chomp, snipe];
 // canvas text only uses a web font once it's loaded; ask for both up front
 for (const f of [T.display, T.label]) document.fonts?.load(`40px ${f}`).catch(() => {});
 const COLORS = ["#ff2e63", "#00b7ff", "#ffd400", "#35e06b", "#b14dff", "#ff8a00", "#ff6ec7", "#00e0c6"];
@@ -21,7 +22,8 @@ const ROUND_CHOICES = [3, 5, 8];
 const AWARDS = [
   ["wins", "Champion", "wins"], ["flaps", "Flappiest", "flaps"], ["airtime", "Frequent flyer", "s aloft"],
   ["kings", "Kingslayer", "kings popped"], ["blocks", "Demolition crew", "blocks smashed"],
-  ["dots", "Hungriest", "dots eaten"], ["cleared", "Microgame machine", "microgames cleared"], ["catches", "Best hunter", "catches"], ["gulps", "Tables turned", "hunters gulped"],
+  ["dots", "Hungriest", "dots eaten"], ["cleared", "Microgame machine", "microgames cleared"],
+  ["snipes", "Deadeye", "runners sniped"], ["loot", "Master thief", "coins stolen"], ["catches", "Best hunter", "catches"], ["gulps", "Tables turned", "hunters gulped"],
 ];
 
 // Everything draws at 1920×1080 into an offscreen scene; post() then runs the
@@ -184,7 +186,8 @@ function standings() { return [...S.players].sort((a, b) => b.score - a.score); 
 function startChoose() {
   const n = S.players.length;
   let pool = GAMES.filter((d) => n >= d.min && n <= d.max);
-  if (pool.length > 1) pool = pool.filter((d) => d.id !== S.lastGameId).concat(pool.filter((d) => d.id === S.lastGameId));
+  // three random picks, never the game just played unless there's no choice
+  pool = pool.filter((d) => d.id !== S.lastGameId).sort(() => Math.random() - 0.5).concat(pool.filter((d) => d.id === S.lastGameId));
   S.options = pool.slice(0, 3);
   S.picked = null;
   // loser picks: the lowest score chooses (random among ties); round 1 is a roulette
@@ -212,6 +215,7 @@ function startIntro() {
     players: seats,
     layout,
     sfx,
+    send: (pid, m) => send(byPid(pid), m),
     shake: (n) => { S.shake = Math.max(S.shake || 0, n); if (n >= 25) S.hitstop = 0.09; }, // big hits freeze a beat
     buzz: (pid, ms) => send(byPid(pid), { t: "buzz", ms }),
     stat: (pid, k, n) => { const p = byPid(pid); if (p) p.stats[k] = (p.stats[k] || 0) + n; },
@@ -234,6 +238,7 @@ function finishGame() {
   if (r.tie) for (const pid of r.ranking.flat()) deltas.set(pid, 5);
   else if (r.winners) { r.winners.forEach((pid) => deltas.set(pid, 10)); r.losers.forEach((pid) => deltas.set(pid, 2)); }
   else { let place = 0; for (const grp of r.ranking) { for (const pid of grp) deltas.set(pid, POINTS[place]); place += grp.length; } }
+  for (const [pid, d] of Object.entries(r.bonus || {})) deltas.set(pid, (deltas.get(pid) || 0) + d); // e.g. top thief
   const winners = r.tie ? [] : r.winners || r.ranking[0];
   for (const pid of winners) { const p = byPid(pid); if (p) p.stats.wins = (p.stats.wins || 0) + 1; }
   S.deltas = [...deltas].map(([pid, d]) => ({ p: byPid(pid), d })).filter((x) => x.p).sort((a, b) => b.d - a.d);

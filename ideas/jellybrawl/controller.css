@@ -72,3 +72,12 @@ h2 { margin: 0; font: 48px var(--display); letter-spacing: 3px; color: #fff; tex
 .pads button { aspect-ratio: 1; font: 64px var(--display); color: var(--ink); border: 5px solid var(--ink); border-radius: 6px; box-shadow: 6px 6px 0 #fff; }
 .pads button:disabled { opacity: .25; }
 .pads button.down { transform: translate(4px, 4px); box-shadow: 2px 2px 0 #fff; }
+.radar { width: min(92vw, 420px); aspect-ratio: 320 / 186; height: auto; background: rgba(0,0,0,.55); border: 3px solid var(--cyan); box-shadow: 5px 5px 0 var(--pink); }
+.stickrow { display: flex; align-items: center; justify-content: space-between; gap: 18px; width: min(92vw, 420px); }
+.stick { position: relative; width: 190px; height: 190px; border-radius: 50%; border: 4px solid var(--cyan); background: rgba(0,0,0,.45); touch-action: none; }
+.stick i { position: absolute; left: 50%; top: 50%; width: 84px; height: 84px; margin: -42px 0 0 -42px; border-radius: 50%; background: var(--me); border: 4px solid #fff; box-shadow: 4px 4px 0 var(--pink); pointer-events: none; }
+.act { width: 130px; height: 130px; border-radius: 50%; font-size: 26px; }
+.trackpad { flex: 1; width: 100%; min-height: 240px; border: 4px dashed var(--cyan); background: repeating-linear-gradient(0deg, rgba(5,217,232,.07) 0 1px, transparent 1px 40px), repeating-linear-gradient(90deg, rgba(5,217,232,.07) 0 1px, transparent 1px 40px), rgba(0,0,0,.4); display: grid; place-items: center; touch-action: none; }
+.trackpad span { font: 22px var(--label); letter-spacing: 4px; color: rgba(255,255,255,.4); pointer-events: none; }
+.hit.fire { width: min(56vw, 240px); }
+.hit.fire:disabled { background: #444; color: #aaa; }

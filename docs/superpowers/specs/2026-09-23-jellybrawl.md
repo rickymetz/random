@@ -100,6 +100,7 @@ kept). The selfie is sent as a 128×128 JPEG data URL, about 6 KB.
 | **Flap Frenzy** | Free-for-all | 1–8 | one big button | last blob flying (placements by elimination order) |
 | **Sling Siege** | Teams (even split) | 2–8 | drag back and release | pop every enemy king first; after the shot limit, the team with more kings left wins |
 | **Chomp Chase** | 1 vs rest | 2–5 | d-pad / swipe | chomper: clear the dots or survive 60 s. Hunters: catch it 3 times. |
+| **Sniper Plaza** | 1 vs rest | 2–8 | runners: stick + BLEND; sniper: trackpad + FIRE | runners: steal the loot target or survive 75 s; sniper: hit every runner |
 | Mash Race | Free-for-all | 2–8 | mash one button | first to the finish |
 | Reaction Tap | Free-for-all | 2–8 | one button | fastest tap after "GO"; tapping early costs you the round |
 | Hot Potato | Free-for-all | 3–8 | tap a player to pass | whoever holds the bomb when it pops is out |
@@ -112,6 +113,34 @@ controls).
 Scoring in Playlist mode: free-for-all placements pay 10 / 6 / 4 / 2 / 1 points.
 Team and asymmetric winners get 10 each and losers 2. In Board mode the same
 payouts are coins.
+
+## Sniper Plaza
+
+A hide-in-the-crowd sniper game, decided in a short Q&A on 2026-09-23.
+
+- **Crowd blend.** Everyone in the plaza is an identical grey blob: the
+  runners plus about 12 AI wanderers per runner (capped near 45). NPCs walk
+  to random spots, pause, and do small emote bounces.
+- **Finding yourself.** Your phone shows a private radar with only your dot
+  (and the coins). The sniper can't see it.
+- **Runners.** A thumbstick (top speed equals the fastest NPC, so speed
+  isn't a tell) and **BLEND**, the same emote the crowd does, with a 1.5 s
+  cooldown.
+- **Loot.** Up to 3 coins at a time pop up around the plaza. Only runners
+  can pick them up, so greed gives you away. It's a team target (3 + 2 per
+  runner), and the top thief gets +3 points if the runners win.
+- **Sniper.** Drags a phone trackpad to move a magnifying scope (1.6× inside
+  a 120 px circle, with the rest of the plaza dimmed) and taps **FIRE**.
+  Reload is 1.5 s. Hitting an innocent means a 4 s reload and a 3 s
+  **PANIC** in which the crowd scatters at runner speed, giving runners
+  cover.
+- **Winning.** Runners win on the loot target or by anyone surviving 75 s.
+  The sniper wins by hitting every runner. Points are the usual 10 / 2, the
+  role rotates like the chomper, and there are awards: Deadeye and Master
+  thief.
+- **Bots.** A bot sniper only suspects whoever is standing nearest a grab
+  it happened to notice (grabs near its scope are noticed more often), so it
+  can be fooled. Bot runners wander like NPCs and sneak toward nearby coins.
 
 ## Microgame Gauntlet (second mode)
 

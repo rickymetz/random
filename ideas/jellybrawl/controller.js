@@ -123,6 +123,7 @@ $("face-done").addEventListener("click", () => {
 function onMsg(m) {
   if (m.t === "ping") return conn.send({ t: "pong", ts: m.ts });
   if (m.t === "buzz") return navigator.vibrate?.(m.ms || 100);
+  if (m.t === "radar") return drawRadar(m);
   if (m.t === "layout") { current = m; if (faceDone) render(m); }
 }
 
@@ -144,7 +145,7 @@ function render(l) {
   view.replaceChildren();
   view.onpointerdown = view.onpointermove = view.onpointerup = null;
   if (l.command && l.kind !== "wait") add(el("p", { className: "cmd", textContent: l.command }));
-  const kind = { wait, menu, choose, button, dpad, sling, pads }[l.kind] || wait;
+  const kind = { wait, menu, choose, button, dpad, sling, pads, stick, scope }[l.kind] || wait;
   kind(l);
 }
 
@@ -222,6 +223,77 @@ function pads(l) {
     grid.append(b);
   }
   add(grid, l.hint && el("p", { className: "hint", textContent: l.hint }));
+}
+
+// Runner (Sniper Plaza): private radar, thumbstick and an action button
+let radar = null;
+function drawRadar(m) {
+  if (!radar || !radar.isConnected) return;
+  const g = radar.getContext("2d"), w = radar.width, h = radar.height;
+  g.clearRect(0, 0, w, h);
+  g.strokeStyle = "rgba(5,217,232,.35)"; g.lineWidth = 2; g.strokeRect(1, 1, w - 2, h - 2);
+  g.fillStyle = "#f9f002";
+  for (const [x, y] of m.coins || []) { g.beginPath(); g.arc(x * w, y * h, 6, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--me");
+  g.strokeStyle = "#fff"; g.lineWidth = 3;
+  g.beginPath(); g.arc(m.x * w, m.y * h, 10, 0, Math.PI * 2); g.fill(); g.stroke();
+}
+
+function stick(l) {
+  radar = el("canvas", { className: "radar", width: 320, height: 186 });
+  const pad = el("div", { className: "stick" }), knob = el("i");
+  pad.append(knob);
+  let o = null, last = 0, sent = [0, 0];
+  const R = 70;
+  const send = (x, y, force) => {
+    const now = performance.now();
+    if (!force && now - last < 50 && Math.hypot(x - sent[0], y - sent[1]) < 0.25) return;
+    last = now; sent = [x, y];
+    conn.send({ t: "move", x: +x.toFixed(2), y: +y.toFixed(2) });
+  };
+  const at = (e) => {
+    let dx = e.clientX - o[0], dy = e.clientY - o[1];
+    const d = Math.hypot(dx, dy);
+    if (d > R) { dx *= R / d; dy *= R / d; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    send(dx / R, dy / R);
+  };
+  pad.addEventListener("pointerdown", (e) => { const r = pad.getBoundingClientRect(); o = [r.left + r.width / 2, r.top + r.height / 2]; pad.setPointerCapture(e.pointerId); at(e); });
+  pad.addEventListener("pointermove", (e) => o && at(e));
+  const stop = () => { o = null; knob.style.transform = ""; send(0, 0, true); };
+  pad.addEventListener("pointerup", stop);
+  pad.addEventListener("pointercancel", stop);
+  const act = el("button", { type: "button", className: "act", textContent: l.action || "ACT" });
+  act.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "act" }); navigator.vibrate?.(20); });
+  add(radar, el("div", { className: "stickrow" }, pad, act), l.hint && el("p", { className: "hint", textContent: l.hint }));
+}
+
+// Sniper: a trackpad (relative drag) and a FIRE button with the reload shown
+function scope(l) {
+  const area = el("div", { className: "trackpad" }, el("span", { textContent: "DRAG TO AIM" }));
+  let lp = null, acc = [0, 0], timer = null;
+  const SENS = 2.4;
+  const flush = () => { timer = null; if (acc[0] || acc[1]) { conn.send({ t: "aim", dx: Math.round(acc[0]), dy: Math.round(acc[1]) }); acc = [0, 0]; } };
+  area.addEventListener("pointerdown", (e) => { lp = [e.clientX, e.clientY]; area.setPointerCapture(e.pointerId); });
+  area.addEventListener("pointermove", (e) => {
+    if (!lp) return;
+    acc[0] += (e.clientX - lp[0]) * SENS; acc[1] += (e.clientY - lp[1]) * SENS;
+    lp = [e.clientX, e.clientY];
+    if (!timer) timer = setTimeout(flush, 30);
+  });
+  area.addEventListener("pointerup", () => { lp = null; flush(); });
+  const fire = el("button", { type: "button", className: "hit fire", textContent: "FIRE" });
+  const until = performance.now() + (l.cool || 0) * 1000;
+  const tick = () => {
+    if (!fire.isConnected) return;
+    const left = (until - performance.now()) / 1000;
+    fire.disabled = left > 0;
+    fire.textContent = left > 0 ? left.toFixed(1) : "FIRE";
+    if (left > 0) requestAnimationFrame(tick);
+  };
+  fire.addEventListener("pointerdown", (e) => { e.stopPropagation(); if (fire.disabled) return; conn.send({ t: "fire" }); navigator.vibrate?.(60); });
+  add(area, fire, l.hint && el("p", { className: "hint", textContent: l.hint }));
+  tick(); // after add(): tick stops once the button leaves the page
 }
 
 function sling(l) {
