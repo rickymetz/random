@@ -643,7 +643,7 @@
     "thoracic-extension": "Hands behind your head, elbows in. Arch the upper back over the chair back and look up — breathe out, then come back upright.",
     scaption: "Thumbs up, arms a little forward of your sides. Raise to shoulder height with the shoulders down, away from your ears; lower slowly.",
     "row-head-turn": "Staggered stance. Pull the band back to your ribs, elbow close — turn your head the other way as you pull.",
-    touchdowns: "Start in a goalpost, elbows at shoulder height. Press straight up overhead with the ribs down, then lower back to the goalpost."
+    touchdowns: "Face a wall, forearms flat on it in a goalpost, elbows at shoulder height. Slide them up the wall into a V — ribs down, shoulders away from your ears — then slide back down."
   };
 
   /* ---------- shared positions ---------- */
@@ -1763,16 +1763,23 @@
       })()
     },
     'touchdowns': {
-      // Seen from the front: arms in a goalpost, elbows at shoulder height;
-      // press straight up overhead — a touchdown — then back down.
-      view: 'front',
-      cycle: 3.2,
+      // Facing a wall, forearms flat on it in a goalpost, elbows out to the
+      // sides at shoulder height (so the upper arms point partly toward and
+      // away from you, and look short). Slide the forearms up the wall into
+      // a V overhead, then back down.
+      cycle: 3.6,
+      props: [{ wall: 12.5 }],
       keys: (function () {
-        var base = standing(merge(FRONT, { legs: [[172, 180], [188, 180]], feet: [92, 268] }));
-        return [
-          merge(base, { arms: [[90, 0], [270, 0]], hands: [0, 0], hold: 0.08 }),
-          merge(base, { arms: [[8, 4], [352, 356]], hands: [4, 356], hold: 0.08 })
-        ];
+        var fore = 12.5 - 2.4;                    // forearm against the wall
+        var arm = function (dy, fa) {
+          var d = Math.sqrt(fore * fore + dy * dy);
+          return { a: angleOf(fore, dy), l: d / LEN.upperArm, fa: fa };
+        };
+        var pose = function (dy, extra) {
+          var u = arm(dy, 0);
+          return standing(merge({ head: -2, arms: [[u.a, 0], [u.a + 1, 0]], armLen: [[u.l, 1], [u.l, 1]], hands: [0, 0] }, extra));
+        };
+        return [pose(-2, { hold: 0.1 }), pose(13, { hold: 0.1 })];
       })()
     },
 
