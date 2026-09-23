@@ -296,6 +296,9 @@ function refreshMenus() {
   document.getElementById("t-rounds").textContent = `Rounds: ${S.rounds} (R)`;
   document.getElementById("t-mode").textContent = `Mode: ${MODE_NAME[S.mode]} (G)`;
   for (const id of ["t-tab", "t-mode", "t-rounds", "t-bot", "t-rmbot"]) document.getElementById(id).hidden = S.scene !== "lobby";
+  // extra controllers in this browser only make sense without the relay
+  if (S.net?.mode !== "local") document.getElementById("t-tab").hidden = true;
+  else document.getElementById("t-tab").textContent = onePhone() ? "📱 Play on this phone" : "Open a controller tab";
   if (S.mode === "gauntlet") document.getElementById("t-rounds").hidden = true;
 }
 
@@ -818,7 +821,7 @@ function frame(now) {
   S.frameMs = (S.frameMs ?? 16) * 0.97 + dt * 1000 * 0.03;
   if (S.frameMs > 24) S.slowFor = (S.slowFor || 0) + dt; else S.slowFor = 0;
   if (S.slowFor > 3) S.slow = true;
-  try { tick(dt); draw(); }
+  try { tick(dt); draw(); syncNav(); }
   catch (err) {
     console.error(err);
     // a minigame that throws is abandoned as a tie rather than taking the night down with it
@@ -869,4 +872,29 @@ tool("t-rounds", () => act("rounds"));
 tool("t-mode", () => act("mode"));
 tool("t-bot", () => act("addbot"));
 tool("t-rmbot", () => act("rmbot"));
-tool("t-tab", () => window.open(`index.html?room=${S.net.code}`, "_blank"));
+tool("t-tab", () => (onePhone() ? playHere() : window.open(`index.html?room=${S.net.code}`, "_blank")));
+
+// On a phone, or in the installed app (no tabs), a controller in another tab
+// can't work: you can't get back to this one, and a hidden tab stops
+// drawing, so the game would freeze. Instead the controller goes right
+// here, under the TV picture, in a frame: both stay on screen and talk over
+// the same BroadcastChannel.
+function onePhone() {
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  return standalone || matchMedia("(pointer: coarse)").matches || Math.min(innerWidth, innerHeight) < 600;
+}
+function playHere() {
+  const f = document.getElementById("solo");
+  if (!document.body.classList.contains("solo")) { f.src = `index.html?room=${S.net.code}`; f.hidden = false; document.body.classList.add("solo"); }
+  f.focus();
+}
+
+// The hub's bottom bar shows on the title, lobby and final screens and tucks
+// away during play (its handle at the bottom edge brings it back).
+let navShown = null;
+function syncNav() {
+  const want = S.scene === "gate" || S.scene === "lobby" || S.scene === "final";
+  if (want === navShown) return;
+  navShown = want;
+  if (want) window.randomNav?.show(); else window.randomNav?.hide();
+}

@@ -23,9 +23,23 @@ const params = new URLSearchParams(location.search);
 $("code").value = (params.get("room") || store.get("jb-code") || "").toUpperCase();
 $("name").value = store.get("jb-name") || "";
 if (location.pathname.includes("/ideas/")) $("home").hidden = false;
+// inside the TV page (one phone playing): the TV is right above, so no links away
+if (window.top !== window.self) for (const p of document.querySelectorAll(".host")) p.hidden = true;
 if ($("code").value.length === 4 && !$("name").value) $("name").focus();
 
-function show(id) { for (const s of ["join", "face", "pad"]) $(s).hidden = s !== id; }
+function show(id) { for (const s of ["join", "face", "pad"]) $(s).hidden = s !== id; syncNav(); }
+
+// The hub's bottom bar (Back / Home / Recents) shows on the join and face
+// screens and on menus, and tucks away while you're playing; its handle at
+// the bottom edge (or a swipe up) brings it back. Only on a change, so a
+// bar someone summoned mid-game isn't tucked again by the next layout.
+let navShown = null;
+function syncNav() {
+  const want = $("pad").hidden || current.kind === "menu";
+  if (want === navShown) return;
+  navShown = want;
+  if (want) window.randomNav?.show(); else window.randomNav?.hide();
+}
 
 // one reconnect loop at a time (a failed attempt closes its socket too, which
 // used to start a second loop), backing off; "final" closes stop it for good
@@ -148,6 +162,7 @@ function onMsg(m) {
     // still on the face screen when a game needs you: skip it rather than miss the game
     if (!faceDone && (!["wait", "menu"].includes(m.kind) || m.actions?.some((a) => a.id === "ready"))) { faceDone = true; conn.send({ t: "noface" }); show("pad"); }
     if (faceDone) render(m);
+    syncNav();
   }
 }
 

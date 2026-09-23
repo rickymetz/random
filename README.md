@@ -71,7 +71,10 @@ are secondaries, and the rest are compact rows. Spec:
 - The bar appends a spacer to `<body>` so it never covers the end of the
   page. An idea that already pads for it (via `--random-nav-h`) opts out
   with `<meta name="random-nav" content="overlay">`; `content="off"` hides
-  the bar altogether.
+  the bar altogether in a browser tab. In the installed app, which has no
+  browser chrome, an "off" page still gets the tucked bar's handle at the
+  bottom edge, so there's always a way back; keep `env(safe-area-inset-bottom)`
+  clear of controls.
 - Use relative URLs only; the site is served under `/random/`, so absolute
   paths like `/foo.png` will break. (Relative URLs are also what makes an
   idea work offline once it has been opened.)
