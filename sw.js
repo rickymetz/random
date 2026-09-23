@@ -21,10 +21,10 @@
  */
 'use strict';
 
-var VERSION = "ee15ac3646d5";
+var VERSION = "76b33aec1245";
 var SHELL = ["./","manifest.webmanifest","ideas.json","nav.js","hub.js","retro.js","retro.css","fonts/DroidSans.woff2","fonts/DroidSans-Bold.woff2","offline.html","icon.svg","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png"];
 // Each shell file's content hash: an update re-downloads only what changed.
-var SHELL_HASH = {"./":"7e57af26069dd9bd","manifest.webmanifest":"97bebb0715ee98f4","ideas.json":"8635cd815e4af00d","nav.js":"849ab7ecd5953854","hub.js":"5a3d5eb2b3195a02","retro.js":"c5479f976c7115a0","retro.css":"e141efa34308024e","fonts/DroidSans.woff2":"926eda9203636949","fonts/DroidSans-Bold.woff2":"b0f41617595b98bc","offline.html":"071764cae7779a82","icon.svg":"dfd5d5d474b00876","icon-192.png":"5a00e993c9494d3c","icon-512.png":"3d81a80b70f5bfd5","icon-maskable-512.png":"2e07cd24516fee62","apple-touch-icon.png":"f3a5e4309c27b078"};
+var SHELL_HASH = {"./":"c11436bb06fcfbb4","manifest.webmanifest":"02ccffdfa64ac064","ideas.json":"458eb44a47baf5b3","nav.js":"849ab7ecd5953854","hub.js":"5a3d5eb2b3195a02","retro.js":"c5479f976c7115a0","retro.css":"e141efa34308024e","fonts/DroidSans.woff2":"926eda9203636949","fonts/DroidSans-Bold.woff2":"b0f41617595b98bc","offline.html":"071764cae7779a82","icon.svg":"dfd5d5d474b00876","icon-192.png":"5a00e993c9494d3c","icon-512.png":"3d81a80b70f5bfd5","icon-maskable-512.png":"2e07cd24516fee62","apple-touch-icon.png":"f3a5e4309c27b078"};
 // Ideas small enough to save whole at install: [{ slug, paths }], where
 // "ideas/<slug>/" stands for its index.html (the URL a visit requests).
 var AUTO_SAVE = [{"slug":"breathe","paths":["ideas/breathe/"]}];
