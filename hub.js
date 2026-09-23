@@ -24,6 +24,13 @@
     if (params.has('url') || params.has('text')) history.replaceState(null, '', hub.pathname);
   })();
 
+  /* The modern hub's way into the retro launcher (and the launcher's own
+   * Settings / menus lead back out). */
+  var lookRetro = document.getElementById('look-retro');
+  if (lookRetro && window.randomNav) {
+    lookRetro.addEventListener('click', function () { window.randomNav.setLook('retro'); });
+  }
+
   var standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   var ios = /iP(hone|ad|od)/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);

@@ -57,7 +57,13 @@ const httpServer = http.createServer((req, res) => {
   res.writeHead(200, headers);
   fs.createReadStream(file).pipe(res);
 });
-await new Promise((r) => httpServer.listen(PORT, r));
+await new Promise((resolve) => {
+  httpServer.once("error", (e) => {
+    console.error(`can't serve on port ${PORT} (${e.code}); set PORT to a free one`);
+    process.exit(1);
+  });
+  httpServer.listen(PORT, resolve);
+});
 
 /* -------------------------------------------------------------- harness */
 
@@ -209,6 +215,110 @@ try {
     });
     check(cached.join() === "breathe,ephemera", `least recently used ideas evicted, saved ones kept (${cached.join(", ")})`);
     server.capBytes = null;
+    await ctx.close();
+  }
+
+  /* ------------------------------------------------ retro look (stage 1) */
+
+  section("retro look: switching");
+  {
+    const { ctx, page } = await freshPage();
+    await installHub(page);
+    const lookOf = () => page.evaluate(() => document.documentElement.dataset.look);
+    const themeColor = () => page.evaluate(() => document.querySelector('meta[name="theme-color"]').content);
+    check((await lookOf()) === "modern" && (await page.locator("#retro").isHidden()), "a browser tab opens modern");
+    await page.evaluate(() => { window.__sameDocument = true; });
+    await page.click("#look-retro");
+    await page.waitForSelector("#retro[data-ready]");
+    check((await page.evaluate(() => window.__sameDocument)) && (await page.locator("body > main").isHidden()),
+      "Retro look switches at once, without a reload");
+    check((await themeColor()) === "#000000", "the device's bar is painted black");
+    check(await page.evaluate(() => document.fonts.load('12px "Droid Sans"').then((f) => f.length > 0)), "Droid Sans loads");
+    await page.reload();
+    await page.waitForSelector("#retro[data-ready]");
+    check((await lookOf()) === "retro", "the choice survives a reload");
+    await page.evaluate(() => window.randomNav.setLook("modern"));
+    check((await lookOf()) === "modern" && (await page.locator("body > main").isVisible()) && (await page.locator("#retro").isHidden()),
+      "and switching back to modern is instant too");
+    check((await themeColor()) === "#faf9f7", "the theme colour is restored");
+    await ctx.close();
+  }
+
+  section("retro look: installed default");
+  {
+    const { ctx, page } = await freshPage();
+    await ctx.addInitScript(() => Object.defineProperty(navigator, "standalone", { get: () => true }));
+    await page.goto(B);
+    await page.waitForSelector("#retro[data-ready]");
+    check((await page.evaluate(() => document.documentElement.dataset.look)) === "retro", "the installed app opens retro");
+    await ctx.close();
+  }
+
+  section("retro launcher: home screens, dock, drawer");
+  {
+    const { ctx, page } = await freshPage();
+    await ctx.addInitScript(() => localStorage.setItem("random-hub:look", '"retro"'));
+    await installHub(page);
+    await page.waitForSelector("#retro[data-ready]");
+    const catalogue = await (await page.request.get(B + "ideas.json")).json();
+    const homeSlugs = await page.$$eval(".rt-pages .rt-icon", (els) => els.map((e) => e.dataset.slug));
+    check(homeSlugs.length === catalogue.length && catalogue.every((i) => homeSlugs.includes(i.slug)), "every idea is on the home screens");
+    check((await page.$eval('.rt-page[data-page="1"] .rt-icon', (e) => e.dataset.slug)) === catalogue[0].slug, "newest first, on the centre screen");
+    const current = () => page.$$eval(".rt-dots button", (bs) => bs.findIndex((b) => b.getAttribute("aria-current") === "true"));
+    const shownPage = () => page.$eval(".rt-pages", (p) => Math.round(p.scrollLeft / p.clientWidth));
+    check((await current()) === 1 && (await shownPage()) === 1, "opens on the centre of 3 screens");
+    await page.click(".rt-dots button:nth-child(3)");
+    await page.waitForFunction(() => { const p = document.querySelector(".rt-pages"); return Math.round(p.scrollLeft / p.clientWidth) === 2; });
+    check((await current()) === 2, "a page dot swipes to its screen");
+    await page.focus(".rt-pages");
+    await page.keyboard.press("ArrowLeft");
+    await page.waitForFunction(() => { const p = document.querySelector(".rt-pages"); return Math.round(p.scrollLeft / p.clientWidth) === 1; });
+    check(true, "and the arrow keys do too");
+    const hues = await page.$$eval(".rt-pages .rt-tile", (ts) => ts.map((t) => t.style.getPropertyValue("--h") + "/" + t.style.getPropertyValue("--dl")));
+    check(new Set(hues).size === hues.length, "every idea's tile has its own colour");
+
+    const dock = () => page.$$eval(".rt-dock-slot .rt-icon", (els) => els.map((e) => e.dataset.slug));
+    check((await dock()).join() === catalogue.slice(0, 2).map((i) => i.slug).join(), "the dock starts with the two newest ideas");
+
+    await page.click(".rt-launcher");
+    await page.waitForSelector(".rt-drawer.rt-open");
+    const drawerSlugs = () => page.$$eval(".rt-drawer .rt-icon", (els) => els.map((e) => e.dataset.slug));
+    const az = [...catalogue].sort((a, b) => a.title.localeCompare(b.title)).map((i) => i.slug);
+    check((await drawerSlugs()).join() === az.join(), "the drawer lists every idea, A–Z by default");
+    await page.click('.rt-sort [data-sort="new"]');
+    check((await drawerSlugs()).join() === catalogue.map((i) => i.slug).join(), "Newest sorts by date");
+    await bar(page, 'button[aria-label="Back"]').click();
+    await page.waitForSelector(".rt-drawer:not(.rt-open)");
+    check(page.url() === B, "the bar's Back closes the drawer, staying on the hub");
+    await page.click(".rt-launcher");
+    await page.waitForSelector(".rt-drawer.rt-open");
+    check((await drawerSlugs())[0] === catalogue[0].slug, "the sort order is remembered");
+    await bar(page, 'button[aria-label^="Home"]').click();
+    await page.waitForSelector(".rt-drawer:not(.rt-open)");
+    check(!(await bar(page, 'button[aria-label^="Home"]').isDisabled()) && (await current()) === 1, "● closes it and returns to the centre screen");
+    await page.click(".rt-launcher");
+    await page.waitForSelector(".rt-drawer.rt-open");
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".rt-drawer:not(.rt-open)");
+    check(true, "Escape closes it");
+
+    await page.click('.rt-pages .rt-icon[data-slug="breathe"]');
+    await page.waitForURL(B + "ideas/breathe/");
+    await page.goto(B);
+    await page.waitForSelector("#retro[data-ready]");
+    check((await dock())[0] === "breathe", "then it follows what you open");
+    await page.evaluate(() => localStorage.setItem("random-hub:since", JSON.stringify("2000-01-01T00:00:00Z")));
+    await page.reload();
+    await page.waitForSelector("#retro[data-ready]");
+    const dotted = await page.$$eval(".rt-pages .rt-new", (els) => els.map((e) => e.closest(".rt-icon").dataset.slug));
+    check(dotted.length === catalogue.length - 1 && !dotted.includes("breathe"), "unopened new ideas carry a green dot");
+
+    server.offline = true;
+    await page.reload();
+    await page.waitForSelector("#retro[data-ready]");
+    check(await page.evaluate(() => document.fonts.load('12px "Droid Sans"').then((f) => f.length > 0)),
+      "offline, the launcher and its font come from the precache");
+    server.offline = false;
     await ctx.close();
   }
 

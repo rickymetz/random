@@ -16,6 +16,9 @@
  *   <meta name="random-nav" content="off">      no bar on this page
  *   <meta name="random-nav" content="overlay">  bar, but no bottom spacer
  *   <a data-random-keep>              keep this "← random" link visible
+ *   window.randomNav.look() / .setLook('retro'|'modern'): the hub's two
+ *                                     looks (a 'randomlook' event fires on
+ *                                     window when it changes)
  *   window.randomNav.hide() / .show() tuck the bar away for an immersive
  *                                     moment (a handle or an edge swipe
  *                                     brings it back); full screen hides
@@ -41,7 +44,8 @@
     recents: 'random-hub:recents',
     opened: 'random-hub:opened',
     since: 'random-hub:since',
-    trail: 'random-hub:trail'
+    trail: 'random-hub:trail',
+    look: 'random-hub:look'
   };
   var MAX_RECENTS = 8;
   var BAR_H = 48;
@@ -70,6 +74,35 @@
   function lset(k, v) { if (local) write(local, k, v); }
   function sget(k, f) { return session ? read(session, k, f) : f; }
   function sset(k, v) { if (session) write(session, k, v); }
+
+  /* -------------------------------------------------------------- look */
+
+  // Two looks: 'modern' (the card grid) and 'retro' (the Gingerbread
+  // launcher, retro.js). A saved choice wins; otherwise retro when running
+  // as the installed app, modern in a browser tab. The hub's inline head
+  // script makes the same decision before first paint.
+  function standalone() {
+    try {
+      return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    } catch (e) { return false; }
+  }
+  function currentLook() {
+    var saved = lget(KEY.look, null);
+    if (saved === 'retro' || saved === 'modern') return saved;
+    return standalone() ? 'retro' : 'modern';
+  }
+  var look = currentLook();
+  document.documentElement.setAttribute('data-look', look);
+
+  function setLook(next) {
+    if (next !== 'retro' && next !== 'modern') return;
+    lset(KEY.look, next);
+    if (next === look) return;
+    look = next;
+    document.documentElement.setAttribute('data-look', look);
+    applyLook();
+    try { window.dispatchEvent(new CustomEvent('randomlook', { detail: { look: look } })); } catch (e) {}
+  }
 
   /* ---------------------------------------------------- where are we? */
 
@@ -332,10 +365,7 @@
     matchPage();
     watchPage();
 
-    if (isHub) {
-      ui.home.disabled = true;
-      ui.home.setAttribute('aria-label', 'Home (you are here)');
-    }
+    applyLook();
     if (isHub && !canGoBack()) ui.back.hidden = true;
 
     ui.back.addEventListener('click', function () {
@@ -344,6 +374,9 @@
     });
     ui.home.addEventListener('click', function () {
       if (longPressed) { longPressed = false; return; }
+      // On the retro launcher, Home is a launcher action: close whatever is
+      // open and go back to the centre home screen (retro.js listens).
+      if (isHub) { window.dispatchEvent(new CustomEvent('randomhome')); return; }
       location.href = HUB.href;
     });
     onLongPress(ui.home, share);
@@ -475,7 +508,35 @@
     if (ms) toastTimer = setTimeout(function () { ui.toast.hidden = true; }, ms);
   }
 
-  window.randomNav = { hide: hide, show: show, share: share };
+  // What the bar looks like for the current look. On the modern hub Home
+  // has nowhere to go; on the retro launcher it's the launcher's Home key.
+  function applyLook() {
+    if (!ui.home) return;
+    var inert = isHub && look !== 'retro';
+    ui.home.disabled = inert;
+    ui.home.setAttribute('aria-label', inert ? 'Home (you are here)' : 'Home (all ideas)');
+  }
+
+  window.randomNav = {
+    hide: hide,
+    show: show,
+    share: share,
+    look: function () { return look; },
+    setLook: setLook,
+    // For the launcher: the idea catalogue, and what this device knows.
+    ideas: function () { return ideasReady; },
+    isNew: function (idea) { return isNew(idea); },
+    recents: function () { return lget(KEY.recents, []); },
+    toast: function (text, ms) { if (ui.toast) toast(text, null, ms || 2200); },
+    // The launcher pushes history entries (the drawer); Back's visibility
+    // on the hub follows whether there is anywhere to go back to.
+    refreshBack: refreshBack
+  };
+
+  function refreshBack() {
+    if (ui.back && isHub) ui.back.hidden = !canGoBack();
+  }
+  window.addEventListener('popstate', function () { setTimeout(refreshBack, 0); });
 
   // Ideas that predate the bar carry their own link home: "← random", or an
   // icon-only arrow with just an aria-label. While the bar is up it is

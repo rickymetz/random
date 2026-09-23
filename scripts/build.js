@@ -102,6 +102,9 @@ function collectIdeas() {
       title,
       description,
       emoji: meta.emoji || "",
+      // Optional retro launcher tile colour (a hex colour); else it's
+      // picked from the slug.
+      icon: /^#[0-9a-f]{3,8}$/i.test(meta.icon || "") ? meta.icon : "",
       date: firstCommitDate(path.join("ideas", slug)),
       saveable,
       files: saveable ? listFiles(dir) : [],
@@ -151,6 +154,21 @@ function renderHome(ideas) {
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="random">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<script>
+  // The look (modern cards / retro launcher) is decided before first paint,
+  // so there's no flash of the wrong one. nav.js makes the same call later.
+  (function () {
+    var look;
+    try { look = JSON.parse(localStorage.getItem("random-hub:look")); } catch (e) {}
+    if (look !== "retro" && look !== "modern") {
+      var installed = false;
+      try { installed = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; } catch (e) {}
+      look = installed ? "retro" : "modern";
+    }
+    document.documentElement.setAttribute("data-look", look);
+  })();
+</script>
+<link rel="stylesheet" href="retro.css">
 <style>
   :root {
     --bg: #faf9f7;
@@ -314,6 +332,7 @@ function renderHome(ideas) {
         </div>
         <div class="hub-actions">
           <button type="button" id="install" hidden>Install</button>
+          <button type="button" id="look-retro">Retro look</button>
           <button type="button" id="badge-toggle" hidden>Badge new ideas</button>
         </div>
       </div>
@@ -329,7 +348,9 @@ ${ideas.length ? cards : empty}
       <a href="https://github.com/rickymetz/random">source</a>
     </footer>
   </main>
+  <div id="retro" hidden></div>
   <script src="nav.js" defer></script>
+  <script src="retro.js" defer></script>
   <script src="hub.js" defer></script>
 </body>
 </html>
@@ -344,6 +365,10 @@ const THEME = { light: "#faf9f7", dark: "#141414" };
 const STATIC_SHELL = [
   "nav.js",
   "hub.js",
+  "retro.js",
+  "retro.css",
+  "fonts/DroidSans.woff2",
+  "fonts/DroidSans-Bold.woff2",
   "offline.html",
   "icon.svg",
   "icon-192.png",
@@ -395,6 +420,7 @@ function renderIdeasJson(ideas) {
     date: idea.date.toISOString(),
     url: `ideas/${idea.slug}/`,
     saveable: idea.saveable,
+    ...(idea.icon ? { icon: idea.icon } : {}),
   })), null, 2) + "\n";
 }
 
@@ -460,6 +486,7 @@ for (const [name, content] of Object.entries(generated)) {
   fs.writeFileSync(path.join(outDir, name), content);
 }
 for (const name of STATIC_SHELL) {
+  fs.mkdirSync(path.dirname(path.join(outDir, name)), { recursive: true });
   fs.copyFileSync(path.join(root, name), path.join(outDir, name));
 }
 fs.writeFileSync(path.join(outDir, ".nojekyll"), "");

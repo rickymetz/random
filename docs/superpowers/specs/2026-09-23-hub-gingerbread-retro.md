@@ -59,7 +59,8 @@ copied system artwork. Everything is drawn fresh in the era's style.
   always wins, so a browser user can opt into retro and an installed user
   can opt out.
 - The toggle lives in Settings (G16), the ≡ menu and the power-control
-  widget. Switching applies at once: no reload, no flash of the wrong
+  widget. In modern, a "Retro look" button in the hub header is the way
+  in. Switching applies at once: no reload, no flash of the wrong
   look on the next start. `<html data-look>` is set by an inline
   head script before first paint.
 - Retro is always the look **inside the installed app shell**. Idea page
