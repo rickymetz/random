@@ -93,11 +93,11 @@
       ]
     },
     {
-      "name": "Breathe",
-      "url": "ideas/breathe/",
+      "name": "Ephemera",
+      "url": "ideas/ephemera/",
       "icons": [
         {
-          "src": "icons/breathe-3d.svg",
+          "src": "icons/ephemera-3d.svg",
           "sizes": "any",
           "type": "image/svg+xml"
         },

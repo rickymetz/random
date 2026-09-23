@@ -44,34 +44,6 @@
     "private": true
   },
   {
-    "slug": "breathe",
-    "title": "Breathe",
-    "description": "A breathing circle: box, 4-7-8, coherent, physiological sigh and more.",
-    "emoji": "🫧",
-    "color": "#2b6ca8",
-    "art": {
-      "flat": "icons/breathe-flat.svg",
-      "3d": "icons/breathe-3d.svg"
-    },
-    "date": "2026-09-02T12:09:59.000Z",
-    "url": "ideas/breathe/",
-    "saveable": true
-  },
-  {
-    "slug": "container-compound",
-    "title": "Container Compound",
-    "description": "Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.",
-    "emoji": "📦",
-    "color": "#8c3b2e",
-    "art": {
-      "flat": "icons/container-compound-flat.svg",
-      "3d": "icons/container-compound-3d.svg"
-    },
-    "date": "2026-09-02T12:09:59.000Z",
-    "url": "ideas/container-compound/",
-    "saveable": true
-  },
-  {
     "slug": "ephemera",
     "title": "Ephemera",
     "description": "Browse 8,038 industrial, educational and advertising films from the Prelinger Archives, and watch them in the page.",
@@ -81,7 +53,7 @@
       "flat": "icons/ephemera-flat.svg",
       "3d": "icons/ephemera-3d.svg"
     },
-    "date": "2026-09-02T12:09:59.000Z",
+    "date": "2026-08-31T19:19:09.000Z",
     "url": "ideas/ephemera/",
     "saveable": true
   },
@@ -95,8 +67,36 @@
       "flat": "icons/public-screening-flat.svg",
       "3d": "icons/public-screening-3d.svg"
     },
-    "date": "2026-09-02T12:09:59.000Z",
+    "date": "2026-08-27T02:30:33.000Z",
     "url": "ideas/public-screening/",
+    "saveable": true
+  },
+  {
+    "slug": "container-compound",
+    "title": "Container Compound",
+    "description": "Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.",
+    "emoji": "📦",
+    "color": "#8c3b2e",
+    "art": {
+      "flat": "icons/container-compound-flat.svg",
+      "3d": "icons/container-compound-3d.svg"
+    },
+    "date": "2026-08-13T05:59:34.000Z",
+    "url": "ideas/container-compound/",
+    "saveable": true
+  },
+  {
+    "slug": "breathe",
+    "title": "Breathe",
+    "description": "A breathing circle: box, 4-7-8, coherent, physiological sigh and more.",
+    "emoji": "🫧",
+    "color": "#2b6ca8",
+    "art": {
+      "flat": "icons/breathe-flat.svg",
+      "3d": "icons/breathe-3d.svg"
+    },
+    "date": "2026-08-13T04:03:58.000Z",
+    "url": "ideas/breathe/",
     "saveable": true
   }
 ]
