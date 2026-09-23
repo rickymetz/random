@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
   <!-- Container Compound: shipping container, 3/4 view, flat -->
-  <ellipse cx="66" cy="106" rx="54" ry="6" fill="#0b4238"/>
+  <ellipse cx="66" cy="106" rx="54" ry="6" fill="#522118"/>
   <path d="M10 42 L48 28 L118 44 L80 58 Z" fill="#ffffff"/>
   <path d="M10 42 L80 58 L80 104 L10 88 Z" fill="#f3e9d6"/>
   <path d="M80 58 L118 44 L118 90 L80 104 Z" fill="#d8c8ab"/>

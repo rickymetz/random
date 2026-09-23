@@ -11,23 +11,23 @@
       <stop offset="1" stop-color="#0d0c0b"/>
     </linearGradient>
     <linearGradient id="cadence-3d-badge" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffa27c"/>
-      <stop offset="1" stop-color="#d9481f"/>
+      <stop offset="0" stop-color="#fabf96"/>
+      <stop offset="1" stop-color="#db7541"/>
     </linearGradient>
     <filter id="cadence-3d-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
     <filter id="cadence-3d-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter>
     <clipPath id="cadence-3d-clip"><path d="M43.5 108 A38 38 0 1 1 84.5 108 Z"/></clipPath>
   </defs>
-  <ellipse cx="66" cy="112" rx="36" ry="6" fill="#7a2410" opacity=".6" filter="url(#cadence-3d-blur)"/>
+  <ellipse cx="66" cy="112" rx="36" ry="6" fill="#863a18" opacity=".6" filter="url(#cadence-3d-blur)"/>
   <path d="M42 62 C34 44 34 16 54 15 L74 15 C94 16 94 44 86 62" fill="none" stroke="url(#cadence-3d-handle)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M40 50 C38 32 42 13 56 12.5 L70 12.5" fill="none" stroke="#fff8ec" stroke-width="3" stroke-linecap="round" opacity=".55" filter="url(#cadence-3d-soft)"/>
   <path d="M43.5 108 A38 38 0 1 1 84.5 108 Z" fill="url(#cadence-3d-body)"/>
   <g clip-path="url(#cadence-3d-clip)">
-    <path d="M101 74 A38 38 0 0 1 80 108" fill="none" stroke="#e2552b" stroke-width="5" opacity=".28" filter="url(#cadence-3d-soft)"/>
+    <path d="M101 74 A38 38 0 0 1 80 108" fill="none" stroke="#e08554" stroke-width="5" opacity=".28" filter="url(#cadence-3d-soft)"/>
   </g>
   <ellipse cx="46" cy="57" rx="10" ry="6" transform="rotate(-40 46 57)" fill="#ffffff" opacity=".5" filter="url(#cadence-3d-soft)"/>
   <circle cx="43" cy="55" r="2.6" fill="#ffffff" opacity=".85"/>
-  <rect x="50" y="81" width="28" height="11" rx="5.5" fill="#8f2e12" opacity=".7" filter="url(#cadence-3d-soft)"/>
+  <rect x="50" y="81" width="28" height="11" rx="5.5" fill="#9d481b" opacity=".7" filter="url(#cadence-3d-soft)"/>
   <rect x="50" y="80" width="28" height="11" rx="5.5" fill="url(#cadence-3d-badge)"/>
   <rect x="54" y="81.5" width="14" height="3" rx="1.5" fill="#ffffff" opacity=".6"/>
 </svg>

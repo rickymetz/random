@@ -28,7 +28,7 @@ idea), add an `ideas/<slug>/idea.json`:
   "title": "Breathe",
   "description": "A one-minute box-breathing circle.",
   "emoji": "🫧",
-  "color": "#8ccbe6",
+  "color": "#2b6ca8",
   "hidden": false
 }
 ```

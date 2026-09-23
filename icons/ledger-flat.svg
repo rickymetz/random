@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
   <!-- Ledger: closed notebook with elastic band and padlock, flat -->
-  <ellipse cx="64" cy="115" rx="40" ry="4.5" fill="#16275a"/>
-  <rect x="30" y="18" width="72" height="95" rx="7" fill="#d9ccb4"/>
-  <rect x="26" y="14" width="72" height="96" rx="7" fill="#fff8ec"/>
-  <path d="M33 14 H40 V110 H33 A7 7 0 0 1 26 103 V21 A7 7 0 0 1 33 14 Z" fill="#6f8ad6"/>
-  <rect x="48" y="28" width="28" height="12" rx="3" fill="#b9c7ef"/>
-  <rect x="81" y="14" width="7" height="96" fill="#141414"/>
-  <path d="M79 66 V59 A5.5 5.5 0 0 1 90 59 V66" fill="none" stroke="#141414" stroke-width="4"/>
-  <rect x="74" y="64" width="21" height="17" rx="4" fill="#141414"/>
-  <circle cx="84.5" cy="71" r="2.6" fill="#fff8ec"/>
-  <rect x="83.4" y="71" width="2.2" height="5.5" rx="1.1" fill="#fff8ec"/>
+  <ellipse cx="64" cy="115" rx="40" ry="4.5" fill="#9f6f20"/>
+  <rect x="30" y="18" width="72" height="95" rx="7" fill="#f3ead8"/>
+  <rect x="26" y="14" width="72" height="96" rx="7" fill="#2b2622"/>
+  <path d="M33 14 H40 V110 H33 A7 7 0 0 1 26 103 V21 A7 7 0 0 1 33 14 Z" fill="#171412"/>
+  <rect x="48" y="28" width="28" height="12" rx="3" fill="#f0d9a8"/>
+  <rect x="81" y="14" width="7" height="96" fill="#fff8ec"/>
+  <path d="M79 66 V59 A5.5 5.5 0 0 1 90 59 V66" fill="none" stroke="#fff8ec" stroke-width="4"/>
+  <rect x="74" y="64" width="21" height="17" rx="4" fill="#fff8ec"/>
+  <circle cx="84.5" cy="71" r="2.6" fill="#2b2622"/>
+  <rect x="83.4" y="71" width="2.2" height="5.5" rx="1.1" fill="#2b2622"/>
 </svg>

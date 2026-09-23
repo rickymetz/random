@@ -20,7 +20,7 @@
     <filter id="container-compound-3d-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
     <filter id="container-compound-3d-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.2"/></filter>
   </defs>
-  <ellipse cx="68" cy="104" rx="54" ry="7" fill="#052821" opacity=".65" filter="url(#container-compound-3d-blur)"/>
+  <ellipse cx="68" cy="104" rx="54" ry="7" fill="#31110d" opacity=".65" filter="url(#container-compound-3d-blur)"/>
   <g stroke-linejoin="round" stroke-width="5">
     <path d="M10 42 L48 28 L118 44 L80 58 Z" fill="url(#container-compound-3d-top)" stroke="url(#container-compound-3d-top)"/>
     <path d="M10 42 L80 58 L80 104 L10 88 Z" fill="url(#container-compound-3d-side)" stroke="url(#container-compound-3d-side)"/>

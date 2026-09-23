@@ -286,7 +286,7 @@ ${rows}
     --muted: #5e5a53;
     --line: #dcd7cc;
     --hover: #ece8df;
-    --accent: #a14826;
+    --accent: #6a3fd0;
     --on-accent: #ffffff;
     --display: "Archivo Heavy", "Arial Black", ui-sans-serif, system-ui, sans-serif;
     --radius: 1.25rem;
@@ -298,7 +298,7 @@ ${rows}
       --muted: #a39f97;
       --line: #3a3733;
       --hover: #1c1b19;
-      --accent: #e08554;
+      --accent: #a98cf5;
       --on-accent: #111111;
     }
   }

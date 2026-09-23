@@ -65,6 +65,15 @@ Why: the old look read as generic, and the retro launcher had outshone it.
   in both.
 - The retro tiles use the idea's colour too: `"icon"` (a hex) still wins,
   then `"color"`.
+- Each idea's colour comes from the app itself (its own accent or signature
+  colour): Cadence #e08554, Ledger #d8a657, Ephemera #5fb3a1, Public
+  Screening #e5a00d, Container Compound #8c3b2e (container rust) and
+  Breathe #2b6ca8. The icons' shades follow their idea's colour.
+- The hub's own accent (the wordmark's dot, the New pill on rows, "Saved
+  offline", the navbar's links and toast, the offline page) is **violet**:
+  #6a3fd0 on light, #a98cf5 on dark with #111 text on it. No idea uses
+  that hue, so it never merges with a block. The retro look keeps its own
+  palette.
 
 ### E3. Icons
 

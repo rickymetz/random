@@ -4,7 +4,7 @@
     <radialGradient id="ephemera-3d-reel" cx=".32" cy=".28" r=".8">
       <stop offset="0" stop-color="#ffffff"/>
       <stop offset=".55" stop-color="#fff3dc"/>
-      <stop offset="1" stop-color="#e2c690"/>
+      <stop offset="1" stop-color="#a0c5bd"/>
     </radialGradient>
     <radialGradient id="ephemera-3d-body" cx=".3" cy=".2" r=".95">
       <stop offset="0" stop-color="#5e5650"/>
@@ -16,17 +16,17 @@
       <stop offset="1" stop-color="#121110"/>
     </linearGradient>
     <radialGradient id="ephemera-3d-hole" cx=".6" cy=".65" r=".7">
-      <stop offset="0" stop-color="#f2b134"/>
-      <stop offset="1" stop-color="#a86f0c"/>
+      <stop offset="0" stop-color="#5fb3a1"/>
+      <stop offset="1" stop-color="#367163"/>
     </radialGradient>
     <linearGradient id="ephemera-3d-lens" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#dcc08a"/>
+      <stop offset="1" stop-color="#9abeb6"/>
     </linearGradient>
     <filter id="ephemera-3d-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
     <filter id="ephemera-3d-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter>
   </defs>
-  <ellipse cx="66" cy="109" rx="46" ry="6" fill="#7a5008" opacity=".6" filter="url(#ephemera-3d-blur)"/>
+  <ellipse cx="66" cy="109" rx="46" ry="6" fill="#275248" opacity=".6" filter="url(#ephemera-3d-blur)"/>
   <path d="M36 40 L40 62 M76 40 L72 62" stroke="url(#ephemera-3d-ink)" stroke-width="5.5" stroke-linecap="round"/>
   <rect x="24" y="98" width="10" height="9" rx="3" fill="url(#ephemera-3d-ink)"/>
   <rect x="78" y="98" width="10" height="9" rx="3" fill="url(#ephemera-3d-ink)"/>

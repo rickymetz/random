@@ -2,33 +2,33 @@
   <!-- Ledger: closed notebook with elastic band and padlock, soft clay -->
   <defs>
     <radialGradient id="ledger-3d-cover" cx=".3" cy=".22" r=".95">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset=".5" stop-color="#fff4e0"/>
-      <stop offset="1" stop-color="#e3d0ae"/>
+      <stop offset="0" stop-color="#5e554d"/>
+      <stop offset=".5" stop-color="#352f2a"/>
+      <stop offset="1" stop-color="#1c1916"/>
     </radialGradient>
     <linearGradient id="ledger-3d-spine" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#9fb4f0"/>
-      <stop offset="1" stop-color="#4661b3"/>
+      <stop offset="0" stop-color="#2e2824"/>
+      <stop offset="1" stop-color="#110f0d"/>
     </linearGradient>
     <linearGradient id="ledger-3d-ink" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#57504b"/>
-      <stop offset="1" stop-color="#121110"/>
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e2d6bd"/>
     </linearGradient>
     <linearGradient id="ledger-3d-label" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#9fb2ea"/>
-      <stop offset="1" stop-color="#cdd8f5"/>
+      <stop offset="0" stop-color="#f6e2b6"/>
+      <stop offset="1" stop-color="#dcbd7e"/>
     </linearGradient>
     <filter id="ledger-3d-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
     <filter id="ledger-3d-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter>
   </defs>
-  <ellipse cx="66" cy="114" rx="40" ry="6" fill="#0d1838" opacity=".65" filter="url(#ledger-3d-blur)"/>
+  <ellipse cx="66" cy="114" rx="40" ry="6" fill="#634413" opacity=".65" filter="url(#ledger-3d-blur)"/>
   <rect x="30" y="18" width="72" height="95" rx="10" fill="#c9b690"/>
   <rect x="31" y="17" width="69" height="93" rx="9" fill="#efe4cf"/>
   <rect x="26" y="14" width="72" height="96" rx="10" fill="url(#ledger-3d-cover)"/>
   <path d="M36 14 H40 V110 H36 A10 10 0 0 1 26 100 V24 A10 10 0 0 1 36 14 Z" fill="url(#ledger-3d-spine)"/>
-  <path d="M31 24 V96" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity=".5" filter="url(#ledger-3d-soft)"/>
+  <path d="M31 24 V96" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity=".2" filter="url(#ledger-3d-soft)"/>
   <rect x="48" y="28" width="28" height="12" rx="4" fill="url(#ledger-3d-label)"/>
-  <path d="M46 22 H70" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity=".8" filter="url(#ledger-3d-soft)"/>
+  <path d="M46 22 H70" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity=".25" filter="url(#ledger-3d-soft)"/>
   <rect x="84" y="14" width="7" height="96" fill="#8a7a5c" opacity=".55" filter="url(#ledger-3d-soft)"/>
   <rect x="81" y="14" width="7" height="96" fill="url(#ledger-3d-ink)"/>
   <path d="M83 16 V108" stroke="#ffffff" stroke-width="1.2" opacity=".35"/>
@@ -36,6 +36,6 @@
   <rect x="76" y="66" width="21" height="17" rx="5" fill="#4a3e2a" opacity=".5" filter="url(#ledger-3d-soft)"/>
   <rect x="74" y="64" width="21" height="17" rx="5" fill="url(#ledger-3d-ink)"/>
   <rect x="77" y="66" width="9" height="3" rx="1.5" fill="#ffffff" opacity=".35"/>
-  <circle cx="84.5" cy="71" r="2.6" fill="#fff8ec"/>
-  <rect x="83.4" y="71" width="2.2" height="5.5" rx="1.1" fill="#fff8ec"/>
+  <circle cx="84.5" cy="71" r="2.6" fill="#2b2622"/>
+  <rect x="83.4" y="71" width="2.2" height="5.5" rx="1.1" fill="#2b2622"/>
 </svg>
