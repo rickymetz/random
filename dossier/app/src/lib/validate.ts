@@ -21,7 +21,7 @@ import type {
   Settings,
   TypeFamily,
 } from './models'
-import { DRAFT_LIMIT, RECENT_LIMIT } from './models'
+import { RECENT_LIMIT } from './models'
 import { extractMentions } from './mentions'
 
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/
@@ -282,17 +282,15 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
           : undefined,
       }
       if (settings.recentIds?.length === 0) settings.recentIds = undefined
-      // Drafts: a person id to the note being written, capped like a
-      // note's body; anything else in the bag is dropped.
-      if (r.drafts && typeof r.drafts === 'object' && !Array.isArray(r.drafts)) {
-        const drafts: Record<string, string> = {}
-        for (const [id, text] of Object.entries(r.drafts as Record<string, unknown>).slice(0, DRAFT_LIMIT)) {
-          const body = str(text, 50_000)
-          if (ID_RE.test(id) && body && body.trim()) drafts[id] = body
-        }
-        if (Object.keys(drafts).length > 0) settings.drafts = drafts
-      }
       return settings
+    }
+    case 'draft': {
+      // A note being written: capped like a note's body, and only ever
+      // about a person id.
+      const personId = typeof r.personId === 'string' && ID_RE.test(r.personId) ? r.personId : undefined
+      const body = str(r.body, 50_000)
+      if (!personId || !body || !body.trim()) return null
+      return { kind: 'draft', id: rid, personId, body, updatedAt: num(r.updatedAt) }
     }
     default:
       return null

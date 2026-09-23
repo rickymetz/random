@@ -190,17 +190,22 @@ export interface Settings {
    * arrives with its form already in it.
    */
   formSetupDone?: boolean
-  /**
-   * Notes being written, by person id, kept as they are typed so a reload
-   * (an app update, iOS closing the app, a crash) can't take them: they
-   * come back into the note box on the next unlock. Encrypted like every
-   * record and device-local like the rest of Settings — never in a backup.
-   */
-  drafts?: Record<string, string>
 }
 
-/** How many unfinished notes Settings keeps (one per dossier). */
-export const DRAFT_LIMIT = 50
+/**
+ * A note being written, kept on disk as it's typed so a reload (an app
+ * update, iOS closing the app, a crash) can't take it: it comes back into
+ * the note box on the next unlock. Encrypted like every record, but never
+ * part of the in-memory records the app renders from — so it is never in
+ * a backup, and a pause in typing doesn't re-render the whole app.
+ */
+export interface NoteDraft {
+  kind: 'draft'
+  id: string
+  personId: string
+  body: string
+  updatedAt: number
+}
 
 /** How many recently opened dossiers the home screen remembers. */
 export const RECENT_LIMIT = 8
@@ -236,6 +241,7 @@ export type DomainRecord =
   | RelationshipType
   | Photo
   | Settings
+  | NoteDraft
 
 // Hues chosen to stay distinguishable from one another under the common
 // color-vision deficiencies; chips pair each color with its label as the

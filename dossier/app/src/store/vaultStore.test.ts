@@ -280,10 +280,27 @@ describe('vault store', () => {
     await store().persistDraft(ada.id, 'about Ada')
     await store().persistDraft(bo.id, 'about Bo')
     await store().removePerson(ada.id)
-    expect(selectSettings(store().records)?.drafts).toEqual({ [bo.id]: 'about Bo' })
     // …and a late write for someone gone is refused.
     await store().persistDraft(ada.id, 'again')
-    expect(selectSettings(store().records)?.drafts).toEqual({ [bo.id]: 'about Bo' })
+    store().lock()
+    await store().unlock('open sesame')
+    expect([...store().drafts.entries()]).toEqual([[bo.id, 'about Bo']])
+  })
+
+  it('drafts never join the records — so never a backup, and never a re-render', async () => {
+    const ada = await store().addPerson('Ada')
+    const before = store().records
+    await store().persistDraft(ada.id, 'not for export')
+    expect(store().records).toBe(before)
+    store().lock()
+    await store().unlock('open sesame')
+    expect([...store().records.values()].some((r) => (r as { kind: string }).kind === 'draft')).toBe(false)
+    expect(JSON.stringify([...store().records.values()])).not.toContain('not for export')
+    // A backup claiming to carry one doesn't bring it in.
+    await store().importRecords([
+      { kind: 'draft', id: 'd1', personId: ada.id, body: 'smuggled', updatedAt: 1 },
+    ])
+    expect(JSON.stringify([...store().records.values()])).not.toContain('smuggled')
   })
 
   it('updateNote re-derives mention edges from the new text', async () => {

@@ -13,7 +13,14 @@
 type Apply = (reloadPage?: boolean) => Promise<void>
 let applyFn: Apply | null = null
 let ready = false
-let wanted = false
+/**
+ * Until when an explicit "update now" stands. It must expire: if the
+ * build it was waiting for fails to install, the next one — found hours
+ * later by the hourly check, mid-sentence — must wait its turn like any
+ * other, not reload the page on the strength of an old tap.
+ */
+let wantedUntil = 0
+const WANT_FOR_MS = 60_000
 const listeners = new Set<() => void>()
 
 /** main.tsx hands over the function that tells the waiting build to take over. */
@@ -24,7 +31,7 @@ export function wireUpdate(apply: Apply): void {
 /** A new build has installed and is waiting to take over. */
 export function markUpdateReady(): void {
   ready = true
-  if (wanted) void applyUpdate()
+  if (Date.now() < wantedUntil) void applyUpdate()
   for (const l of listeners) l()
 }
 
@@ -42,15 +49,27 @@ export function onUpdateReady(listener: () => void): () => void {
  * installed. The page reloads onto it (and so opens locked).
  */
 export async function applyUpdate(): Promise<void> {
-  wanted = true
-  if (!ready || !applyFn) return
+  if (!ready || !applyFn) {
+    wantedUntil = Date.now() + WANT_FOR_MS
+    return
+  }
+  wantedUntil = 0
   // Reload when the new build takes over. The plugin does this only for
   // an update it counts as its own; one found by `registration.update()`
   // (the hourly check, the Settings button) is "external" to it, and the
   // page would otherwise stay on the old build under the new worker.
   if (!reloadArmed && navigator.serviceWorker) {
     reloadArmed = true
-    navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true })
+    // For an update it does count as its own (one found waiting at
+    // start-up) the plugin reloads too: let it go first, and only reload
+    // if nothing has started leaving — one reopen, not two.
+    let leaving = false
+    window.addEventListener('beforeunload', () => (leaving = true), { once: true })
+    navigator.serviceWorker.addEventListener(
+      'controllerchange',
+      () => window.setTimeout(() => leaving || location.reload(), 0),
+      { once: true },
+    )
   }
   await applyFn(true)
 }

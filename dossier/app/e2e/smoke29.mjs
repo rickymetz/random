@@ -86,7 +86,12 @@ await page.click(`${UPDATES} button:has-text("Check for updates")`)
 await waitStatus(/latest version/, 'expected "latest"')
 console.log('1. names its build; nothing new:', await status())
 const r1 = ship()
+const loadsAtCheck = loads
 await page.click(`${UPDATES} button:has-text("Check for updates")`)
+await page.waitForSelector('main.unlock-main', { timeout: 30000 })
+await page.waitForTimeout(1500)
+// Once: the plugin's own reload and ours must not both land.
+if (loads - loadsAtCheck !== 1) fail(`the update should reopen the app once, not ${loads - loadsAtCheck} times`)
 await unlock()
 await page.waitForSelector(UPDATES, { timeout: 15000 }).catch(() => fail('unlocking should land back on Settings'))
 if ((await running()) !== r1) fail(`asked for, the new version should be running: ${await running()}`)
@@ -137,6 +142,22 @@ await page.waitForSelector(NOTE, { timeout: 15000 }).catch(() => fail('unlocking
 const back = await page.inputValue(NOTE)
 if (back !== 'Owes me a book — the blue one') fail(`the draft should survive a reload: ${JSON.stringify(back)}`)
 console.log('3. survived a reload, back in the box:', back)
+
+// ---------- a build found waiting when the app starts ----------
+// iOS relaunching the app with an update already downloaded: the plugin
+// finds it waiting at start-up, and the unlock screen takes it — once.
+await blur()
+const r3 = ship()
+await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()))
+await page.waitForFunction(() => navigator.serviceWorker.getRegistration().then((r) => Boolean(r?.waiting)), null, { timeout: 20000 })
+const loadsAtRelaunch = loads
+await page.reload()
+await page.waitForSelector('main.unlock-main', { timeout: 30000 })
+await page.waitForTimeout(3000)
+if ((await running()) !== r3) fail(`found waiting at start-up, it should be taken on the unlock screen: ${await running()}`)
+if (loads - loadsAtRelaunch !== 2) fail(`start-up should reopen once for the update, not ${loads - loadsAtRelaunch - 1} times`)
+console.log('   found waiting at start-up, taken on the unlock screen, once:', r3)
+await unlock()
 
 // ---------- offline ----------
 await blur()

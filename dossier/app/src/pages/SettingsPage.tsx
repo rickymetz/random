@@ -892,7 +892,13 @@ function UpdateSection() {
             {state === 'waiting' ? 'Install now' : 'Check for updates'}
           </button>
           {state === 'stuck' && (
-            <button type="button" className="primary" onClick={() => location.reload()}>
+            <button
+              type="button"
+              className="primary"
+              // A reload alone doesn't hand over to a waiting build (the page
+              // it reloads still holds the old one); take it if it's there.
+              onClick={() => (isUpdateReady() ? void applyUpdate() : location.reload())}
+            >
               Reopen now
             </button>
           )}

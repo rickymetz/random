@@ -2337,9 +2337,25 @@ function useCanvasGraph(
           y1: (height / 2 - transform.y) / k - 4 / k,
         }
         const onScreen = (b: Box) => b.x >= view.x0 && b.x + b.w <= view.x1 && b.y >= view.y0 && b.y + b.h <= view.y1
-        for (const c of circlesNow) {
+        // A bubble off the screen has no name to place: on a big vault
+        // zoomed in, that is nearly all of them, every frame.
+        const inViewCircles = circlesNow.filter((c) => {
           const hull = hulls.get(c.id)
-          if (!hull || hull.length === 0) continue
+          if (!hull || hull.length === 0) return false
+          const xs = hull.map((pt) => pt.x)
+          const ys = hull.map((pt) => pt.y)
+          return !(
+            Math.max(...xs) + HULL_PAD < view.x0 ||
+            Math.min(...xs) - HULL_PAD > view.x1 ||
+            Math.max(...ys) + HULL_PAD < view.y0 ||
+            Math.min(...ys) - HULL_PAD > view.y1
+          )
+        })
+        // One search budget per frame, shared: a few bubbles on screen
+        // each get a near-exhaustive search; a crowd gets a floor each.
+        const perCircleBudget = Math.max(24, Math.floor(600 / Math.max(1, inViewCircles.length)))
+        for (const c of inViewCircles) {
+          const hull = hulls.get(c.id)!
           const xs = hull.map((pt) => pt.x)
           const bubbleW = Math.max(...xs) - Math.min(...xs) + HULL_PAD * 2
           let text = c.name.toUpperCase()
@@ -2353,25 +2369,23 @@ function useCanvasGraph(
           // step out one line further — no more, or it stops belonging
           // to this bubble. The rim is where the outermost members' own
           // names sit, so a name pinned dead-centre on it rarely fits.
-          type Spot = { box: Box; x: number; y: number; align: CanvasTextAlign; out: number }
-          const spotsAt = (a: RimAnchor): Spot[] => {
+          type Spot = { box: Box; x: number; y: number; align: CanvasTextAlign }
+          const spotsAt = (a: RimAnchor, step: number): Spot[] => {
             const out: Spot[] = []
-            for (const step of [0, lineH]) {
-              const ax = a.x + a.ux * step
-              const ay = a.y + a.uy * step
-              if (a.uy <= -0.6 || a.uy >= 0.6) {
-                const y = a.uy < 0 ? ay - h : ay
-                for (const align of ['center', 'left', 'right'] as const) {
-                  const x = align === 'center' ? ax - w / 2 : align === 'left' ? ax - 8 / k : ax - w + 8 / k
-                  out.push({ box: { x, y, w, h }, x: align === 'center' ? ax : align === 'left' ? x : x + w, y: y + lineH, align, out: step })
-                }
-              } else {
-                const align: CanvasTextAlign = a.ux > 0 ? 'left' : 'right'
-                const x = a.ux > 0 ? ax : ax - w
-                for (const dy of [0, -h / 2, h / 2]) {
-                  const y = ay - h / 2 + dy
-                  out.push({ box: { x, y, w, h }, x: a.ux > 0 ? x : x + w, y: y + lineH, align, out: step })
-                }
+            const ax = a.x + a.ux * step
+            const ay = a.y + a.uy * step
+            if (a.uy <= -0.6 || a.uy >= 0.6) {
+              const y = a.uy < 0 ? ay - h : ay
+              for (const align of ['center', 'left', 'right'] as const) {
+                const x = align === 'center' ? ax - w / 2 : align === 'left' ? ax - 8 / k : ax - w + 8 / k
+                out.push({ box: { x, y, w, h }, x: align === 'center' ? ax : align === 'left' ? x : x + w, y: y + lineH, align })
+              }
+            } else {
+              const align: CanvasTextAlign = a.ux > 0 ? 'left' : 'right'
+              const x = a.ux > 0 ? ax : ax - w
+              for (const dy of [0, -h / 2, h / 2]) {
+                const y = ay - h / 2 + dy
+                out.push({ box: { x, y, w, h }, x: a.ux > 0 ? x : x + w, y: y + lineH, align })
               }
             }
             return out
@@ -2394,13 +2408,32 @@ function useCanvasGraph(
           }
           const blockers = [...keepClear.filter(overlaps(near)), ...circleBoxes]
           const free = (b: Box) => onScreen(b) && !blockers.some(overlaps(b))
-          const spots = rimAnchors(hull, HULL_PAD, 3 / k)
-            .flatMap(spotsAt)
-            // Hugging the rim beats a step out, wherever on the rim (a
-            // stable sort keeps the top-sides-below order within each).
-            .sort((a, b) => a.out - b.out)
-          const chosen =
-            spots.find((sp) => free(sp.box) && !inOtherBubble(sp.box)) ?? spots.find((sp) => free(sp.box))
+          // Stop at the first spot that fits — this runs every frame for
+          // every bubble — hugging the rim before stepping a line out, top
+          // before sides before below (rimAnchors' order), and preferring
+          // not to sit inside another bubble before settling for it.
+          const anchors = rimAnchors(hull, HULL_PAD, 3 / k)
+          // One pass: the first free spot outside other bubbles wins; the
+          // first free one inside another is kept in case none is.
+          let fallback: Spot | undefined
+          // A bounded search: the likeliest spots come first, and on a
+          // crowded screen where none fits, trying all of them every
+          // frame for every bubble is what made panning a big vault stutter.
+          let budget = perCircleBudget
+          const pick = (): Spot | undefined => {
+            for (const step of [0, lineH]) {
+              for (const a of anchors) {
+                for (const sp of spotsAt(a, step)) {
+                  if (--budget < 0) return fallback
+                  if (!free(sp.box)) continue
+                  if (!inOtherBubble(sp.box)) return sp
+                  fallback ??= sp
+                }
+              }
+            }
+            return fallback
+          }
+          const chosen = pick()
           if (!chosen) continue
           circleBoxes.push(chosen.box)
           circleIds.push(c.id)

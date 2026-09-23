@@ -1164,7 +1164,9 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
     draftRef.current = ''
     setDraft('')
     try {
-      const note = await saveNote(person.id, body)
+      // The note and the removal of its saved draft are one write: a
+      // reload in between can't bring the text back as a draft as well.
+      const note = await saveNote(person.id, body, { clearDraft: true })
       // Only offer names when the setting is on and the note has some;
       // an offer still showing for the previous note stays until it is
       // dealt with.

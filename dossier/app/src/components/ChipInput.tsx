@@ -51,10 +51,23 @@ export default function ChipInput({
   capitalize?: 'none' | 'words'
 }) {
   const [draft, setDraftState] = useState('')
+  // The leftover is reported the way a commit would store it: an
+  // existing spelling wins ("climbing crew" typed is "Climbing crew"), so
+  // a word saved by the form's Save doesn't start a second spelling.
+  const report = (next: string) => {
+    if (!onDraftChange) return
+    const t = next.trim().toLowerCase()
+    onDraftChange(suggestions.find((sug) => sug.toLowerCase() === t) ?? next)
+  }
   const setDraft = (next: string) => {
     setDraftState(next)
-    onDraftChange?.(next)
+    report(next)
   }
+  // Gone from the screen, gone from the form: a Cancel (or the field
+  // closing) must not leave a word nobody can see to be saved next time.
+  const reportRef = useRef(onDraftChange)
+  reportRef.current = onDraftChange
+  useEffect(() => () => reportRef.current?.(''), [])
   const [focused, setFocused] = useState(false)
   // Highlighted suggestion: Enter commits it (not the raw draft) so
   // "clim" becomes "Climbing crew" rather than a new "clim" value.

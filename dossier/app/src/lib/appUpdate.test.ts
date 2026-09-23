@@ -46,3 +46,39 @@ describe('buildLabel', () => {
     expect(buildLabel('0.1.0', 'dev', 'nope')).toBe('0.1.0 (dev)')
   })
 })
+
+describe('applyUpdate', () => {
+  // Module state (a build waiting, a request standing) must start clean.
+  const fresh = async () => {
+    vi.resetModules()
+    return import('./appUpdate')
+  }
+  it('a request made before the build is ready lapses rather than lying in wait', async () => {
+    const { applyUpdate, markUpdateReady, wireUpdate } = await fresh()
+    vi.useFakeTimers()
+    vi.stubGlobal('navigator', {})
+    const applied: number[] = []
+    wireUpdate(async () => { applied.push(Date.now()) })
+    // Asked for while the build is still installing…
+    await applyUpdate()
+    expect(applied).toHaveLength(0)
+    // …and that install never finished. Hours later the hourly check
+    // finds another: it waits for a quiet moment instead of reloading.
+    vi.advanceTimersByTime(3 * 60 * 60 * 1000)
+    markUpdateReady()
+    await Promise.resolve()
+    expect(applied).toHaveLength(0)
+    vi.useRealTimers()
+  })
+  it('a request made just before the build is ready is honoured when it arrives', async () => {
+    const { applyUpdate, markUpdateReady, wireUpdate } = await fresh()
+    vi.stubGlobal('navigator', {})
+    const applied: string[] = []
+    wireUpdate(async () => { applied.push('now') })
+    await applyUpdate()
+    expect(applied).toEqual([])
+    markUpdateReady()
+    await Promise.resolve()
+    expect(applied).toEqual(['now'])
+  })
+})

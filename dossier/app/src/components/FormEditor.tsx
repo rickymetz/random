@@ -207,6 +207,8 @@ export default function FormEditor() {
               className="quiet"
               onClick={() => {
                 setAdding(false)
+                setOptions([])
+                setOptionDraft('')
                 setMsg(null)
               }}
             >
