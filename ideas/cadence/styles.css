@@ -416,12 +416,6 @@ div.day-head { cursor: default; }
 
 /* ---------- meters & stats ---------- */
 
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  gap: 0.85rem;
-}
-
 .meter-label {
   display: flex;
   align-items: baseline;
@@ -443,13 +437,6 @@ div.day-head { cursor: default; }
 .meter-pip.is-on { background: var(--accent); }
 .meter + .meter { margin-top: 0.9rem; }
 
-.stat-value {
-  font-size: 2rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-}
-.stat-label { color: var(--muted); font-size: 0.8rem; margin-top: 0.15rem; }
 
 .banner {
   display: flex;
@@ -1037,19 +1024,6 @@ body.is-session .toast { top: 4.5rem; bottom: auto; }
 .quick-input::-webkit-outer-spin-button,
 .quick-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .quick-unit { font-size: 0.78rem; color: var(--muted); margin-right: auto; }
-
-/* A nudge that names a specific session is a thing you can act on. */
-.banner-action {
-  width: 100%;
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-}
-.banner-action:hover { border-color: var(--accent); }
-
-/* A missed day should not look like one that has not arrived yet. */
-.day.is-missed { opacity: 0.72; }
-.day.is-missed .day-key { color: var(--muted); }
 
 /* ---------- session summary ---------- */
 
