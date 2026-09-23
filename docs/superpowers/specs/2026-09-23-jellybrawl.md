@@ -127,6 +127,7 @@ kept). The selfie is sent as a 128×128 JPEG data URL, about 6 KB.
 | **Tank vs Swarm** | 2 vs rest | 2–8 | driver: stick + SHAKE; gunner: aim + FIRE; swarm: stick + DASH | the tank lasts 50 s; the swarm gnaws through its armour |
 | **King of the Hill Giant** | Free-for-all | 2–8 | stick + SHOVE | the longest on the hill becomes a slow giant and scores; most seconds as king |
 | **Blind Pilot** | Teams (2v2–4v4) | 2–8 | pilot: stick; navigators: private track map | the TV only shows headlights; first car round the lap |
+| **Greed Doors** | Free-for-all | 2–8 | pick a door (pads) | 5 rounds of secret picks; a safe door's prize is split among its pickers; the bomb door halves your gems |
 
 The first three are in the slice. The four party classics are follow-ups
 (they're small, and they test the button, tilt and "phone shows a list"
@@ -510,3 +511,69 @@ and reports the lone role's win rate. It exposed frame-rate-dependent bot
 rolls (switched to rate × dt) and one-sided openings: the Kraken won 100%,
 the ghost 100% against one hunter, the swarm ~95%. All are now roughly
 20–65% across counts, which is about as tight as bots-vs-bots gets.
+
+## Multi-persona review and what changed
+
+Five reviewers read the code, spec and screenshots independently: a party
+host, a competitive player, a game designer, an accessibility reviewer and
+a staff engineer. Their findings were fixed in seven commits, in this order.
+
+1. **Robustness.**
+   - The TV frame loop schedules itself first and catches errors. A
+     crashing minigame becomes a no-score tie instead of a frozen TV.
+   - Phones run one reconnect loop with backoff. It stops when the seat
+     opens elsewhere or the room closes.
+   - The relay caps frames at 512 KB, budgets hosting and joining per IP,
+     caps the room count, and keeps a room for 60 s so the TV can reclaim
+     it with a secret token.
+   - Rescanning the QR code with the same name reclaims your seat.
+   - Board mode sets up players who join mid-session.
+2. **Exploits.**
+   - Input is budgeted: a button press counts only after a release, at
+     most 14 a second.
+   - The stick always sends its final value.
+   - Final ties break on wins, then last finish, then co-champions.
+   - Timing microgames subtract half the phone's ping.
+   - Draw Duel bots vote at random.
+   - On the board, last place moves first and the volcano is capped.
+   - The odd human's team is random, with the bot on the short side.
+   - King of the Hill resets everyone's hill time on a topple.
+3. **Readability.**
+   - Small text and name tags are drawn sharp after the CRT pass.
+   - Team blobs get team outlines and P/C badges.
+   - Shake is smooth and capped, and Hot Potato's pulse stays under 3 Hz.
+   - Colour-only verdicts carry ✓/✗.
+4. **Nobody idle.** Wait screens get emoji reactions. Knocked-out players
+   drop goo puddles into arena games.
+5. **Scoring and flow.**
+   - A lone-role win pays 15 and a loss pays 5.
+   - The last round is double points, and a clear leader often takes the
+     lone role.
+   - Results slide into standings order and call out lead changes.
+   - The intro shows a role card with READY.
+   - The face step can be skipped.
+   - The VIP can pause, skip a game or end the night.
+6. **Accessibility settings and performance.**
+   - Settings: motion, CRT (full, light or off), text size, colour-blind
+     shapes, brightness, and phone buzz.
+   - Phone: pinch-zoom and labels.
+   - Effects run on real frame time.
+   - Draw Duel and Paint cache their drawing, and Snake bots think at
+     10 Hz.
+   - The CRT pass drops to light automatically when frames run slow.
+7. **Roster.**
+   - Loser-picks offers three games from three different categories
+     (brawl, hunt, race, timing, brains, aim), weighted by √size, with no
+     near-twins (Sumo/Bumper, Sniper/Blackout, Crown/Hill) and never the
+     family just played.
+   - Greed Doors is new: secret simultaneous picks, split prizes, and a
+     bomb door.
+   - Bomb Squad is 120 s.
+
+Still open from the review:
+- Board mode depth: bonus stars, a catch-up event, and a star-stealing
+  item.
+- Relay's benched teammates.
+- Tug of Jelly has no decisions.
+- A "Boss Rush" playlist.
+- Jelly Curling.

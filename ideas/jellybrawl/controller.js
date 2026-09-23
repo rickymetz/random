@@ -265,11 +265,13 @@ function roll(l) {
 // One press locks the rest, unless multi (a keypad you press several of).
 function padGrid(list, o = {}) {
   const grid = el("div", { className: "pads" + (o.small ? " small" : "") });
-  if (o.cols) grid.style.gridTemplateColumns = `repeat(${o.cols}, 1fr)`;
+  if (o.cols) grid.style.gridTemplateColumns = `repeat(${o.cols}, minmax(0, 1fr))`;
+  const fs = o.cols > 2 && !o.small ? `${Math.round(120 / o.cols)}px` : null; // labels shrink to fit more columns
   for (const p of list) {
     const b = el("button", { type: "button", textContent: p.label || "", disabled: !!p.off });
     b.style.background = p.color;
     if (p.fg) b.style.color = p.fg;
+    if (fs) b.style.fontSize = fs;
     b.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
       if (b.disabled) return;

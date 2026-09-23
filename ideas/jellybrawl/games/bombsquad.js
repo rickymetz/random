@@ -7,7 +7,7 @@
 import { arena, clock, TEAM, rnd, shuffle, W, H, INK, text, outlined, shout, rrect, circle, blob, tag } from "./arena.js";
 import { FX, fade } from "../gfx.js";
 
-const TIME = 150, STRIKES = 3;
+const TIME = 120, STRIKES = 3;
 const WIRE = { red: "#ff2a3d", blue: "#2a6bff", yellow: "#f9f002", white: "#f4f4f4", black: "#1a1a1a" };
 const COLUMNS = [
   ["★", "Ω", "♣", "λ", "¶", "◆"],

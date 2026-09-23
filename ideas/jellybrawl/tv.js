@@ -33,10 +33,24 @@ import kraken from "./games/kraken.js";
 import tank from "./games/tank.js";
 import hill from "./games/hill.js";
 import pilot from "./games/pilot.js";
+import greed from "./games/greed.js";
 import { makeBoard } from "./board.js";
 import { MAP_NAMES } from "./boards.js";
 
-const GAMES = [flap, sling, chomp, snipe, blackout, tagGame, kaiju, soccer, sumo, bumper, coinrush, potato, paint, crown, dodgeball, snake, tug, relay, stack, bombsquad, maze, drawDuel, haunted, whack, kraken, tank, hill, pilot];
+const GAMES = [flap, sling, chomp, snipe, blackout, tagGame, kaiju, soccer, sumo, bumper, coinrush, potato, paint, crown, dodgeball, snake, tug, relay, stack, bombsquad, maze, drawDuel, haunted, whack, kraken, tank, hill, pilot, greed];
+// what you mostly *do* in each game; the picker offers three different ones
+const CATEGORY = {
+  brawl: ["sumo", "bumper", "potato", "tag", "hill", "crown", "coinrush", "paint", "soccer", "dodgeball", "snake"],
+  hunt: ["chomp", "snipe", "blackout", "kaiju", "haunted", "tank", "kraken", "whack"],
+  race: ["relay", "maze", "pilot"],
+  timing: ["flap", "stack", "tug"],
+  brains: ["bombsquad", "draw", "greed"],
+  aim: ["sling"],
+};
+const catOf = (id) => Object.keys(CATEGORY).find((c) => CATEGORY[c].includes(id)) || "brawl";
+// near-twins never appear side by side
+const FAMILY = { sumo: "shove", bumper: "shove", snipe: "sniper", blackout: "sniper", crown: "hold", hill: "hold" };
+const famOf = (d) => FAMILY[d.id] || d.id;
 // canvas text only uses a web font once it's loaded; ask for both up front
 for (const f of [T.display, T.label]) document.fonts?.load(`40px ${f}`).catch(() => {});
 const COLORS = ["#ff2e63", "#00b7ff", "#ffd400", "#35e06b", "#b14dff", "#ff8a00", "#ff6ec7", "#00e0c6"];
@@ -101,6 +115,7 @@ const S = {
 S.opt = loadSettings(); applySettings();
 window.__jelly = S; // for tests and poking around in devtools
 window.__finish = () => finishGame(); // tests: settle S.game.result now
+window.__choose = () => startChoose(); // tests: deal a fresh set of options
 
 /* ---------------------------------------------------------------- players */
 
@@ -335,10 +350,17 @@ const boardApi = {
 
 function startChoose() {
   const n = S.players.length;
-  let pool = GAMES.filter((d) => n >= d.min && n <= d.max);
-  // three random picks, never the game just played unless there's no choice
-  pool = pool.filter((d) => d.id !== S.lastGameId).sort(() => Math.random() - 0.5).concat(pool.filter((d) => d.id === S.lastGameId));
-  S.options = pool.slice(0, 3);
+  const all = GAMES.filter((d) => n >= d.min && n <= d.max);
+  // three picks from three different categories (so the choice is a real
+  // choice), no near-twins, and not the game (or family) just played
+  const lastFam = S.lastGameId && famOf(GAMES.find((d) => d.id === S.lastGameId));
+  const fresh = all.filter((d) => famOf(d) !== lastFam).sort(() => Math.random() - 0.5);
+  // bigger categories come up more (weight √size), so lone Sling isn't in every set
+  const size = (c) => fresh.filter((d) => catOf(d.id) === c).length;
+  const cats = [...new Set(fresh.map((d) => catOf(d.id)))].map((c) => [c, Math.random() ** (1 / Math.sqrt(size(c)))]).sort((a, b) => b[1] - a[1]).map(([c]) => c);
+  S.options = [];
+  for (const c of cats) { const d = fresh.find((x) => catOf(x.id) === c); if (d && S.options.length < 3) S.options.push(d); }
+  for (const d of [...fresh, ...all]) if (S.options.length < 3 && !S.options.includes(d) && !S.options.some((o) => famOf(o) === famOf(d))) S.options.push(d);
   S.picked = null;
   // loser picks: last place chooses (random among ties); round 1 is a roulette
   const low = Math.min(...S.players.map(rankKey));

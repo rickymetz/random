@@ -69,7 +69,7 @@ h2 { margin: 0; font: 48px var(--display); letter-spacing: 3px; color: #fff; tex
 .hint { font-size: 16px; margin: 0; color: var(--ink); background: var(--paper); padding: 5px 12px; box-shadow: 4px 4px 0 var(--pink); }
 .cmd { margin: 0; font: clamp(40px, 13vw, 64px)/1 var(--display); color: #fff; text-shadow: 5px 5px 0 var(--pink); transform: rotate(-3deg); text-transform: uppercase; }
 .pads { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; width: min(360px, 100%); }
-.pads button { aspect-ratio: 1; font: 64px var(--display); color: var(--ink); border: 5px solid var(--ink); border-radius: 6px; box-shadow: 6px 6px 0 #fff; }
+.pads button { min-width: 0; overflow: hidden; padding: 4px; aspect-ratio: 1; font: 64px var(--display); color: var(--ink); border: 5px solid var(--ink); border-radius: 6px; box-shadow: 6px 6px 0 #fff; }
 .pads button:disabled { opacity: .25; }
 .pads button.down { transform: translate(4px, 4px); box-shadow: 2px 2px 0 #fff; }
 .radar { width: min(92vw, 420px); aspect-ratio: 320 / 186; height: auto; background: rgba(0,0,0,.55); border: 3px solid var(--cyan); box-shadow: 5px 5px 0 var(--pink); }
