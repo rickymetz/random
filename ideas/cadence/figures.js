@@ -438,7 +438,7 @@
         g.appendChild(svgEl('circle', { class: 'fig-rod', cx: pr.rod[0], cy: -pr.rod[1], r: 2.2 }));
       }
       if (pr.wall != null) {
-        g.appendChild(svgEl('path', { class: 'fig-prop', d: 'M' + pr.wall + ' 0V' + (-Math.min(fit.top + 4, 110)) }));
+        g.appendChild(svgEl('path', { class: 'fig-prop', d: 'M' + pr.wall + ' 0V' + (-Math.min(fit.top + 4, 132)) }));
       }
     });
     if (def.floor !== false) {
@@ -641,9 +641,9 @@
     "supine-external-rotation": "Elbows tucked at your sides, bent to 90°. Turn the forearms out against the band, elbows staying down — slow on the way back.",
     "pnf-d2-flexion": "Start with the hand by the opposite hip. Sweep it up and out overhead like drawing a sword, thumb leading, then slowly back.",
     "thoracic-extension": "Arms crossed over your chest, towel roll behind your shoulder blades. Arch back over it slowly, hold 5 seconds, then come upright.",
-    scaption: "Thumbs up, arms a little forward of your sides. Raise to shoulder height with the shoulders down, away from your ears; lower slowly.",
-    "row-head-turn": "Staggered stance. Pull the band back to your ribs, elbow close — turn your head the other way as you pull.",
-    touchdowns: "Face a wall, forearms flat on it in a goalpost, elbows at shoulder height. Slide them up the wall into a V — ribs down, shoulders away from your ears — then slide back down."
+    scaption: "Thumbs up, arms about 30° forward of your sides. Raise with straight elbows, no shrugging or arching the low back; lower slowly.",
+    "row-head-turn": "Staggered stance, band at chest height. Pull back with the elbow tucked and look over the opposite shoulder; squeeze the shoulder blades.",
+    touchdowns: "Face the wall, hands and forearms on it. Slide up on a diagonal until the arms are straight, lift the hands a few inches off, then back down — no shrugging."
   };
 
   /* ---------- shared positions ---------- */
@@ -1765,23 +1765,25 @@
       })()
     },
     'touchdowns': {
-      // Facing a wall, forearms flat on it in a goalpost, elbows out to the
-      // sides at shoulder height (so the upper arms point partly toward and
-      // away from you, and look short). Slide the forearms up the wall into
-      // a V overhead, then back down.
-      cycle: 3.6,
+      // Facing a wall, forearms and hands on it in a goalpost, elbows out to
+      // the sides (so the upper arms point partly toward and away from you,
+      // and look short). Slide up the wall on a diagonal until the arms are
+      // straight, lift the hands a few inches off the wall, then back down.
+      cycle: 5,
       props: [{ wall: 12.5 }],
       keys: (function () {
         var fore = 12.5 - 2.4;                    // forearm against the wall
-        var arm = function (dy, fa) {
+        var goal = function (dy, extra) {
           var d = Math.sqrt(fore * fore + dy * dy);
-          return { a: angleOf(fore, dy), l: d / LEN.upperArm, fa: fa };
+          var a = angleOf(fore, dy);
+          return standing(merge({ head: -2, arms: [[a, 0], [a + 1, 0]], armLen: [[d / LEN.upperArm, 1], [d / LEN.upperArm, 1]], hands: [0, 0] }, extra));
         };
-        var pose = function (dy, extra) {
-          var u = arm(dy, 0);
-          return standing(merge({ head: -2, arms: [[u.a, 0], [u.a + 1, 0]], armLen: [[u.l, 1], [u.l, 1]], hands: [0, 0] }, extra));
+        // Arms straight up the wall on a diagonal: drawn a little short.
+        var straight = function (x, extra) {
+          var up = 30, d = Math.sqrt(x * x + up * up), s = d / (LEN.upperArm + LEN.foreArm), a = angleOf(x, up);
+          return standing(merge({ head: -4, arms: [[a, a], [a + 1, a + 1]], armLen: [[s, s], [s, s]], hands: [a, a + 1] }, extra));
         };
-        return [pose(-2, { hold: 0.1 }), pose(13, { hold: 0.1 })];
+        return [goal(-2, { hold: 0.08 }), straight(fore - 1), straight(fore - 5.5, { hold: 0.15 }), straight(fore - 1)];
       })()
     },
 

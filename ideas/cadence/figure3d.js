@@ -439,8 +439,8 @@
       if (pr.wall != null) {
         // See-through, so turning to look from behind the wall still works.
         m = new T.Mesh(boxGeo, wallMat);
-        m.scale.set(1.5, 110, 60);
-        m.position.set(pr.wall + (pr.wall > 0 ? 0.75 : -0.75), 55, 0);
+        m.scale.set(1.5, 130, 60);
+        m.position.set(pr.wall + (pr.wall > 0 ? 0.75 : -0.75), 65, 0);
         scene.add(m);
       }
     });

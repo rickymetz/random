@@ -17,7 +17,7 @@
  *    figures.js) cached indefinitely, which no later request would repair.
  *    A version is now all-or-nothing.
  */
-var CACHE = 'cadence-v12';
+var CACHE = 'cadence-v13';
 
 /* Without every one of these the app is broken, so the install fails and the
  * browser retries rather than leaving a half-built cache in place. */

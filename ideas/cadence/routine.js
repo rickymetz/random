@@ -240,9 +240,9 @@
             name: 'Sitting and standing',
             items: [
               { id: 'thoracic-extension', name: 'Seated thoracic lumbar extension', mode: 'reps', sets: 1, min: 5, max: 10, rest: 0 },
-              { id: 'scaption', name: 'Scaption with dumbbells', mode: 'reps', sets: 2, min: 10, max: 10, rest: 20 },
-              { id: 'row-head-turn', name: 'Single arm row with opposite head turn', mode: 'reps', sets: 2, min: 10, max: 10, perSide: true, sideWord: 'arm', rest: 20 },
-              { id: 'touchdowns', name: 'Touchdowns', mode: 'reps', sets: 2, min: 10, max: 10, rest: 20 }
+              { id: 'scaption', name: 'Scaption with dumbbells', mode: 'reps', sets: 2, min: 10, max: 12, rest: 20 },
+              { id: 'row-head-turn', name: 'Single arm row with opposite head turn', mode: 'reps', sets: 2, min: 12, max: 12, perSide: true, sideWord: 'arm', rest: 20 },
+              { id: 'touchdowns', name: 'Touchdowns', mode: 'reps', sets: 2, min: 10, max: 12, rest: 20 }
             ]
           }
         ]
@@ -441,6 +441,24 @@
       setup: 'Sit upright with your arms crossed over your chest and a towel roll across your back at about shoulder-blade height.',
       movement: 'Slowly arch your trunk backward over the towel roll and hold, then return upright and repeat.',
       tip: 'Keep it slow and controlled. Don’t move through pain.'
+    },
+    'scaption': {
+      dose: 'Every day, once a day: 1–2 sets of 10–12.',
+      setup: 'Stand upright with your arms resting at your sides, holding lightweight dumbbells.',
+      movement: 'Slowly raise your arms diagonally, at roughly 30° out from your body, then lower them back to your sides.',
+      tip: 'Keep your elbows straight and don’t shrug your shoulders. Try not to arch your low back as you raise and lower.'
+    },
+    'row-head-turn': {
+      dose: 'Every day, once a day: 2 sets of 12 with each arm.',
+      setup: 'Stand in a staggered stance holding one end of a resistance band anchored in front of you at chest height, palm facing in.',
+      movement: 'Pull your arm back with your elbow tucked at your side. As you pull, look over your opposite shoulder. Return to the start and repeat.',
+      tip: 'Keep your back straight, and think of squeezing your shoulder blades together as you pull.'
+    },
+    'touchdowns': {
+      dose: 'Every day, once a day: 1–2 sets of 10–12.',
+      setup: 'Stand upright facing a wall.',
+      movement: 'Rest both hands on the wall, palms facing in, and slide them up the wall on a diagonal. When your arms are straight, lift your hands a few inches off the wall, working the shoulder muscles. Bring your arms back down and repeat.',
+      tip: 'Keep your back straight and don’t shrug your shoulders.'
     }
   };
 
