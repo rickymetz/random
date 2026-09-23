@@ -31,7 +31,7 @@ and splits the work into a **vertical slice** (built now, in
 | Phone role | Mixed: usually a controller, but some games put private info on the phone. |
 | Audience | Bet on minigame winners, and send emoji reactions that float up on the TV. |
 | Latency | Measure first: the lobby shows each phone's round-trip time. |
-| Art | **WarioWare attitude** (follow-up decision): loud flat colour, thick black ink outlines, hard offset shadows, halftone dots, rotating sunbursts, tilted sticker panels. |
+| Art | **WarioWare energy, Hotline Miami 2 / Nidhogg 2 grit** (follow-up decisions): neon on near-black, CRT post-processing, goo splats, command-word slams, bomb timers. |
 | Cast | **Jelly blobs** in each player's colour, with the player's selfie as the face. Everything is drawn in code, and squash and stretch come free. |
 | Customisation | A **selfie** at join. Anyone who skips it **draws** a face instead. Later, some games ask for a fresh selfie ("make your scariest face!"). |
 | TV control | Both: the VIP phone (first to join) and the keyboard / Siri Remote. |
@@ -41,25 +41,36 @@ and splits the work into a **vertical slice** (built now, in
 | Hosting | Local relay first, then a free cloud host. |
 | Name | **Jellybrawl** (working title). |
 
-## Style: WarioWare attitude
+## Style: WarioWare energy, Hotline Miami 2 grit
 
-Frantic, loud and a bit rude:
+WarioWare's pace and shouting, pushed through a Hotline Miami 2 / Nidhogg 2
+filter: neon, dirty and a bit violent (the violence is jelly).
 
 - **Command words.** Every minigame is announced with a one-word imperative
-  (`FLAP!`, `LAUNCH!`, `CHOMP!`) that slams in (overshoot, settle, jitter),
+  (`FLAP!`, `LAUNCH!`, `CHOMP!`). It slams in (overshoot, settle, jitter)
   on the TV and on every phone at once.
-- **Bomb timers.** Every countdown is a cartoon bomb with a burning fuse: the
-  intro, the loser's pick, the sling turn and the chomp clock.
-- **Ink and halftone.** 6–10 px black outlines, hard (unblurred) offset
-  shadows, halftone dot layers and rotating two-tone sunbursts. The palette is
-  `#ff2e63 #ffd400 #00d1ff #7cff4f #b14dff #ff8a00`.
-- **Wipes.** Scene changes are a diagonal striped wipe with a whoosh.
-- **Comic words.** Impacts pop up as "BONK!", "SPLAT!", "POP!", "CAUGHT!".
-- **Copy.** Snarky quips ("Phones out. Dignity optional.", "Dead last gets to
-  choose. Pity rules.").
+- **Bomb timers.** Every countdown is a bomb with a burning fuse.
+- **Palette.** Neon on near-black: `#ff2a6d #05d9e8 #f9f002 #39ff14 #b026ff
+  #ff6b00` over `#0d0221`. Scene backgrounds are slow-turning dark sunbursts
+  whose hue drifts over time, over a synthwave perspective grid.
+- **Type.** Italic slabs with an RGB-split shadow (cyan one way, pink the
+  other) and an ink outline. Panels are dirty paper with a hard pink shadow.
+- **CRT pass** (`post()` in `tv.js`): the scene is drawn at 1920×1080, then
+  dropped to half resolution and scaled back up without smoothing (chunky
+  pixels). Red and cyan channel copies are screened on offset (chromatic
+  aberration), and the camera sways slowly. Scanlines, a vignette and
+  animated grain go on top.
+- **Goo.** Deaths, catches and impacts leave glossy jelly splats (with drips
+  and droplets) in the victim's colour that stay for the rest of the game,
+  Nidhogg-style.
+- **Impact.** Screen shake scales with the hit, big hits freeze the game for
+  90 ms (hit-stop), and scene changes use a striped wipe.
+- **Copy.** Mean: "No bones. No mercy.", "Your friends are the enemy
+  tonight.", "SPLATTERED", "DEAD KING".
 
-Helpers live in `gfx.js` (`outlined`, `shout`, `sunburst`, `halftone`,
-`panel`, `bomb`, `fit`). The phone CSS mirrors them.
+Helpers live in `gfx.js` (`outlined`, `shout`, `sunburst`, `grid`, `panel`,
+`bomb`, `makeSplat`/`drawSplat`, `fit`). The phone CSS mirrors them with
+scanlines, split-shadow type and neon hard shadows.
 
 ## The cast: jelly blobs
 

@@ -3,7 +3,7 @@
 // hunters win with 3 catches. Power pellets turn the tables for a few seconds.
 // The chomper role rotates to whoever has been "the one" least.
 
-import { W, H, INK, text, outlined, shout, rrect, panel, circle, halftone, bomb, blob, tag, countdown } from "../gfx.js";
+import { W, H, INK, text, outlined, shout, rrect, panel, circle, grid as neonGrid, bomb, makeSplat, drawSplat, blob, tag, countdown } from "../gfx.js";
 
 const MAP = [
   "#####################",
@@ -43,6 +43,8 @@ export default {
     const chomper = mk(ctx.players.find((p) => p.pid === one), "chomp", pstart);
     const hunters = ctx.players.filter((p) => p.pid !== one).map((p, i) => mk(p, "hunt", houses[i % houses.length]));
     const all = [chomper, ...hunters];
+    const splats = [];
+    const px = (e) => [OX + e.x * C + C / 2, OY + e.y * C + C / 2];
     let t = -3, lives = LIVES, power = 0, invuln = 0, freeze = 0, lastTick = 3, endAt = null, dotSfx = 0;
     const hunterSpeed = 5.7 - 0.25 * (hunters.length - 1);
 
@@ -150,9 +152,11 @@ export default {
         for (const h of hunters) {
           if (h.stun > 0 || Math.abs(h.x - chomper.x) + Math.abs(h.y - chomper.y) > 0.75) continue;
           if (power > 0) {
+            splats.push(makeSplat(...px(h), 34, h.p.color)); ctx.shake(18);
             h.stun = 3; h.x = h.sx; h.y = h.sy; h.dir = [0, 0];
             ctx.stat(chomper.p.pid, "gulps", 1); ctx.sfx.pop(); ctx.buzz(h.p.pid, 300);
           } else if (invuln <= 0) {
+            splats.push(makeSplat(...px(chomper), 44, chomper.p.color)); ctx.shake(34);
             lives--; ctx.stat(h.p.pid, "catches", 1); ctx.sfx.hit(); ctx.buzz(chomper.p.pid, 400);
             if (lives > 0) reset();
             break;
@@ -169,16 +173,17 @@ export default {
         else if (t >= TIME) finish(true, `${chomper.p.name} survived!`);
       },
       draw(g) {
-        g.fillStyle = "#1b0f3b"; g.fillRect(0, 0, W, H);
-        halftone(g, "#b14dff", 0.35, 30);
+        g.fillStyle = "#0d0221"; g.fillRect(0, 0, W, H);
+        neonGrid(g, t * 0.3, "#b026ff", 0);
         for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
           const c = grid[y][x], px = OX + x * C, py = OY + y * C;
-          if (c === "#") { rrect(g, px + 2, py + 2, C - 4, C - 4, 8, power > 0 && Math.floor(t * 8) % 2 ? "#ff2e63" : "#00d1ff", INK, 5); }
-          else if (c === ".") circle(g, px + C / 2, py + C / 2, 7, "#fff", INK, 3);
+          if (c === "#") { rrect(g, px + 2, py + 2, C - 4, C - 4, 2, "#12032a", power > 0 && Math.floor(t * 8) % 2 ? "#ff2a6d" : "#05d9e8", 5); }
+          else if (c === ".") circle(g, px + C / 2, py + C / 2, 6, "#f9f002", INK, 3);
           else if (c === "o") circle(g, px + C / 2, py + C / 2, 15 + 3 * Math.sin(t * 10), "#ffd400", INK, 4);
           else if (c === "G") rrect(g, px + 4, py + 4, C - 8, C - 8, 8, "rgba(255,110,199,.3)");
         }
-        const at = (e) => [OX + e.x * C + C / 2, OY + e.y * C + C / 2];
+        for (const sp of splats) drawSplat(g, sp);
+        const at = px;
         for (const h of hunters) {
           const [x, y] = at(h);
           blob(g, h.p, x, y, C * 0.46, { skirt: t, tint: power > 0 ? "#3b56ff" : undefined, alpha: h.stun > 0 ? 0.35 : 1 });
@@ -193,10 +198,10 @@ export default {
         text(g, `DOTS ${dotsLeft}`, OX + COLS * C - 150, 60, 36, INK, "center", 900);
         bomb(g, OX + 60, 70, 34, 1 - Math.max(0, t) / TIME);
         text(g, `${Math.max(0, Math.ceil(TIME - Math.max(0, t)))}`, OX + 60, 72, 30, "#fff", "center", 900);
-        if (power > 0) outlined(g, "POWER!", W / 2, OY + 7 * C + C / 2, 70 + 8 * Math.sin(t * 14), "#ffd400", "center", Math.sin(t * 9) * 0.1);
-        if (freeze > 0 && t > 0) shout(g, "CAUGHT!", W / 2, H / 2, 150, "#ff2e63", 1 - freeze);
+        if (power > 0) outlined(g, "HUNT THEM", W / 2, OY + 7 * C + C / 2, 70 + 8 * Math.sin(t * 14), "#ffd400", "center", Math.sin(t * 9) * 0.1);
+        if (freeze > 0 && t > 0) shout(g, "SPLATTERED", W / 2, H / 2, 150, "#ff2a6d", 1 - freeze);
         countdown(g, -t);
-        if (t >= 0 && t < 0.6) shout(g, "GO!", W / 2, H / 2, 260, "#ffd400", t);
+        if (t >= 0 && t < 0.6) shout(g, "GO!", W / 2, H / 2, 260, "#f9f002", t);
       },
     };
     return inst;

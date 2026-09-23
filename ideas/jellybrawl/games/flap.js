@@ -1,7 +1,7 @@
 // Flap Frenzy — free-for-all. Everyone flaps through the same pillars on one
 // screen; placements are by elimination order, last blob flying wins.
 
-import { W, H, INK, text, outlined, shout, rrect, panel, halftone, blob, tag, countdown } from "../gfx.js";
+import { W, H, INK, text, outlined, shout, rrect, panel, grid, makeSplat, drawSplat, blob, tag, countdown } from "../gfx.js";
 
 const GROUND = H - 90, X = 560, R = 34, GRAV = 2300, FLAP = -760, PW = 130;
 
@@ -12,6 +12,7 @@ export default {
 
   create(ctx) {
     const birds = ctx.players.map((p, i) => ({ p, y: 300 + (i * 480) / Math.max(1, ctx.players.length - 1 || 1), vy: 0, alive: true, diedAt: null, x: X - i * 14, phase: i, botCool: 0, botErr: 0 }));
+    let splats = [];
     let t = -3, dist = 0, nextPipe = 1100, pipes = [], endAt = null, lastTick = 3;
     const speed = () => 400 + Math.max(0, t) * 5;
     const gap = () => Math.max(250, 340 - Math.max(0, t) * 2.5);
@@ -65,6 +66,8 @@ export default {
           }
           if (dead) {
             b.alive = false; b.diedAt = t; b.vy = -500;
+            splats.push(makeSplat(b.x + dist, Math.min(b.y, GROUND - 10), 46, b.p.color));
+            ctx.shake(26);
             ctx.stat(b.p.pid, "airtime", Math.round(t));
             ctx.sfx.hit(); ctx.buzz(b.p.pid, 200);
             ctx.layout(b.p.pid, { kind: "wait", text: "Splat!", sub: `You lasted ${t.toFixed(1)}s` });
@@ -85,43 +88,48 @@ export default {
         }
       },
       draw(g) {
-        g.fillStyle = "#00d1ff"; g.fillRect(0, 0, W, H);
-        halftone(g, "#fff", 0.35, 34);
-        for (let i = 0; i < 6; i++) {
-          const cx = ((i * 420 - dist * 0.2) % (W + 400) + W + 400) % (W + 400) - 200, cy = 120 + (i % 3) * 90;
-          g.beginPath(); g.ellipse(cx, cy, 110, 40, 0, 0, Math.PI * 2); g.ellipse(cx + 60, cy - 20, 70, 36, 0, 0, Math.PI * 2);
-          g.fillStyle = "#fff"; g.lineWidth = 6; g.strokeStyle = INK; g.stroke(); g.fill();
-        }
-        for (let i = 0; i < 8; i++) {
-          const hx = ((i * 330 - dist * 0.45) % (W + 330) + W + 330) % (W + 330) - 165;
-          g.beginPath(); g.ellipse(hx, GROUND, 220, 140, 0, Math.PI, 0);
-          g.fillStyle = i % 2 ? "#7cff4f" : "#35e06b"; g.fill(); g.lineWidth = 6; g.strokeStyle = INK; g.stroke();
+        const sky = g.createLinearGradient(0, 0, 0, GROUND);
+        sky.addColorStop(0, "#0d0221"); sky.addColorStop(0.6, "#3a0a4a"); sky.addColorStop(1, "#b0105a");
+        g.fillStyle = sky; g.fillRect(0, 0, W, H);
+        // striped synthwave sun
+        g.save(); g.beginPath(); g.arc(W / 2, GROUND - 120, 300, 0, Math.PI * 2); g.clip();
+        const sun = g.createLinearGradient(0, GROUND - 420, 0, GROUND + 180);
+        sun.addColorStop(0, "#f9f002"); sun.addColorStop(1, "#ff2a6d");
+        g.fillStyle = sun; g.fillRect(W / 2 - 300, GROUND - 420, 600, 600);
+        g.fillStyle = "#3a0a4a";
+        for (let i = 0; i < 9; i++) g.fillRect(W / 2 - 300, GROUND - 200 + i * 26, 600, 4 + i * 2);
+        g.restore();
+        for (let i = 0; i < 9; i++) {
+          const hx = ((i * 300 - dist * 0.3) % (W + 300) + W + 300) % (W + 300) - 150;
+          g.beginPath(); g.moveTo(hx - 220, GROUND); g.lineTo(hx, GROUND - 180 - (i % 3) * 60); g.lineTo(hx + 220, GROUND); g.closePath();
+          g.fillStyle = "#16042a"; g.fill(); g.lineWidth = 4; g.strokeStyle = "#05d9e8"; g.stroke();
         }
         for (const q of pipes) {
           const px = q.x - dist, top = q.gapY - q.gap / 2, bot = q.gapY + q.gap / 2;
           for (const [y0, h] of [[-20, top + 20], [bot, GROUND - bot]]) {
-            rrect(g, px, y0, PW, h, 0, "#ff2e63", INK, 8);
-            g.fillStyle = "rgba(255,255,255,.35)"; g.fillRect(px + 16, y0 + 10, 16, h - 20);
+            rrect(g, px, y0, PW, h, 0, "#1b0636", "#ff2a6d", 8);
+            g.fillStyle = "rgba(5,217,232,.5)"; g.fillRect(px + 16, y0 + 10, 8, h - 20);
             g.fillStyle = "rgba(0,0,0,.18)"; g.fillRect(px + PW - 30, y0 + 4, 24, h - 8);
           }
-          rrect(g, px - 14, top - 44, PW + 28, 44, 6, "#ffd400", INK, 8);
-          rrect(g, px - 14, bot, PW + 28, 44, 6, "#ffd400", INK, 8);
+          rrect(g, px - 14, top - 44, PW + 28, 44, 0, "#ff2a6d", INK, 6);
+          rrect(g, px - 14, bot, PW + 28, 44, 0, "#ff2a6d", INK, 6);
         }
-        g.fillStyle = "#ffb800"; g.fillRect(0, GROUND, W, H - GROUND);
-        g.fillStyle = INK; g.fillRect(0, GROUND, W, 8);
-        for (let x = -((dist) % 80); x < W; x += 80) { g.fillStyle = "#ff8a00"; g.beginPath(); g.moveTo(x, GROUND + 8); g.lineTo(x + 40, GROUND + 8); g.lineTo(x + 10, H); g.lineTo(x - 30, H); g.fill(); }
+        g.fillStyle = "#0d0221"; g.fillRect(0, GROUND, W, H - GROUND);
+        g.save(); g.beginPath(); g.rect(0, GROUND, W, H - GROUND); g.clip(); grid(g, dist / 300, "#ff2a6d", GROUND); g.restore();
+        g.fillStyle = "#ff2a6d"; g.fillRect(0, GROUND, W, 6);
+        for (const sp of splats) drawSplat(g, sp, dist);
         for (const b of [...birds].sort((a, c) => a.alive - c.alive)) {
           const s = Math.min(0.25, Math.abs(b.vy) / 3000);
           blob(g, b.p, b.x, b.y, R, { wings: b.phase, rot: b.alive ? Math.max(-0.5, Math.min(1.2, b.vy / 900)) : b.phase, sx: 1 - s, sy: 1 + s, alpha: b.alive ? 1 : 0.6 });
           if (b.alive) tag(g, b.p.name, b.x, b.y - R - 30, b.p.color, 22);
-          else if (t - b.diedAt < 0.8) outlined(g, "SPLAT!", b.x, b.y - 60, 46, "#ff2e63", "center", -0.2);
+          else if (t - b.diedAt < 0.8) outlined(g, "SPLAT", b.x, b.y - 60, 50, "#f9f002", "center", -0.2);
         }
         const alive = birds.filter((b) => b.alive).length;
         panel(g, 30, 24, 400, 76, "#fff", 12, 6);
         text(g, `FLYING ${alive}/${birds.length} · ${Math.max(0, t).toFixed(1)}s`, 230, 63, 32, INK, "center", 900);
         countdown(g, -t);
-        if (t < 0) outlined(g, "GET READY TO FLAP!", W / 2, H / 2 - 240, 70, "#ffd400", "center", -0.04);
-        if (t >= 0 && t < 0.6) shout(g, "GO!", W / 2, H / 2, 260, "#ffd400", t);
+        if (t < 0) outlined(g, "GET READY TO FLAP", W / 2, H / 2 - 240, 70, "#05d9e8", "center", -0.04);
+        if (t >= 0 && t < 0.6) shout(g, "GO!", W / 2, H / 2, 260, "#f9f002", t);
       },
     };
     return inst;

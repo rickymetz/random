@@ -2,7 +2,7 @@
 // render the layouts we send them (see index.html / controller.js).
 
 import { hostRoom } from "./net.js";
-import { W, H, INK, POP, fit, text, outlined, rrect, shout, sunburst, halftone, panel, bomb, circle, blob, tag, star, shade } from "./gfx.js";
+import { W, H, INK, POP, fit, grid, text, outlined, rrect, shout, sunburst, halftone, panel, bomb, circle, blob, tag, star, shade } from "./gfx.js";
 import { qr } from "./qr.js";
 import { sfx, unlock } from "./sfx.js";
 import flap from "./games/flap.js";
@@ -21,8 +21,14 @@ const AWARDS = [
   ["dots", "Hungriest", "dots eaten"], ["catches", "Best hunter", "catches"], ["gulps", "Tables turned", "hunters gulped"],
 ];
 
+// Everything draws at 1920×1080 into an offscreen scene; post() then runs the
+// grit pass onto the visible canvas: half-res pixels, chromatic aberration,
+// camera sway and shake, scanlines, grain and a vignette.
 const canvas = document.getElementById("screen");
-const g = canvas.getContext("2d");
+const out = canvas.getContext("2d");
+const mkCanvas = (w, h) => Object.assign(document.createElement("canvas"), { width: w, height: h });
+const sceneC = mkCanvas(W, H);
+const g = sceneC.getContext("2d");
 const S = {
   scene: "gate", t: 0, players: [], rounds: 5, round: 0, net: null, qr: null, joinUrl: "",
   game: null, def: null, chooser: null, options: null, picked: null, lastGameId: null,
@@ -196,6 +202,7 @@ function startIntro() {
     players: seats,
     layout,
     sfx,
+    shake: (n) => { S.shake = Math.max(S.shake || 0, n); if (n >= 25) S.hitstop = 0.09; }, // big hits freeze a beat
     buzz: (pid, ms) => send(byPid(pid), { t: "buzz", ms }),
     stat: (pid, k, n) => { const p = byPid(pid); if (p) p.stats[k] = (p.stats[k] || 0) + n; },
     pickOne: () => {
@@ -238,6 +245,7 @@ function tick(dt) {
   } else if (S.scene === "intro") {
     if (S.t > 4.5) { go("game"); S.game.start(); }
   } else if (S.scene === "game") {
+    if (S.hitstop > 0) { S.hitstop -= dt; return; }
     for (const p of S.players) if (p.bot || !p.connected) S.game.bot(p.pid, dt);
     S.game.update(dt);
     if (S.game.result) finishGame();
@@ -253,13 +261,14 @@ function tick(dt) {
 /* ---------------------------------------------------------------- drawing */
 
 const QUIPS = [
-  "Phones out. Dignity optional.", "Now with 40% more wobble.", "Tap fast. Think never.",
-  "Friendship not included.", "Blobs don't have bones. Or mercy.", "Warning: may contain jelly.",
+  "No bones. No mercy.", "Your friends are the enemy tonight.", "Tap fast. Die faster.",
+  "Somebody's getting splattered.", "Jelly on the walls. Jelly on the floor.", "Do you like hurting other blobs?",
 ];
 
-function bg(c1, c2, cx = W / 2, cy = H / 2) {
-  sunburst(g, cx, cy, c1, c2, S.t);
-  halftone(g, "#000", 0.14);
+function bg(hue, cx = W / 2, cy = H / 2, floor = true) {
+  const h = hue + Math.sin(S.t * 0.7) * 18;
+  sunburst(g, cx, cy, `hsl(${h} 75% 9%)`, `hsl(${h + 25} 85% 16%)`, S.t * 0.6, 22);
+  if (floor) grid(g, S.t, `hsl(${h + 60} 100% 60%)`);
 }
 
 function title(y, size) {
@@ -280,12 +289,12 @@ function drawSeat(p, x, y, r = 70) {
   blob(g, p, x, y - Math.abs(Math.sin(p.bob * 3)) * 14, r, { sx: 1 + sq, sy: 1 - sq, alpha: p.connected || p.bot ? 1 : 0.35 });
   tag(g, p.name, x, y + r + 34, p.color, 30);
   const sub = p.bot ? "🤖 BOT" : !p.connected ? "reconnecting…" : p.rtt != null ? `${Math.round(p.rtt)} ms` : "…";
-  text(g, sub, x, y + r + 78, 24, p.rtt > 150 ? "#ff2e63" : INK, "center", 900);
+  text(g, sub, x, y + r + 78, 24, p.rtt > 150 ? "#ff2a6d" : "#fff", "center", 900);
   if (p === vip() && S.scene === "lobby") { outlined(g, "VIP", x + r * 0.9, y - r * 0.9, 34, "#ffd400", "center", 0.3); }
 }
 
 function drawGate() {
-  bg("#ffd400", "#ffb800");
+  bg(280);
   title(380, 200);
   panel(g, W / 2 - 560, 520, 1120, 90, "#fff", 20);
   text(g, "Party games on the TV. Phones are the controllers.", W / 2, 566, 42, INK, "center", 900);
@@ -293,7 +302,7 @@ function drawGate() {
 }
 
 function drawLobby() {
-  bg("#ffd400", "#ffb800", 1300, 520);
+  bg(270, 1300, 520);
   title(105, 120);
   outlined(g, QUIPS[Math.floor(S.t / 4) % QUIPS.length], W / 2 + 180, 190, 34, "#fff", "center", -0.03);
   // join panel
@@ -337,7 +346,7 @@ function scoreStrip(y = 1000) {
 }
 
 function drawChoose() {
-  bg("#ff2e63", "#ff5c85");
+  bg(330);
   const c = byPid(S.chooser);
   shout(g, c ? `${c.name.toUpperCase()} PICKS!` : "SPIN IT!", W / 2, 110, 100, "#ffd400", S.t);
   outlined(g, c ? `Dead last gets to choose. Pity rules. · Round ${S.round + 1}/${S.rounds}` : `Round ${S.round + 1} of ${S.rounds}`, W / 2, 205, 36, "#fff", "center", -0.02);
@@ -372,11 +381,10 @@ function wrap(str, x, y, maxW, size, color = "#fff") {
 }
 
 function drawIntro() {
-  const c = POP[(S.round * 2) % POP.length], c2 = POP[(S.round * 2 + 3) % POP.length];
-  bg(c, shade(c, 0.25));
-  halftone(g, "#fff", 0.12, 40);
+  const c2 = POP[(S.round * 2 + 1) % POP.length];
+  bg([330, 190, 280, 20, 150][S.round % 5], W / 2, 330, false);
   outlined(g, `ROUND ${S.round + 1}`, 170, 70, 44, "#fff", "center", -0.08);
-  shout(g, S.def.command, W / 2, 310, fit(g, S.def.command, 300, W - 200), c2 === c ? "#fff" : c2, S.t);
+  shout(g, S.def.command, W / 2, 310, fit(g, S.def.command, 300, W - 200), c2, S.t);
   if (S.t > 0.35) {
     const lines = S.game.describe();
     panel(g, W / 2 - 600, 500, 1200, 200 + lines.length * 44, "#fff", 30);
@@ -389,7 +397,7 @@ function drawIntro() {
 }
 
 function drawResults() {
-  bg("#00d1ff", "#4ee0ff");
+  bg(195);
   shout(g, S.result.headline || "RESULTS!", W / 2, 105, 76, "#ffd400", S.t);
   const rows = S.deltas, rh = Math.min(104, 760 / rows.length);
   const winners = S.result.tie ? [] : S.result.winners || S.result.ranking[0];
@@ -412,7 +420,7 @@ function drawResults() {
 }
 
 function drawFinal() {
-  bg("#b14dff", "#c878ff", 820, 700);
+  bg(15, 820, 700);
   shout(g, "AND THE WINNER IS…", W / 2, 90, 80, "#ffd400", Math.min(S.t, 1));
   const list = standings();
   for (const [rank, x, h] of [[1, 520, 300], [0, 820, 400], [2, 1120, 220]]) {
@@ -455,6 +463,55 @@ function drawWipe() {
   g.restore();
 }
 
+const LW = W / 2, LH = H / 2;
+const low = mkCanvas(LW, LH), lg = low.getContext("2d");
+const chans = ["#ff0000", "#00ffff"].map((color) => { const c = mkCanvas(LW, LH); return { c, g: c.getContext("2d"), color }; });
+const overlay = (() => {
+  const c = mkCanvas(W, H), o = c.getContext("2d");
+  o.fillStyle = "rgba(0,0,0,.22)";
+  for (let y = 0; y < H; y += 4) o.fillRect(0, y, W, 2);
+  const v = o.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.95);
+  v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.65)");
+  o.fillStyle = v; o.fillRect(0, 0, W, H);
+  return c;
+})();
+const grain = [0, 1, 2].map(() => {
+  const c = mkCanvas(480, 270), o = c.getContext("2d"), img = o.createImageData(480, 270);
+  for (let i = 0; i < img.data.length; i += 4) { const v = Math.random() * 255; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255; }
+  o.putImageData(img, 0, 0);
+  return c;
+});
+
+function post() {
+  lg.imageSmoothingEnabled = true;
+  lg.drawImage(sceneC, 0, 0, LW, LH);
+  for (const ch of chans) {
+    ch.g.globalCompositeOperation = "copy"; ch.g.drawImage(low, 0, 0);
+    ch.g.globalCompositeOperation = "multiply"; ch.g.fillStyle = ch.color; ch.g.fillRect(0, 0, LW, LH);
+  }
+  S.shake = Math.max(0, (S.shake || 0) - 0.9);
+  const sh = S.shake, now = performance.now() / 1000;
+  out.save();
+  out.imageSmoothingEnabled = false;
+  out.fillStyle = INK; out.fillRect(0, 0, W, H);
+  out.translate(W / 2 + (Math.random() - 0.5) * sh, H / 2 + (Math.random() - 0.5) * sh);
+  out.rotate(Math.sin(now * 0.5) * 0.006 + (Math.random() - 0.5) * sh * 0.0015);
+  out.scale(1.02, 1.02);
+  out.translate(-W / 2, -H / 2);
+  out.drawImage(low, 0, 0, W, H);
+  out.globalCompositeOperation = "screen";
+  out.globalAlpha = 0.28;
+  const ab = 4 + sh * 0.4;
+  out.drawImage(chans[0].c, ab, 0, W, H);
+  out.drawImage(chans[1].c, -ab, 0, W, H);
+  out.restore();
+  out.drawImage(overlay, 0, 0);
+  out.save();
+  out.globalCompositeOperation = "overlay"; out.globalAlpha = 0.18;
+  out.drawImage(grain[Math.floor(Math.random() * 3)], 0, 0, W, H);
+  out.restore();
+}
+
 function draw() {
   g.setTransform(1, 0, 0, 1, 0, 0);
   if (S.scene === "gate") drawGate();
@@ -465,6 +522,7 @@ function draw() {
   else if (S.scene === "results") drawResults();
   else if (S.scene === "final") drawFinal();
   drawWipe();
+  post();
 }
 
 let last = performance.now();

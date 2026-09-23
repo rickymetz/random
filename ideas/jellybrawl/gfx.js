@@ -12,32 +12,73 @@ export function text(g, str, x, y, size, color = "#fff", align = "center", weigh
   g.fillText(str, x, y);
 }
 
-// WarioWare-ish ink: flat loud colours, thick black outlines, hard offset
-// shadows, halftone dots, sunbursts. INK is the outline colour everywhere.
-export const INK = "#111";
-export const POP = ["#ff2e63", "#ffd400", "#00d1ff", "#7cff4f", "#b14dff", "#ff8a00"];
+// Grit kit (Hotline Miami 2 / Nidhogg 2 by way of WarioWare): neon on
+// near-black, italic slab type with an RGB-split shadow, thick ink outlines,
+// goo splats. tv.js adds the CRT pass (pixels, scanlines, grain, aberration).
+export const INK = "#0b0710";
+export const POP = ["#ff2a6d", "#f9f002", "#05d9e8", "#39ff14", "#b026ff", "#ff6b00"];
+export const PAPER = "#efe6d2";
 
 export function outlined(g, str, x, y, size, color = "#fff", align = "center", rot = 0) {
   g.save();
   g.translate(x, y);
   if (rot) g.rotate(rot);
-  g.font = `900 ${size}px ${FONT}`;
+  g.transform(1, 0, -0.16, 1, 0, 0); // italic slab
+  g.font = `italic 900 ${size}px ${FONT}`;
   g.textAlign = align;
   g.textBaseline = "middle";
-  g.lineJoin = "round";
+  g.lineJoin = "miter";
+  g.miterLimit = 2;
   g.lineWidth = Math.max(4, size / 5);
-  g.strokeStyle = INK;
-  const d = Math.max(3, size / 14);
-  g.strokeText(str, d, d); g.fillStyle = INK; g.fillText(str, d, d); // hard shadow
-  g.strokeText(str, 0, 0);
-  g.fillStyle = color;
-  g.fillText(str, 0, 0);
+  const d = Math.max(3, size / 16);
+  g.fillStyle = "#05d9e8"; g.fillText(str, -d, d * 0.6);    // RGB split
+  g.fillStyle = "#ff2a6d"; g.fillText(str, d * 1.4, d * 1.4);
+  g.strokeStyle = INK; g.strokeText(str, 0, 0);
+  g.fillStyle = color; g.fillText(str, 0, 0);
+  g.restore();
+}
+
+/** Synthwave floor: a perspective grid scrolling toward the viewer. */
+export function grid(g, t, color = "#ff2a6d", horizon = H * 0.58) {
+  g.save();
+  g.strokeStyle = color; g.lineWidth = 3; g.globalAlpha = 0.55;
+  for (let i = -24; i <= 24; i++) { g.beginPath(); g.moveTo(W / 2 + i * 30, horizon); g.lineTo(W / 2 + i * 260, H); g.stroke(); }
+  for (let i = 0; i < 14; i++) {
+    const k = ((i + (t * 0.8) % 1) / 14), y = horizon + (H - horizon) * k * k;
+    g.globalAlpha = 0.15 + 0.5 * k; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+  }
+  g.restore();
+}
+
+/** A goo splat decal (Nidhogg-style, but jelly). Build once, draw every frame. */
+export function makeSplat(x, y, r, color) {
+  const n = 14, pts = [];
+  for (let i = 0; i < n; i++) pts.push(r * (0.55 + Math.random() * 0.6));
+  const drops = Array.from({ length: 5 + Math.floor(Math.random() * 6) }, () => {
+    const a = Math.random() * Math.PI * 2, d = r * (1.1 + Math.random() * 1.4);
+    return [Math.cos(a) * d, Math.sin(a) * d * 0.7, r * (0.08 + Math.random() * 0.18)];
+  });
+  const drips = Array.from({ length: 2 + Math.floor(Math.random() * 3) }, () => [(Math.random() - 0.5) * r * 1.2, r * (0.4 + Math.random() * 1.2), r * (0.08 + Math.random() * 0.08)]);
+  return { x, y, r, color, pts, drops, drips, rot: Math.random() * 6 };
+}
+export function drawSplat(g, s, dx = 0) {
+  g.save();
+  g.translate(s.x - dx, s.y);
+  g.fillStyle = s.color;
+  g.strokeStyle = INK; g.lineWidth = 4;
+  g.beginPath();
+  s.pts.forEach((rr, i) => { const a = s.rot + (i / s.pts.length) * Math.PI * 2; g[i ? "lineTo" : "moveTo"](Math.cos(a) * rr, Math.sin(a) * rr * 0.7); });
+  g.closePath(); g.stroke(); g.fill();
+  for (const [x, len, w] of s.drips) { g.fillRect(x - w / 2, 0, w, len); circle(g, x, len, w * 0.9, s.color); }
+  for (const [x, y, rr] of s.drops) circle(g, x, y, rr, s.color);
+  g.fillStyle = "rgba(255,255,255,.35)";
+  g.beginPath(); g.ellipse(-s.r * 0.2, -s.r * 0.2, s.r * 0.18, s.r * 0.08, -0.5, 0, Math.PI * 2); g.fill();
   g.restore();
 }
 
 /** Largest font size ≤ size at which str fits in maxW. */
 export function fit(g, str, size, maxW) {
-  g.font = `900 ${size}px ${FONT}`;
+  g.font = `italic 900 ${size}px ${FONT}`;
   const w = g.measureText(str).width * 1.08 + size / 5;
   return w > maxW ? Math.floor((size * maxW) / w) : size;
 }
@@ -86,10 +127,11 @@ export function halftone(g, color, alpha = 0.25, gap = 26) {
   g.drawImage(tones.get(key), 0, 0);
 }
 
-/** A sticker panel: flat fill, thick ink outline, hard shadow. */
+/** A slab panel: flat fill (white reads as dirty paper), ink outline, neon hard shadow. */
 export function panel(g, x, y, w, h, fill, r = 26, lw = 7) {
-  rrect(g, x + 10, y + 10, w, h, r, INK);
-  rrect(g, x, y, w, h, r, fill, INK, lw);
+  r = Math.min(r, 8);
+  rrect(g, x + 12, y + 12, w, h, r, "#ff2a6d");
+  rrect(g, x, y, w, h, r, fill === "#fff" ? PAPER : fill, INK, lw);
 }
 
 /** A cartoon bomb whose fuse burns down as frac goes 1 → 0. */

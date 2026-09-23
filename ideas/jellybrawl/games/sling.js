@@ -3,7 +3,7 @@
 // release to launch yourself over the hill. Pop every enemy king to win;
 // after the shot limit, the team with more kings standing wins.
 
-import { W, H, INK, text, outlined, shout, rrect, panel, circle, halftone, sunburst, bomb, blob, tag, shuffle } from "../gfx.js";
+import { W, H, INK, text, outlined, shout, rrect, panel, circle, grid, makeSplat, drawSplat, bomb, blob, tag, shuffle } from "../gfx.js";
 
 const GROUND = 930, B = 48, COLS = 5, GRAV = 1000, BALL = 28, SHOTS = 5, TURN = 15;
 const FORT = [ // columns, bottom-up: S stone (2 hits), W wood, K king
@@ -34,7 +34,7 @@ export default {
     const cellPos = (tm, ci, ri) => [tm.x0 + ci * B, GROUND - (ri + 1) * B];
 
     let t = -2, cur = 0, phase = "aim", aim = { x: 0.7, y: -0.7, p: 0 }, turnT = TURN, ball = null, settle = 0, endAt = null, debris = [];
-    let botPlan = null, pows = [];
+    let botPlan = null, pows = [], splats = [];
     const shooter = () => { const tm = teams[cur]; return tm.players[tm.turn % tm.players.length]; };
     const launchPt = (tm) => [tm.sling, GROUND - 170];
 
@@ -62,7 +62,7 @@ export default {
       const col = tm.fort[ci], c = col[ri];
       if (c.type === "K") {
         col.splice(ri, 1); ctx.sfx.pop(); ctx.stat(ball.p.pid, "kings", 1);
-        { const [px, py] = cellPos(tm, ci, ri); pows.push({ x: px, y: py, t: 0, word: ["POP!", "BONK!", "SPLAT!"][Math.floor(Math.random() * 3)] }); }
+        { const [px, py] = cellPos(tm, ci, ri); pows.push({ x: px, y: py, t: 0, word: ["CRUSHED", "SPLAT", "DEAD KING"][Math.floor(Math.random() * 3)] }); splats.push(makeSplat(px + B / 2, py + B / 2, 40, ball.p.color)); ctx.shake(30); }
         burst(...cellPos(tm, ci, ri), "#ffd23f");
         return true;
       }
@@ -152,6 +152,7 @@ export default {
           }
           if (b && ball) { b.trail.push([b.x, b.y]); if (b.trail.length > 30) b.trail.shift(); }
           if (!ball) {
+            if (b.x > 0 && b.x < W && b.y < H) { splats.push(makeSplat(b.x, Math.min(b.y, hillY(b.x) - 4), 32, b.p.color)); ctx.shake(12); }
             for (const tm of teams) for (const col of tm.fort) for (let ri = col.length - 1; ri >= 0; ri--) if (col[ri].type === "K" && col[ri].fall >= 2) {
               col.splice(ri, 1); ctx.sfx.pop(); burst(...cellPos(tm, tm.fort.indexOf(col), ri), "#ffd23f");
             }
@@ -178,13 +179,16 @@ export default {
         }
       },
       draw(g) {
-        sunburst(g, W / 2, 260, "#ff8a00", "#ffa53a", t * 0.5, 20);
-        halftone(g, "#fff", 0.18, 36);
-        circle(g, W / 2, 260, 110, "#ffd400", INK, 8);
+        const sky = g.createLinearGradient(0, 0, 0, GROUND);
+        sky.addColorStop(0, "#12021f"); sky.addColorStop(0.7, "#5a0a2e"); sky.addColorStop(1, "#ff6b00");
+        g.fillStyle = sky; g.fillRect(0, 0, W, H);
+        circle(g, W / 2, 330, 150, "#ff2a6d", INK, 8);
+        g.fillStyle = "#5a0a2e"; for (let i = 0; i < 6; i++) g.fillRect(W / 2 - 150, 330 + i * 24, 300, 3 + i * 2);
         g.beginPath(); g.moveTo(0, GROUND);
         for (let x = 0; x <= W; x += 10) g.lineTo(x, hillY(x));
         g.lineTo(W, H); g.lineTo(0, H); g.closePath();
-        g.fillStyle = "#35e06b"; g.fill(); g.lineWidth = 10; g.strokeStyle = INK; g.stroke();
+        g.fillStyle = "#16042a"; g.fill(); g.lineWidth = 8; g.strokeStyle = "#05d9e8"; g.stroke();
+        for (const sp of splats) drawSplat(g, sp);
         for (const [ti, tm] of teams.entries()) {
           const enemy = teams[1 - ti];
           let kingIdx = 0;
@@ -231,8 +235,8 @@ export default {
         }
         for (const d of debris) { g.globalAlpha = Math.max(0, d.life); g.fillStyle = d.color; g.fillRect(d.x - 7, d.y - 7, 14, 14); }
         g.globalAlpha = 1;
-        for (const pw of pows) { pw.t += 1 / 60; if (pw.t < 1) shout(g, pw.word, pw.x + B / 2, pw.y - 40, 70, "#ff2e63", pw.t); }
-        if (t < 0) shout(g, "SIEGE!", W / 2, H / 2 - 120, 170, "#ffd400", t + 2);
+        for (const pw of pows) { pw.t += 1 / 60; if (pw.t < 1) shout(g, pw.word, pw.x + B / 2, pw.y - 40, 64, "#f9f002", pw.t); }
+        if (t < 0) shout(g, "SIEGE", W / 2, H / 2 - 120, 170, "#f9f002", t + 2);
       },
     };
     return inst;
