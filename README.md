@@ -39,10 +39,46 @@ that touched their folder.
 
 - Keep each idea fully self-contained in its folder — no shared build step,
   no dependencies. Plain HTML/CSS/JS that works when opened directly.
-- Link back to the hub with `<a href="../../">← random</a>` if you like
-  (see `ideas/breathe/` for the pattern).
+- Every idea gets the hub's bottom navbar (◀ Back, ● Home, ■ Recents)
+  automatically, so a link home is optional. An old-style
+  `<a href="../../">← random</a>` (or an icon-only link home) is hidden
+  while the bar is up; add `data-random-keep` to keep one visible.
+- **Bottom-anchored UI** (tab bars, FABs, bottom sheets) must sit above the
+  navbar: offset it by `var(--random-nav-h, 0px)`, which the bar sets on
+  `<html>` and which already includes the home-indicator inset. A handy
+  pattern is `--sab: var(--random-nav-h, env(safe-area-inset-bottom))`
+  (see `ideas/cadence/styles.css`).
+- The bar appends a spacer to `<body>` so it never covers the end of the
+  page. An idea that already pads for it (via `--random-nav-h`) opts out
+  with `<meta name="random-nav" content="overlay">`; `content="off"` hides
+  the bar altogether.
 - Use relative URLs only; the site is served under `/random/`, so absolute
-  paths like `/foo.png` will break.
+  paths like `/foo.png` will break. (Relative URLs are also what makes an
+  idea work offline once it has been opened.)
+- An idea that registers **its own service worker** is outside the hub
+  worker's reach: add `<script src="../../nav.js" defer></script>` yourself,
+  and don't let your worker cache files outside your folder (see
+  `ideas/cadence/sw.js`).
+
+## Installable app
+
+The hub is a PWA: install it from the header's **Install** button (Chrome,
+Edge, Android) or **Share → Add to Home Screen** (iOS). Installed, it opens
+standalone, works offline for the homepage and every idea you've opened
+(about 50 MB, least recently used idea evicted first), marks ideas added
+since your first visit as **New** until you open them (and counts them on
+the app icon), and offers each deploy as a "New ideas available" toast.
+The requirements live in
+`docs/superpowers/specs/2026-09-22-hub-pwa-requirements.md`.
+
+| File | Role |
+| --- | --- |
+| `nav.js` | The bottom navbar, recents tray, New/badge bookkeeping, update toast. Loaded on every page. |
+| `hub.js` | Homepage only: Install button, iOS install hint, iOS badge opt-in. |
+| `offline.html` | Served in place of an idea that isn't cached yet. |
+| `scripts/sw.template.js` | The service worker. `build.js` stamps it into `sw.js`. |
+| `icon*.png`, `icon.svg`, `apple-touch-icon.png` | The "r" monogram. |
+| `manifest.webmanifest`, `ideas.json`, `sw.js` | **Generated** by `build.js`; don't edit. |
 
 ## How it works
 
@@ -50,10 +86,13 @@ that touched their folder.
   Deploy from a branch, `main` `/ (root)`); `.nojekyll` makes it serve
   files verbatim.
 - `scripts/build.js` (plain Node, zero dependencies) generates the
-  homepage at the repo root by scanning `ideas/`, and mirrors everything
-  into `_site/` as a local preview.
+  homepage at the repo root by scanning `ideas/`, along with the PWA's
+  `manifest.webmanifest` (whose long-press shortcuts are the four newest
+  ideas), `ideas.json` and `sw.js`, and mirrors everything into `_site/`
+  as a local preview. The worker's version is a hash of everything it
+  serves, so any deploy that changes the hub is offered as an update.
 - `.github/workflows/pages.yml` reruns the build on every push to `main`
-  and commits the regenerated `index.html` when it changed — so the
+  and commits the regenerated files when they changed — so the
   homepage stays current with zero manual upkeep.
 - Preview locally with `node scripts/build.js && npx serve _site` (or just
   open an idea's `index.html` directly in a browser).

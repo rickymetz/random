@@ -28,6 +28,17 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
         importScripts: ['sw-notify.js'],
+        // The random hub's navbar (/random/nav.js) and its idea catalogue
+        // sit outside this app and change on the hub's schedule: network
+        // first, so they are never stale, with a copy for offline use.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url, sameOrigin }) =>
+              sameOrigin && /\/(nav\.js|ideas\.json)$/.test(url.pathname),
+            handler: 'NetworkFirst',
+            options: { cacheName: 'ledger-hub-nav' },
+          },
+        ],
       },
     }),
   ],

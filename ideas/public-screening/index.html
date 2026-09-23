@@ -783,6 +783,8 @@
     right: 0;
     height: 100vh;
     height: 100dvh;
+    /* stop above the hub's navbar, so the drawer's end isn't under it */
+    height: calc(100dvh - var(--random-nav-h, 0px));
     width: min(420px, 100%);
     translate: 100% 0;
     background: var(--bg-2);

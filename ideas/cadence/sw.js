@@ -17,7 +17,7 @@
  *    figures.js) cached indefinitely, which no later request would repair.
  *    A version is now all-or-nothing.
  */
-var CACHE = 'cadence-v3';
+var CACHE = 'cadence-v4';
 
 /* Without every one of these the app is broken, so the install fails and the
  * browser retries rather than leaving a half-built cache in place. */
@@ -79,7 +79,21 @@ self.addEventListener('message', function (event) {
 self.addEventListener('fetch', function (event) {
   var request = event.request;
   if (request.method !== 'GET') return;
-  if (new URL(request.url).origin !== self.location.origin) return;
+  var url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  /* The hub's files (nav.js, ideas.json) live outside this scope and change
+   * on the hub's schedule, not Cadence's: never pin them in this versioned
+   * cache. Network first; offline, whatever copy the hub worker holds
+   * (caches.match searches every cache on the origin, read-only). */
+  if (url.href.indexOf(self.registration.scope) !== 0) {
+    event.respondWith(fetch(request).catch(function () {
+      return caches.match(request, { ignoreSearch: true }).then(function (hit) {
+        return hit || new Response('', { status: 504, statusText: 'Offline' });
+      });
+    }));
+    return;
+  }
 
   event.respondWith(
     caches.open(CACHE).then(function (cache) {

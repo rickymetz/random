@@ -96,9 +96,11 @@ every open question).
   list plus the shell file contents) into `sw.js`, so every meaningful
   deploy produces a byte-different worker and triggers an update.
 - **Navbar injection**: for HTML navigation responses under `ideas/`, the
-  worker streams the body and inserts `<script src="/random/nav.js" defer>`
-  before `</body>` (or appends it if there is none). Opaque, redirected or
-  non-`text/html` responses pass through unchanged.
+  worker rewrites the body, inserting `<script src="<scope>nav.js" defer>`
+  before `</body>` (or appending it if there is none). Pages are small, so
+  it buffers rather than streams. Opaque, redirected or non-`text/html`
+  responses pass through unchanged. The offline page, served at the
+  missing idea's URL, also gets a `<base href="<scope>">`.
 
 ### R4. Bottom navbar (`nav.js`)
 
@@ -118,23 +120,30 @@ every open question).
 - Respects `env(safe-area-inset-bottom)`, supports light and dark mode
   through `prefers-color-scheme`, has touch targets of 48px or more,
   `aria-label`s, and is keyboard reachable.
-- Reserves space so it doesn't cover content, via
-  `body { padding-bottom: <bar height> }` applied from the script.
+- Reserves space so it doesn't cover content by appending a spacer
+  `<div>` of `--random-nav-h` to `<body>`. That leaves an idea's own body
+  padding exactly as written.
 - Sets `--random-nav-h` on `<html>` (bar height plus the safe-area inset,
   `0px` when the bar is absent). **Ideas with their own bottom UI offset
   it by that variable**, so both bars are visible and stack, for example
-  `bottom: var(--random-nav-h, 0px)`. Ideas that need this:
+  `bottom: var(--random-nav-h, 0px)`. Where an idea already names its
+  bottom inset (`--sab`), redefining it as
+  `var(--random-nav-h, env(safe-area-inset-bottom))` does it in one line.
+  Ideas that need this:
   - Cadence: `.tabbar`
   - Container Compound: the add-button FAB and bottom sheet
   - Ephemera and Public Screening: the bottom drawers and scrim
   - Ledger (`dossier/app`): its bottom UI, to be checked during
     implementation
 - Opt-outs: `<meta name="random-nav" content="off">` hides the bar, and
-  `content="overlay"` skips the body padding.
+  `content="overlay"` skips the spacer. Cadence, Container Compound and
+  Ledger use `overlay`, because their `--sab` already makes room.
 - **Existing back links**: while the bar is present, `nav.js` adds
   `random-nav` to `<html>` and hides the idea's own hub links. Those are
-  same-page `<a>` elements whose resolved `href` is the hub root and whose
-  text starts with "←", such as Breathe's fixed `a.back`. An idea keeps
+  `<a>` elements whose resolved `href` is the hub root and whose text
+  either starts with "←" or is empty (icon-only links with an
+  `aria-label`, like Ephemera's). Examples are Breathe's `a.back` and
+  Cadence's `.hub-link`. Prose links ("Part of random") stay. An idea keeps
   such a link with `data-random-keep`. If the bar fails to load the links
   still work, so they are the fallback.
 - Idempotent: loading twice (injected *and* script-tagged) renders one bar.
@@ -161,6 +170,11 @@ every open question).
   `/random/ledger/`.
 - `nav.js` must coexist with their own update toasts and bottom UI. Check
   both visually.
+- Their workers must not pin hub files in their own versioned caches.
+  Cadence's `sw.js` sends out-of-scope requests network-first, falling
+  back to any cache on the origin. Ledger's workbox config adds a
+  `NetworkFirst` runtime route for `nav.js` and `ideas.json`, so the bar
+  still appears offline.
 
 ### R7. Updates
 
@@ -183,9 +197,10 @@ every open question).
   gets a small "New" pill. The pill **stays until that idea is opened**.
   `nav.js` adds the slug to `random-hub:opened` on each idea page load.
 - **App icon badge**: the count is the number of ideas that are new and
-  unopened. `navigator.setAppBadge(count)` is called when the hub runs,
-  when the worker updates and when an idea is opened, and
-  `clearAppBadge()` is called at 0. It's feature-detected and a silent
+  unopened. `nav.js` calls `navigator.setAppBadge(count)` on every page
+  load (hub, idea, or the reload after an update) and `clearAppBadge()` at
+  0. The worker can't read `localStorage`, so it doesn't set the badge
+  itself. It's feature-detected and a silent
   no-op where unsupported. There's no push or periodic sync.
 - **iOS**: Safari only honours the badge after notification permission is
   granted. The hub shows an opt-in **"Badge new ideas"** toggle only when

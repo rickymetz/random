@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Our own bottom UI makes room for the hub navbar via --random-nav-h
+     (see --sab), so the bar needs no spacer after the page. -->
+<meta name="random-nav" content="overlay">
 <title>Container Compound</title>
 <meta name="description" content="Compose a tiny-home compound from purpose-built shipping container units on a Virginia acre.">
 <style>
@@ -25,7 +28,10 @@
     --line: #e2ded6;
     --accent: #b3542e;
     --shadow: 0 2px 16px rgba(30, 30, 25, 0.14);
-    --sab: env(safe-area-inset-bottom, 0px);
+    /* The bottom of the screen that isn't ours: the hub's navbar when it is
+       up (it already covers the home indicator), else the safe area. */
+    --sab: var(--random-nav-h, env(safe-area-inset-bottom, 0px));
+    --nav: var(--random-nav-h, 0px);
     --sat: env(safe-area-inset-top, 0px);
   }
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
@@ -278,7 +284,7 @@
   body.split[data-mode="plan"] #site-actions,
   body.split.has-selection[data-mode="plan"] #site-actions,
   body.split.sheet-open[data-mode="plan"] #site-actions { right: calc(50% + 1rem); }
-  body.split.has-selection[data-mode="plan"] #site-actions { bottom: 1rem; }
+  body.split.has-selection[data-mode="plan"] #site-actions { bottom: calc(1rem + var(--nav)); }
   body.split #info { right: calc(50% + 1rem); max-width: 17rem; }
   body.split #fab { right: calc(50% + 1rem); }
   body.split #toolstrip { left: 0; right: 50%; }
@@ -1224,13 +1230,13 @@
 
   /* ---- larger screens: same layout, roomier ---- */
   @media (min-width: 900px) {
-    #stats-pill { left: 1rem; bottom: 1rem; }
-    #fab { right: 1rem; bottom: 1rem; }
+    #stats-pill { left: 1rem; bottom: calc(1rem + var(--nav)); }
+    #fab { right: 1rem; bottom: calc(1rem + var(--nav)); }
     #add-sheet { border-radius: 1rem 1rem 0 0; }
     #info {
-      left: auto; right: 1rem; bottom: 5.6rem;
+      left: auto; right: 1rem; bottom: calc(5.6rem + var(--nav));
       max-width: 19rem;
-      max-height: calc(100vh - 12rem);
+      max-height: calc(100vh - 12rem - var(--nav));
       overflow-y: auto;
       border-radius: var(--r-panel);
       border-width: 1px;
@@ -1249,7 +1255,7 @@
     #edge-tools { left: 1rem; }
     #site-actions { right: 1rem; flex-direction: row; }
     body.has-selection[data-mode="plan"] #site-actions,
-    body[data-mode="plan"] #site-actions { bottom: 1rem; right: 5.2rem; }
+    body[data-mode="plan"] #site-actions { bottom: calc(1rem + var(--nav)); right: 5.2rem; }
     body.sheet-open[data-mode="plan"] #site-actions { right: 21.5rem; }
     /* ...and the strip has to give up the same ground, or it centres itself
        on the whole window and lands under the column that just stepped left.
@@ -1261,7 +1267,7 @@
     }
     /* the strip is centred here, so nothing needs to climb over it */
     #toolstrip { bottom: calc(1rem + var(--sab)); }
-    body.has-selection #fab { bottom: 1rem; }
+    body.has-selection #fab { bottom: calc(1rem + var(--nav)); }
 
     #va-modal { place-items: center; }
     #va-modal .box { border-radius: var(--r-panel); width: calc(100vw - 3rem); padding-bottom: 1.3rem; }
