@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import BatchAddPanel from '../components/BatchAddPanel'
+import { useGrow } from '../components/useGrow'
+import { usePersistedDraft } from '../components/usePersistedDraft'
 import PersonPicker from '../components/PersonPicker'
-import ChipInput from '../components/ChipInput'
+import ChipInput, { withDraft } from '../components/ChipInput'
 import CustomFieldInputs, { draftFrom, type DraftValue } from '../components/CustomFieldInputs'
 import { activeFields, hasValue } from '../lib/fieldDefs'
+import { applyDetailsDraft, encodeDetailsDraft } from '../lib/detailsDraft'
 import DangerConfirm from '../components/DangerConfirm'
 import LooksLikePeople from '../components/LooksLikePeople'
 import MentionTextarea from '../components/MentionTextarea'
@@ -76,7 +79,10 @@ export default function PersonPage() {
   const person = id ? records.get(id) : undefined
   // Lifted so the sticky capture bar yields the bottom edge to the facts
   // form's sticky Save/Cancel while editing.
-  const [editing, setEditing] = useState(false)
+  // …opened already when changes to it were kept (see FactsForm).
+  const [editing, setEditing] = useState(
+    () => id !== undefined && useVaultStore.getState().readDraft(id, 'details') !== undefined,
+  )
   const noteVisit = useVaultStore((s) => s.noteVisit)
   useEffect(() => {
     if (id) void noteVisit(id)
@@ -386,11 +392,34 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     tags: person.tags,
     circles: selectCirclesOf(records, person.id).map((c) => c.name),
   }
-  const [form, setForm] = useState(initial)
   // The rows this vault added for itself (§8.1), in form order.
   const customDefs = useMemo(() => activeFields(selectFieldDefs(records)), [records])
   const initialCustom = useMemo(() => draftFrom(customDefs, person), [customDefs, person])
-  const [custom, setCustom] = useState<Record<string, DraftValue>>(initialCustom)
+  // Changes that were never saved or cancelled — the app closed, or
+  // locked, with this form open — come back over what the person has now.
+  const [kept] = useState(() =>
+    applyDetailsDraft(
+      useVaultStore.getState().readDraft(person.id, 'details'),
+      { form: initial, custom: initialCustom, isSelf: Boolean(person.isSelf) },
+      Object.fromEntries(customDefs.map((d) => [d.id, d.type])),
+    ),
+  )
+  const [form, setForm] = useState(() => (kept ? (kept.form as typeof initial) : initial))
+  /**
+   * What each chip field still has in it, unchipped. A chip field cannot
+   * commit on its way out — growing by a row while your finger is down
+   * moves Save and eats the tap — so Save collects the leftovers here
+   * (`withDraft`). Keyed by field: built-ins by name, custom rows by id.
+   */
+  const [chipDrafts, setChipDrafts] = useState<Record<string, string>>(() => kept?.chips ?? {})
+  const noteDraft = (key: string) => (draft: string) =>
+    setChipDrafts((d) => (d[key] === draft ? d : { ...d, [key]: draft }))
+  // "How we met" is a paragraph often enough to deserve the room.
+  const howWeMetRef = useRef<HTMLTextAreaElement>(null)
+  useGrow(howWeMetRef, form.howWeMet)
+  const [custom, setCustom] = useState<Record<string, DraftValue>>(
+    () => (kept?.custom as Record<string, DraftValue> | undefined) ?? initialCustom,
+  )
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
   const allPeople = useMemo(() => selectPeople(records), [records])
   const addCircle = useVaultStore((s) => s.addCircle)
@@ -411,13 +440,26 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
       circles: selectCircles(records).map((c) => c.name),
     }
   }, [records])
-  const [isSelf, setIsSelf] = useState(Boolean(person.isSelf))
+  const [isSelf, setIsSelf] = useState(() => kept?.isSelf ?? Boolean(person.isSelf))
   const [dateError, setDateError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const dirty =
     JSON.stringify(form) !== JSON.stringify(initial) ||
     JSON.stringify(custom) !== JSON.stringify(initialCustom) ||
     isSelf !== Boolean(person.isSelf)
+  // Kept on disk as it's typed (see usePersistedDraft). Saving lets it
+  // go: the save removes it in the same write, and the person coming
+  // back tidied up (trimmed, reordered) must not look like changes left.
+  const persisted = usePersistedDraft(
+    person.id,
+    'details',
+    busy
+      ? ''
+      : encodeDetailsDraft(
+          { form: initial, custom: initialCustom, isSelf: Boolean(person.isSelf) },
+          { form, custom, chips: chipDrafts, isSelf },
+        ),
+  )
 
   type TextKey =
     | 'displayName'
@@ -466,6 +508,8 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         labelId={`chip-label-${key}`}
         values={form[key]}
         onChange={(values) => setForm({ ...form, [key]: values })}
+        onDraftChange={noteDraft(key)}
+        initialDraft={kept?.chips[key]}
         suggestions={suggestions}
         capitalize={opts.capitalize}
         placeholder={opts.placeholder ?? 'one per entry'}
@@ -494,7 +538,11 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
     const customValues: Record<string, CustomValue> = {}
     const dateErrors: Record<string, string> = {}
     for (const def of customDefs) {
-      const draft = custom[def.id]
+      // A custom list row has the same leftover as the built-in ones.
+      const draft =
+        def.type === 'chips'
+          ? withDraft(Array.isArray(custom[def.id]) ? (custom[def.id] as string[]) : [], chipDrafts[def.id])
+          : custom[def.id]
       if (def.type === 'date') {
         const text = typeof draft === 'string' ? draft.trim() : ''
         if (!text) continue
@@ -544,7 +592,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
       await updatePerson({
         ...person,
         displayName: form.displayName.trim() || person.displayName,
-        nicknames: form.nicknames,
+        nicknames: withDraft(form.nicknames, chipDrafts.nicknames),
         pronouns: form.pronouns.trim() || undefined,
         jobTitle: form.jobTitle.trim() || undefined,
         employer: form.employer.trim() || undefined,
@@ -555,15 +603,15 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
           form.phone.trim() || form.email.trim()
             ? { phone: form.phone.trim() || undefined, email: form.email.trim() || undefined }
             : undefined,
-        likes: form.likes,
-        dislikes: form.dislikes,
-        tags: form.tags,
+        likes: withDraft(form.likes, chipDrafts.likes),
+        dislikes: withDraft(form.dislikes, chipDrafts.dislikes),
+        tags: withDraft(form.tags, chipDrafts.tags),
         custom: Object.keys(nextCustom).length > 0 ? nextCustom : undefined,
         isSelf: isSelf || undefined,
-      })
+      }, { clearDraft: true })
       // Circle chips are names; unknown names become new circles.
       const ids: string[] = []
-      for (const name of form.circles) {
+      for (const name of withDraft(form.circles, chipDrafts.circles)) {
         const existing = selectCircles(useVaultStore.getState().records).find(
           (c) => c.name.toLowerCase() === name.toLowerCase(),
         )
@@ -577,23 +625,29 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
   }
 
   const [askDiscard, setAskDiscard] = useState(false)
+  const discard = () => {
+    persisted.discard()
+    done()
+  }
   const cancel = () => {
     if (dirty) {
       setAskDiscard(true)
       return
     }
-    done()
+    discard()
   }
-  // The Edit button vanished under us: say where we are.
+  // The Edit button vanished under us: say where we are. (A form that
+  // reopened itself with the page leaves the page's own landing be.)
   useEffect(() => {
-    focusById('facts-form-title')
-  }, [])
+    if (!kept) focusById('facts-form-title')
+  }, [kept])
 
   return (
     <form className="facts-form" onSubmit={save}>
       <h2 className="form-title" id="facts-form-title" tabIndex={-1}>
         Edit {person.displayName}
       </h2>
+      {kept && <p className="hint restored-hint">Your unsaved changes are back.</p>}
       <fieldset className="field-group">
         <legend>Identity</legend>
         <div className="field-grid">
@@ -655,6 +709,8 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
           <label className="span-2">
             How we met
             <textarea
+              ref={howWeMetRef}
+              className="grows"
               rows={2}
               value={form.howWeMet}
               onChange={(e) => setForm({ ...form, howWeMet: e.target.value })}
@@ -686,6 +742,8 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
             people={allPeople}
             draft={custom}
             onChange={(id, value) => setCustom((c) => ({ ...c, [id]: value }))}
+            onChipDraft={(id, d) => noteDraft(id)(d)}
+            chipInitialDrafts={kept?.chips}
             errors={customErrors}
             clearError={(id) =>
               setCustomErrors((e) => {
@@ -716,7 +774,7 @@ function FactsForm({ person, done }: { person: Person; done: () => void }) {
         {askDiscard ? (
           <span className="confirm-row" role="group" aria-label="Discard your changes?">
             <span className="hint">Discard your changes?</span>
-            <button type="button" className="danger" onClick={done} autoFocus>
+            <button type="button" className="danger" onClick={discard} autoFocus>
               Discard
             </button>
             <button type="button" className="subtle" onClick={() => setAskDiscard(false)}>
@@ -1085,6 +1143,9 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [person.id, registerDraft, unregisterDraft])
+  // …and it is kept on disk as it's typed, so a reload can't take it.
+  // It waits in this box on unlock.
+  usePersistedDraft(person.id, undefined, draft)
   const others = useMemo(
     () => selectPeople(records).filter((p) => p.id !== person.id),
     [records, person.id],
@@ -1103,7 +1164,9 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
     draftRef.current = ''
     setDraft('')
     try {
-      const note = await saveNote(person.id, body)
+      // The note and the removal of its saved draft are one write: a
+      // reload in between can't bring the text back as a draft as well.
+      const note = await saveNote(person.id, body, { clearDraft: true })
       // Only offer names when the setting is on and the note has some;
       // an offer still showing for the previous note stays until it is
       // dealt with.
@@ -1156,6 +1219,9 @@ function CaptureBar({ person, hidden = false }: { person: Person; hidden?: boole
         // The @ hint waits until there's a first note: to a newcomer it
         // means nothing yet.
         placeholder={isFresh ? `Jot a note about ${person.displayName.split(' ')[0]}…` : 'Jot something… @ links a person'}
+        // The capture bar rides above the keyboard: it may grow, but not
+        // until it is the whole screen.
+        maxRows={6}
         plain
         autoFocus={isFresh}
         // One row when idle: the bar sits on the tab bar and shouldn't
@@ -1926,7 +1992,12 @@ function NotesSection({ personId }: { personId: string }) {
   const removeNote = useVaultStore((s) => s.removeNote)
   const notes = useMemo(() => selectNotes(records, personId), [records, personId])
   const [promotingId, setPromotingId] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<string | null>(null)
+  // An edit that was never saved or cancelled — the app was closed, or
+  // locked, mid-sentence — opens again where it was left.
+  const [editingId, setEditingId] = useState<string | null>(() => {
+    const { readDraft } = useVaultStore.getState()
+    return notes.find((n) => readDraft(personId, `note:${n.id}`) !== undefined)?.id ?? null
+  })
   // "Looks like people" after an inline edit — the way into notes written
   // before the feature existed (✎, Save).
   const [offerId, setOfferId] = useState<string | null>(null)
@@ -2038,8 +2109,18 @@ function NoteEditor({
   const addPerson = useVaultStore((s) => s.addPerson)
   // Edit the readable form ("@Ivy Chen"), never the raw token with its
   // uuid; links are restored on save for every known name.
-  const [draft, setDraft] = useState(() => plainText(body))
+  const original = useMemo(() => plainText(body), [body])
+  const [kept] = useState(() => useVaultStore.getState().readDraft(personId, `note:${noteId}`))
+  const [draft, setDraft] = useState(() => kept ?? original)
   const [busy, setBusy] = useState(false)
+  // The edit, not the note, is what a reload would lose.
+  // Saving lets it go: the save removes it in the same write, and the
+  // note coming back reworded must not look like an edit still open.
+  const persisted = usePersistedDraft(personId, `note:${noteId}`, !busy && draft !== original ? draft : '')
+  const cancel = () => {
+    persisted.discard()
+    onDone()
+  }
   const others = useMemo(
     () => selectPeople(records).filter((p) => p.id !== personId),
     [records, personId],
@@ -2050,7 +2131,8 @@ function NoteEditor({
     try {
       const mentioned = segmentBody(body).flatMap((s) => (s.type === 'mention' ? [{ id: s.personId, displayName: s.name }] : []))
       const next = retokenize(draft.trim(), [...mentioned, ...selectPeople(records)])
-      if (next !== body) await updateNote(noteId, next)
+      // The edit and the removal of its kept draft are one write.
+      if (next !== body) await updateNote(noteId, next, { clearDraft: true })
       onDone()
       onSaved?.()
     } finally {
@@ -2068,11 +2150,14 @@ function NoteEditor({
         placeholder="Edit note"
         autoFocus
       />
+      {kept !== undefined && (
+        <p className="hint restored-hint">Your unsaved edit is back.</p>
+      )}
       <div className="row">
         <button className="primary" onClick={() => void save()} disabled={busy || !draft.trim()}>
           Save
         </button>
-        <button className="quiet" onClick={onDone}>
+        <button className="quiet" onClick={cancel}>
           Cancel
         </button>
       </div>

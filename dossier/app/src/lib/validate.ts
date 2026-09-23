@@ -284,6 +284,20 @@ function sanitizeOne(raw: unknown): DomainRecord | null {
       if (settings.recentIds?.length === 0) settings.recentIds = undefined
       return settings
     }
+    case 'draft': {
+      // A note being written: capped like a note's body, and only ever
+      // about a person id. An edit form's draft is every field it holds,
+      // so it gets more room.
+      const personId = typeof r.personId === 'string' && ID_RE.test(r.personId) ? r.personId : undefined
+      let slot: 'details' | `note:${string}` | undefined
+      if (r.slot === 'details') slot = 'details'
+      else if (typeof r.slot === 'string' && r.slot.startsWith('note:') && ID_RE.test(r.slot.slice(5)))
+        slot = `note:${r.slot.slice(5)}`
+      else if (r.slot !== undefined) return null
+      const body = str(r.body, slot === 'details' ? 200_000 : 50_000)
+      if (!personId || !body || !body.trim()) return null
+      return { kind: 'draft', id: rid, personId, ...(slot ? { slot } : {}), body, updatedAt: num(r.updatedAt) }
+    }
     default:
       return null
   }

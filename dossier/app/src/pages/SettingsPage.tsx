@@ -4,6 +4,14 @@ import InlineField from '../components/InlineField'
 import TypeEditor from '../components/TypeEditor'
 import LabelText from '../components/LabelText'
 import { Link, useSearchParams } from 'react-router-dom'
+import {
+  applyUpdate,
+  buildLabel,
+  checkForUpdate,
+  isUpdateReady,
+  onUpdateReady,
+  type UpdateCheck,
+} from '../lib/appUpdate'
 import { destroyAllData } from '../lib/db'
 import {
   MAX_IMPORT_FILE_BYTES,
@@ -53,6 +61,7 @@ export default function SettingsPage() {
       <SecuritySection />
       <DisguiseSection />
       <SampleDataSection />
+      <UpdateSection />
       {dev && <StressSection />}
       <section className="danger-zone">
         <h2>Delete everything</h2>
@@ -569,6 +578,7 @@ function ExportSection() {
 function ImportSection() {
   const importRecords = useVaultStore((s) => s.importRecords)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [fileName, setFileName] = useState('')
   const [passphrase, setPassphrase] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -598,6 +608,7 @@ function ImportSection() {
       const count = await importRecords(restored.records, restored.blobs)
       setMessage(`Restored ${count} items`)
       if (fileRef.current) fileRef.current.value = ''
+      setFileName('')
     } catch (err) {
       setError(err instanceof Error && err.message ? err.message : 'Couldn’t restore that file.')
     } finally {
@@ -614,18 +625,36 @@ function ImportSection() {
         the newer one wins. For phone contacts, use “Import contacts…” on the People page.
       </p>
       <form className="column" onSubmit={doImport}>
-        <label className="field">
-          <span>Backup file</span>
+        {/* The browser's own file control drew a second bordered button
+            inside our field, with its own lowercase "no file selected":
+            a button of ours opens the same picker, and says what's
+            chosen in the app's voice — as Import contacts already does. */}
+        <div className="field">
+          <span id="backup-file-label">Backup file</span>
           <input
             ref={fileRef}
             type="file"
+            hidden
             // iOS maps accept to UTIs and can grey out a .ledger file in
             // the Files picker; the importer validates the contents anyway.
             accept={isIos() ? undefined : '.ledger,.planner,.grid,application/json'}
             aria-label="Backup file"
+            onChange={(e) => setFileName(e.target.files?.[0]?.name ?? '')}
           />
-        </label>
-        <div className="row">
+          <div className="row file-pick">
+            <button
+              type="button"
+              aria-describedby="backup-file-label backup-file-name"
+              onClick={() => fileRef.current?.click()}
+            >
+              {fileName ? 'Choose another…' : 'Choose file…'}
+            </button>
+            <span className="hint file-name" id="backup-file-name">
+              {fileName || 'None chosen'}
+            </span>
+          </div>
+        </div>
+        <div className="row wrap restore-row">
           <label className="field">
             <span>Backup passphrase</span>
             <input
@@ -776,6 +805,107 @@ function StressSection() {
       </div>
       <p className="hint status-slot" role="status">
         {message}
+      </p>
+    </section>
+  )
+}
+
+/**
+ * Which build this is, and a way to fetch a newer one now. An installed
+ * copy finds new builds on its own (hourly while open) and takes them the
+ * next time it locks; this is for "a fix just shipped — do I have it?",
+ * which used to mean deleting the app from the Home Screen and adding it
+ * back. The app's name stays out of it: a disguised copy must not say
+ * "Ledger".
+ */
+function UpdateSection() {
+  const [state, setState] = useState<UpdateCheck | 'checking' | 'stuck' | 'waiting' | null>(() =>
+    isUpdateReady() ? 'waiting' : null,
+  )
+  // The hourly check may find one while this page is open.
+  useEffect(
+    () =>
+      onUpdateReady(() =>
+        setState((s) => (s === null || s === 'current' || s === 'offline' ? 'waiting' : s)),
+      ),
+    [],
+  )
+  const [hasWorker, setHasWorker] = useState<boolean | null>(null)
+  useEffect(() => {
+    let live = true
+    if (!navigator.serviceWorker) setHasWorker(false)
+    else
+      navigator.serviceWorker
+        .getRegistration()
+        .then((r) => live && setHasWorker(Boolean(r)))
+        .catch(() => live && setHasWorker(false))
+    return () => {
+      live = false
+    }
+  }, [])
+  // The new build reloads the page itself once it takes over. If that
+  // hasn't happened after a while (a slow download, a browser that never
+  // said), offer to reopen by hand rather than leave "installing" forever.
+  useEffect(() => {
+    if (state !== 'updating') return
+    const t = window.setTimeout(() => setState('stuck'), 20_000)
+    return () => window.clearTimeout(t)
+  }, [state])
+
+  const check = async () => {
+    if (state === 'checking' || state === 'updating') return
+    if (state === 'waiting') {
+      setState('updating')
+      void applyUpdate()
+      return
+    }
+    setState('checking')
+    const result = await checkForUpdate()
+    setState(result)
+    // Asked for, so taken now — as soon as it has installed. Nothing is
+    // being written on this page; notes in progress are on disk anyway.
+    if (result === 'updating') void applyUpdate()
+  }
+  const message: Record<Exclude<typeof state, null>, string> = {
+    checking: 'Checking…',
+    waiting: 'A new version is ready. It installs the next time the app locks — or now.',
+    current: 'You have the latest version.',
+    updating: 'Found a new version — installing. The app will reopen on it, locked.',
+    stuck: 'The new version is ready. Reopen the app to start using it.',
+    offline: 'Couldn’t reach the server. Try again when you’re online.',
+    unavailable: 'This browser loads the latest version each time you open the app.',
+  }
+  return (
+    <section>
+      <h2>Updates</h2>
+      <p className="hint">
+        Version {buildLabel(__APP_VERSION__, __BUILD_ID__, __BUILD_TIME__)}. New versions
+        arrive on their own and install when the app locks; check to get one straight away.
+      </p>
+      {hasWorker !== false && (
+        <div className="row wrap">
+          <button
+            type="button"
+            onClick={() => void check()}
+            disabled={state === 'checking' || state === 'updating'}
+          >
+            {state === 'waiting' ? 'Install now' : 'Check for updates'}
+          </button>
+          {state === 'stuck' && (
+            <button
+              type="button"
+              className="primary"
+              // A reload alone doesn't hand over to a waiting build (the page
+              // it reloads still holds the old one); take it if it's there.
+              onClick={() => (isUpdateReady() ? void applyUpdate() : location.reload())}
+            >
+              Reopen now
+            </button>
+          )}
+        </div>
+      )}
+      <p className="hint status-slot" role="status">
+        {state ? message[state] : hasWorker === false ? message.unavailable : ''}
       </p>
     </section>
   )

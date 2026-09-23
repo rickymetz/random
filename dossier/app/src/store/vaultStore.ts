@@ -13,7 +13,7 @@ import { create } from 'zustand'
 import { extractMentions, renameMentionsOf, stripMentionsOf } from '../lib/mentions'
 import { linkPhrase } from '../lib/nameDetect'
 import type { ContactDraft } from '../lib/contacts'
-import { CIRCLE_COLORS, RECENT_LIMIT, type Circle } from '../lib/models'
+import { CIRCLE_COLORS, RECENT_LIMIT, type Circle, type DraftSlot, type NoteDraft } from '../lib/models'
 import { assignTypeFamilies, migrateExToFormer, pairKey } from '../lib/relationships'
 import {
   BUILT_IN_RELATIONSHIP_TYPES,
@@ -160,6 +160,20 @@ interface VaultState {
    * for the dossier to come back (a timer lock saves it as a note). */
   drafts: Map<string, string>
   stashDraft: (personId: string, text: string) => void
+  /**
+   * Keep what is being written on disk (encrypted, never in `records`) so
+   * a reload or a lock can't take it; '' forgets it. No slot is the note
+   * box, restored into `drafts` on unlock; a slot (a note being edited,
+   * the Edit form) is read back with `readDraft`.
+   */
+  persistDraft: (personId: string, text: string, slot?: DraftSlot) => Promise<void>
+  /** The latest text kept for a slot — what to reopen an editor with. */
+  readDraft: (personId: string, slot: DraftSlot) => string | undefined
+  /**
+   * Editors with a write waiting on a pause in typing: a lock asks each
+   * to write now, before the key goes. Returns the unregister.
+   */
+  registerDraftSaver: (save: () => Promise<void>) => () => void
   setHomeQuery: (query: string) => void
   setHomePage: (page: { key: string; limit: number }) => void
 
@@ -173,11 +187,18 @@ interface VaultState {
   /** Contacts import: people with details (and a first note where the
    * contact carried one) in one encrypted write. Returns the people. */
   importPeople: (drafts: ContactDraft[]) => Promise<Person[]>
-  updatePerson: (person: Person) => Promise<void>
+  /** `clearDraft`: the Edit form's kept draft goes in the same write. */
+  updatePerson: (person: Person, opts?: { clearDraft?: boolean }) => Promise<void>
   removePerson: (personId: string) => Promise<void>
   /** Bulk delete; circles left with no members are removed too. */
   removePeople: (personIds: string[]) => Promise<void>
-  saveNote: (personId: string, body: string) => Promise<NoteEntry | undefined>
+  /** `clearDraft`: the note box's text became this note — forget its
+   *  saved draft in the same write, so it can't come back as both. */
+  saveNote: (
+    personId: string,
+    body: string,
+    opts?: { clearDraft?: boolean },
+  ) => Promise<NoteEntry | undefined>
   /**
    * "Looks like people": turn plain names in a note into @mentions. Each
    * link names a phrase and either an existing person or (no personId) a
@@ -189,7 +210,8 @@ interface VaultState {
     links: { phrase: string; personId?: string }[],
   ) => Promise<{ linked: Person[]; created: Person[] }>
   removeNote: (noteId: string) => Promise<void>
-  updateNote: (noteId: string, body: string) => Promise<void>
+  /** `clearDraft`: this note's kept edit goes in the same write. */
+  updateNote: (noteId: string, body: string, opts?: { clearDraft?: boolean }) => Promise<void>
   /** Circles (§4.6): named, colored groups drawn as bubbles on the graph. */
   /** The person form this vault defines (§8.1). */
   addField: (seed: FieldSeed) => Promise<FieldDef | 'name-taken' | 'full'>
@@ -343,6 +365,23 @@ function diffMentionEdges(
 // All mutations run through one chain so two in-flight actions can never
 // diff against the same stale snapshot (double-tap → duplicate edges).
 let writeChain: Promise<unknown> = Promise.resolve()
+/** One kept draft per place it's written: the note box is the bare id. */
+function draftKey(personId: string, slot?: DraftSlot): string {
+  return slot ? `${personId} ${slot}` : personId
+}
+
+/** A draft is only worth keeping while what it edits is still there. */
+function draftTargetExists(
+  records: Map<string, DomainRecord>,
+  personId: string,
+  slot: DraftSlot | undefined,
+): boolean {
+  if (records.get(personId)?.kind !== 'person') return false
+  if (!slot?.startsWith('note:')) return true
+  const note = records.get(slot.slice(5))
+  return note?.kind === 'note' && note.personId === personId
+}
+
 function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   const run = writeChain.then(fn, fn)
   writeChain = run.catch(() => undefined)
@@ -416,12 +455,33 @@ export const useVaultStore = create<VaultState>((set, get) => {
     }
     await sweepOrphanBlobs(vault, referencedBlobs)
     if (get().epoch !== startEpoch || get().status === 'unlocked') return false
+    // Notes that were being written when the page last went away (an
+    // update's reload, iOS closing the app) wait in their note boxes.
+    // They never join `records`: nothing renders from them, and nothing
+    // that walks the records — a backup above all — ever sees them.
+    const restored = new Map<string, string>()
+    savedDrafts.clear()
+    liveDrafts.clear()
+    const orphans: string[] = []
+    for (const r of [...records.values()]) {
+      if (r.kind !== 'draft') continue
+      records.delete(r.id)
+      const key = draftKey(r.personId, r.slot)
+      if (draftTargetExists(records, r.personId, r.slot) && !savedDrafts.has(key)) {
+        if (!r.slot) restored.set(r.personId, r.body)
+        savedDrafts.set(key, { id: r.id, body: r.body, personId: r.personId })
+        liveDrafts.set(key, r.body)
+      } else orphans.push(r.id)
+    }
+    if (orphans.length > 0) await deleteRecords(vault, orphans)
+    if (get().epoch !== startEpoch || get().status === 'unlocked') return false
     searchIndex = createIndex()
     rebuildIndex(searchIndex, records)
     set({
       status: 'unlocked',
       vault,
       records,
+      drafts: restored,
       corrupted,
       kdfLegacy: vault.kdfLegacy ?? false,
       pinArmed: pinArmed(),
@@ -436,9 +496,33 @@ export const useVaultStore = create<VaultState>((set, get) => {
 
   // Capture drafts to flush into notes before a timer-driven lock (§6.3).
   const draftRegistry = new Map<string, () => string>()
+  // Drafts on disk (draftKey → its record), so a write can reuse the id,
+  // skip an unchanged body, and a delete knows what to remove.
+  const savedDrafts = new Map<string, { id: string; body: string; personId: string }>()
+  // The latest text asked for, ahead of the queued write: an editor that
+  // reopens in the same breath it closed reads it from here.
+  const liveDrafts = new Map<string, string>()
+  // Editors holding a write back for a pause in typing (see flushDrafts).
+  const draftSavers = new Set<() => Promise<void>>()
+  /** Forget every kept draft matching `match`; returns their record ids. */
+  function takeDrafts(match: (key: string, personId: string) => boolean): string[] {
+    const ids: string[] = []
+    for (const [key, d] of savedDrafts) {
+      if (!match(key, d.personId)) continue
+      ids.push(d.id)
+      savedDrafts.delete(key)
+    }
+    for (const key of [...liveDrafts.keys()]) {
+      const personId = key.split(' ')[0]
+      if (match(key, personId)) liveDrafts.delete(key)
+    }
+    return ids
+  }
 
   function baseLock(): void {
     searchIndex = createIndex()
+    savedDrafts.clear()
+    liveDrafts.clear()
     // Decrypted image object-URLs are plaintext too (§6.1), and so is
     // anything a page derived from the records and kept at module level.
     clearPhotoCache()
@@ -499,6 +583,8 @@ export const useVaultStore = create<VaultState>((set, get) => {
         touched.add(r.personId)
       }
     }
+    // Anything someone was writing about them goes with them.
+    deletes.push(...takeDrafts((_, personId) => gone.has(personId)))
     // Capture before apply: a lock mid-write must not strand blobs.
     const vaultForBlobs = get().vault
     // Reindexing per person is O(records) each; past a handful, one
@@ -726,12 +812,15 @@ export const useVaultStore = create<VaultState>((set, get) => {
         return { drafts }
       }),
     flushDrafts: async () => {
+      // Kept drafts waiting on a pause in typing are written now: after
+      // the lock there is no key to write them with.
+      await Promise.all([...draftSavers].map((save) => save()))
       const drafts = [...draftRegistry.entries()]
       for (const [personId, read] of drafts) {
         const body = read().trim()
-        if (body && get().records.has(personId)) {
-          await get().saveNote(personId, body)
-        }
+        // One write: the note and the removal of its draft, so a lock
+        // that stops waiting can't leave the text as both.
+        if (body && get().records.has(personId)) await get().saveNote(personId, body, { clearDraft: true })
         draftRegistry.delete(personId)
       }
       // Drafts stashed by pages that were left: a lock is the moment
@@ -739,7 +828,54 @@ export const useVaultStore = create<VaultState>((set, get) => {
       const stashed = [...get().drafts.entries()]
       if (stashed.length) set({ drafts: new Map() })
       for (const [personId, body] of stashed) {
-        if (body.trim() && get().records.has(personId)) await get().saveNote(personId, body.trim())
+        if (body.trim() && get().records.has(personId)) {
+          await get().saveNote(personId, body.trim(), { clearDraft: true })
+        }
+      }
+    },
+
+    persistDraft: (personId, text, slot) => {
+      if (get().status !== 'unlocked') return Promise.resolve()
+      const key = draftKey(personId, slot)
+      const body = text.trim() ? text : ''
+      if (body) liveDrafts.set(key, body)
+      else liveDrafts.delete(key)
+      return enqueue(async () => {
+        const vault = get().vault
+        if (!vault) return
+        const saved = savedDrafts.get(key)
+        if ((saved?.body ?? '') === body) return
+        if (!body) {
+          if (!saved) return
+          savedDrafts.delete(key)
+          await deleteRecords(vault, [saved.id])
+          return
+        }
+        if (!draftTargetExists(get().records, personId, slot)) {
+          liveDrafts.delete(key)
+          return
+        }
+        const draft: NoteDraft = {
+          kind: 'draft',
+          id: saved?.id ?? crypto.randomUUID(),
+          personId,
+          ...(slot ? { slot } : {}),
+          body,
+          updatedAt: Date.now(),
+        }
+        savedDrafts.set(key, { id: draft.id, body, personId })
+        // Straight to disk: drafts never enter `records`, so a pause in
+        // typing doesn't hand every page a new records map to re-render.
+        await saveRecords(vault, [draft])
+      })
+    },
+
+    readDraft: (personId, slot) => liveDrafts.get(draftKey(personId, slot)),
+
+    registerDraftSaver: (save) => {
+      draftSavers.add(save)
+      return () => {
+        draftSavers.delete(save)
       }
     },
 
@@ -883,7 +1019,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       if (puts.length > 0 || deletes.length > 0) await apply(puts, deletes, [...touched])
     }),
 
-    updatePerson: (person) =>
+    updatePerson: (person, opts) =>
       enqueue(async () => {
       const puts: DomainRecord[] = [{ ...person, updatedAt: Date.now() }]
       const reindex = new Set<string>([person.id])
@@ -907,7 +1043,9 @@ export const useVaultStore = create<VaultState>((set, get) => {
           }
         }
       }
-      await apply(puts, [], [...reindex])
+      const details = draftKey(person.id, 'details')
+      const drafts = opts?.clearDraft ? takeDrafts((key) => key === details) : []
+      await apply(puts, drafts, [...reindex])
     }),
 
     removePerson: (personId) =>
@@ -915,7 +1053,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
 
     removePeople: (personIds) => enqueue(() => removePeopleImpl(personIds, true)),
 
-    saveNote: (personId, body) =>
+    saveNote: (personId, body, opts) =>
       enqueue(async () => {
       // Never resurrect a deleted person: a draft flushed while the
       // person is being removed would persist an orphaned note (unseen
@@ -932,7 +1070,8 @@ export const useVaultStore = create<VaultState>((set, get) => {
       const withNote = new Map(get().records)
       withNote.set(note.id, note)
       const { puts, deletes } = diffMentionEdges(withNote, personId)
-      await apply([note, ...puts], deletes, [personId])
+      const drafts = opts?.clearDraft ? takeDrafts((key) => key === personId) : []
+      await apply([note, ...puts], [...deletes, ...drafts], [personId])
       return note
     }),
 
@@ -1001,7 +1140,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       return { linked, created: kept }
     }),
 
-    updateNote: (noteId, body) =>
+    updateNote: (noteId, body, opts) =>
       enqueue(async () => {
       const note = get().records.get(noteId)
       if (!note || note.kind !== 'note') return
@@ -1010,7 +1149,9 @@ export const useVaultStore = create<VaultState>((set, get) => {
       withEdit.set(noteId, edited)
       // Mention edges follow the text exactly as they do on save/delete.
       const { puts, deletes } = diffMentionEdges(withEdit, note.personId)
-      await apply([edited, ...puts], deletes, [note.personId])
+      const slot = draftKey(note.personId, `note:${noteId}`)
+      const drafts = opts?.clearDraft ? takeDrafts((key) => key === slot) : []
+      await apply([edited, ...puts], [...deletes, ...drafts], [note.personId])
     }),
 
     removeNote: (noteId) =>
@@ -1020,7 +1161,10 @@ export const useVaultStore = create<VaultState>((set, get) => {
       const without = new Map(get().records)
       without.delete(noteId)
       const { puts, deletes } = diffMentionEdges(without, note.personId)
-      await apply(puts, [noteId, ...deletes], [note.personId])
+      // An edit of it that was never saved has nothing left to edit.
+      const slot = draftKey(note.personId, `note:${noteId}`)
+      const drafts = takeDrafts((key) => key === slot)
+      await apply(puts, [noteId, ...deletes, ...drafts], [note.personId])
     }),
 
     addFollowUp: (personId, text, dueDate) =>
@@ -1510,7 +1654,9 @@ export const useVaultStore = create<VaultState>((set, get) => {
         // Settings are device-local preferences; a bundle must never be
         // able to rewrite them (a crafted backup could otherwise disable
         // the auto-lock — the primary T1 mitigation).
-        if (record.kind === 'settings') continue
+        // Device-local, both: a backup's settings and any draft it
+        // claims to carry stay out.
+        if (record.kind === 'settings' || record.kind === 'draft') continue
         if (record.kind === 'relationshipType' && record.builtIn) {
           const existingId = builtInByLabel.get(record.label)
           if (existingId && existingId !== record.id) {

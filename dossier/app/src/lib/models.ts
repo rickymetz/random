@@ -192,6 +192,29 @@ export interface Settings {
   formSetupDone?: boolean
 }
 
+/**
+ * A note being written, kept on disk as it's typed so a reload (an app
+ * update, iOS closing the app, a crash) can't take it: it comes back into
+ * the note box on the next unlock. Encrypted like every record, but never
+ * part of the in-memory records the app renders from — so it is never in
+ * a backup, and a pause in typing doesn't re-render the whole app.
+ */
+export interface NoteDraft {
+  kind: 'draft'
+  id: string
+  personId: string
+  /**
+   * Where it was being written: absent for the note box, `note:<id>` for
+   * a note being edited, `details` for the Edit form (its body is then
+   * the changed fields, as JSON).
+   */
+  slot?: DraftSlot
+  body: string
+  updatedAt: number
+}
+
+export type DraftSlot = 'details' | `note:${string}`
+
 /** How many recently opened dossiers the home screen remembers. */
 export const RECENT_LIMIT = 8
 
@@ -226,6 +249,7 @@ export type DomainRecord =
   | RelationshipType
   | Photo
   | Settings
+  | NoteDraft
 
 // Hues chosen to stay distinguishable from one another under the common
 // color-vision deficiencies; chips pair each color with its label as the

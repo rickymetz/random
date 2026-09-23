@@ -5,8 +5,9 @@
  * parsed on save, exactly as the built-in birthday is — a half-typed
  * date must never be read as an empty one and thrown away.
  */
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import ChipInput from './ChipInput'
+import { useGrow } from './useGrow'
 import { formatPartialDate } from '../lib/dates'
 import type { CustomValue, FieldDef, Person } from '../lib/models'
 import { blankValue } from '../lib/fieldDefs'
@@ -29,6 +30,35 @@ export function draftFrom(defs: FieldDef[], person: Person): Record<string, Draf
   return out
 }
 
+/**
+ * A long answer read through a two-row window was the whole problem:
+ * the box takes the height of what is in it and stops at a dozen lines.
+ */
+function GrowingField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useGrow(ref, value)
+  return (
+    <label className="span-2">
+      {label}
+      <textarea
+        ref={ref}
+        className="grows"
+        rows={2}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  )
+}
+
 /** What other people answered here, so spellings converge (§4.1). */
 function vocabFor(people: Person[], fieldId: string): string[] {
   const seen = new Map<string, string>()
@@ -45,6 +75,8 @@ export default function CustomFieldInputs({
   people,
   draft,
   onChange,
+  onChipDraft,
+  chipInitialDrafts,
   errors,
   clearError,
 }: {
@@ -52,6 +84,10 @@ export default function CustomFieldInputs({
   people: Person[]
   draft: Record<string, DraftValue>
   onChange: (fieldId: string, value: DraftValue) => void
+  /** The half-typed value in a list row, for the form to keep on save. */
+  onChipDraft?: (fieldId: string, draft: string) => void
+  /** Half-typed text each list row starts with (a kept draft restored). */
+  chipInitialDrafts?: Record<string, string>
   errors: Record<string, string>
   clearError: (fieldId: string) => void
 }) {
@@ -77,6 +113,8 @@ export default function CustomFieldInputs({
                   labelId={`chip-label-${def.id}`}
                   values={Array.isArray(value) ? value : []}
                   onChange={(values) => onChange(def.id, values)}
+                  onDraftChange={(d) => onChipDraft?.(def.id, d)}
+                  initialDraft={chipInitialDrafts?.[def.id]}
                   suggestions={vocab[def.id] ?? []}
                   placeholder="one per entry"
                   suggestOnFocus
@@ -85,14 +123,12 @@ export default function CustomFieldInputs({
             )
           case 'longText':
             return (
-              <label key={def.id} className="span-2">
-                {def.label}
-                <textarea
-                  rows={2}
-                  value={typeof value === 'string' ? value : ''}
-                  onChange={(e) => onChange(def.id, e.target.value)}
-                />
-              </label>
+              <GrowingField
+                key={def.id}
+                label={def.label}
+                value={typeof value === 'string' ? value : ''}
+                onChange={(next) => onChange(def.id, next)}
+              />
             )
           case 'boolean':
             return (
