@@ -2,39 +2,60 @@
 // Everything draws in a fixed 1920×1080 space; tv.js scales it to the screen.
 
 export const W = 1920, H = 1080;
-export const FONT = 'ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif';
+export const FONT = 'ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif'; // body copy
+export const DISPLAY = '"Anton", Impact, "Arial Narrow", sans-serif';   // headings, labels, command words
+export const SCRIPT = '"Mr Dafoe", "Brush Script MT", cursive';        // the neon title
+// fonts/: Anton and Mr Dafoe, SIL OFL 1.1 (fonts/OFL.txt). Loaded by tv.html / controller.css.
 
+/** Body text; weight 900 means a display label (Anton, tracked out). */
 export function text(g, str, x, y, size, color = "#fff", align = "center", weight = 800) {
-  g.font = `${weight} ${size}px ${FONT}`;
+  const display = weight >= 900;
+  g.font = display ? `${size}px ${DISPLAY}` : `${weight} ${size}px ${FONT}`;
+  g.letterSpacing = display ? `${Math.round(size * 0.06)}px` : "0px";
   g.textAlign = align;
   g.textBaseline = "middle";
   g.fillStyle = color;
-  g.fillText(str, x, y);
+  g.fillText(display ? String(str).toUpperCase() : str, x, y);
+  g.letterSpacing = "0px";
 }
 
 // Grit kit (Hotline Miami 2 / Nidhogg 2 by way of WarioWare): neon on
-// near-black, italic slab type with an RGB-split shadow, thick ink outlines,
-// goo splats. tv.js adds the CRT pass (pixels, scanlines, grain, aberration).
+// near-black, one-colour condensed type with a hard pink shadow, a glowing
+// script title, thick ink outlines, goo splats. tv.js adds the CRT pass.
 export const INK = "#0b0710";
 export const POP = ["#ff2a6d", "#f9f002", "#05d9e8", "#39ff14", "#b026ff", "#ff6b00"];
 export const PAPER = "#efe6d2";
 
-export function outlined(g, str, x, y, size, color = "#fff", align = "center", rot = 0) {
+/** Display type: Anton caps, tracked out, with a hard offset shadow (pink unless told otherwise). */
+export function outlined(g, str, x, y, size, color = "#fff", align = "center", rot = 0, shadow = "#ff2a6d") {
   g.save();
   g.translate(x, y);
   if (rot) g.rotate(rot);
-  g.transform(1, 0, -0.16, 1, 0, 0); // italic slab
-  g.font = `italic 900 ${size}px ${FONT}`;
+  g.font = `${size}px ${DISPLAY}`;
+  g.letterSpacing = `${Math.round(size * 0.04)}px`;
   g.textAlign = align;
   g.textBaseline = "middle";
-  g.lineJoin = "miter";
-  g.miterLimit = 2;
-  g.lineWidth = Math.max(4, size / 5);
-  const d = Math.max(3, size / 16);
-  g.fillStyle = "#05d9e8"; g.fillText(str, -d, d * 0.6);    // RGB split
-  g.fillStyle = "#ff2a6d"; g.fillText(str, d * 1.4, d * 1.4);
-  g.strokeStyle = INK; g.strokeText(str, 0, 0);
+  str = String(str).toUpperCase();
+  const d = Math.max(3, size / 20);
+  g.fillStyle = shadow; g.fillText(str, d, d);
+  g.lineJoin = "round"; g.lineWidth = Math.max(2, size / 22); g.strokeStyle = INK; g.strokeText(str, 0, 0);
   g.fillStyle = color; g.fillText(str, 0, 0);
+  g.restore();
+}
+
+/** The neon-sign title in script: glow, a dark drop, and the odd flicker. */
+export function neon(g, str, x, y, size, color = "#ff2a6d", rot = -0.1, t = 0) {
+  const flick = Math.sin(t * 37) > 0.97 || Math.sin(t * 13.3) > 0.985 ? 0.35 : 1;
+  g.save();
+  g.translate(x, y); g.rotate(rot);
+  g.font = `${size}px ${SCRIPT}`;
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillStyle = INK; g.fillText(str, size * 0.05, size * 0.06);
+  g.globalAlpha = flick;
+  g.shadowColor = color; g.shadowBlur = size * 0.35;
+  g.fillStyle = color; g.fillText(str, 0, 0);
+  g.shadowBlur = size * 0.12; g.fillText(str, 0, 0);
+  g.shadowBlur = 0; g.fillText(str, 0, 0);
   g.restore();
 }
 
@@ -78,8 +99,10 @@ export function drawSplat(g, s, dx = 0) {
 
 /** Largest font size ≤ size at which str fits in maxW. */
 export function fit(g, str, size, maxW) {
-  g.font = `italic 900 ${size}px ${FONT}`;
-  const w = g.measureText(str).width * 1.08 + size / 5;
+  g.font = `${size}px ${DISPLAY}`;
+  g.letterSpacing = `${Math.round(size * 0.04)}px`;
+  const w = g.measureText(String(str).toUpperCase()).width * 1.04 + size / 10;
+  g.letterSpacing = "0px";
   return w > maxW ? Math.floor((size * maxW) / w) : size;
 }
 
@@ -282,13 +305,15 @@ export function shade(hex, amt) {
   return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
 
-/** Name label: a tilted sticker. */
+/** Name label: a tilted tape strip. */
 export function tag(g, str, x, y, color = "#fff", size = 26) {
-  g.font = `900 ${size}px ${FONT}`;
-  const w = g.measureText(str).width + size;
+  g.font = `${size}px ${DISPLAY}`;
+  g.letterSpacing = `${Math.round(size * 0.06)}px`;
+  const w = g.measureText(String(str).toUpperCase()).width + size;
+  g.letterSpacing = "0px";
   g.save(); g.translate(x, y); g.rotate(-0.04);
-  rrect(g, -w / 2 + 4, -size * 0.7 + 4, w, size * 1.4, 8, INK);
-  rrect(g, -w / 2, -size * 0.7, w, size * 1.4, 8, color, INK, 4);
-  text(g, str, 0, 1, size, INK, "center", 900);
+  rrect(g, -w / 2 + 4, -size * 0.7 + 4, w, size * 1.4, 2, INK);
+  rrect(g, -w / 2, -size * 0.7, w, size * 1.4, 2, color, INK, 3);
+  text(g, str, 0, 2, size, INK, "center", 900);
   g.restore();
 }

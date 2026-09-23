@@ -35,6 +35,7 @@ too: Enter starts, B / N add or remove a bot, R changes the round count, and
 | `games/*.js` | Minigames: `flap` (free-for-all), `sling` (teams), `chomp` (1 vs rest). Each has a bot. |
 | `net.js` | Transport: WebSocket relay, or BroadcastChannel when there's no relay. |
 | `server.mjs` | Static server plus room relay (a hand-rolled WebSocket, no deps). |
+| `fonts/` | Anton (display) and Mr Dafoe (neon title), Latin subsets, SIL OFL 1.1 (`fonts/OFL.txt`). |
 | `gfx.js`, `qr.js`, `sfx.js` | Canvas helpers and the blob renderer, a QR encoder, and synthesised SFX. |
 
 ## Adding a minigame

@@ -53,8 +53,14 @@ filter: neon, dirty and a bit violent (the violence is jelly).
 - **Palette.** Neon on near-black: `#ff2a6d #05d9e8 #f9f002 #39ff14 #b026ff
   #ff6b00` over `#0d0221`. Scene backgrounds are slow-turning dark sunbursts
   whose hue drifts over time, over a synthwave perspective grid.
-- **Type.** Italic slabs with an RGB-split shadow (cyan one way, pink the
-  other) and an ink outline. Panels are dirty paper with a hard pink shadow.
+- **Type** (option A of six mocked up): the title is a **neon script sign**
+  (Mr Dafoe) in hot pink with a glow and an occasional flicker. Everything
+  shouted (command words, headings, labels, name tags) is **Anton**:
+  condensed caps, tracked out, in one colour (white, or ink on paper) with a
+  hard pink offset shadow. Secondary labels are cyan Anton. Body copy (blurbs,
+  hints) stays in the system sans for legibility. No multi-coloured
+  lettering. Both fonts are Latin subsets bundled in `fonts/` (SIL OFL 1.1,
+  `fonts/OFL.txt`). Panels are dirty paper with a hard pink shadow.
 - **CRT pass** (`post()` in `tv.js`): the scene is drawn at 1920×1080, then
   dropped to half resolution and scaled back up without smoothing (chunky
   pixels). Red and cyan channel copies are screened on offset (chromatic
@@ -68,9 +74,9 @@ filter: neon, dirty and a bit violent (the violence is jelly).
 - **Copy.** Mean: "No bones. No mercy.", "Your friends are the enemy
   tonight.", "SPLATTERED", "DEAD KING".
 
-Helpers live in `gfx.js` (`outlined`, `shout`, `sunburst`, `grid`, `panel`,
+Helpers live in `gfx.js` (`neon`, `outlined`, `shout`, `sunburst`, `grid`, `panel`,
 `bomb`, `makeSplat`/`drawSplat`, `fit`). The phone CSS mirrors them with
-scanlines, split-shadow type and neon hard shadows.
+scanlines, the same two fonts and neon hard shadows.
 
 ## The cast: jelly blobs
 
@@ -169,6 +175,9 @@ them.
   …) and a **rematch** button.
 
 ## Follow-ups
+
+0. **Microgame Gauntlet** (wanted, parked for later): 3–5 s microgames
+   back to back at rising speed, with lives; last blob standing wins.
 
 1. Board mode: a loop board, dice on phones, coin, red, duel and star
    spaces, a shop, items kept secret on phones, bonus stars.

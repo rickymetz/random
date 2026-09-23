@@ -2,7 +2,7 @@
 // render the layouts we send them (see index.html / controller.js).
 
 import { hostRoom } from "./net.js";
-import { W, H, INK, POP, fit, grid, text, outlined, rrect, shout, sunburst, halftone, panel, bomb, circle, blob, tag, star, shade } from "./gfx.js";
+import { W, H, INK, POP, fit, grid, neon, text, outlined, rrect, shout, sunburst, halftone, panel, bomb, circle, blob, tag, star, shade } from "./gfx.js";
 import { qr } from "./qr.js";
 import { sfx, unlock } from "./sfx.js";
 import flap from "./games/flap.js";
@@ -10,6 +10,8 @@ import sling from "./games/sling.js";
 import chomp from "./games/chomp.js";
 
 const GAMES = [flap, sling, chomp];
+// canvas text only uses a web font once it's loaded; ask for both up front
+for (const f of ['40px "Anton"', '40px "Mr Dafoe"']) document.fonts?.load(f).catch(() => {});
 const COLORS = ["#ff2e63", "#00b7ff", "#ffd400", "#35e06b", "#b14dff", "#ff8a00", "#ff6ec7", "#00e0c6"];
 const BOT_NAMES = ["Wobbles", "Gloop", "Jiggly", "Squish", "Blorp", "Mochi", "Puddin", "Boing"];
 const MAX = 8;
@@ -272,15 +274,7 @@ function bg(hue, cx = W / 2, cy = H / 2, floor = true) {
 }
 
 function title(y, size) {
-  g.font = `900 ${size}px ui-rounded, system-ui, sans-serif`;
-  const total = g.measureText("JELLYBRAWL").width;
-  let x = W / 2 - total / 2;
-  "JELLYBRAWL".split("").forEach((ch, i) => {
-    const w = g.measureText(ch).width;
-    const dy = Math.sin(S.t * 5 + i * 0.9) * 12;
-    outlined(g, ch, x + w / 2, y + dy, size, POP[i % POP.length], "center", Math.sin(S.t * 3 + i) * 0.12);
-    x += w;
-  });
+  neon(g, "Jellybrawl", W / 2, y, size, "#ff2a6d", -0.08, S.t);
 }
 
 function drawSeat(p, x, y, r = 70) {
@@ -295,16 +289,16 @@ function drawSeat(p, x, y, r = 70) {
 
 function drawGate() {
   bg(280);
-  title(380, 200);
-  panel(g, W / 2 - 560, 520, 1120, 90, "#fff", 20);
-  text(g, "Party games on the TV. Phones are the controllers.", W / 2, 566, 42, INK, "center", 900);
-  shout(g, "PRESS ANY KEY!", W / 2, 780, 90, "#ff2e63", (S.t % 1.2));
+  title(300, 250);
+  panel(g, W / 2 - 560, 540, 1120, 90, "#fff", 20);
+  text(g, "Party games on the TV. Phones are the controllers.", W / 2, 586, 42, INK, "center", 900);
+  shout(g, "PRESS ANY KEY", W / 2, 780, 90, "#fff", (S.t % 1.2));
 }
 
 function drawLobby() {
   bg(270, 1300, 520);
-  title(105, 120);
-  outlined(g, QUIPS[Math.floor(S.t / 4) % QUIPS.length], W / 2 + 180, 190, 34, "#fff", "center", -0.03);
+  title(118, 138);
+  text(g, QUIPS[Math.floor(S.t / 4) % QUIPS.length], W / 2 + 260, 196, 30, "#05d9e8", "center", 900);
   // join panel
   g.save(); g.translate(370, 620); g.rotate(-0.025); g.translate(-370, -620);
   panel(g, 70, 240, 600, 780, "#fff", 30);
@@ -318,8 +312,8 @@ function drawLobby() {
     outlined(g, "NO RELAY!", 370, 340, 70, "#ff2e63", "center", -0.05);
     ["Controllers = other tabs of this", "browser (button below). Real", "phones: node server.mjs"].forEach((l, i) => text(g, l, 370, 440 + i * 50, 32, INK, "center", 900));
   }
-  text(g, "ROOM CODE", 370, 850, 32, INK, "center", 900);
-  outlined(g, S.net?.code || "····", 370, 935, 130, "#00d1ff", "center", 0.03);
+  text(g, "ROOM CODE", 370, 835, 30, INK, "center", 900);
+  outlined(g, S.net?.code || "····", 370, 935, 120, "#05d9e8", "center", 0.03);
   g.restore();
   for (let i = 0; i < MAX; i++) {
     const x = 860 + (i % 4) * 270, y = 380 + Math.floor(i / 4) * 330;
@@ -348,7 +342,7 @@ function scoreStrip(y = 1000) {
 function drawChoose() {
   bg(330);
   const c = byPid(S.chooser);
-  shout(g, c ? `${c.name.toUpperCase()} PICKS!` : "SPIN IT!", W / 2, 110, 100, "#ffd400", S.t);
+  shout(g, c ? `${c.name.toUpperCase()} PICKS!` : "SPIN IT!", W / 2, 110, 100, "#fff", S.t);
   outlined(g, c ? `Dead last gets to choose. Pity rules. · Round ${S.round + 1}/${S.rounds}` : `Round ${S.round + 1} of ${S.rounds}`, W / 2, 205, 36, "#fff", "center", -0.02);
   const n = S.options.length, cw = 500, gap = 60;
   const spin = !S.picked && !S.chooser ? Math.floor(S.t * 10) % n : -1;
@@ -359,7 +353,7 @@ function drawChoose() {
     g.save(); g.translate(x + cw / 2, y + 270); g.rotate((i - 1) * 0.05 + (chosen ? Math.sin(S.t * 30) * 0.03 : 0)); g.scale(s, s); g.translate(-(x + cw / 2), -(y + 270));
     g.globalAlpha = dim ? 0.4 : 1;
     panel(g, x, y, cw, 540, lit ? "#ffd400" : "#fff", 30, 8);
-    outlined(g, d.command, x + cw / 2, y + 110, fit(g, d.command, 110, cw - 60), POP[(i * 2) % POP.length], "center", -0.05);
+    outlined(g, d.command, x + cw / 2, y + 110, fit(g, d.command, 120, cw - 60), INK, "center", -0.03);
     text(g, d.title.toUpperCase(), x + cw / 2, y + 215, 40, INK, "center", 900);
     tag(g, d.kind, x + cw / 2, y + 272, "#00d1ff", 28);
     wrap(d.blurb, x + cw / 2, y + 340, cw - 70, 27, INK);
@@ -381,10 +375,9 @@ function wrap(str, x, y, maxW, size, color = "#fff") {
 }
 
 function drawIntro() {
-  const c2 = POP[(S.round * 2 + 1) % POP.length];
   bg([330, 190, 280, 20, 150][S.round % 5], W / 2, 330, false);
   outlined(g, `ROUND ${S.round + 1}`, 170, 70, 44, "#fff", "center", -0.08);
-  shout(g, S.def.command, W / 2, 310, fit(g, S.def.command, 300, W - 200), c2, S.t);
+  shout(g, S.def.command, W / 2, 310, fit(g, S.def.command, 320, W - 200), "#fff", S.t);
   if (S.t > 0.35) {
     const lines = S.game.describe();
     panel(g, W / 2 - 600, 500, 1200, 200 + lines.length * 44, "#fff", 30);
@@ -398,7 +391,7 @@ function drawIntro() {
 
 function drawResults() {
   bg(195);
-  shout(g, S.result.headline || "RESULTS!", W / 2, 105, 76, "#ffd400", S.t);
+  shout(g, S.result.headline || "RESULTS!", W / 2, 105, fit(g, S.result.headline || "RESULTS!", 80, W - 200), "#fff", S.t);
   const rows = S.deltas, rh = Math.min(104, 760 / rows.length);
   const winners = S.result.tie ? [] : S.result.winners || S.result.ranking[0];
   rows.forEach(({ p, d }, i) => {
@@ -412,7 +405,7 @@ function drawResults() {
     g.restore();
     if (k >= 1) {
       const sk = S.t * 3 - i * 0.3 - 1;
-      if (sk > 0) shout(g, `+${d}`, x + 800, y + h / 2, 64, won ? "#ff2e63" : "#fff", sk);
+      if (sk > 0) shout(g, `+${d}`, x + 800, y + h / 2, 64, won ? "#f9f002" : "#fff", sk);
     }
     if (won && k >= 1) outlined(g, "WIN!", x - 60, y + h / 2, 44, "#ff2e63", "center", -0.3);
   });
@@ -421,7 +414,7 @@ function drawResults() {
 
 function drawFinal() {
   bg(15, 820, 700);
-  shout(g, "AND THE WINNER IS…", W / 2, 90, 80, "#ffd400", Math.min(S.t, 1));
+  shout(g, "AND THE WINNER IS…", W / 2, 90, 80, "#fff", Math.min(S.t, 1));
   const list = standings();
   for (const [rank, x, h] of [[1, 520, 300], [0, 820, 400], [2, 1120, 220]]) {
     const p = list[rank];
