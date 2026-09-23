@@ -151,9 +151,16 @@
     var face = dir(neckA + 90);                 // front of the face
     var turn = p.turn == null ? 1 : p.turn;
     var root = armRoot(shoulder, sp[1], p);
+    // Two eyes: together at the front of the face in profile, drawing apart
+    // as the face turns toward you, level across it when it faces you.
+    var spread = 2.3 * Math.sqrt(Math.max(0, 1 - turn * turn));
+    var eyeAt = function (k) {
+      var along = Math.max(-5.2, Math.min(5.2, 3.2 * turn + k * spread));
+      return [head[0] + face[0] * along + dir(neckA)[0] * 1.2, head[1] + face[1] * along + dir(neckA)[1] * 1.2];
+    };
     var out = { hip: hip, waist: waist, shoulder: shoulder, root: root, neckTop: neckTop, head: head, turn: turn, d3: p.d3 || null,
-      eye: [head[0] + face[0] * 3.2 * turn + dir(neckA)[0] * 1.2, head[1] + face[1] * 3.2 * turn + dir(neckA)[1] * 1.2],
-      arms: [], legs: [] };
+      eyes: [eyeAt(1), eyeAt(-1)], arms: [], legs: [] };
+    out.eye = out.eyes[0];
     for (var i = 0; i < 2; i++) {
       var al = scaleOf(p.armLen, i), ll = scaleOf(p.legLen, i);
       var ua = p.arms[i][0], fa = p.arms[i][1];
@@ -452,13 +459,13 @@
     var torso = svgEl('path', { class: 'fig-limb', 'stroke-width': WIDTH.torso });
     var neck = svgEl('path', { class: 'fig-limb', 'stroke-width': WIDTH.neck });
     var head = svgEl('circle', { class: 'fig-head', r: LEN.headR });
-    var eye = svgEl('circle', { class: 'fig-eye', r: 1.1 });
+    var eyes = [svgEl('circle', { class: 'fig-eye', r: 1.1 }), svgEl('circle', { class: 'fig-eye', r: 1.1 })];
     // Far limbs behind the body, near limbs in front of it.
     g.appendChild(far.g);
     g.appendChild(torso);
     g.appendChild(neck);
     g.appendChild(head);
-    g.appendChild(eye);
+    eyes.forEach(function (e) { g.appendChild(e); });
     g.appendChild(near.g);
 
     function paintLimbs(set, sk, i) {
@@ -479,8 +486,10 @@
       neck.setAttribute('d', seg(sk.shoulder, sk.neckTop));
       head.setAttribute('cx', sk.head[0].toFixed(2));
       head.setAttribute('cy', (-sk.head[1]).toFixed(2));
-      eye.setAttribute('cx', sk.eye[0].toFixed(2));
-      eye.setAttribute('cy', (-sk.eye[1]).toFixed(2));
+      sk.eyes.forEach(function (p, i) {
+        eyes[i].setAttribute('cx', p[0].toFixed(2));
+        eyes[i].setAttribute('cy', (-p[1]).toFixed(2));
+      });
     }
 
     /* ~20fps. These are eases of a few seconds, so the extra 40 frames a
