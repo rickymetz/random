@@ -635,7 +635,15 @@
     camel: "Hands on the low back first, hips pushed forward. Reach for the heels only when that feels easy.",
     plow: "Weight on the shoulders, never the neck, and don’t turn your head. Legs up the wall instead if your neck complains.",
     "pelvic-floor": "Lift and hold for three seconds, then let it go completely. Keep breathing; don’t clench the glutes.",
-    recovery: "Nothing scheduled. Walk, breathe, let it repair."
+    recovery: "Nothing scheduled. Walk, breathe, let it repair.",
+    "cervical-retraction": "Towel rolled under your neck. Nod the chin in and press the back of the neck gently into the towel — hold 5 seconds, head stays down.",
+    "horizontal-abduction": "Chin tucked, band in both hands over your chest. Pull the arms apart and down toward the floor, squeezing the shoulder blades, then back slowly.",
+    "supine-external-rotation": "Elbows tucked at your sides, bent to 90°. Turn the forearms out against the band, elbows staying down — slow on the way back.",
+    "pnf-d2-flexion": "Start with the hand by the opposite hip. Sweep it up and out overhead like drawing a sword, thumb leading, then slowly back.",
+    "thoracic-extension": "Hands behind your head, elbows in. Arch the upper back over the chair back and look up — breathe out, then come back upright.",
+    scaption: "Thumbs up, arms a little forward of your sides. Raise to shoulder height with the shoulders down, away from your ears; lower slowly.",
+    "row-head-turn": "Staggered stance. Pull the band back to your ribs, elbow close — turn your head the other way as you pull.",
+    touchdowns: "Start in a goalpost, elbows at shoulder height. Press straight up overhead with the ribs down, then lower back to the goalpost."
   };
 
   /* ---------- shared positions ---------- */
@@ -716,6 +724,9 @@
       legs: [flat(22, 0, '+y'), flat(21, 0, '+y')]
     }, extra);
   }
+
+  // Lying on your back, arms long on the floor by your sides.
+  var SIDE_ARMS = [[91, 91], [90, 90]];
 
   /* Face down, head to the right, legs long behind. */
   function prone(extra) {
@@ -1668,6 +1679,101 @@
         onBack({ hold: 0.2 }),
         onBack({ spine: [270, 268], head: 2, hold: 0.35 })
       ]
+    },
+
+    /* ---------- Neck & shoulders ---------- */
+
+
+    'cervical-retraction': {
+      // On your back, a rolled towel under the neck; nod the chin in and
+      // press the back of the neck into the towel, head staying down.
+      cycle: 5,
+      props: [{ box: [-37, -31.5, 4] }],
+      keys: [
+        onBack({ head: 0, arms: SIDE_ARMS, hands: [90, 90], hold: 0.1 }),
+        onBack({ head: 16, arms: SIDE_ARMS, hands: [90, 90], hold: 0.4 })
+      ]
+    },
+    'horizontal-abduction': {
+      // Chin tucked, arms straight up over the chest; pull them apart and
+      // down to the floor either side (toward and away from you, so they
+      // look short), then back up.
+      cycle: 3.4,
+      keys: [
+        onBack({ head: 12, arms: [[0, 0], [0, 0]], hands: [0, 0] }),
+        onBack({ head: 12, arms: [[0, 0], [0, 0]], armLen: [[0.1, 0.1], [0.1, 0.1]], hands: [0, 0], hold: 0.12 })
+      ]
+    },
+    'supine-external-rotation': {
+      // Elbows tucked at the sides and bent to 90°, forearms pointing up;
+      // turn the forearms out to the sides (toward and away from you),
+      // elbows staying down.
+      cycle: 3.2,
+      keys: [
+        onBack({ head: 6, arms: [[90, 0], [90, 0]], hands: [0, 0] }),
+        onBack({ head: 6, arms: [[90, 0], [90, 0]], armLen: [[1, 0.12], [1, 0.12]], hands: [0, 0], hold: 0.12 })
+      ]
+    },
+    'pnf-d2-flexion': {
+      // One arm: from the opposite hip, sweep it up and out overhead on a
+      // diagonal — drawing a sword — then back.
+      cycle: 3.6,
+      keys: [
+        onBack({ head: 6, arms: [[82, 90], SIDE_ARMS[1]], hands: [95, 91], d3: { abd: { arms: [-26, 0] } } }),
+        onBack({ head: 6, arms: [[300, 296], SIDE_ARMS[1]], hands: [296, 91], d3: { abd: { arms: [38, 0] } }, hold: 0.12 })
+      ]
+    },
+    'thoracic-extension': {
+      // Sitting on a chair, hands behind the head, elbows in; arch the upper
+      // back over the chair back and look up, then come back upright.
+      cycle: 4,
+      props: [{ box: [-16, 6, 25] }, { box: [-19, -15, 50] }],
+      keys: (function () {
+        var hip = [-4, 30];
+        var at = function (spine, head, extra) {
+          var sp = spine, sh = step(step(hip, sp[0], LEN.spineLow), sp[1], LEN.spineHigh);
+          var hd = step(step(sh, sp[1] + head, LEN.neck), sp[1] + head, LEN.headR);
+          var back = step(hd, sp[1] + head - 90, 7);
+          return merge({ hip: hip, spine: sp, head: head, arms: [ik(back[0], back[1], '+x'), ik(back[0] - 1, back[1], '+x')], hands: [sp[1] + head + 180, sp[1] + head + 180],
+            legs: [flat(20, 0, '+y'), flat(19, 0, '+y')] }, extra);
+        };
+        return [at([2, 2], -4), at([356, 326], -16, { hold: 0.2 })];
+      })()
+    },
+    'scaption': {
+      // Standing, thumbs up; raise the arms to shoulder height a little
+      // forward of the sides (in the plane of the shoulder blades), then
+      // lower slowly.
+      cycle: 3.2,
+      keys: [
+        standing({ arms: [[180, 180], [182, 182]], hands: [180, 182] }),
+        standing({ arms: [[90, 90], [92, 92]], armLen: [[0.87, 0.87], [0.85, 0.85]], hands: [90, 92], hold: 0.1 })
+      ]
+    },
+    'row-head-turn': {
+      // Staggered stance, band anchored in front: row the far arm back to the
+      // ribs, elbow close, turning the head the other way — toward you.
+      cycle: 3.2,
+      keys: (function () {
+        var legs = [flat(8), flat(-11)];
+        return [
+          { hip: [-1, 52], spine: 4, head: 0, arms: [HANG[0], ik(31, 74, '-y')], hands: [180, 94], legs: legs },
+          { hip: [-1, 52], spine: 3, head: 0, turn: 0.35, arms: [HANG[0], ik(3, 67, '-x')], hands: [180, 94], legs: legs, hold: 0.12 }
+        ];
+      })()
+    },
+    'touchdowns': {
+      // Seen from the front: arms in a goalpost, elbows at shoulder height;
+      // press straight up overhead — a touchdown — then back down.
+      view: 'front',
+      cycle: 3.2,
+      keys: (function () {
+        var base = standing(merge(FRONT, { legs: [[172, 180], [188, 180]], feet: [92, 268] }));
+        return [
+          merge(base, { arms: [[90, 0], [270, 0]], hands: [0, 0], hold: 0.08 }),
+          merge(base, { arms: [[8, 4], [352, 356]], hands: [4, 356], hold: 0.08 })
+        ];
+      })()
     },
 
     _default: {

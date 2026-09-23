@@ -10,7 +10,7 @@
  *   mode     'reps' | 'time' | 'none'
  *   sets     how many rounds
  *   min/max  reps per set, or seconds per set (min === max means a fixed target)
- *   perSide  the target applies to each side; sideWord picks "side" or "leg"
+ *   perSide  the target applies to each side; sideWord picks "side", "leg" or "arm"
  *   rest     seconds of rest after each set (0 = flow straight on)
  *
  * Everything the UI prints — "6–12/leg × 3" — is computed from those fields, so
@@ -141,10 +141,14 @@
           }
         ]
       },
+      /* Retired: no longer offered, but kept (archived) so days already
+       * logged with it still read right, and so an edited routine that
+       * still has it is archived too rather than added back. */
       {
         id: 'bar',
         name: 'Pull-up bar',
         kind: 'strength',
+        archived: true,
         blocks: [
           {
             name: '',
@@ -211,6 +215,101 @@
               { id: 'open-book', name: 'Open-book rotations', mode: 'reps', sets: 1, min: 6, max: 8, perSide: true, sideWord: 'side', rest: 0 },
               { id: 'childs-pose', name: 'Child’s-pose/lat stretch', mode: 'time', sets: 1, min: 30, max: 45, rest: 0 },
               { id: 'focus-stretch', name: 'Focus stretch', mode: 'time', sets: 1, min: 120, max: 120, rest: 0 }
+            ]
+          }
+        ]
+      },
+      /* A physio's neck-and-shoulder programme: chin tucks and band work
+       * lying down, then posture work sitting and standing. Slow, controlled
+       * reps, with a short pause between sets. */
+      {
+        id: 'neck',
+        name: 'Neck & shoulders',
+        kind: 'mobility',
+        blocks: [
+          {
+            name: 'On your back',
+            items: [
+              { id: 'cervical-retraction', name: 'Supine cervical retraction with towel', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
+              { id: 'horizontal-abduction', name: 'Supine horizontal abduction with chin tuck', mode: 'reps', sets: 2, min: 10, max: 10, rest: 20 },
+              { id: 'supine-external-rotation', name: 'Supine shoulder external rotation with resistance', mode: 'reps', sets: 2, min: 10, max: 10, rest: 20 },
+              { id: 'pnf-d2-flexion', name: 'Supine PNF D2 flexion with resistance', mode: 'reps', sets: 2, min: 10, max: 10, perSide: true, sideWord: 'arm', rest: 20 }
+            ]
+          },
+          {
+            name: 'Sitting and standing',
+            items: [
+              { id: 'thoracic-extension', name: 'Seated thoracic lumbar extension', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
+              { id: 'scaption', name: 'Scaption with dumbbells', mode: 'reps', sets: 2, min: 10, max: 10, rest: 20 },
+              { id: 'row-head-turn', name: 'Single arm row with opposite head turn', mode: 'reps', sets: 2, min: 10, max: 10, perSide: true, sideWord: 'arm', rest: 20 },
+              { id: 'touchdowns', name: 'Touchdowns', mode: 'reps', sets: 2, min: 10, max: 10, rest: 20 }
+            ]
+          }
+        ]
+      },
+      /* The backs of the legs and the hips, for anyone who sits all day. */
+      {
+        id: 'hips',
+        name: 'Hips & hamstrings',
+        kind: 'mobility',
+        blocks: [
+          { name: '', items: [Object.assign({}, WARMUP)] },
+          {
+            name: 'Front and back',
+            items: [
+              { id: 'hip-flexor', name: 'Hip-flexor stretch', mode: 'time', sets: 1, min: 30, max: 45, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'half-splits', name: 'Half splits', mode: 'time', sets: 1, min: 30, max: 45, perSide: true, sideWord: 'leg', rest: 0 },
+              { id: 'seated-fold', name: 'Seated forward fold', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 }
+            ]
+          },
+          {
+            name: 'Out and around',
+            items: [
+              { id: 'adductor-rock-backs', name: 'Adductor rock-backs', mode: 'reps', sets: 1, min: 8, max: 10, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'pigeon', name: 'Pigeon pose', mode: 'time', sets: 1, min: 45, max: 60, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'straddle', name: 'Straddle/butterfly', mode: 'time', sets: 1, min: 30, max: 45, rest: 0 },
+              { id: 'malasana', name: 'Deep squat (malasana)', mode: 'time', sets: 1, min: 30, max: 45, rest: 0 }
+            ]
+          }
+        ]
+      },
+      /* Ten minutes for the desk-bound: neck, upper back and hips, mostly
+       * standing, no mat needed. */
+      {
+        id: 'desk',
+        name: 'Desk reset',
+        kind: 'mobility',
+        blocks: [
+          {
+            name: '',
+            items: [
+              { id: 'neck-circles', name: 'Neck half-circles', mode: 'reps', sets: 1, min: 5, max: 5, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'shoulder-rolls', name: 'Shoulder rolls', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
+              { id: 'thoracic-extension', name: 'Seated thoracic lumbar extension', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
+              { id: 'touchdowns', name: 'Touchdowns', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
+              { id: 'reach-side-bend', name: 'Overhead reach and side bend', mode: 'reps', sets: 1, min: 5, max: 5, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'hip-flexor', name: 'Hip-flexor stretch', mode: 'time', sets: 1, min: 30, max: 30, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'ragdoll', name: 'Ragdoll forward fold', mode: 'time', sets: 1, min: 30, max: 45, rest: 0 }
+            ]
+          }
+        ]
+      },
+      /* Slow floor stretches to wind down before bed: long holds, nothing
+       * that wakes you up. */
+      {
+        id: 'evening',
+        name: 'Evening wind-down',
+        kind: 'mobility',
+        blocks: [
+          {
+            name: '',
+            items: [
+              { id: 'cat-cow', name: 'Cat-cow', mode: 'reps', sets: 1, min: 6, max: 8, rest: 0 },
+              { id: 'thread-needle', name: 'Thread the needle', mode: 'time', sets: 1, min: 30, max: 45, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'childs-pose', name: 'Child’s-pose/lat stretch', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
+              { id: 'seated-twist', name: 'Seated spinal twist', mode: 'time', sets: 1, min: 30, max: 45, perSide: true, sideWord: 'side', rest: 0 },
+              { id: 'butterfly-fold', name: 'Butterfly fold', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 },
+              { id: 'happy-baby', name: 'Happy baby', mode: 'time', sets: 1, min: 45, max: 60, rest: 0 }
             ]
           }
         ]
