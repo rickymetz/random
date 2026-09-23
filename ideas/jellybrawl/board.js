@@ -12,6 +12,7 @@
 
 import { W, H, INK, text, outlined, shout, rrect, circle, blob, star, tag, fit } from "./gfx.js";
 import { MAPS } from "./boards.js";
+import { drawRoads, drawTile, glow } from "./boardart.js";
 
 const STAR_COST = 20, BLUE = 3, RED = 3, DUEL_POT = 10, MAX_ITEMS = 3, STEP = 0.24, TOLL = 6, ERUPT = 3;
 const ITEMS = {
@@ -267,39 +268,36 @@ export function makeBoard(api) {
     },
 
     draw(g, t) {
-      map.backdrop(g, t, api);
-      const th = map.theme, cp = current();
-      // paths: every arrow between spaces
-      g.lineCap = "round";
-      for (const [pass, w, col] of [[0, 30, "rgba(0,0,0,.55)"], [1, 9, th.path]]) {
-        g.lineWidth = w; g.strokeStyle = col;
-        for (const s of spaces) for (const n of s.next) { const o = spaces[n]; g.beginPath(); g.moveTo(s.x, s.y); g.lineTo(o.x, o.y); g.stroke(); }
+      // the static layer (scenery, roads, tiles) is painted once and cached
+      if (!B.layer) {
+        B.layer = Object.assign(document.createElement("canvas"), { width: W, height: H });
+        const lg = B.layer.getContext("2d");
+        map.paint(lg);
+        drawRoads(lg, spaces, map.roads);
+        spaces.forEach((s, i) => { if (i !== map.start) return; lg.beginPath(); lg.ellipse(s.x, s.y + 6, 52, 40, 0, 0, Math.PI * 2); lg.fillStyle = "rgba(255,255,255,.18)"; lg.fill(); });
+        // tiles back to front, so the lower ones overlap the upper ones
+        [...spaces.keys()].sort((a, b) => spaces[a].y - spaces[b].y).forEach((i) => drawTile(lg, spaces[i].x, spaces[i].y, spaces[i].k, spaces[i].k === "V"));
+        const st = spaces[map.start]; tag(lg, "START", st.x, st.y + 50, "#fff", 16);
       }
+      g.drawImage(B.layer, 0, 0);
+      map.animate(g, t);
+      const th = map.theme, cp = current();
+      spaces.forEach((s) => { if (s.k === "V") glow(g, s.x, s.y, 90 + Math.sin(t * 5) * 15, "rgba(255,110,0,.45)"); });
       // forks: arrows showing the ways you can go (pulsing while someone's choosing)
       spaces.forEach((s, i) => {
         if (s.next.length < 2) return;
         const choosing = B.phase === "fork" && cp && cp.pos === i;
         for (const n of s.next) {
-          const o = spaces[n], a = Math.atan2(o.y - s.y, o.x - s.x), mx = s.x + Math.cos(a) * 58, my = s.y + Math.sin(a) * 58, sz = choosing ? 20 + Math.sin(t * 10) * 5 : 15;
+          const o = spaces[n], a = Math.atan2(o.y - s.y, o.x - s.x), mx = s.x + Math.cos(a) * 60, my = s.y + Math.sin(a) * 60, sz = choosing ? 22 + Math.sin(t * 10) * 5 : 16;
           g.save(); g.translate(mx, my); g.rotate(a);
           g.beginPath(); g.moveTo(sz, 0); g.lineTo(-sz * 0.7, -sz * 0.8); g.lineTo(-sz * 0.7, sz * 0.8); g.closePath();
-          g.fillStyle = choosing ? "#fff" : th.glow; g.fill(); g.lineWidth = 3; g.strokeStyle = INK; g.stroke(); g.restore();
+          g.fillStyle = choosing ? "#fff" : th.glow; g.fill(); g.lineWidth = 4; g.strokeStyle = INK; g.stroke(); g.restore();
           if (choosing && o.label) tag(g, o.label, o.x, o.y + 62, "#fff", 20);
         }
       });
-      // spaces
-      const COL = { B: "#05d9e8", R: "#ff2a6d", D: "#b026ff", $: "#f9f002", "?": "#efe6d2", T: "#ff6b00", P: "#39ff14", V: "#ff3b00" };
-      const MARK = { R: "−", D: "VS", $: "$", "?": "?", T: "TOLL", P: "◎", V: "▲" };
-      spaces.forEach((s, i) => {
-        const r = s.k === "V" ? 40 : 30;
-        circle(g, s.x + 4, s.y + 5, r, INK);
-        if (s.k === "V") { g.save(); g.shadowColor = "#ff6b00"; g.shadowBlur = 25 + Math.sin(t * 5) * 10; circle(g, s.x, s.y, r, COL.V, INK, 6); g.restore(); }
-        else circle(g, s.x, s.y, r, COL[s.k], INK, 6);
-        const mark = MARK[s.k];
-        if (mark) text(g, mark, s.x, s.y + 2, mark.length > 2 ? 17 : mark === "VS" ? 22 : 32, INK, "center", 900);
-        if (i === map.start) tag(g, "START", s.x, s.y + 52, "#fff", 16);
-        if (i === B.starAt) star(g, s.x, s.y - 4 + Math.sin(t * 4) * 5, 28 + Math.sin(t * 6) * 3, "#f9f002", INK);
-      });
+      // the star floats over its space, with a glow
+      const ss = spaces[B.starAt];
+      if (ss) { glow(g, ss.x, ss.y - 30, 80, "rgba(255,220,0,.5)"); star(g, ss.x, ss.y - 34 + Math.sin(t * 4) * 6, 30 + Math.sin(t * 6) * 3, "#ffd400", INK); }
       // players (stacked when sharing a space); the mover hops between spaces
       const byPos = {};
       for (const p of P()) (byPos[p.pos] ||= []).push(p);
@@ -312,6 +310,8 @@ export function makeBoard(api) {
             const f = spaces[B.from], u = B.t / STEP;
             x = f.x + (s.x - f.x) * u; y = f.y + (s.y - f.y) * u - 42 - Math.sin(u * Math.PI) * 38;
           }
+          g.beginPath(); g.ellipse(s.x + off, s.y + 2, 22, 9, 0, 0, Math.PI * 2); g.fillStyle = "rgba(0,0,0,.45)"; g.fill();
+          if (me) { g.save(); g.shadowColor = p.color; g.shadowBlur = 24; g.beginPath(); g.ellipse(s.x + off, s.y + 2, 36, 26, 0, 0, Math.PI * 2); g.lineWidth = 5; g.strokeStyle = p.color; g.stroke(); g.restore(); }
           blob(g, p, x, y, me ? 30 : 24, { alpha: p.connected || p.bot ? 1 : 0.5 });
         });
       }

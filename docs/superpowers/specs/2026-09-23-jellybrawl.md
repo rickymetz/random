@@ -234,6 +234,24 @@ and labels at the fork.
 The HUD is now a top bar (turn and map, whose go, dice, standings), which
 leaves the middle of the screen free for paths.
 
+**Board art** (`boardart.js`):
+- Spaces are chunky extruded tiles with drawn icons: a coin, a hazard bar,
+  a money sack, crossed swords, a purple ?, a striped toll barrier, a pipe
+  mouth and a mini volcano.
+- Roads are smooth Catmull-Rom curves in each map's style: neon-kerbed
+  asphalt with a dashed centre line (City), slatted steel walkways over a
+  slime glow (Sewers) and a pebbled sand trail (Volcano).
+- Scenery is seeded, so it's the same every game, and kept off the roads:
+  - City: rooftops with AC units, water towers and neon signs.
+  - Sewers: flagstones, moss, grates, bolted pipes and glowing slime pools.
+  - Volcano: surf, sand and grass, a shaded cone with lava rivers, palms
+    and rocks.
+- The static layer is painted once into a cached canvas. Only the animation
+  redraws each frame: flickering neon and searchlights, rippling and
+  bubbling slime with drips, and shoreline foam, lava glow, smoke and
+  embers.
+- Tokens cast shadows, and the moving player gets a glowing ring.
+
 **Tests.** A Node rules check (22 checks):
 - every map is connected, on screen, has no overlapping spaces, and labels
   every branch;
