@@ -1,7 +1,10 @@
 /* Cadence — the routine itself, and the labels derived from it.
  *
- * A workout's kind is 'strength' or 'mobility' (each counts toward its own
- * weekly target), 'habit' (done daily, counts toward nothing), or 'rest'.
+ * A program's kind is 'strength' (shown as Calisthenics) or 'mobility', each
+ * counting toward its own weekly goal; 'habit', offered every day and counted
+ * toward nothing; or 'rest', which only old logs still use. A calisthenics
+ * program with `rotate` takes turns in the alternating slot. A block with
+ * `circuit` runs one set of each exercise in turn, round after round.
  *
  * An exercise is described by what you have to do, not by a display string:
  *   mode     'reps' | 'time' | 'none'
@@ -26,6 +29,7 @@
         id: 'calA',
         name: 'Calisthenics A',
         kind: 'strength',
+        rotate: true,
         blocks: [
           {
             name: '',
@@ -45,6 +49,7 @@
         id: 'calB',
         name: 'Calisthenics B',
         kind: 'strength',
+        rotate: true,
         blocks: [
           {
             name: '',
@@ -56,6 +61,122 @@
               { id: 'split-squats', name: 'Split squats', mode: 'reps', sets: 3, min: 6, max: 10, perSide: true, sideWord: 'leg', rest: 60 },
               { id: 'bird-dogs', name: 'Bird-dogs', mode: 'reps', sets: 3, min: 6, max: 12, perSide: true, sideWord: 'side', rest: 60 },
               Object.assign({}, COOLDOWN)
+            ]
+          }
+        ]
+      },
+      {
+        id: 'upper',
+        name: 'Upper body',
+        kind: 'strength',
+        blocks: [
+          {
+            name: '',
+            items: [
+              Object.assign({}, WARMUP),
+              { id: 'pushups', name: 'Push-ups', mode: 'reps', sets: 3, min: 8, max: 15, rest: 60 },
+              { id: 'table-rows', name: 'Table rows', mode: 'reps', sets: 3, min: 6, max: 12, rest: 60 },
+              { id: 'pike-pushups', name: 'Pike push-ups', mode: 'reps', sets: 3, min: 6, max: 10, rest: 60 },
+              { id: 'chair-dips', name: 'Chair dips', mode: 'reps', sets: 3, min: 6, max: 12, rest: 60 },
+              { id: 'shoulder-taps', name: 'Plank shoulder taps', mode: 'reps', sets: 2, min: 10, max: 16, perSide: true, sideWord: 'side', rest: 45 },
+              Object.assign({}, COOLDOWN)
+            ]
+          }
+        ]
+      },
+      {
+        id: 'lower',
+        name: 'Lower body',
+        kind: 'strength',
+        blocks: [
+          {
+            name: '',
+            items: [
+              Object.assign({}, WARMUP),
+              { id: 'bulgarian-split-squats', name: 'Bulgarian split squats', mode: 'reps', sets: 3, min: 6, max: 10, perSide: true, sideWord: 'leg', rest: 60 },
+              { id: 'single-leg-bridges', name: 'Single-leg glute bridges', mode: 'reps', sets: 3, min: 8, max: 12, perSide: true, sideWord: 'leg', rest: 45 },
+              { id: 'towel-leg-curls', name: 'Sliding towel leg curls', mode: 'reps', sets: 3, min: 6, max: 10, rest: 60 },
+              { id: 'step-ups', name: 'Step-ups', mode: 'reps', sets: 3, min: 8, max: 12, perSide: true, sideWord: 'leg', rest: 60 },
+              { id: 'wall-sit', name: 'Wall sit', mode: 'time', sets: 2, min: 30, max: 60, rest: 60 },
+              { id: 'calf-raises', name: 'Single-leg calf raises', mode: 'reps', sets: 2, min: 10, max: 15, perSide: true, sideWord: 'leg', rest: 30 },
+              Object.assign({}, COOLDOWN)
+            ]
+          }
+        ]
+      },
+      {
+        id: 'core',
+        name: 'Core',
+        kind: 'strength',
+        blocks: [
+          {
+            name: '',
+            items: [
+              { id: 'dead-bugs', name: 'Dead bugs', mode: 'reps', sets: 3, min: 6, max: 10, perSide: true, sideWord: 'side', rest: 30 },
+              { id: 'hollow-hold', name: 'Hollow hold', mode: 'time', sets: 3, min: 15, max: 30, rest: 30 },
+              { id: 'side-plank', name: 'Side plank', mode: 'time', sets: 2, min: 20, max: 40, perSide: true, sideWord: 'side', rest: 30 },
+              { id: 'reverse-crunch', name: 'Reverse crunches', mode: 'reps', sets: 3, min: 8, max: 12, rest: 30 },
+              { id: 'bird-dogs', name: 'Bird-dogs', mode: 'reps', sets: 2, min: 6, max: 12, perSide: true, sideWord: 'side', rest: 30 }
+            ]
+          }
+        ]
+      },
+      /* The next step once A and B's ranges have been raised a few times. */
+      {
+        id: 'calC',
+        name: 'Calisthenics C',
+        kind: 'strength',
+        blocks: [
+          {
+            name: '',
+            items: [
+              Object.assign({}, WARMUP),
+              { id: 'archer-pushups', name: 'Archer push-ups', mode: 'reps', sets: 3, min: 4, max: 8, perSide: true, sideWord: 'side', rest: 90 },
+              { id: 'box-pistols', name: 'Box pistol squats', mode: 'reps', sets: 3, min: 4, max: 8, perSide: true, sideWord: 'leg', rest: 90 },
+              { id: 'planche-lean', name: 'Pseudo-planche lean', mode: 'time', sets: 3, min: 15, max: 30, rest: 60 },
+              { id: 'nordic-negatives', name: 'Nordic curl negatives', mode: 'reps', sets: 3, min: 3, max: 6, rest: 90 },
+              { id: 'tuck-l-sit', name: 'Tuck L-sit', mode: 'time', sets: 3, min: 10, max: 20, rest: 60 },
+              Object.assign({}, COOLDOWN)
+            ]
+          }
+        ]
+      },
+      {
+        id: 'bar',
+        name: 'Pull-up bar',
+        kind: 'strength',
+        blocks: [
+          {
+            name: '',
+            items: [
+              Object.assign({}, WARMUP),
+              { id: 'dead-hang', name: 'Dead hang', mode: 'time', sets: 3, min: 20, max: 40, rest: 60 },
+              { id: 'scapular-pulls', name: 'Scapular pulls', mode: 'reps', sets: 3, min: 6, max: 10, rest: 60 },
+              { id: 'pullup-negatives', name: 'Pull-up negatives', mode: 'reps', sets: 3, min: 3, max: 5, rest: 90 },
+              { id: 'chin-ups', name: 'Chin-ups', mode: 'reps', sets: 3, min: 3, max: 8, rest: 90 },
+              { id: 'hanging-knee-raises', name: 'Hanging knee raises', mode: 'reps', sets: 3, min: 8, max: 12, rest: 60 },
+              Object.assign({}, COOLDOWN)
+            ]
+          }
+        ]
+      },
+      /* A circuit: one round is forty seconds of each, and there are two. Its
+       * exercises are timed, so they're kept apart from the rep-counted
+       * push-ups and squats elsewhere — one chart can't mix seconds and reps. */
+      {
+        id: 'express',
+        name: 'Express 15',
+        kind: 'strength',
+        blocks: [
+          {
+            name: 'Circuit',
+            circuit: true,
+            items: [
+              { id: 'express-squats', name: 'Squats', mode: 'time', sets: 2, min: 40, max: 40, rest: 20 },
+              { id: 'express-pushups', name: 'Push-ups', mode: 'time', sets: 2, min: 40, max: 40, rest: 20 },
+              { id: 'express-lunges', name: 'Alternating lunges', mode: 'time', sets: 2, min: 40, max: 40, rest: 20 },
+              { id: 'mountain-climbers', name: 'Mountain climbers', mode: 'time', sets: 2, min: 40, max: 40, rest: 20 },
+              { id: 'express-plank', name: 'Plank', mode: 'time', sets: 2, min: 40, max: 40, rest: 20 }
             ]
           }
         ]
@@ -95,9 +216,9 @@
         ]
       },
       /* About eight minutes and no warm-up: the gentle moves are the warm-up.
-       * Half of it standing, half on a mat. It's on every day, as a habit:
-       * habits get ticked off but never count toward the week's targets, or a
-       * week of eight-minute stretches would stand in for the real sessions. */
+       * Half of it standing, half on a mat. A habit: offered every day, ticked
+       * off, but never counted toward the weekly goals, or a week of
+       * eight-minute stretches would stand in for the real sessions. */
       {
         id: 'morning',
         name: 'Morning stretch',
@@ -124,11 +245,11 @@
           }
         ]
       },
-      /* Not on the weekly plan by default — pick it from Today, or put it on a
-       * day in Settings. Hips, folds, twists and arches: the range that makes
-       * the more ambitious pages of the Kama Sutra feel less like a dare. */
+      /* Not on the suggested week — pick it from Today, or put it on a day in
+       * Plan. Hips, folds, twists and arches: the range that makes the more
+       * ambitious pages of the Kama Sutra feel less like a dare. */
       {
-        id: 'pretzel',
+        id: 'kama',
         name: 'Kama Stretcha 🌶',
         kind: 'mobility',
         blocks: [
@@ -199,17 +320,13 @@
     { key: 'sun', label: 'Sun', long: 'Sunday' }
   ];
 
-  /* The weekly plan: which programs each weekday runs. ROTATION is not a
-   * program but a stand-in that becomes Calisthenics A or B, so the A/B
-   * alternation lives in one place (see store.js). An empty day is a rest day. */
+  /* The suggested week: what Today offers each day. It's a suggestion, not
+   * the goal — any program on any day counts toward the week. ROTATION is a
+   * stand-in for "calisthenics, alternating": whichever rotating program you
+   * did least recently (see store.js). Habits aren't on it; they're every
+   * day by definition. An empty day is a rest day. */
   var ROTATION = 'rotation';
-  var DEFAULT_SCHEDULE = [
-    ['morning', ROTATION], ['morning', 'flex'], ['morning', ROTATION], ['morning', 'flex'],
-    ['morning', ROTATION], ['morning', 'flex'], ['morning']
-  ];
-  /* The week before there was a morning stretch — what data from then was
-   * following, so its past days still read the way they did. */
-  var LEGACY_SCHEDULE = [[ROTATION], ['flex'], [ROTATION], ['flex'], [ROTATION], ['flex'], []];
+  var DEFAULT_SCHEDULE = [[ROTATION], ['flex'], [ROTATION], ['flex'], [ROTATION], ['flex'], []];
 
   function formatSeconds(s) {
     if (s >= 60 && s % 60 === 0) return s / 60 + ' min';
@@ -253,9 +370,9 @@
 
   function flatten(workout) {
     var out = [];
-    (workout.blocks || []).forEach(function (block) {
+    (workout.blocks || []).forEach(function (block, b) {
       (block.items || []).forEach(function (ex, i) {
-        out.push({ ex: ex, block: block.name || '', firstOfBlock: i === 0 });
+        out.push({ ex: ex, block: block.name || '', blockIndex: b, circuit: !!block.circuit, firstOfBlock: i === 0 });
       });
     });
     return out;
@@ -290,7 +407,6 @@
     DAYS: DAYS,
     ROTATION: ROTATION,
     DEFAULT_SCHEDULE: DEFAULT_SCHEDULE,
-    LEGACY_SCHEDULE: LEGACY_SCHEDULE,
     defaultSchedule: function () { return clone(DEFAULT_SCHEDULE); },
     defaultRoutine: function () { return clone(DEFAULT_ROUTINE); },
     amountLabel: amountLabel,

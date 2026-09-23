@@ -76,11 +76,9 @@
     return {
       version: 2,
       anchorMonday: toISO(mondayOf(today())),
-      phaseOffset: 0,
       routine: null,
       schedules: [],
       goals: [{ from: toISO(mondayOf(today())), strength: DEFAULT_GOALS.strength, mobility: DEFAULT_GOALS.mobility }],
-      dayPlans: {},
       startedISO: toISO(today()),
       sessions: {},
       retired: {},
@@ -153,7 +151,9 @@
       if (!id) return null;
       var blocks = w.blocks.map(function (b) {
         if (!b || typeof b !== 'object' || !Array.isArray(b.items)) return null;
-        return { name: str(b.name, 60, ''), items: b.items.map(sanitizeExercise).filter(Boolean) };
+        var block = { name: str(b.name, 60, ''), items: b.items.map(sanitizeExercise).filter(Boolean) };
+        if (b.circuit) block.circuit = true;
+        return block;
       }).filter(Boolean);
       if (!blocks.length) return null;
       var out = {
@@ -163,6 +163,9 @@
         blocks: blocks
       };
       if (w.archived) out.archived = true;
+      // In the alternating calisthenics. A and B were, before there was a
+      // flag to say so.
+      if (typeof w.rotate === 'boolean' ? w.rotate : id === 'calA' || id === 'calB') out.rotate = true;
       return out;
     }).filter(Boolean);
     return workouts.length ? { version: 1, workouts: workouts } : null;
@@ -267,30 +270,6 @@
     });
   }
 
-  /* Data from before schedules could be edited followed the original week.
-   * It keeps that week for everything already behind it and gets the current
-   * default from this week on, so no past Sunday turns into a missed session. */
-  function legacySchedules(data) {
-    var anchor = /^\d{4}-\d{2}-\d{2}$/.test(data.anchorMonday) ? toISO(mondayOf(fromISO(data.anchorMonday))) : null;
-    var monday = toISO(mondayOf(today()));
-    if (!anchor || anchor >= monday) return [];
-    return [
-      { from: anchor, days: R.clone(R.LEGACY_SCHEDULE) },
-      { from: monday, days: R.defaultSchedule() }
-    ];
-  }
-
-  function sanitizeDayPlans(raw) {
-    var out = {};
-    if (!raw || typeof raw !== 'object') return out;
-    Object.keys(raw).forEach(function (iso) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return;
-      var list = idList(raw[iso]);
-      if (list && list.length) out[iso] = list;
-    });
-    return out;
-  }
-
   /* Exercises deleted from the routine, kept so months of logged history stay
    * reachable in Progress instead of vanishing with the routine entry. */
   function sanitizeRetired(raw) {
@@ -331,11 +310,9 @@
       anchorMonday: /^\d{4}-\d{2}-\d{2}$/.test(data.anchorMonday) ? data.anchorMonday : base.anchorMonday,
       startedISO: /^\d{4}-\d{2}-\d{2}$/.test(data.startedISO) ? data.startedISO : base.startedISO,
       demoHidden: sanitizeFlags(data.demoHidden),
-      phaseOffset: data.phaseOffset === 1 ? 1 : 0,
       routine: sanitizeRoutine(data.routine),
-      schedules: Array.isArray(data.schedules) ? sanitizeSchedules(data.schedules) : legacySchedules(data),
+      schedules: sanitizeSchedules(data.schedules),
       goals: sanitizeGoals(data.goals) || [{ from: toISO(mondayOf(today())), strength: DEFAULT_GOALS.strength, mobility: DEFAULT_GOALS.mobility }],
-      dayPlans: sanitizeDayPlans(data.dayPlans),
       sessions: sanitizeSessions(data.sessions),
       retired: sanitizeRetired(data.retired),
       settings: sanitizeSettings(data.settings)
@@ -352,14 +329,6 @@
         out.routine.workouts.splice(at < 0 ? out.routine.workouts.length : at, 0, R.clone(w));
       });
     }
-    // A day you've touched keeps the programs it had — a version 1 backup
-    // carries no plans, and its days would otherwise follow today's schedule.
-    Object.keys(out.sessions).forEach(function (iso) {
-      var ids = Object.keys(out.sessions[iso]);
-      var plan = out.dayPlans[iso];
-      if (!plan) { out.dayPlans[iso] = ids.slice(0, MAX_PER_DAY); return; }
-      ids.forEach(function (id) { if (plan.indexOf(id) < 0 && plan.length < MAX_PER_DAY) plan.push(id); });
-    });
     return out;
   }
 
@@ -389,7 +358,7 @@
     listeners.forEach(function (fn) { fn(state); });
   }
 
-  /* ---------- schedule ---------- */
+  /* ---------- programs and the suggested week ---------- */
 
   function routine() {
     return state.routine || R.DEFAULT_ROUTINE;
@@ -399,13 +368,21 @@
     return R.findWorkout(routine(), id);
   }
 
-  /* The programs you can pick: everything but Rest and the ones you deleted
-   * (which are kept, archived, only so the days you did them still read right). */
+  function counts(w) {
+    return !!w && (w.kind === 'strength' || w.kind === 'mobility');
+  }
+
+  /* Everything you can pick: not Rest, and not the ones you deleted (which
+   * are kept, archived, only so the days you did them still read right). */
   function programs() {
     return routine().workouts.filter(function (w) { return w.kind !== 'rest' && !w.archived; });
   }
 
-  /* The weekly plan in force for the week containing `date`. */
+  function habits() {
+    return programs().filter(function (w) { return w.kind === 'habit'; });
+  }
+
+  /* The suggested week in force for the week containing `date`. */
   function scheduleAt(date) {
     var monday = toISO(mondayOf(date));
     var days = null;
@@ -417,60 +394,7 @@
     return scheduleAt(today());
   }
 
-  /* The nth rotation day of a week: week 1 runs A/B/A, week 2 B/A/B, and so
-   * on — phaseOffset flips the pair. */
-  function rotationPick(weekNo, n) {
-    var odd = (weekNo + state.phaseOffset) % 2 !== 0;
-    return odd === (n % 2 === 0) ? 'calA' : 'calB';
-  }
-
-  function calPattern(weekNo, days) {
-    var out = [];
-    (days || schedule()).forEach(function (list) {
-      if (list.indexOf(R.ROTATION) >= 0) out.push(rotationPick(weekNo, out.length));
-    });
-    return out;
-  }
-
-  /* What the weekly plan says a date should run. Never empty: a day with
-   * nothing on it is a rest day. */
-  function scheduledIds(date) {
-    var days = scheduleAt(date);
-    var idx = dayIndex(date);
-    var n = 0;
-    for (var i = 0; i < idx; i++) if (days[i].indexOf(R.ROTATION) >= 0) n++;
-    var out = [];
-    days[idx].forEach(function (token) {
-      var id = token === R.ROTATION ? rotationPick(weekNumber(date), n) : token;
-      var w = findWorkout(id);
-      if (w && w.kind !== 'rest' && out.indexOf(id) < 0) out.push(id);
-    });
-    return out.length ? out : ['rest'];
-  }
-
-  /* What a date actually runs: the schedule, unless you changed that day. */
-  function planIds(date) {
-    var plan = state.dayPlans[toISO(date)];
-    if (plan) {
-      var list = plan.filter(function (id) { return findWorkout(id); });
-      if (list.length) return list;
-    }
-    return scheduledIds(date);
-  }
-
-  function workoutsFor(date) {
-    return planIds(date).map(findWorkout).filter(Boolean);
-  }
-
-  function isRestDay(date) {
-    var list = workoutsFor(date);
-    return !list.length || (list.length === 1 && list[0].kind === 'rest');
-  }
-
-  function isPlanChanged(date) {
-    return planIds(date).join('|') !== scheduledIds(date).join('|');
-  }
-
+  /* From this week on: a week behind you keeps the plan it was scored by. */
   function setSchedule(days) {
     var from = toISO(mondayOf(today()));
     var clean = days.map(function (d) { return idList(d) || []; });
@@ -483,60 +407,90 @@
     setSchedule(R.defaultSchedule());
   }
 
-  /* ---------- the programs on one day ---------- */
+  /* The day each program was last finished, before `beforeISO`. */
+  function lastDone(beforeISO) {
+    var out = {};
+    Object.keys(state.sessions).forEach(function (iso) {
+      if (iso >= beforeISO) return;
+      Object.keys(state.sessions[iso]).forEach(function (id) {
+        if (state.sessions[iso][id].done && (!out[id] || out[id] < iso)) out[id] = iso;
+      });
+    });
+    return out;
+  }
 
-  /* Anything you'd lose by taking a program off a day. A rest day's tick is
-   * not worth a confirm. */
-  function hasLoggedWork(date, workoutId) {
-    var s = sessionFor(date, workoutId);
-    if (!s || workoutId === 'rest') return false;
-    if (s.done || s.note) return true;
-    return Object.keys(s.items).some(function (exId) {
-      var log = s.items[exId];
-      return log.done || log.note || (log.sets || []).some(function (n) { return n > 0; });
+  /* Programs of a kind, the one you've gone longest without first. */
+  function byStaleness(list, last) {
+    return list.slice().sort(function (a, b) {
+      var x = last[a.id] || '';
+      var y = last[b.id] || '';
+      return x < y ? -1 : x > y ? 1 : list.indexOf(a) - list.indexOf(b);
     });
   }
 
-  function setPlan(date, ids) {
-    var iso = toISO(date);
-    var list = [];
-    ids.forEach(function (id) { if (list.indexOf(id) < 0 && findWorkout(id)) list.push(id); });
-    if (list.length > 1) list = list.filter(function (id) { return id !== 'rest'; });
-    if (!list.length) list = ['rest'];
-    list = list.slice(0, MAX_PER_DAY);
-    state.dayPlans[iso] = list;
-    var day = state.sessions[iso];
-    if (day) {
-      Object.keys(day).forEach(function (id) { if (list.indexOf(id) < 0) delete day[id]; });
-      if (!Object.keys(day).length) delete state.sessions[iso];
+  function rotationPool() {
+    return programs().filter(function (w) { return w.kind === 'strength' && w.rotate; });
+  }
+
+  /* "Calisthenics, alternating" is whichever rotating program you did least
+   * recently — not a pattern fixed by week number, which kept offering A
+   * the day after you'd swapped one in. Days ahead are worked out by
+   * assuming you do what's suggested in between. */
+  function alternatingFor(date) {
+    var pool = rotationPool();
+    var todayISO = toISO(today());
+    var target = toISO(date);
+    if (target < todayISO) {
+      // A week behind you only needs the slot's kind to be scored, even if
+      // nothing takes turns any more.
+      var any = pool[0] || routine().workouts.filter(function (w) { return w.kind === 'strength'; })[0];
+      return any ? any.id : null;
     }
-    emit();
+    if (!pool.length) return null;
+    var last = lastDone(todayISO);
+    for (var d = today(); toISO(d) <= target; d = addDays(d, 1)) {
+      if (scheduleAt(d)[dayIndex(d)].indexOf(R.ROTATION) < 0) continue;
+      var pick = null;
+      if (toISO(d) === todayISO) {
+        pool.forEach(function (w) { if (!pick && isSessionDone(d, w.id)) pick = w; });
+      }
+      pick = pick || byStaleness(pool, last)[0];
+      last[pick.id] = toISO(d);
+      if (toISO(d) === target) return pick.id;
+    }
+    return byStaleness(pool, last)[0].id;
   }
 
-  function addProgram(date, workoutId) {
-    var list = planIds(date).slice();
-    if (list.indexOf(workoutId) < 0) list.push(workoutId);
-    setPlan(date, list);
+  /* What the suggested week has on a date: calisthenics and mobility only. */
+  function scheduledIds(date) {
+    var out = [];
+    scheduleAt(date)[dayIndex(date)].forEach(function (token) {
+      var id = token === R.ROTATION ? alternatingFor(date) : token;
+      if (id && counts(findWorkout(id)) && out.indexOf(id) < 0) out.push(id);
+    });
+    return out;
   }
 
-  /* Swapping in a program the day already has just drops the other one. */
-  function swapProgram(date, fromId, toId) {
-    var list = planIds(date).slice();
-    var at = list.indexOf(fromId);
-    if (at < 0) return addProgram(date, toId);
-    if (list.indexOf(toId) >= 0) list.splice(at, 1);
-    else list[at] = toId;
-    setPlan(date, list);
-  }
-
-  function removeProgram(date, workoutId) {
-    setPlan(date, planIds(date).filter(function (id) { return id !== workoutId; }));
-  }
-
-  function resetDay(date) {
-    setPlan(date, scheduledIds(date));
-    delete state.dayPlans[toISO(date)];
-    emit();
+  /* One thing to do today. The plan's next program, unless you've already
+   * done that kind today; with nothing planned and nothing done yet, the goal
+   * you're furthest behind on. Null when there's nothing worth suggesting. */
+  function suggestionFor(date) {
+    var sessions = daySessions(date).filter(function (e) { return counts(findWorkout(e.workoutId)); });
+    var doneKinds = sessions.filter(function (e) { return e.done; }).map(function (e) { return findWorkout(e.workoutId).kind; });
+    var planned = scheduledIds(date).map(findWorkout).filter(function (w) { return w && !w.archived; });
+    for (var i = 0; i < planned.length; i++) {
+      var w = planned[i];
+      if (!sessionFor(date, w.id) && doneKinds.indexOf(w.kind) < 0) return { workout: w, reason: 'plan' };
+    }
+    if (sessions.length) return null;
+    var stats = weekStats(mondayOf(date));
+    var needS = stats.strengthTarget - stats.strength;
+    var needM = stats.mobilityTarget - stats.mobility;
+    if (needS <= 0 && needM <= 0) return null;
+    var kind = needS >= needM ? 'strength' : 'mobility';
+    var id = kind === 'strength' ? alternatingFor(date) : null;
+    var pick = id ? findWorkout(id) : byStaleness(programs().filter(function (p) { return p.kind === kind; }), lastDone(toISO(date)))[0];
+    return pick ? { workout: pick, reason: 'goal' } : null;
   }
 
   /* ---------- sessions ---------- */
@@ -551,12 +505,35 @@
     return Object.keys(day).map(function (id) { return day[id]; });
   }
 
-  /* Touching a day pins its programs, so a phase flip or a schedule edit
-   * later never rewrites what you already did. */
+  /* The programs you started on a date, in the order you started them. */
+  function sessionsOn(date) {
+    return daySessions(date)
+      .map(function (entry) { return { entry: entry, workout: findWorkout(entry.workoutId) }; })
+      .filter(function (row) { return row.workout; })
+      .sort(function (a, b) { return a.entry.startedAt - b.entry.startedAt; });
+  }
+
+  /* Anything you'd lose by discarding a session. */
+  function hasLoggedWork(date, workoutId) {
+    var s = sessionFor(date, workoutId);
+    if (!s) return false;
+    if (s.done || s.note) return true;
+    return Object.keys(s.items).some(function (exId) {
+      var log = s.items[exId];
+      return log.done || log.note || (log.sets || []).some(function (n) { return n > 0; });
+    });
+  }
+
+  function discardSession(date, workoutId) {
+    var iso = toISO(date);
+    if (!state.sessions[iso]) return;
+    delete state.sessions[iso][workoutId];
+    if (!Object.keys(state.sessions[iso]).length) delete state.sessions[iso];
+    emit();
+  }
+
   function ensureSession(date, workoutId) {
     var iso = toISO(date);
-    if (!state.dayPlans[iso]) state.dayPlans[iso] = planIds(date).slice();
-    if (state.dayPlans[iso].indexOf(workoutId) < 0) state.dayPlans[iso].push(workoutId);
     var day = state.sessions[iso] || (state.sessions[iso] = {});
     if (!day[workoutId]) {
       day[workoutId] = { workoutId: workoutId, items: {}, note: '', done: false, startedAt: Date.now() };
@@ -632,11 +609,6 @@
   function isSessionDone(date, workoutId) {
     var s = sessionFor(date, workoutId);
     return !!(s && s.done);
-  }
-
-  /* Every program the day holds, finished. */
-  function isDayDone(date) {
-    return planIds(date).every(function (id) { return isSessionDone(date, id); });
   }
 
   function finishSession(date, workoutId) {
@@ -719,13 +691,15 @@
       ? { strength: Math.round(goal.strength * available / 7), mobility: Math.round(goal.mobility * available / 7) }
       : planned;
     var total = target.strength + target.mobility;
+    // Goals of nothing are a choice to go without; such a week isn't failed.
+    var optedOut = goal && goal.strength + goal.mobility === 0;
     return {
       strength: strength,
       mobility: mobility,
       strengthTarget: target.strength,
       mobilityTarget: target.mobility,
       partial: available < 7,
-      complete: total > 0 && strength >= target.strength && mobility >= target.mobility
+      complete: optedOut || (total > 0 && strength >= target.strength && mobility >= target.mobility)
     };
   }
 
@@ -862,11 +836,6 @@
     emit();
   }
 
-  function setPhaseOffset(value) {
-    state.phaseOffset = value ? 1 : 0;
-    emit();
-  }
-
   function updateRoutine(mutator) {
     var next = state.routine ? R.clone(state.routine) : R.defaultRoutine();
     mutator(next);
@@ -908,12 +877,6 @@
 
   /* ---------- your own programs ---------- */
 
-  var ROTATION_IDS = ['calA', 'calB'];
-
-  function isRotationProgram(id) {
-    return ROTATION_IDS.indexOf(id) >= 0;
-  }
-
   /* A new program starts from a copy of another — exercise ids and all, so a
    * hip-flexor stretch is one line in Progress whichever program it was in —
    * or from just a warm-up and a cool-down. */
@@ -934,19 +897,10 @@
 
   /* A program with logged days is archived rather than removed, so those days
    * still say what they were. Built-ins are always archived, so an edited
-   * routine can tell one you deleted from one the app has added since. It comes off the weekly plan from this week on,
-   * and off any day ahead that you'd added it to. */
+   * routine can tell one you deleted from one the app has added since. It
+   * comes off the suggested week from this week on. */
   function deleteProgram(id) {
-    if (isRotationProgram(id)) return;
     var used = Object.keys(state.sessions).some(function (iso) { return state.sessions[iso][id]; });
-    var todayISO = toISO(today());
-    Object.keys(state.dayPlans).forEach(function (iso) {
-      if (iso < todayISO || (iso === todayISO && hasLoggedWork(fromISO(iso), id))) return;
-      var list = state.dayPlans[iso].filter(function (v) { return v !== id; });
-      if (list.length) state.dayPlans[iso] = list;
-      else delete state.dayPlans[iso];
-      if (state.sessions[iso]) delete state.sessions[iso][id];
-    });
     var days = schedule().map(function (list) { return list.filter(function (v) { return v !== id; }); });
     var from = toISO(mondayOf(today()));
     state.schedules = state.schedules.filter(function (entry) { return entry.from < from; });
@@ -1001,23 +955,19 @@
     formatDate: formatDate,
     routine: routine,
     findWorkout: findWorkout,
+    counts: counts,
     programs: programs,
+    habits: habits,
     schedule: schedule,
     scheduleAt: scheduleAt,
     setSchedule: setSchedule,
     resetSchedule: resetSchedule,
-    calPattern: calPattern,
     scheduledIds: scheduledIds,
-    planIds: planIds,
-    workoutsFor: workoutsFor,
-    isRestDay: isRestDay,
-    isPlanChanged: isPlanChanged,
+    alternatingFor: alternatingFor,
+    suggestionFor: suggestionFor,
+    sessionsOn: sessionsOn,
     hasLoggedWork: hasLoggedWork,
-    addProgram: addProgram,
-    swapProgram: swapProgram,
-    removeProgram: removeProgram,
-    resetDay: resetDay,
-    isRotationProgram: isRotationProgram,
+    discardSession: discardSession,
     createProgram: createProgram,
     deleteProgram: deleteProgram,
     sessionFor: sessionFor,
@@ -1030,7 +980,6 @@
     sessionItemIds: sessionItemIds,
     retireExercise: retireExercise,
     isSessionDone: isSessionDone,
-    isDayDone: isDayDone,
     finishSession: finishSession,
     reopenSession: reopenSession,
     setSessionNote: setSessionNote,
@@ -1047,7 +996,6 @@
     bestOfSets: bestOfSets,
     totalOfSets: totalOfSets,
     setSetting: setSetting,
-    setPhaseOffset: setPhaseOffset,
     updateRoutine: updateRoutine,
     bumpTarget: bumpTarget,
     resetRoutine: resetRoutine,

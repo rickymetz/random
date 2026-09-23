@@ -156,7 +156,7 @@ button { cursor: pointer; }
   bottom: 0;
   z-index: 5;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 0.25rem;
   padding: 0.35rem 0.4rem calc(0.35rem + var(--sab));
   background: var(--bg);
@@ -288,37 +288,45 @@ button { cursor: pointer; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .hero .btn { margin-top: 0.85rem; }
 
-.hero .hero-change { margin-top: 0.35rem; min-height: 2.5rem; font-size: 0.86rem; }
-
-/* More than one program today: a row of tabs to pick which the hero shows. */
-.program-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.7rem; }
-.program-tab {
-  min-height: 2.25rem;
-  padding: 0 0.8rem;
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  background: var(--card);
+/* The week at a glance, on the hero: "Calisthenics 1/3 · Mobility 0/3". */
+.goal-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.9rem;
+  margin: 0.55rem 0 0.9rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.84rem;
   color: var(--ink-2);
-  font-size: 0.82rem;
-  font-weight: 500;
 }
-.program-tab:hover { border-color: var(--accent); }
-.program-tab.is-active { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); }
-.program-tab-done { color: var(--good); }
+.goal-bit strong { font-weight: 600; color: var(--ink); }
+.goal-bit.is-met strong { color: var(--good); }
+.goal-days { margin-left: auto; color: var(--muted); }
+.hero-eyebrow { font-size: 0.78rem; color: var(--accent); font-weight: 600; letter-spacing: 0.02em; }
+.hero .hero-workout { margin-top: 0.15rem; }
+.hero-tools { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 0.35rem; }
+.hero .hero-tools .btn { margin-top: 0; }
 
-/* ---------- program picker ---------- */
-
-.picker-row {
+.session-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.5rem 0.8rem;
+  gap: 0.8rem;
   padding: 0.6rem 0;
   border-bottom: 1px solid var(--line);
 }
-.picker-main { min-width: 0; flex: 1 1 10rem; }
+.session-row:last-child { border-bottom: 0; }
+.session-row-main { min-width: 0; }
+.session-row-name { font-weight: 500; }
+.session-row.is-done .session-row-name { color: var(--muted); }
+.card > h2 + .session-row, .card > .card-head + .session-row { margin-top: 0.3rem; }
+.streak-line { text-align: center; margin: 1rem 0 0.5rem; }
+
+/* ---------- program picker ---------- */
+
 .picker-name { display: block; font-weight: 500; }
+.pick-head { display: flex; justify-content: space-between; align-items: baseline; }
+.pick-head .picker-goal { margin: 0; text-transform: none; letter-spacing: 0; }
 .picker-choice {
   display: block;
   width: 100%;
@@ -368,7 +376,7 @@ button { cursor: pointer; }
   font-size: 0.75rem;
 }
 .chip-x:hover { background: var(--accent-soft); color: var(--ink); }
-.sched-add {
+.chip-add, .sched-add {
   min-height: 2.25rem;
   padding: 0 0.5rem;
   border: 1px solid var(--line-strong);
@@ -377,6 +385,26 @@ button { cursor: pointer; }
   color: var(--ink);
   font-size: 0.82rem;
 }
+
+.chip-add {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  border: 1px dashed var(--line-strong);
+  border-radius: 999px;
+  background: none;
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+  text-align-last: center;
+}
+.chip-add:hover, .chip-add:focus-visible { border-color: var(--accent); }
+.log-add { margin-top: 0.9rem; }
+.day-head.is-quiet .day-name { color: var(--muted); font-weight: 400; }
+div.day-head { cursor: default; }
 
 /* A day with more than one program in the Week view. */
 .day-program + .day-program { margin-top: 0.9rem; padding-top: 0.8rem; border-top: 1px solid var(--line); }
