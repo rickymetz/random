@@ -717,8 +717,10 @@ const overlay = (() => {
   const c = mkCanvas(W, H), o = c.getContext("2d");
   o.fillStyle = "rgba(0,0,0,.22)";
   for (let y = 0; y < H; y += 4) o.fillRect(0, y, W, 2);
-  const v = o.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.95);
-  v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.5)");
+  // a light vignette that only reaches into the corners: HUDs live near the
+  // edges, so the middle and the top/bottom bars stay clear
+  const v = o.createRadialGradient(W / 2, H / 2, H * 0.65, W / 2, H / 2, Math.hypot(W, H) / 2);
+  v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(0.6, "rgba(0,0,0,.1)"); v.addColorStop(1, "rgba(0,0,0,.28)");
   o.fillStyle = v; o.fillRect(0, 0, W, H);
   return c;
 })();
