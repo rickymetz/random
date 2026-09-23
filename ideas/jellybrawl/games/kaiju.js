@@ -6,6 +6,7 @@
 // squashing everyone or outlasting the clock.
 
 import { W, H, INK, text, outlined, shout, rrect, circle, blob, tag, countdown, makeSplat, drawSplat } from "../gfx.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 60, R = 24, KR = 105, SPEED = 250, K_SPEED = 135, WINDUP = 0.7, STOMP_R = 185, STOMP_COOL = 1.6;
 const CHARGE = 3.2, DASH = 0.25, DASH_MUL = 2.2, DASH_COOL = 2.5;
@@ -182,7 +183,7 @@ export default {
         items.sort((a, b) => a[0] - b[0]).forEach(([, f]) => f());
         if (k.ring > 0) circle(g, k.x, k.y + KR * 0.3, STOMP_R * (1.2 - k.ring), null, `rgba(255,255,255,${k.ring * 2})`, 10);
         for (const s of shots) if (s.t < 0.25) { g.strokeStyle = "#ff6b00"; g.lineWidth = 14 * (1 - s.t * 4); g.beginPath(); g.moveTo(s.x0, s.y0 - 40); g.lineTo(k.x, k.y); g.stroke(); }
-        for (const pp of pops) { pp.t += 1 / 60; if (pp.t < 1.1) shout(g, pp.word, pp.x, pp.y, 48, pp.color, pp.t); }
+        for (const pp of fade(pops)) { pp.t += FX.dt; if (pp.t < 1.1) shout(g, pp.word, pp.x, pp.y, 48, pp.color, pp.t); }
         // HUD: kaiju HP bar
         rrect(g, 0, 0, W, 130, 0, "rgba(13,2,33,.85)");
         tag(g, `KAIJU · ${kp.name}`, 230, 64, kp.color, 28);

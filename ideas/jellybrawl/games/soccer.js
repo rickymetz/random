@@ -3,6 +3,7 @@
 // goes to golden-goal overtime.
 
 import { arena, clock, TEAM, rnd, W, H, INK, text, outlined, shout, rrect, circle } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 90, OT = 45, WIN = 3, GOAL_TOP = 395, GOAL_BOT = 795, BALL_R = 24, KICK = 1150;
 
@@ -93,7 +94,7 @@ export default {
         outlined(g, String(score[1]), W / 2 + 200, 76, 80, TEAM[1].color);
         if (overtime) text(g, "GOLDEN GOAL", W / 2, 76, 40, "#f9f002", "center", 900);
         else text(g, `${Math.floor(ck.left() / 60)}:${String(ck.left() % 60).padStart(2, "0")}`, W / 2, 76, 44, "#fff", "center", 900);
-        if (flash && (flash.t += 1 / 60) < 1.2) shout(g, flash.team < 0 ? "GOLDEN GOAL!" : "GOOOAL!", W / 2, H / 2, flash.team < 0 ? 150 : 200, flash.team < 0 ? "#f9f002" : TEAM[flash.team].color, flash.t);
+        if (flash && (flash.t += FX.dt) < 1.2) shout(g, flash.team < 0 ? "GOLDEN GOAL!" : "GOOOAL!", W / 2, H / 2, flash.team < 0 ? 150 : 200, flash.team < 0 ? "#f9f002" : TEAM[flash.team].color, flash.t);
         ck.overlay(g, "KICK OFF!");
       },
     };

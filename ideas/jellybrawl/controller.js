@@ -5,6 +5,8 @@
 import { joinRoom } from "./net.js";
 
 const $ = (id) => document.getElementById(id);
+let haptics = true; // the TV can switch buzzing off
+const vib = (ms) => haptics && navigator.vibrate?.(ms);
 const store = {
   get(k) { try { return sessionStorage.getItem(k) ?? localStorage.getItem(k); } catch { return null; } },
   set(k, v, local) { try { (local ? localStorage : sessionStorage).setItem(k, v); } catch {} },
@@ -75,10 +77,10 @@ $("join-form").addEventListener("submit", async (e) => {
 
 const doodle = $("doodle"), dg = doodle.getContext("2d");
 let lastFace = null, ink = "#16182b", drawing = false;
-const INKS = ["#16182b", "#ffffff", "#ff5a5f", "#3fa7ff", "#ffd23f"];
-for (const c of INKS) {
+const INKS = ["#16182b", "#ffffff", "#ff5a5f", "#3fa7ff", "#ffd23f"], INK_NAMES = ["black", "white", "red", "blue", "yellow"];
+for (const [i, c] of INKS.entries()) {
   const b = document.createElement("button");
-  b.type = "button"; b.style.background = c; b.setAttribute("aria-label", "ink " + c);
+  b.type = "button"; b.style.background = c; b.setAttribute("aria-label", `${INK_NAMES[i]} ink`);
   if (c === ink) b.classList.add("on");
   b.onclick = () => { ink = c; document.querySelectorAll(".swatches button").forEach((x) => x.classList.toggle("on", x === b)); };
   document.querySelector(".swatches").append(b);
@@ -132,14 +134,14 @@ $("face-done").addEventListener("click", () => {
 });
 
 // no face? fine: a plain blob, and the TV stops waiting on you
-$("pause").addEventListener("click", () => { conn.send({ t: "act", id: "pause" }); navigator.vibrate?.(20); });
+$("pause").addEventListener("click", () => { conn.send({ t: "act", id: "pause" }); vib(20); });
 $("face-skip").addEventListener("click", () => { conn.send({ t: "noface" }); faceDone = true; show("pad"); render(current); });
 
 /* ---------------------------------------------------------------- layouts */
 
 function onMsg(m) {
   if (m.t === "ping") return conn.send({ t: "pong", ts: m.ts });
-  if (m.t === "buzz") return navigator.vibrate?.(m.ms || 100);
+  if (m.t === "buzz") return vib(m.ms || 100);
   if (m.t === "radar") return drawRadar(m);
   if (m.t === "layout") {
     current = m;
@@ -164,6 +166,7 @@ function render(l) {
     document.querySelector('meta[name="theme-color"]').content = l.you.color;
   }
   $("role").textContent = l.role || "";
+  haptics = l.haptics !== false;
   $("pause").hidden = !l.vip;
   tiltOff?.(); tiltOff = null;
   view.replaceChildren();
@@ -174,13 +177,13 @@ function render(l) {
 }
 
 function wait(l) {
-  const msg = el("p", { className: "msg" + (l.shout ? " shout" : ""), textContent: l.text || "" });
+  const msg = el("p", { className: "msg" + (l.shout ? " shout" : ""), textContent: l.text || "", role: "status" });
   if (l.shout) msg.style.fontSize = `min(120px, ${Math.floor(128 / Math.max(4, (l.text || "").length))}vw)`;
   add(msg, l.sub && el("p", { className: "hint", textContent: l.sub }));
   if (l.heckle) { // knocked out? make trouble
     const h = el("button", { type: "button", className: "big heckle", textContent: "DROP GOO" });
     h.addEventListener("click", () => {
-      conn.send({ t: "heckle" }); navigator.vibrate?.(30);
+      conn.send({ t: "heckle" }); vib(30);
       h.disabled = true; let n = 4; h.textContent = `RELOADING ${n}`;
       const iv = setInterval(() => { if (--n <= 0) { clearInterval(iv); h.disabled = false; h.textContent = "DROP GOO"; } else h.textContent = `RELOADING ${n}`; }, 1000);
     });
@@ -188,7 +191,7 @@ function wait(l) {
   }
   if (l.react) add(el("div", { className: "reacts" }, ...["😂", "😱", "🔥", "👏", "💀", "🍿"].map((e) => {
     const b = el("button", { type: "button", textContent: e, ariaLabel: `react ${e}` });
-    b.addEventListener("click", () => { conn.send({ t: "react", e }); navigator.vibrate?.(10); b.classList.add("pop"); setTimeout(() => b.classList.remove("pop"), 250); });
+    b.addEventListener("click", () => { conn.send({ t: "react", e }); vib(10); b.classList.add("pop"); setTimeout(() => b.classList.remove("pop"), 250); });
     return b;
   })));
 }
@@ -212,7 +215,7 @@ function choose(l) {
 
 function button(l) {
   const b = el("button", { type: "button", className: "hit", textContent: l.label || "GO" });
-  const down = (e) => { e.preventDefault(); b.classList.add("down"); conn.send({ t: "btn", down: true }); navigator.vibrate?.(15); };
+  const down = (e) => { e.preventDefault(); b.classList.add("down"); conn.send({ t: "btn", down: true }); vib(15); };
   const up = () => { if (!b.classList.contains("down")) return; b.classList.remove("down"); conn.send({ t: "btn", down: false }); };
   b.addEventListener("pointerdown", down);
   b.addEventListener("pointerup", up);
@@ -223,9 +226,9 @@ function button(l) {
 
 function dpad(l) {
   const pad = el("div", { className: "dpad" });
-  const send = (d) => { conn.send({ t: "dir", d }); navigator.vibrate?.(10); };
+  const send = (d) => { conn.send({ t: "dir", d }); vib(10); };
   for (const [cls, d, glyph] of [["u", "up", "▲"], ["l", "left", "◀"], ["r", "right", "▶"], ["d", "down", "▼"]]) {
-    const b = el("button", { type: "button", className: cls, textContent: glyph });
+    const b = el("button", { type: "button", className: cls, textContent: glyph, ariaLabel: d });
     b.addEventListener("pointerdown", (e) => { e.stopPropagation(); b.classList.add("down"); send(d); });
     b.addEventListener("pointerup", () => b.classList.remove("down"));
     b.addEventListener("pointerleave", () => b.classList.remove("down"));
@@ -249,11 +252,11 @@ function dpad(l) {
 function roll(l) {
   add(el("p", { className: "msg", textContent: l.text }), l.sub && el("p", { className: "hint", textContent: l.sub }));
   const b = el("button", { type: "button", className: "hit", textContent: l.dbl ? "ROLL ×2" : "ROLL" });
-  b.addEventListener("pointerdown", (e) => { e.preventDefault(); conn.send({ t: "roll" }); navigator.vibrate?.(40); b.disabled = true; });
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); conn.send({ t: "roll" }); vib(40); b.disabled = true; });
   add(b);
   if (l.items?.length) add(el("div", { className: "items" }, ...l.items.map((it) => {
     const x = el("button", { type: "button", textContent: `USE ${it.label}` });
-    x.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "use", id: it.id }); x.disabled = true; navigator.vibrate?.(20); });
+    x.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "use", id: it.id }); x.disabled = true; vib(20); });
     return x;
   })));
 }
@@ -271,7 +274,7 @@ function padGrid(list, o = {}) {
       e.stopPropagation();
       if (b.disabled) return;
       conn.send({ t: "pad", id: p.id });
-      navigator.vibrate?.(20);
+      vib(20);
       if (o.multi) { b.disabled = true; return; }
       grid.querySelectorAll("button").forEach((x) => { x.disabled = x !== b; });
       b.classList.add("down");
@@ -347,7 +350,7 @@ function draw(l) {
   };
   c.addEventListener("pointerup", end); c.addEventListener("pointercancel", end);
   const sw = el("div", { className: "swatches" }, ...colors.map((col) => {
-    const b = el("button", { type: "button", className: col === color ? "on" : "" });
+    const b = el("button", { type: "button", className: col === color ? "on" : "", ariaLabel: `colour ${col}` });
     b.style.background = col;
     b.addEventListener("click", () => { color = col; sw.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); });
     return b;
@@ -370,7 +373,7 @@ function bomb(l) {
   if (l.hold) {
     const b = el("button", { type: "button", className: "hit bombbtn", textContent: l.hold.label });
     b.style.background = l.hold.color;
-    const down = (e) => { e.preventDefault(); b.classList.add("down"); conn.send({ t: "btn", down: true }); navigator.vibrate?.(15); };
+    const down = (e) => { e.preventDefault(); b.classList.add("down"); conn.send({ t: "btn", down: true }); vib(15); };
     const up = () => { if (!b.classList.contains("down")) return; b.classList.remove("down"); conn.send({ t: "btn", down: false }); };
     b.addEventListener("pointerdown", down); b.addEventListener("pointerup", up); b.addEventListener("pointercancel", up); b.addEventListener("pointerleave", up);
     add(b);
@@ -429,7 +432,7 @@ function nav(l) {
   let act = null;
   if (l.action) {
     act = el("button", { type: "button", className: "hit fire", textContent: l.action });
-    act.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "action" }); navigator.vibrate?.(20); });
+    act.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "action" }); vib(20); });
   }
   add(radar, l.hint && el("p", { className: "hint", textContent: l.hint }), act);
 }
@@ -465,7 +468,7 @@ function stick(l) {
   if (l.action) {
     act = el("button", { type: "button", className: "act", textContent: l.action });
     // "action", not "act": the TV reads "act" as a menu command
-    act.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "action" }); navigator.vibrate?.(20); });
+    act.addEventListener("pointerdown", (e) => { e.stopPropagation(); conn.send({ t: "action" }); vib(20); });
   }
   if (l.radar === false) radar = null; // games where everything is on the TV
   add(radar, el("div", { className: "stickrow" + (act ? "" : " solo") }, pad, act), l.hint && el("p", { className: "hint", textContent: l.hint }));
@@ -494,11 +497,11 @@ function scope(l) {
     fire.textContent = left > 0 ? left.toFixed(1) : "FIRE";
     if (left > 0) requestAnimationFrame(tick);
   };
-  fire.addEventListener("pointerdown", (e) => { e.stopPropagation(); if (fire.disabled) return; conn.send({ t: "fire" }); navigator.vibrate?.(60); });
+  fire.addEventListener("pointerdown", (e) => { e.stopPropagation(); if (fire.disabled) return; conn.send({ t: "fire" }); vib(60); });
   let flare = null;
   if (l.flares != null) { // Blackout: light up the whole plaza for a second
     flare = el("button", { type: "button", className: "flare", textContent: `FLARE ${"✦".repeat(l.flares) || "—"}`, disabled: !l.flares });
-    flare.addEventListener("pointerdown", (e) => { e.stopPropagation(); if (flare.disabled) return; conn.send({ t: "flare" }); flare.disabled = true; navigator.vibrate?.(40); });
+    flare.addEventListener("pointerdown", (e) => { e.stopPropagation(); if (flare.disabled) return; conn.send({ t: "flare" }); flare.disabled = true; vib(40); });
   }
   add(area, flare ? el("div", { className: "firerow" }, fire, flare) : fire, l.hint && el("p", { className: "hint", textContent: l.hint }));
   tick(); // after add(): tick stops once the button leaves the page
@@ -533,7 +536,7 @@ function sling(l) {
   area.addEventListener("pointerup", (e) => {
     if (!o) return;
     v = vec(e); o = null; svg.innerHTML = "";
-    if (v.p > 0.08) { conn.send({ t: "fire", ...v }); navigator.vibrate?.(40); }
+    if (v.p > 0.08) { conn.send({ t: "fire", ...v }); vib(40); }
     else hint.textContent = "Drag further!";
   });
 }

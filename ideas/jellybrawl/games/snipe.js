@@ -19,6 +19,7 @@
 // runner. The sniper role rotates.
 
 import { W, H, INK, text, outlined, shout, rrect, circle, blob, tag, countdown, makeSplat, drawSplat } from "../gfx.js";
+import { FX, fade } from "../gfx.js";
 
 const BOUNCE = 0.7, KNOCK_DAMP = 5; // solid blobs: restitution, and how fast a shove fades (1/s)
 const TIME = 75, R = 26, SPEED = 150, PANIC_SPEED = 260, RELOAD = 1.5, MISFIRE = 4, PANIC = 3;
@@ -466,7 +467,7 @@ function makeSniper(V) {
           g.moveTo(scope.x, scope.y - SCOPE); g.lineTo(scope.x, scope.y - 14); g.moveTo(scope.x, scope.y + 14); g.lineTo(scope.x, scope.y + SCOPE); g.stroke();
           if (!ready) { g.beginPath(); g.arc(scope.x, scope.y, SCOPE + 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - scope.cool / scope.coolMax)); g.lineWidth = 8; g.strokeStyle = "#f9f002"; g.stroke(); }
           if (scope.flash > 0) { g.fillStyle = `rgba(255,255,255,${scope.flash * 3})`; g.fillRect(0, 0, W, H); }
-          for (const pp of pops) { pp.t += 1 / 60; if (pp.t < 1.2) shout(g, pp.word, pp.x, pp.y, 50, pp.color, pp.t); }
+          for (const pp of fade(pops)) { pp.t += FX.dt; if (pp.t < 1.2) shout(g, pp.word, pp.x, pp.y, 50, pp.color, pp.t); }
           if (panic > 0) outlined(g, "PANIC!", W / 2, F.y0 + 60, 70 + Math.sin(t * 20) * 6, "#ff2a6d", "center", Math.sin(t * 9) * 0.06);
           // HUD
           rrect(g, 0, 0, W, 150, 0, "rgba(13,2,33,.85)");

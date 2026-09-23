@@ -4,6 +4,7 @@
 // is a burst of speed that sheds tail. Last snake slithering, or the longest at 60 s.
 
 import { arena, clock, rnd, W, H, INK, text, outlined, shout, rrect, circle, blob, tag } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 60, SPEED = 250, BOOST = 1.8, TURN = 4.2, GAP = 12, SEG_R = 15, HEAD_R = 22, START_LEN = 14, PELLET_R = 10;
 
@@ -46,6 +47,8 @@ export default {
       },
       bot(pid, dt) {
         const b = A.of(pid); if (!b || b.out || ck.t < 0) return;
+        b.bot.think = (b.bot.think ?? 0) - dt; if (b.bot.think > 0) return; // 10 times a second is plenty
+        b.bot.think = 0.1;
         // probe a fan of headings for danger; prefer the safe one closest to food
         const food = pellets.reduce((best, p) => { const d = Math.hypot(p.x - b.x, p.y - b.y) / p.v; return d < best.d ? { p, d } : best; }, { p: null, d: 1e9 }).p;
         const goal = food ? Math.atan2(food.y - b.y, food.x - b.x) : b.ang;
@@ -113,7 +116,7 @@ export default {
         g.strokeStyle = "rgba(57,255,20,.07)"; g.lineWidth = 2;
         for (let x = F.x0; x < F.x1; x += 60) { g.beginPath(); g.moveTo(x, F.y0); g.lineTo(x, F.y1); g.stroke(); }
         for (let y = F.y0; y < F.y1; y += 60) { g.beginPath(); g.moveTo(F.x0, y); g.lineTo(F.x1, y); g.stroke(); }
-        for (const p of pellets) { p.t += 1 / 60; circle(g, p.x, p.y, PELLET_R * (p.v > 1 ? 1.3 : 1) + Math.sin(p.t * 4) * 2, p.v > 1 ? "#ff6b00" : "#f9f002", INK, 3); }
+        for (const p of pellets) { p.t += FX.dt; circle(g, p.x, p.y, PELLET_R * (p.v > 1 ? 1.3 : 1) + Math.sin(p.t * 4) * 2, p.v > 1 ? "#ff6b00" : "#f9f002", INK, 3); }
         for (const b of A.live()) {
           const c = b.p.color;
           for (let k = b.trail.length - 1; k >= 0; k--) { const s = b.trail[k], r = SEG_R * (1 - (k / b.trail.length) * 0.45); circle(g, s.x, s.y, r, k % 4 < 2 ? c : shadeHex(c), INK, 4); }
@@ -122,7 +125,7 @@ export default {
           blob(g, b.p, b.x, b.y, HEAD_R + 4, { sx: b.boost > 0 ? 1.15 : 1, sy: b.boost > 0 ? 0.9 : 1 });
           tag(g, b.ghost ? "BOT" : b.p.name, b.x, b.y - HEAD_R - 26, b.p.color, 16);
         }
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 48, "#39ff14", p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 48, "#39ff14", p.t); }
         rrect(g, 0, 0, W, 120, 0, "rgba(8,20,12,.9)");
         const lead = A.live().sort((a, b) => b.len - a.len)[0];
         if (lead) text(g, `LONGEST: ${lead.ghost ? "BOT" : lead.p.name} · ${lead.len}`, 380, 60, 36, "#39ff14", "center", 900);

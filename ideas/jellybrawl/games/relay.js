@@ -4,6 +4,7 @@
 // the next teammate. First team through four legs wins.
 
 import { arena, clock, TEAM, rnd, W, H, INK, text, outlined, shout, rrect, circle, blob } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const LEGS = 4, X0 = 170, X1 = W - 150, LANE_H = 370, JUMP_T = 0.55, TRIP = 0.8, TIME = 90;
 
@@ -111,7 +112,7 @@ export default {
             rrect(g, b.x + 16, b.y - b.z - 10, 26, 10, 3, "#f9f002", INK, 2); // the baton
           }
         }
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 48, "#f9f002", p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 48, "#f9f002", p.t); }
         outlined(g, String(ck.left()), W / 2, 90, 60, "#fff");
         ck.overlay(g, "RUN!");
       },

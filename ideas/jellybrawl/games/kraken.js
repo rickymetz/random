@@ -6,6 +6,7 @@
 // clock runs out.
 
 import { arena, clock, rnd, W, H, INK, text, outlined, shout, rrect, circle, blob, tag } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 60, RAFT_ACC = 260, RAFT_MAX = 190, WINDUP = 1.1, SLAM_R = 115, TENTACLES = 2, T_COOL = 1.4, AIM_SPEED = 520;
 
@@ -134,7 +135,7 @@ export default {
           g.beginPath(); g.ellipse(t.x, t.y, SLAM_R * (0.4 + 0.6 * k), SLAM_R * 0.55 * (0.4 + 0.6 * k), 0, 0, Math.PI * 2); g.fillStyle = `rgba(0,0,0,${0.25 + 0.3 * k})`; g.fill();
           g.strokeStyle = `rgba(255,42,109,${0.4 + 0.6 * k})`; g.lineWidth = 5; g.stroke();
         }
-        for (const s of splashes) { s.t += 1 / 60; if (s.t < 0.7) for (let k = 0; k < 10; k++) { const a = (k / 10) * Math.PI * 2; circle(g, s.x + Math.cos(a) * (40 + s.t * 200), s.y + Math.sin(a) * (20 + s.t * 100) - s.t * 60, 10 * (1 - s.t), "rgba(200,240,255,.8)"); } }
+        for (const s of fade(splashes)) { s.t += FX.dt; if (s.t < 0.7) for (let k = 0; k < 10; k++) { const a = (k / 10) * Math.PI * 2; circle(g, s.x + Math.cos(a) * (40 + s.t * 200), s.y + Math.sin(a) * (20 + s.t * 100) - s.t * 60, 10 * (1 - s.t), "rgba(200,240,255,.8)"); } }
         // raft with the crew aboard
         g.save(); g.translate(raft.x, raft.y); g.rotate(raft.ang);
         if (raft.hit > 0) g.translate(rnd(-5, 5), rnd(-5, 5));
@@ -154,7 +155,7 @@ export default {
         }
         // the kraken's crosshair (everyone can see it coming)
         g.strokeStyle = "#ff2a6d"; g.lineWidth = 5; g.beginPath(); g.arc(aim.x, aim.y, 40, 0, Math.PI * 2); g.moveTo(aim.x - 60, aim.y); g.lineTo(aim.x + 60, aim.y); g.moveTo(aim.x, aim.y - 60); g.lineTo(aim.x, aim.y + 60); g.stroke();
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 1) shout(g, p.word, p.x, p.y, 60, "#f9f002", p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 1) shout(g, p.word, p.x, p.y, 60, "#f9f002", p.t); }
         rrect(g, 0, 0, W, 130, 0, "rgba(3,20,32,.9)");
         text(g, raft.leg < 3 ? `NEXT: BUOY ${raft.leg + 1}` : "NEXT: THE DOCK", 300, 66, 38, "#f9f002", "center", 900);
         outlined(g, String(ck.left()), W / 2, 66, 70, "#fff");

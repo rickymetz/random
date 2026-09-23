@@ -5,6 +5,7 @@
 // first, then the infected, latest-turned first.
 
 import { W, H, INK, text, outlined, shout, rrect, circle, blob, tag, countdown, makeSplat, drawSplat } from "../gfx.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 45, R = 28, SPEED = 230, ZERO_SPEED = 238, IT_SPEED = 205, DASH = 0.28, DASH_MUL = 2.4, DASH_COOL = 2.5;
 const F = { x0: 100, y0: 150, x1: W - 100, y1: H - 60 };
@@ -126,7 +127,7 @@ export default {
           blob(g, b.p, b.x, b.y - bob, R, { tint: b.it ? ROT : undefined, sx: b.dash > 0 ? 1.25 : 1, sy: b.dash > 0 ? 0.8 : 1 });
           tag(g, b.it ? `☣ ${b.p.name}` : b.p.name, b.x, b.y - R - 28, b.it ? SLIME : b.p.color, 18);
         }
-        for (const pp of pops) { pp.t += 1 / 60; if (pp.t < 1.1) shout(g, pp.word, pp.x, pp.y, 46, SLIME, pp.t); }
+        for (const pp of fade(pops)) { pp.t += FX.dt; if (pp.t < 1.1) shout(g, pp.word, pp.x, pp.y, 46, SLIME, pp.t); }
         rrect(g, 0, 0, W, 120, 0, "rgba(13,2,33,.85)");
         text(g, `CLEAN ${clean().length}`, 300, 60, 44, "#fff", "center", 900);
         text(g, `INFECTED ${blobs.length - clean().length}`, W - 300, 60, 44, SLIME, "center", 900);

@@ -5,6 +5,7 @@
 // Knocked off, you shrink back. Most seconds as king after 60 s wins.
 
 import { arena, clock, rnd, W, H, INK, text, outlined, shout, rrect, circle, blob, tag } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 60, HILL_R = 170, GROW = 0.35, MAX_S = 2.0, R0 = 28;
 
@@ -93,7 +94,7 @@ export default {
           tag(g, b.ghost ? "BOT" : b.p.name, b.x, b.y - R - 22, b.p.color, 16);
           if (b === king) { g.save(); g.translate(b.x, b.y - R - 44); g.scale(b.size * 0.6, b.size * 0.6); g.beginPath(); g.moveTo(-26, 14); g.lineTo(-30, -14); g.lineTo(-14, 0); g.lineTo(0, -22); g.lineTo(14, 0); g.lineTo(30, -14); g.lineTo(26, 14); g.closePath(); g.fillStyle = "#ffd400"; g.fill(); g.lineWidth = 5; g.strokeStyle = INK; g.stroke(); g.restore(); }
         });
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 60, "#ffd400", p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 60, "#ffd400", p.t); }
         rrect(g, 0, 0, W, 130, 0, "rgba(14,20,10,.92)");
         const top = [...A.bodies].sort((a, b) => b.score - a.score).slice(0, 3);
         top.forEach((b, i) => text(g, `${i + 1}. ${b.ghost ? "BOT" : b.p.name} ${Math.floor(b.score)}s`, 150 + i * 260, 66, 30, b.p.color, "left", 900));

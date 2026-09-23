@@ -5,6 +5,7 @@
 // strikes and it blows. First team to defuse wins; at 0:00, most modules.
 
 import { arena, clock, TEAM, rnd, shuffle, W, H, INK, text, outlined, shout, rrect, circle, blob, tag } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 150, STRIKES = 3;
 const WIRE = { red: "#ff2a3d", blue: "#2a6bff", yellow: "#f9f002", white: "#f4f4f4", black: "#1a1a1a" };
@@ -186,7 +187,7 @@ export default {
         for (let i = 0; i < 26; i++) { g.fillStyle = i % 2 ? "#1a1410" : "#16110d"; g.fillRect(0, i * 42, W, 42); } // workbench planks
         g.fillStyle = "#f9f002"; for (let x = -40; x < W; x += 80) { g.beginPath(); g.moveTo(x, H - 30); g.lineTo(x + 40, H - 30); g.lineTo(x + 70, H); g.lineTo(x + 30, H); g.closePath(); g.fill(); }
         for (const t of [0, 1]) drawBomb(g, t, t === 0 ? W / 4 : (W * 3) / 4);
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 1.1) shout(g, p.word, p.x, p.y, 90, p.c, p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 1.1) shout(g, p.word, p.x, p.y, 90, p.c, p.t); }
         ck.overlay(g, "DEFUSE!");
       },
     };

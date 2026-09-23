@@ -2,7 +2,7 @@
 // render the layouts we send them (see index.html / controller.js).
 
 import { hostRoom } from "./net.js";
-import { W, H, INK, POP, T, fit, grid, neon, text, outlined, rrect, shout, sunburst, halftone, panel, bomb, circle, blob, tag, star, shade, CRISP, flushCrisp } from "./gfx.js";
+import { W, H, INK, POP, T, fit, grid, neon, text, outlined, rrect, shout, sunburst, halftone, panel, bomb, circle, blob, tag, star, shade, CRISP, flushCrisp, FX, PREFS } from "./gfx.js";
 import { qr } from "./qr.js";
 import { sfx, unlock } from "./sfx.js";
 import flap from "./games/flap.js";
@@ -40,6 +40,30 @@ const GAMES = [flap, sling, chomp, snipe, blackout, tagGame, kaiju, soccer, sumo
 // canvas text only uses a web font once it's loaded; ask for both up front
 for (const f of [T.display, T.label]) document.fonts?.load(`40px ${f}`).catch(() => {});
 const COLORS = ["#ff2e63", "#00b7ff", "#ffd400", "#35e06b", "#b14dff", "#ff8a00", "#ff6ec7", "#00e0c6"];
+const MARKS = ["●", "▲", "■", "◆", "★", "✚", "✖", "♥"]; // one per colour, for colour-blind mode
+
+/* ---------------------------------------------------------------- settings
+   Kept on the TV (localStorage). Reduced motion follows the system setting
+   until someone picks. */
+const SETTINGS = {
+  motion: { label: "Motion", values: ["full", "reduced"], names: { full: "Full", reduced: "Reduced" } },
+  crt: { label: "CRT filter", values: ["full", "light", "off"], names: { full: "Full", light: "Light", off: "Off" } },
+  text: { label: "Text size", values: [1, 1.25, 1.5], names: { 1: "Normal", 1.25: "Large", 1.5: "Huge" } },
+  marks: { label: "Colour-blind shapes", values: [false, true], names: { false: "Off", true: "On" } },
+  bright: { label: "Brightness boost", values: [false, true], names: { false: "Off", true: "On" } },
+  haptics: { label: "Phone buzz", values: [true, false], names: { true: "On", false: "Off" } },
+};
+function loadSettings() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem("jb-settings") || "{}"); } catch {}
+  const reduced = matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  return { motion: reduced ? "reduced" : "full", crt: "full", text: 1, marks: false, bright: false, haptics: true, ...saved };
+}
+function applySettings() {
+  PREFS.motion = S.opt.motion === "reduced" ? 0.25 : 1;
+  PREFS.marks = S.opt.marks; PREFS.text = S.opt.text;
+  try { localStorage.setItem("jb-settings", JSON.stringify(S.opt)); } catch {}
+}
 const BOT_NAMES = ["Wobbles", "Gloop", "Jiggly", "Squish", "Blorp", "Mochi", "Puddin", "Boing"];
 const MAX = 8;
 const POINTS = [10, 6, 4, 2, 1, 1, 1, 1];
@@ -72,8 +96,9 @@ const g = sceneC.getContext("2d");
 const S = {
   scene: "gate", t: 0, players: [], rounds: 5, round: 0, net: null, qr: null, joinUrl: "",
   mode: "playlist", boardMap: "random", game: null, def: null, chooser: null, options: null, picked: null, lastGameId: null,
-  result: null, deltas: [], roleCounts: {}, layouts: new Map(), reacts: [], gctx: null,
+  result: null, deltas: [], roleCounts: {}, layouts: new Map(), reacts: [], gctx: null, settingsOpen: false,
 };
+S.opt = loadSettings(); applySettings();
 window.__jelly = S; // for tests and poking around in devtools
 window.__finish = () => finishGame(); // tests: settle S.game.result now
 
@@ -83,12 +108,13 @@ const humans = () => S.players.filter((p) => !p.bot);
 const byPid = (pid) => S.players.find((p) => p.pid === pid);
 const vip = () => humans().find((p) => p.connected);
 
-function send(p, m) { if (p && !p.bot && p.connected) S.net.send(p.pid, m); }
+function send(p, m) { if (p && !p.bot && p.connected && !(m.t === "buzz" && !S.opt.haptics)) S.net.send(p.pid, m); }
 function layout(pid, obj) {
   const p = byPid(pid);
   if (!p) return;
   const l = { t: "layout", ...obj, you: { name: p.name, color: p.color } };
   if (S.capture) { S.capture.set(pid, l); return; } // the intro holds these back
+  if (!S.opt.haptics) l.haptics = false;
   if (p === vip() && ["choose", "intro", "game", "results", "board", "duel"].includes(S.scene)) l.vip = true; // ⏸ on the VIP's phone
   // anyone waiting mid-game can react; knocked out of an arena game, they can heckle too
   if (l.kind === "wait" && ["game", "duel", "board", "intro", "results"].includes(S.scene)) { l.react = true; l.heckle = !!S.gctx?.arena?.stepping && S.scene === "game"; }
@@ -99,7 +125,8 @@ const layoutAll = (fn) => S.players.forEach((p) => layout(p.pid, fn(p)));
 
 function addPlayer(pid, name, bot = false) {
   const used = new Set(S.players.map((p) => p.color));
-  const p = { pid, name, bot, color: COLORS.find((c) => !used.has(c)), face: null, connected: true, score: 0, stats: {}, rtt: null, bob: Math.random() * 6 };
+  const color = COLORS.find((c) => !used.has(c));
+  const p = { pid, name, bot, color, mark: MARKS[COLORS.indexOf(color)], face: null, connected: true, score: 0, stats: {}, rtt: null, bob: Math.random() * 6 };
   S.players.push(p);
   return p;
 }
@@ -206,6 +233,12 @@ function act(id, p) {
     return;
   }
   if (id === "end" && S.paused) { pause(false); S.game = null; go("final"); sfx.win(); return refreshMenus(); }
+  if (id === "settings" && S.scene === "lobby") { S.settingsOpen = !S.settingsOpen; return refreshMenus(); }
+  if (id.startsWith("set-") && SETTINGS[id.slice(4)]) {
+    const k = id.slice(4), vals = SETTINGS[k].values;
+    S.opt[k] = vals[(vals.indexOf(S.opt[k]) + 1) % vals.length];
+    applySettings(); return refreshMenus();
+  }
   if (id === "start" && S.scene === "lobby" && S.players.length >= 2) startSession();
   else if (id === "rounds" && S.scene === "lobby") { S.rounds = ROUND_CHOICES[(ROUND_CHOICES.indexOf(S.rounds) + 1) % ROUND_CHOICES.length]; refreshMenus(); }
   else if (id === "map" && S.scene === "lobby") { const k = Object.keys(MAP_NAMES); S.boardMap = k[(k.indexOf(S.boardMap) + 1) % k.length]; refreshMenus(); }
@@ -225,13 +258,17 @@ function lobbyLine() {
 function refreshMenus() {
   const v = vip();
   for (const p of humans()) {
-    if (S.scene === "lobby") {
+    if (S.scene === "lobby" && p === v && S.settingsOpen) {
+      layout(p.pid, { kind: "menu", text: "Settings", sub: "Saved on this TV.", actions: [
+        ...Object.entries(SETTINGS).map(([k, s]) => ({ id: `set-${k}`, label: `${s.label}: ${s.names[S.opt[k]]}` })),
+        { id: "settings", label: "✓ Done", big: true }] });
+    } else if (S.scene === "lobby") {
       layout(p.pid, p === v
         ? { kind: "menu", text: "You're the VIP", sub: S.players.length < 2 ? "Waiting for one more player…" : lobbyLine(), actions: [
           ...(S.players.length >= 2 ? [{ id: "start", label: "▶ Start game", big: true }] : []),
           { id: "mode", label: `Mode: ${MODE_NAME[S.mode]}` },
           ...(S.mode === "board" ? [{ id: "map", label: `Board: ${MAP_NAMES[S.boardMap]}` }] : []),
-          ...(S.mode !== "gauntlet" ? [{ id: "rounds", label: `${S.mode === "board" ? "Turns" : "Rounds"}: ${S.rounds}` }] : []), { id: "addbot", label: "+ Add bot" }, { id: "rmbot", label: "− Remove bot" }] }
+          ...(S.mode !== "gauntlet" ? [{ id: "rounds", label: `${S.mode === "board" ? "Turns" : "Rounds"}: ${S.rounds}` }] : []), { id: "addbot", label: "+ Add bot" }, { id: "rmbot", label: "− Remove bot" }, { id: "settings", label: "⚙ Settings" }] }
         : { kind: "menu", text: "You're in!", sub: `Waiting for ${v ? v.name : "the VIP"} to start…` });
     } else if (S.scene === "final") {
       layout(p.pid, { kind: "menu", text: finalLine(p), sub: p === v ? "Play again?" : `Waiting for ${v?.name}…`, actions: p === v ? [{ id: "rematch", label: "↻ Rematch", big: true }, { id: "lobby", label: "Back to lobby" }] : [] });
@@ -346,7 +383,7 @@ function gameCtx(seats) {
     layout,
     sfx,
     send: (pid, m) => send(byPid(pid), m),
-    shake: (n) => { S.shake = Math.max(S.shake || 0, n); if (n >= 25) S.hitstop = 0.09; }, // big hits freeze a beat
+    shake: (n) => { S.shake = Math.max(S.shake || 0, n); if (n >= 25 && PREFS.motion === 1) S.hitstop = 0.09; }, // big hits freeze a beat
     buzz: (pid, ms) => send(byPid(pid), { t: "buzz", ms }),
     stat: (pid, k, n) => { const p = byPid(pid); if (p) p.stats[k] = (p.stats[k] || 0) + n; },
     lag: (pid) => Math.min(0.15, (byPid(pid)?.rtt || 0) / 2000), // one-way delay, for timing games
@@ -670,43 +707,53 @@ const grain = [0, 1, 2].map(() => {
   return c;
 });
 
+// CRT tiers: full (half-res, colour split, grain), light (half-res and
+// scanlines only; also used automatically when frames run slow), off (clean)
 function post() {
-  lg.imageSmoothingEnabled = true;
-  lg.drawImage(sceneC, 0, 0, LW, LH);
-  for (const ch of chans) {
+  const mode = S.opt.crt === "full" && S.slow ? "light" : S.opt.crt;
+  if (mode !== "off") {
+    lg.imageSmoothingEnabled = true;
+    lg.drawImage(sceneC, 0, 0, LW, LH);
+  }
+  if (mode === "full") for (const ch of chans) {
     ch.g.globalCompositeOperation = "copy"; ch.g.drawImage(low, 0, 0);
     ch.g.globalCompositeOperation = "multiply"; ch.g.fillStyle = ch.color; ch.g.fillRect(0, 0, LW, LH);
   }
   S.shake = Math.min(30, Math.max(0, (S.shake || 0) - 0.9));
-  const sh = S.shake, now = performance.now() / 1000;
+  const sh = S.shake * PREFS.motion, now = performance.now() / 1000;
   // a smooth wobble that dies away, not a new random jolt every frame
   out.save();
-  out.imageSmoothingEnabled = false;
+  out.imageSmoothingEnabled = mode === "off";
   out.fillStyle = INK; out.fillRect(0, 0, W, H);
   out.translate(W / 2 + Math.sin(now * 41) * sh * 0.45, H / 2 + Math.cos(now * 37) * sh * 0.45);
-  out.rotate(Math.sin(now * 0.5) * 0.006 + Math.sin(now * 29) * sh * 0.0006);
-  out.scale(1.02, 1.02);
+  out.rotate((Math.sin(now * 0.5) * 0.006 + Math.sin(now * 29) * sh * 0.0006) * PREFS.motion);
+  if (mode !== "off") out.scale(1.02, 1.02);
   out.translate(-W / 2, -H / 2);
   const base = out.getTransform(); // the crisp labels follow the same sway and shake
-  out.drawImage(low, 0, 0, W, H);
-  out.globalCompositeOperation = "screen";
-  out.globalAlpha = 0.28;
-  const ab = 4 + Math.min(sh, 20) * 0.25;
-  out.drawImage(chans[0].c, ab, 0, W, H);
-  out.drawImage(chans[1].c, -ab, 0, W, H);
+  out.drawImage(mode === "off" ? sceneC : low, 0, 0, W, H);
+  if (mode === "full") {
+    out.globalCompositeOperation = "screen";
+    out.globalAlpha = 0.28;
+    const ab = 4 + Math.min(sh, 20) * 0.25;
+    out.drawImage(chans[0].c, ab, 0, W, H);
+    out.drawImage(chans[1].c, -ab, 0, W, H);
+  }
   out.restore();
-  out.drawImage(overlay, 0, 0);
-  out.save();
-  out.globalCompositeOperation = "overlay"; out.globalAlpha = 0.18;
-  out.drawImage(grain[Math.floor(Math.random() * 3)], 0, 0, W, H);
-  out.restore();
+  if (mode !== "off") out.drawImage(overlay, 0, 0);
+  if (mode === "full") {
+    out.save();
+    out.globalCompositeOperation = "overlay"; out.globalAlpha = 0.18;
+    out.drawImage(grain[Math.floor(Math.random() * 3)], 0, 0, W, H);
+    out.restore();
+  }
+  if (S.opt.bright) { out.save(); out.globalCompositeOperation = "screen"; out.fillStyle = "rgb(46,40,56)"; out.fillRect(0, 0, W, H); out.restore(); } // lifts the blacks
   flushCrisp(out, base);
 }
 
 // emoji from the phones float up from the bottom edge, each above its sender's slot
 const REACTS = ["😂", "😱", "🔥", "👏", "💀", "🍿"];
 function drawReacts() {
-  const dt = 1 / 60;
+  const dt = FX.dt;
   S.reacts = S.reacts.filter((r) => (r.t += dt) < 2.2);
   for (const r of S.reacts) {
     g.save(); g.globalAlpha = Math.min(1, (2.2 - r.t) * 1.5);
@@ -741,6 +788,11 @@ function frame(now) {
   requestAnimationFrame(frame); // first, so one bad frame can't freeze the TV
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  FX.dt = S.paused || S.hitstop > 0 ? 0 : dt;
+  // slow for ~3 s straight? drop the full CRT pass to the light one
+  S.frameMs = (S.frameMs ?? 16) * 0.97 + dt * 1000 * 0.03;
+  if (S.frameMs > 24) S.slowFor = (S.slowFor || 0) + dt; else S.slowFor = 0;
+  if (S.slowFor > 3) S.slow = true;
   try { tick(dt); draw(); }
   catch (err) {
     console.error(err);
@@ -781,6 +833,7 @@ addEventListener("keydown", (e) => {
   else if (k === "g") act("mode");
   else if (k === "m") act("map");
   else if (k === "p") act(S.paused ? "resume" : "pause");
+  else if (k === "o") act("settings");
   else if (k === "s" && S.paused) act("skip");
   else if (S.scene === "choose" && ["1", "2", "3"].includes(k) && !S.picked && S.options[+k - 1]) pick(S.options[+k - 1].id);
 });

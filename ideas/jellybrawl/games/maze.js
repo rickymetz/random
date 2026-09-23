@@ -5,6 +5,7 @@
 // else ranks by how close they got. 60 s.
 
 import { arena, clock, rnd, shuffle, W, H, INK, text, outlined, shout, rrect, circle } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 60, COLS = 15, ROWS = 7, CELL = 116, WALL = 14, R = 20, ACC = 900, MAXV = 430, HOLE_R = 24;
 
@@ -152,7 +153,7 @@ export default {
           if (b.done) continue;
           A.drawBody(g, b, { noTag: s < 1, alpha: s });
         }
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 40, "#ff2a6d", p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 40, "#ff2a6d", p.t); }
         rrect(g, 0, 0, W, 130, 0, "rgba(10,15,31,.92)");
         text(g, `ESCAPED ${done.length}/${Math.min(3, n)}`, 330, 66, 38, "#39ff14", "center", 900);
         done.forEach((b, i) => text(g, `${i + 1}. ${b.p.name}`, W - 560 + i * 200, 66, 28, b.p.color, "center", 900));

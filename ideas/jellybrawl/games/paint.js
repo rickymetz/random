@@ -3,6 +3,7 @@
 // a rival stuns them and paints over their spot. Most ground after 60 s wins.
 
 import { arena, clock, TEAM, rnd, W, H, INK, text, outlined, shout, rrect, circle } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 60, CELL = 30, STUN = 1.2;
 
@@ -17,6 +18,10 @@ export default {
     const cols = Math.floor((F.x1 - F.x0) / CELL), rows = Math.floor((F.y1 - F.y0) / CELL);
     const ox = F.x0 + ((F.x1 - F.x0) - cols * CELL) / 2, oy = F.y0 + ((F.y1 - F.y0) - rows * CELL) / 2;
     const cells = new Int8Array(cols * rows).fill(-1), count = [0, 0];
+    // the paint lives on its own canvas, rebuilt when it changes (≤ ~10×/s),
+    // rather than ~1,700 arcs a team every frame
+    const layer = typeof document !== "undefined" ? Object.assign(document.createElement("canvas"), { width: W, height: H }) : null;
+    let dirty = true, lastBuild = -1;
     let endAt = null;
 
     for (const t of [0, 1]) A.teams[t].forEach((b, i, arr) => {
@@ -33,7 +38,7 @@ export default {
         const i = cy * cols + cx, was = cells[i];
         if (was === team) continue;
         if (was >= 0) count[was]--;
-        cells[i] = team; count[team]++; n++;
+        cells[i] = team; count[team]++; n++; dirty = true;
       }
       return n;
     }
@@ -82,15 +87,22 @@ export default {
         for (let x = ox; x <= ox + cols * CELL; x += CELL * 4) { g.beginPath(); g.moveTo(x, F.y0); g.lineTo(x, F.y1); g.stroke(); }
         for (let y = oy; y <= oy + rows * CELL; y += CELL * 4) { g.beginPath(); g.moveTo(F.x0, y); g.lineTo(F.x1, y); g.stroke(); }
         // paint: one path per team of overlapping dots, so it reads as goo
-        for (const t of [0, 1]) {
-          g.beginPath();
-          for (let i = 0; i < cells.length; i++) if (cells[i] === t) {
-            const x = ox + ((i % cols) + 0.5) * CELL, y = oy + (Math.floor(i / cols) + 0.5) * CELL;
-            g.moveTo(x + CELL * 0.72, y); g.arc(x, y, CELL * 0.72, 0, Math.PI * 2);
+        const paintOn = (c) => {
+          for (const t of [0, 1]) {
+            c.beginPath();
+            for (let i = 0; i < cells.length; i++) if (cells[i] === t) {
+              const x = ox + ((i % cols) + 0.5) * CELL, y = oy + (Math.floor(i / cols) + 0.5) * CELL;
+              c.moveTo(x + CELL * 0.72, y); c.arc(x, y, CELL * 0.72, 0, Math.PI * 2);
+            }
+            c.fillStyle = TEAM[t].color + "cc"; c.fill();
           }
-          g.fillStyle = TEAM[t].color + "cc"; g.fill();
+        };
+        if (!layer) paintOn(g);
+        else {
+          if (dirty && ck.t - lastBuild > 0.09) { const c = layer.getContext("2d"); c.clearRect(0, 0, W, H); paintOn(c); dirty = false; lastBuild = ck.t; }
+          g.drawImage(layer, 0, 0);
         }
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 0.5) circle(g, p.x, p.y, 40 + p.t * 220, `rgba(255,255,255,${0.5 - p.t})`); if (p.word && p.t < 0.9) shout(g, p.word, p.x, p.y - 70, 48, p.c, p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.5) circle(g, p.x, p.y, 40 + p.t * 220, `rgba(255,255,255,${0.5 - p.t})`); if (p.word && p.t < 0.9) shout(g, p.word, p.x, p.y - 70, 48, p.c, p.t); }
         A.live().sort((a, b) => a.y - b.y).forEach((b) => {
           A.drawBody(g, b, { alpha: b.stun > 0 && Math.floor(ck.t * 12) % 2 ? 0.5 : 1 });
           if (b.stun > 0) text(g, "✶ ✶", b.x, b.y - A.R - 44, 22, "#f9f002", "center", 900);

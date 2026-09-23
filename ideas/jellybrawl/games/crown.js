@@ -4,6 +4,7 @@
 // crown-time after 75 s.
 
 import { arena, clock, TEAM, rnd, W, H, INK, text, outlined, shout, rrect, circle } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 75, GOAL = 25, KNOCK = 180;
 
@@ -93,7 +94,7 @@ export default {
         }]);
         if (!crown.holder) items.push([crown.y, () => { g.beginPath(); g.ellipse(crown.x, crown.y + 16, 26, 8, 0, 0, Math.PI * 2); g.fillStyle = "rgba(0,0,0,.4)"; g.fill(); drawCrown(g, crown.x, crown.y - crown.z - Math.abs(Math.sin(ck.t * 4)) * 8, 1.2); }]);
         items.sort((a, b) => a[0] - b[0]).forEach(([, f]) => f());
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 44, "#ffd400", p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 44, "#ffd400", p.t); }
         // HUD: two fill bars toward GOAL
         rrect(g, W / 2 - 560, 20, 1120, 100, 12, "rgba(13,2,33,.9)", "#fff", 4);
         for (const t of [0, 1]) {

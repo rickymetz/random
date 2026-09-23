@@ -3,6 +3,7 @@
 // every round. When it pops, the holder is out. Last blob standing wins.
 
 import { arena, clock, rnd, W, H, INK, text, outlined, shout, rrect, circle } from "./arena.js";
+import { FX, fade, PREFS } from "../gfx.js";
 import { bomb } from "../gfx.js";
 
 export default {
@@ -82,8 +83,8 @@ export default {
         rrect(g, F.x0, F.y0, F.x1 - F.x0, F.y1 - F.y0, 30, "#3a1420", "#ff6b00", 6);
         const k = holder ? 1 - fuse / fuseMax : 0;
         // a slow warm pulse (under 3 Hz, never a strobe) that deepens as the fuse burns
-        if (holder) { g.fillStyle = `rgba(255,60,0,${0.04 + 0.09 * k * (0.5 + 0.5 * Math.sin(ck.t * (5 + k * 12)))})`; g.fillRect(0, 0, W, H); }
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 1.2) { circle(g, p.x, p.y + 60, 60 + p.t * 400, `rgba(255,140,0,${0.6 * (1 - p.t)})`); shout(g, "KABOOM!", p.x, p.y, 80, "#ff6b00", p.t); } }
+        if (holder) { g.fillStyle = `rgba(255,60,0,${0.04 + 0.09 * k * (0.5 + 0.5 * Math.sin(ck.t * (5 + k * 12)) * PREFS.motion)})`; g.fillRect(0, 0, W, H); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 1.2) { circle(g, p.x, p.y + 60, 60 + p.t * 400, `rgba(255,140,0,${0.6 * (1 - p.t)})`); shout(g, "KABOOM!", p.x, p.y, 80, "#ff6b00", p.t); } }
         A.live().sort((a, b) => a.y - b.y).forEach((b) => {
           A.drawBody(g, b);
           if (b === holder) { // a shrunk-down HUD bomb; the fuse is only a rough hint, the real one is secret

@@ -4,8 +4,16 @@
 // own). Most votes wins.
 
 import { arena, clock, rnd, shuffle, W, H, INK, text, outlined, shout, rrect, circle, blob, tag } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
-const DRAW_T = 45, VOTE_T = 20, REVEAL_T = 5;
+const DRAW_T = 45, VOTE_T = 20, REVEAL_T = 5, PX = 600;
+const mkCanvas = () => (typeof document !== "undefined" ? Object.assign(document.createElement("canvas"), { width: PX, height: PX }) : null);
+const strokeOn = (g, s, k) => {
+  g.strokeStyle = s.c; g.lineWidth = s.w * (k / PX); g.beginPath();
+  s.pts.forEach(([px, py], i) => (i ? g.lineTo(px * k, py * k) : g.moveTo(px * k, py * k)));
+  if (s.pts.length === 1) g.lineTo(s.pts[0][0] * k + 0.1, s.pts[0][1] * k);
+  g.stroke();
+};
 export const PROMPTS = [
   "a cat on a skateboard", "a haunted toaster", "the world's worst superhero", "a jellyfish at the dentist", "your boss as a vegetable",
   "a dragon who's scared of the dark", "a pizza with feelings", "a very tired cloud", "a fancy snail", "a shark doing yoga",
@@ -27,7 +35,7 @@ export default {
     const prompt = PROMPTS[Math.floor(rnd(0, PROMPTS.length))];
     const n = A.bodies.length, order = shuffle(A.bodies.slice()); // gallery order (anonymous)
     let phase = "draw", phaseT = 0, endAt = null, started = false;
-    for (const b of A.bodies) { b.strokes = []; b.done = false; b.vote = null; b.votes = 0; b.doodle = null; }
+    for (const b of A.bodies) { b.strokes = []; b.drawn = 0; b.done = false; b.vote = null; b.votes = 0; b.doodle = null; }
     const letter = (b) => LETTERS[order.indexOf(b)];
 
     function toVote() {
@@ -61,7 +69,7 @@ export default {
         const b = A.of(pid); if (!b) return;
         if (phase === "draw" && ck.t >= 0) {
           if (m.t === "stroke" && Array.isArray(m.pts) && b.strokes.length < 400) b.strokes.push({ c: String(m.c).slice(0, 9), w: Math.max(2, Math.min(30, +m.w || 8)), pts: m.pts.slice(0, 200).map(([x, y]) => [+x || 0, +y || 0]) });
-          if (m.t === "undo") b.strokes.pop();
+          if (m.t === "undo") { b.strokes.pop(); b.drawn = Infinity; } // redraw from scratch next frame
           if (m.t === "done") b.done = true;
           if (A.bodies.every((o) => o.done)) toVote();
         }
@@ -105,13 +113,17 @@ export default {
           g.save(); g.translate(x, y); g.rotate(tilt);
           rrect(g, -size / 2 - 12, -size / 2 - 12, size + 24, size + 52, 6, "#fff", INK, 5);
           g.save(); g.beginPath(); g.rect(-size / 2, -size / 2, size, size); g.clip();
-          g.lineCap = g.lineJoin = "round";
-          for (const s of b.strokes) {
-            g.strokeStyle = s.c; g.lineWidth = s.w * (size / 600); g.beginPath();
-            s.pts.forEach(([px, py], k) => (k ? g.lineTo(px * size - size / 2, py * size - size / 2) : g.moveTo(px * size - size / 2, py * size - size / 2)));
-            if (s.pts.length === 1) g.lineTo(s.pts[0][0] * size - size / 2 + 0.1, s.pts[0][1] * size - size / 2);
-            g.stroke();
-          }
+          // strokes are drawn once into the player's own canvas, which is then
+          // scaled into the frame (up to 400 × 200-point strokes each would be
+          // far too much to redraw every frame)
+          b.cache ??= mkCanvas();
+          if (b.cache) {
+            const c = b.cache.getContext("2d");
+            if (b.drawn > b.strokes.length) { c.clearRect(0, 0, PX, PX); b.drawn = 0; }
+            c.lineCap = c.lineJoin = "round";
+            for (; b.drawn < b.strokes.length; b.drawn++) strokeOn(c, b.strokes[b.drawn], PX);
+            g.drawImage(b.cache, -size / 2, -size / 2, size, size);
+          } else { g.translate(-size / 2, -size / 2); g.lineCap = g.lineJoin = "round"; for (const s of b.strokes) strokeOn(g, s, size); }
           g.restore();
           const label = phase === "reveal" ? (b.ghost ? "BOT" : b.p.name) : phase === "vote" ? LETTERS[i] : b.done ? "DONE ✓" : "…";
           text(g, label, 0, size / 2 + 20, 30, phase === "reveal" ? b.p.color : INK, "center", 900);
@@ -121,7 +133,7 @@ export default {
           }
           if (phase === "draw") { blob(g, b.p, x + size / 2 - 6, y + size / 2 + 6, 22); }
         });
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 60, "#f9f002", p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 60, "#f9f002", p.t); }
         if (phase === "vote" && phaseT < 0.8) shout(g, "VOTE!", W / 2, H / 2, 200, "#f9f002", phaseT);
         ck.overlay(g, "DRAW!");
       },

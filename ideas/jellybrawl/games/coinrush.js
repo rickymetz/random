@@ -3,6 +3,7 @@
 // makes them drop one too. Most coins after 45 s wins.
 
 import { arena, clock, rnd, W, H, INK, text, outlined, shout, rrect, circle } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 45, COIN_R = 16;
 
@@ -95,7 +96,7 @@ export default {
         }]);
         for (const b of A.bodies) items.push([b.y, () => { A.drawBody(g, b, { alpha: b.hurt > 0 && Math.floor(ck.t * 12) % 2 ? 0.5 : 1 }); text(g, `● ${b.coins}`, b.x, b.y + A.R + 18, 20, "#ffd400", "center", 900); }]);
         items.sort((a, b) => a[0] - b[0]).forEach(([, f]) => f());
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 40, "#ff2a6d", p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 40, "#ff2a6d", p.t); }
         rrect(g, 0, 0, W, 120, 0, "rgba(13,2,33,.85)");
         const lead = [...A.bodies].sort((a, b) => b.coins - a.coins)[0];
         text(g, `LEADER: ${lead.ghost ? "BOT" : lead.p.name} · ${lead.coins}`, 360, 60, 36, "#ffd400", "center", 900);

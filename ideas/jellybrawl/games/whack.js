@@ -5,6 +5,7 @@
 // gems loose. Moles win together if they bank enough gems in 45 s.
 
 import { arena, clock, rnd, W, H, INK, text, outlined, shout, rrect, circle, blob, tag } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 45, COLS = 4, ROWS = 3, SWING = 0.42, SWING_COOL = 0.35, STUN = 2.5, GEM_EVERY = 0.5, LOSE = 4;
 
@@ -134,7 +135,7 @@ export default {
         });
         // stunned moles sit at the side seeing stars
         moles.filter((m) => m.stun > 0).forEach((m, i) => { blob(g, m.p, 90 + i * 70, H - 70, 26); text(g, "✶", 90 + i * 70, H - 110, 24, "#f9f002", "center", 900); });
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 70, "#ff2a6d", p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 70, "#ff2a6d", p.t); }
         rrect(g, 0, 0, W, 130, 0, "rgba(13,2,33,.88)");
         text(g, "MOLE GEMS", 250, 42, 28, "#ffd400", "center", 900);
         rrect(g, 90, 66, 340, 34, 6, "#222"); rrect(g, 90, 66, 340 * Math.min(1, Math.max(0, bank / goal)), 34, 6, "#ffd400");

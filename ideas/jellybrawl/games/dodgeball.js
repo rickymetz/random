@@ -5,6 +5,7 @@
 // left after 75 s.
 
 import { arena, clock, TEAM, rnd, W, H, INK, text, outlined, shout, rrect, circle } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 75, BALL_R = 20, THROW = 1050, LIVE_MIN = 380, ASSIST = 0.4, LIVES = 2;
 
@@ -119,7 +120,7 @@ export default {
           g.beginPath(); g.arc(ball.x, ball.y, BALL_R * 0.6, ball.spin, ball.spin + 2); g.lineWidth = 3; g.strokeStyle = "rgba(0,0,0,.35)"; g.stroke();
         }]);
         items.sort((a, b) => a[0] - b[0]).forEach(([, f]) => f());
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 56, p.c, p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 56, p.c, p.t); }
         // HUD: players left per side as pips
         rrect(g, W / 2 - 420, 20, 840, 100, 12, "rgba(13,2,33,.9)", "#fff", 4);
         for (const t of [0, 1]) A.teams[t].forEach((b, i) => circle(g, t === 0 ? W / 2 - 110 - i * 44 : W / 2 + 110 + i * 44, 70, 16, b.out ? "rgba(255,255,255,.12)" : TEAM[t].color, INK, 3));

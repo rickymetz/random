@@ -4,6 +4,7 @@
 // after the shot limit, the team with more kings standing wins.
 
 import { W, H, INK, text, outlined, shout, rrect, panel, circle, grid, makeSplat, drawSplat, bomb, blob, tag, shuffle } from "../gfx.js";
+import { FX, fade } from "../gfx.js";
 
 const GROUND = 930, B = 48, COLS = 5, GRAV = 1000, BALL = 28, SHOTS = 5, TURN = 15;
 const FORT = [ // columns, bottom-up: S stone (2 hits), W wood, K king
@@ -235,7 +236,7 @@ export default {
         }
         for (const d of debris) { g.globalAlpha = Math.max(0, d.life); g.fillStyle = d.color; g.fillRect(d.x - 7, d.y - 7, 14, 14); }
         g.globalAlpha = 1;
-        for (const pw of pows) { pw.t += 1 / 60; if (pw.t < 1) shout(g, pw.word, pw.x + B / 2, pw.y - 40, 64, "#f9f002", pw.t); }
+        for (const pw of fade(pows)) { pw.t += FX.dt; if (pw.t < 1) shout(g, pw.word, pw.x + B / 2, pw.y - 40, 64, "#f9f002", pw.t); }
         if (t < 0) shout(g, "SIEGE", W / 2, H / 2 - 120, 170, "#f9f002", t + 2);
       },
     };

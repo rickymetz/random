@@ -2,6 +2,7 @@
 // heavy dash that sends people flying. Last blob on the ring wins.
 
 import { arena, clock, rnd, W, H, INK, text, outlined, shout, rrect, circle } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 50, CX = W / 2, CY = 610, R0 = 440, R1 = 110;
 
@@ -63,7 +64,7 @@ export default {
         g.beginPath(); g.ellipse(CX, CY, rr + 30, (rr + 30) * 0.62, 0, 0, Math.PI * 2); g.fillStyle = "#e7cf9a"; g.fill(); g.lineWidth = 8; g.strokeStyle = INK; g.stroke();
         g.beginPath(); g.ellipse(CX, CY, rr, rr * 0.62, 0, 0, Math.PI * 2); g.lineWidth = 12; g.strokeStyle = "#ff2a6d"; g.stroke();
         g.beginPath(); g.ellipse(CX, CY, 40, 25, 0, 0, Math.PI * 2); g.lineWidth = 5; g.strokeStyle = "rgba(0,0,0,.3)"; g.stroke();
-        for (const f of falling) { f.t += 1 / 60; if (f.t < 1) { const s = 1 - f.t; A.drawBody(g, Object.assign({}, f.b, { y: f.b.y + f.t * 160, out: false }), { alpha: s, noTag: true }); } }
+        for (const f of fade(falling)) { f.t += FX.dt; if (f.t < 1) { const s = 1 - f.t; A.drawBody(g, Object.assign({}, f.b, { y: f.b.y + f.t * 160, out: false }), { alpha: s, noTag: true }); } }
         A.live().sort((a, b) => a.y - b.y).forEach((b) => A.drawBody(g, b));
         rrect(g, 0, 0, W, 120, 0, "rgba(13,2,33,.85)");
         text(g, `ON THE RING ${A.live().length}/${A.bodies.length}`, 330, 60, 40, "#fff", "center", 900);

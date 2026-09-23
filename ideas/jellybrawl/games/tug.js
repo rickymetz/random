@@ -3,6 +3,7 @@
 // window count triple. Pull a rival into the pit, or be ahead after 40 s.
 
 import { arena, clock, TEAM, rnd, W, H, INK, text, outlined, shout, rrect, circle, blob, tag } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 40, TAP = 13, HEAVE_MUL = 3, WIN = 175, ROPE_Y = 640, GAP = 130, BR = 54;
 
@@ -87,7 +88,7 @@ export default {
           tag(g, b.ghost ? "BOT" : b.p.name, x, y - BR - 36, TEAM[t].color, 20);
         });
         if (heave > 0) shout(g, "HEAVE!", W / 2, 340, 170, "#f9f002", 0.8 - heave);
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 1.5) shout(g, p.word, W / 2, 420, 150, p.c, p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 1.5) shout(g, p.word, W / 2, 420, 150, p.c, p.t); }
         // HUD: tug meter
         rrect(g, W / 2 - 400, 30, 800, 60, 12, "rgba(13,2,33,.9)", "#fff", 4);
         rrect(g, W / 2 - 390, 40, 390, 40, 6, TEAM[0].color + "55"); rrect(g, W / 2, 40, 390, 40, 6, TEAM[1].color + "55");

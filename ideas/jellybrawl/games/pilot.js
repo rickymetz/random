@@ -6,6 +6,7 @@
 // First car round the lap wins; at the whistle, most checkpoints.
 
 import { arena, clock, TEAM, rnd, W, H, INK, text, outlined, shout, rrect, circle, blob, tag } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 80, WP = 10, ROAD = 95, CP_R = 115, TOP = 330, ACCEL = 420, TURN = 3.4, MUD = 0.38, LIGHT = 150;
 
@@ -105,7 +106,7 @@ export default {
           blob(g, c.pilot.p, c.x - 8, c.y, 16);
           if (c.mud) text(g, "MUD!", c.x, c.y + 50, 22, "#c8a064", "center", 900);
         }
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 1) shout(g, p.word, p.x, p.y, 60, "#f9f002", p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 1) shout(g, p.word, p.x, p.y, 60, "#f9f002", p.t); }
         rrect(g, 0, 0, W, 140, 0, "rgba(2,1,4,.95)");
         for (const c of cars) {
           const x = c.t === 0 ? 380 : W - 380;

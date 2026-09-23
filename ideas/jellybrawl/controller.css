@@ -37,7 +37,7 @@ h2 { margin: 0; font: 48px var(--display); letter-spacing: 3px; color: #fff; tex
 .face-preview { width: 220px; height: 220px; border-radius: 50%; overflow: hidden; border: 5px solid #fff; background: var(--me); box-shadow: 8px 8px 0 var(--pink), -6px -4px 0 var(--cyan); }
 #doodle { width: 100%; height: 100%; touch-action: none; }
 .swatches { display: flex; gap: 8px; }
-.swatches button { width: 40px; height: 40px; padding: 0; border-radius: 50%; box-shadow: 3px 3px 0 var(--pink); }
+.swatches button { width: 48px; height: 48px; padding: 0; border-radius: 50%; box-shadow: 3px 3px 0 var(--pink); }
 .swatches button.on { outline: 3px solid var(--acid); outline-offset: 2px; }
 
 #pad { justify-content: flex-start; padding: 0; gap: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--me) 30%, #0d0221), #0d0221 75%); }

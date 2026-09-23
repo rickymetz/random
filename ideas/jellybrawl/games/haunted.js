@@ -7,6 +7,7 @@
 // ghost; the ghost wins by spooking everyone or lasting 60 s.
 
 import { arena, clock, rnd, W, H, INK, text, outlined, shout, rrect, circle, blob, tag } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 60, BEAM = 330, CONE = 0.42, DRAIN = 1.2, VANISH = 2, VANISH_COOL = 9, GHOST_SPEED = 290, SPOOK_T = 0.7, CHILL = 260;
 
@@ -165,7 +166,7 @@ export default {
           A.drawBody(g, b.chill ? Object.assign({}, b, { x: b.x + Math.sin(ck.t * 60) * 3 }) : b);
           if (b.chill) text(g, "❄", b.x + 30, b.y - 40, 26, "#b9f6ff", "center", 900);
         });
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 1) shout(g, p.word, p.x, p.y, 70, p.c, p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 1) shout(g, p.word, p.x, p.y, 70, p.c, p.t); }
         // HUD: ectoplasm bar
         rrect(g, 0, 0, W, 130, 0, "rgba(5,2,6,.92)");
         text(g, "ECTOPLASM", 250, 45, 28, "#b9f6ff", "center", 900);

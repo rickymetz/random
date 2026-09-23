@@ -6,6 +6,7 @@
 // out. The tank wins by lasting 50 s, the swarm by eating through its armour.
 
 import { arena, clock, rnd, W, H, INK, text, outlined, shout, rrect, circle, blob, tag } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 50, TANK_R = 70, TANK_SPEED = 210, SW_R = 20, SW_SPEED = 330, BULLET = 1150, FIRE_COOL = 0.28, ARMOUR = 58, GNAW = 0.45, SHAKE_COOL = 4, RESPAWN = 3;
 
@@ -138,7 +139,7 @@ export default {
           blob(g, s.p, s.x, s.y, SW_R + 2, { sx: s.latch ? 1.2 : 1, sy: s.latch ? 0.85 : 1 });
           if (!s.npc) tag(g, s.ghost ? "BOT" : s.p.name, s.x, s.y - SW_R - 18, s.p.color, 14);
         }
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 0.8) shout(g, p.word, p.x, p.y, p.word === "SPLAT!" ? 36 : 70, "#f9f002", p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.8) shout(g, p.word, p.x, p.y, p.word === "SPLAT!" ? 36 : 70, "#f9f002", p.t); }
         rrect(g, 0, 0, W, 130, 0, "rgba(20,14,8,.92)");
         text(g, "ARMOUR", 250, 42, 28, "#56b064", "center", 900);
         rrect(g, 90, 66, 340, 34, 6, "#222"); rrect(g, 90, 66, 340 * Math.max(0, tank.hp / armour), 34, 6, tank.hp / armour > 0.3 ? "#56b064" : "#ff2a3d");

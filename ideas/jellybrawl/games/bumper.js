@@ -3,6 +3,7 @@
 // respawn shield). Three lives; last blob with lives wins.
 
 import { arena, clock, W, H, INK, text, outlined, shout, rrect, circle } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 60, LIVES = 3, SHIELD = 1.8;
 
@@ -75,7 +76,7 @@ export default {
           A.drawBody(g, b);
           text(g, "♥".repeat(b.lives), b.x, b.y + A.R + 18, 18, "#ff2a6d", "center", 800);
         });
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 1) shout(g, p.word, p.x, p.y, 44, "#ff2a6d", p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 1) shout(g, p.word, p.x, p.y, 44, "#ff2a6d", p.t); }
         rrect(g, 0, 0, W, 120, 0, "rgba(13,2,33,.85)");
         text(g, `STILL DRIVING ${A.live().length}/${A.bodies.length}`, 330, 60, 38, "#fff", "center", 900);
         outlined(g, String(ck.left()), W / 2, 60, 70, "#fff");

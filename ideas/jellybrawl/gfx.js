@@ -18,6 +18,13 @@ const DISPLAY = () => `${T.display}, ${FALLBACK}`;
 // its low-res CRT pass, at full resolution, so labels and name tags stay sharp.
 // Only the scene context queues (offscreen caches draw straight away).
 export const CRISP = { ctx: null, q: [], min: 20 };
+// effect clocks: the TV sets FX.dt each frame (0 while paused or in hitstop),
+// so pop-ups run at the same speed on a 30 fps TV; fade() drops the finished ones
+export const FX = { dt: 1 / 60 };
+// accessibility prefs the TV sets: motion 1 = full, 0.25 = reduced; marks =
+// a shape on every blob (colour-blind help); text = small-text scale
+export const PREFS = { motion: 1, marks: false, text: 1 };
+export function fade(list, life = 3) { for (let i = list.length - 1; i >= 0; i--) if (list[i].t > life) list.splice(i, 1); return list; }
 const queue = (g, fn, args) => {
   if (g !== CRISP.ctx) return false;
   CRISP.q.push({ m: g.getTransform(), a: g.globalAlpha, fn, args });
@@ -32,7 +39,7 @@ export function flushCrisp(out, base) {
 }
 
 export function text(g, str, x, y, size, color = "#fff", align = "center", weight = 800) {
-  if (size < 48 && queue(g, text, [str, x, y, Math.max(size, CRISP.min), color, align, weight])) return;
+  if (size < 48 && queue(g, text, [str, x, y, Math.max(size, CRISP.min) * PREFS.text, color, align, weight])) return;
   const display = weight >= 900;
   g.font = display ? `${Math.round(size * T.labelScale)}px ${T.label}, ${FALLBACK}` : `${weight} ${size}px ${FONT}`;
   g.letterSpacing = display ? `${Math.round(size * 0.06)}px` : "0px";
@@ -70,7 +77,7 @@ export function outlined(g, str, x, y, size, color = "#fff", align = "center", r
 
 /** The neon-sign title: glow, a dark drop, and the odd flicker. */
 export function neon(g, str, x, y, size, color = "#ff2a6d", rot = -0.1, t = 0) {
-  const flick = Math.sin(t * 37) > 0.97 || Math.sin(t * 13.3) > 0.985 ? 0.35 : 1;
+  const flick = PREFS.motion === 1 && (Math.sin(t * 37) > 0.97 || Math.sin(t * 13.3) > 0.985) ? 0.35 : 1;
   g.save();
   g.translate(x, y); g.rotate(rot);
   size = Math.round(size * T.titleScale);
@@ -136,8 +143,8 @@ export function fit(g, str, size, maxW) {
 
 /** A slammed-in command word: overshoots, settles, then jitters. k = seconds since it appeared. */
 export function shout(g, str, x, y, size, color, k) {
-  const s = k < 0.18 ? 2.4 - (k / 0.18) * 1.55 : k < 0.3 ? 0.85 + ((k - 0.18) / 0.12) * 0.15 : 1;
-  const j = k > 0.3 ? 3 : 14;
+  const s = PREFS.motion < 1 ? 1 : k < 0.18 ? 2.4 - (k / 0.18) * 1.55 : k < 0.3 ? 0.85 + ((k - 0.18) / 0.12) * 0.15 : 1;
+  const j = (k > 0.3 ? 3 : 14) * (PREFS.motion < 1 ? 0 : 1);
   g.save();
   g.translate(x + (Math.random() - 0.5) * j, y + (Math.random() - 0.5) * j);
   g.scale(s, s);
@@ -149,7 +156,7 @@ export function shout(g, str, x, y, size, color, k) {
 export function sunburst(g, cx, cy, c1, c2, t, rays = 18) {
   g.fillStyle = c1; g.fillRect(0, 0, W, H);
   g.fillStyle = c2;
-  const R = 2400, a0 = t * 0.25;
+  const R = 2400, a0 = t * 0.25 * PREFS.motion;
   for (let i = 0; i < rays; i++) {
     const a = a0 + (i * Math.PI * 2) / rays, w = Math.PI / rays;
     g.beginPath(); g.moveTo(cx, cy);
@@ -309,6 +316,10 @@ export function blob(g, p, x, y, r, o = {}) {
   // glossy highlight
   g.beginPath(); g.ellipse(-r * 0.55, -r * 0.55, r * 0.2, r * 0.11, -0.7, 0, Math.PI * 2);
   g.fillStyle = "rgba(255,255,255,.55)"; g.fill();
+  if (PREFS.marks && p.mark && r >= 14) { // colour-blind help: every player also has a shape
+    g.font = `${Math.round(r * 0.5)}px system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+    g.lineWidth = 3; g.strokeStyle = INK; g.strokeText(p.mark, 0, r * 0.66); g.fillStyle = "#fff"; g.fillText(p.mark, 0, r * 0.66);
+  }
   if (o.mouth != null) {
     g.save(); g.rotate(o.mouth);
     const open = 0.2 + 0.25 * Math.abs(Math.sin(performance.now() / 70));
@@ -335,7 +346,7 @@ export function shade(hex, amt) {
 
 /** Name label: a tilted tape strip. */
 export function tag(g, str, x, y, color = "#fff", size = 26) {
-  if (queue(g, tag, [str, x, y, color, Math.max(size, CRISP.min)])) return;
+  if (queue(g, tag, [str, x, y, color, Math.max(size, CRISP.min) * PREFS.text])) return;
   g.font = `${Math.round(size * T.labelScale)}px ${T.label}, ${FALLBACK}`;
   g.letterSpacing = `${Math.round(size * 0.06)}px`;
   const w = g.measureText(String(str).toUpperCase()).width + size;

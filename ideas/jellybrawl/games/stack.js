@@ -5,6 +5,7 @@
 // or the first to 16, wins. Miss completely and you lose a few seconds.
 
 import { arena, clock, TEAM, rnd, W, H, INK, text, outlined, shout, rrect, circle } from "./arena.js";
+import { FX, fade } from "../gfx.js";
 
 const TIME = 45, GOAL = 16, SLAB_H = 44, W0 = 300, BASE_Y = 1000, PERFECT = 8, MISS_WAIT = 1.6;
 
@@ -116,7 +117,7 @@ export default {
           text(g, `${TEAM[t].name.toUpperCase()} TOWER`, cx[t] + 40, 50, 30, "#fff", "center", 900);
           text(g, endAt == null ? `▶ ${who.ghost ? "BOT" : who.p.name}` : "", cx[t] + 40, 88, 28, who.ghost ? "#aaa" : who.p.color, "center", 900);
         }
-        for (const p of pops) { p.t += 1 / 60; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 54, "#f9f002", p.t); }
+        for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 54, "#f9f002", p.t); }
         outlined(g, String(ck.left()), W / 2, 70, 60, "#fff");
         ck.overlay(g, "STACK!");
       },
