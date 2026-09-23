@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Ephemera: vintage film projector with two reels, soft clay -->
+  <defs>
+    <radialGradient id="ephemera-3d-reel" cx=".32" cy=".28" r=".8">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".55" stop-color="#fff3dc"/>
+      <stop offset="1" stop-color="#a0c5bd"/>
+    </radialGradient>
+    <radialGradient id="ephemera-3d-body" cx=".3" cy=".2" r=".95">
+      <stop offset="0" stop-color="#5e5650"/>
+      <stop offset=".5" stop-color="#2a2623"/>
+      <stop offset="1" stop-color="#0e0d0c"/>
+    </radialGradient>
+    <linearGradient id="ephemera-3d-ink" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4f4843"/>
+      <stop offset="1" stop-color="#121110"/>
+    </linearGradient>
+    <radialGradient id="ephemera-3d-hole" cx=".6" cy=".65" r=".7">
+      <stop offset="0" stop-color="#5fb3a1"/>
+      <stop offset="1" stop-color="#367163"/>
+    </radialGradient>
+    <linearGradient id="ephemera-3d-lens" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#9abeb6"/>
+    </linearGradient>
+    <filter id="ephemera-3d-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+    <filter id="ephemera-3d-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter>
+  </defs>
+  <ellipse cx="66" cy="109" rx="46" ry="6" fill="#275248" opacity=".6" filter="url(#ephemera-3d-blur)"/>
+  <path d="M36 40 L40 62 M76 40 L72 62" stroke="url(#ephemera-3d-ink)" stroke-width="5.5" stroke-linecap="round"/>
+  <rect x="24" y="98" width="10" height="9" rx="3" fill="url(#ephemera-3d-ink)"/>
+  <rect x="78" y="98" width="10" height="9" rx="3" fill="url(#ephemera-3d-ink)"/>
+  <rect x="92" y="70" width="15" height="22" rx="4" fill="url(#ephemera-3d-ink)"/>
+  <rect x="18" y="60" width="76" height="42" rx="11" fill="url(#ephemera-3d-body)"/>
+  <path d="M28 64 H70" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity=".3" filter="url(#ephemera-3d-soft)"/>
+  <rect x="104" y="65" width="9" height="32" rx="4.5" fill="url(#ephemera-3d-lens)"/>
+  <rect x="105.5" y="68" width="3" height="14" rx="1.5" fill="#ffffff" opacity=".9"/>
+  <g stroke="#141414" stroke-width="3.5">
+    <circle cx="36" cy="38" r="18" fill="url(#ephemera-3d-reel)"/>
+    <circle cx="76" cy="38" r="18" fill="url(#ephemera-3d-reel)"/>
+  </g>
+  <g fill="url(#ephemera-3d-hole)">
+    <circle cx="36" cy="28" r="5"/><circle cx="27.3" cy="43" r="5"/><circle cx="44.7" cy="43" r="5"/>
+    <circle cx="76" cy="28" r="5"/><circle cx="67.3" cy="43" r="5"/><circle cx="84.7" cy="43" r="5"/>
+  </g>
+  <circle cx="36" cy="38" r="3.8" fill="url(#ephemera-3d-ink)"/>
+  <circle cx="76" cy="38" r="3.8" fill="url(#ephemera-3d-ink)"/>
+  <g fill="#ffffff" opacity=".85" filter="url(#ephemera-3d-soft)">
+    <ellipse cx="28" cy="29" rx="4" ry="2.4" transform="rotate(-40 28 29)"/>
+    <ellipse cx="68" cy="29" rx="4" ry="2.4" transform="rotate(-40 68 29)"/>
+  </g>
+  <circle cx="36" cy="81" r="8" fill="url(#ephemera-3d-hole)"/>
+  <circle cx="36" cy="81" r="3" fill="#141414"/>
+  <circle cx="33.5" cy="78.5" r="1.6" fill="#ffffff" opacity=".8"/>
+  <g stroke="#fff3dc" stroke-width="3.8" stroke-linecap="round">
+    <path d="M56 74 H82 M56 81 H82 M56 88 H82"/>
+  </g>
+</svg>

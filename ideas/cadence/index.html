@@ -7,7 +7,7 @@
      (see --sab), so the bar needs no spacer after the page. -->
 <meta name="random-nav" content="overlay">
 <title>Cadence</title>
-<meta name="description" content="A weekly calisthenics and mobility tracker — guided sessions with timers, set-by-set logging, and progress over time. Installable, offline, all on your device.">
+<meta name="description" content="A calisthenics and mobility tracker — pick any program any day toward your weekly goals, with guided sessions, timers, set-by-set logging, and progress over time. Installable, offline, all on your device.">
 <meta name="theme-color" content="#faf9f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -30,6 +30,7 @@
     <main class="views">
       <section class="view" id="view-today" aria-labelledby="tab-today"></section>
       <section class="view" id="view-week" hidden aria-labelledby="tab-week"></section>
+      <section class="view" id="view-plan" hidden aria-labelledby="tab-plan"></section>
       <section class="view" id="view-progress" hidden aria-labelledby="tab-progress"></section>
       <section class="view" id="view-settings" hidden aria-labelledby="tab-settings"></section>
     </main>
@@ -37,6 +38,7 @@
     <nav class="tabbar" aria-label="Sections">
       <button type="button" class="tab is-active" id="tab-today" data-view="today"><span class="tab-glyph" aria-hidden="true">◉</span>Today</button>
       <button type="button" class="tab" id="tab-week" data-view="week"><span class="tab-glyph" aria-hidden="true">▤</span>Week</button>
+      <button type="button" class="tab" id="tab-plan" data-view="plan"><span class="tab-glyph" aria-hidden="true">◈</span>Plan</button>
       <button type="button" class="tab" id="tab-progress" data-view="progress"><span class="tab-glyph" aria-hidden="true">◪</span>Progress</button>
       <button type="button" class="tab" id="tab-settings" data-view="settings"><span class="tab-glyph" aria-hidden="true">⚙</span>Settings</button>
     </nav>
@@ -51,6 +53,7 @@
 
   <script src="routine.js"></script>
   <script src="figures.js"></script>
+  <script src="figure3d.js"></script>
   <script src="media.js"></script>
   <script src="store.js"></script>
   <script src="charts.js"></script>

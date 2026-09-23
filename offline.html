@@ -7,8 +7,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Offline · random</title>
-<meta name="theme-color" content="#faf9f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <script>
   // Same look decision as the hub (modern unless retro was chosen).
@@ -22,21 +22,23 @@
 </script>
 <style>
   :root {
-    --bg: #faf9f7;
+    --bg: #f5f3ee;
     --card: #ffffff;
     --ink: #1a1a1a;
     --muted: #6b6b6b;
     --line: #e5e2dc;
-    --accent: #b3542e;
+    --accent: #6a3fd0;
+    --on-accent: #fff;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #141414;
+      --bg: #111111;
       --card: #1e1e1e;
       --ink: #eceae6;
       --muted: #9a9a9a;
       --line: #2c2c2c;
-      --accent: #e08554;
+      --accent: #a98cf5;
+      --on-accent: #111;
     }
   }
   * { box-sizing: border-box; margin: 0; }
@@ -56,7 +58,7 @@
     border-radius: 999px;
     padding: 0.5rem 1.1rem;
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     font: inherit;
     font-weight: 600;
     cursor: pointer;
@@ -78,6 +80,8 @@
   }
   .card:hover { border-color: var(--accent); }
   .card-emoji { font-size: 1.3rem; display: block; margin-bottom: 0.5rem; }
+  .card-emoji.has-art { width: 2.75rem; height: 2.75rem; padding: 0.2rem; border-radius: 0.7rem; background: var(--c, var(--line)); }
+  .card-emoji img, .card .tile img { display: block; width: 100%; height: 100%; }
   .card h3 { font-size: 1.05rem; letter-spacing: -0.01em; }
   .card p { color: var(--muted); font-size: 0.88rem; margin-top: 0.4rem; }
   .none { color: var(--muted); }
@@ -160,14 +164,18 @@
         var a = document.createElement('a');
         a.className = 'card';
         a.href = at(idea.url);
+        // The idea's icon (nav.js draws it in the chosen style), else its emoji.
+        var nav = window.randomNav && window.randomNav.art ? window.randomNav : null;
         var emoji = document.createElement('span');
         emoji.className = 'card-emoji';
-        emoji.textContent = idea.emoji || '✦';
+        emoji.setAttribute('aria-hidden', 'true');
+        if (idea.color) emoji.style.setProperty('--c', idea.color);
+        if (nav) nav.art(emoji, idea); else emoji.textContent = idea.emoji || '✦';
         // The retro look's era tile (nav.js has the colours).
         var tile = document.createElement('span');
         tile.className = 'tile rt-tile';
         tile.setAttribute('aria-hidden', 'true');
-        tile.textContent = idea.emoji || '✦';
+        if (nav) nav.art(tile, idea); else tile.textContent = idea.emoji || '✦';
         var v = window.randomNav && window.randomNav.tileVars ? window.randomNav.tileVars(idea) : null;
         if (v && v.custom) { tile.classList.add('rt-custom'); tile.style.setProperty('--tile', v.custom); }
         else if (v) { tile.style.setProperty('--h', v.h); tile.style.setProperty('--dl', v.dl); }

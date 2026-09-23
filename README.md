@@ -26,14 +26,34 @@ idea), add an `ideas/<slug>/idea.json`:
 ```json
 {
   "title": "Breathe",
-  "description": "A one-minute box-breathing circle.",
+  "description": "A breathing circle: box, 4-7-8, coherent, physiological sigh and more.",
   "emoji": "🫧",
+  "color": "#2b6ca8",
   "hidden": false
 }
 ```
 
+`color` is the idea's colour: its full-colour block on the homepage, its
+swatch and its launcher tile. Text on it is white or ink, whichever reads
+better (the build warns if neither reaches 4.5:1). Without it, a colour is
+derived from the slug.
+
+### Icons
+
+Each idea can ship two hand-drawn icons of the same subject:
+`ideas/<slug>/icon-flat.svg` (solid, poster-style fills) and
+`ideas/<slug>/icon-3d.svg` (soft clay: gradients, highlights, a soft
+shadow). Both use `viewBox="0 0 128 128"` on a transparent background,
+drawn to sit on the idea's `color`. They must be self-contained (no
+script, text or external references) with ids prefixed by the slug.
+People pick Flat or 3D in the hub header (or retro Settings). An idea
+without both files falls back to its emoji. The build mirrors them to
+`icons/` (generated; don't edit), where they're precached with the shell.
+
 Ideas are ordered newest-first on the homepage, dated by the first commit
-that touched their folder.
+that touched their folder. The newest leads the front page, the next two
+are secondaries, and the rest are compact rows. Spec:
+`docs/superpowers/specs/2026-09-23-hub-modern-editorial.md`.
 
 ### Conventions
 
@@ -83,7 +103,9 @@ The requirements live in
 | File | Role |
 | --- | --- |
 | `nav.js` | The bottom navbar, recents tray, New/badge bookkeeping, update toast. Loaded on every page. |
-| `hub.js` | Homepage only: Install button, iOS install hint, iOS badge opt-in. |
+| `hub.js` | Homepage only: Install button, iOS install hint, iOS badge opt-in, Flat \| 3D icon switch. |
+| `fonts/Archivo-Heavy.woff2` | Archivo (OFL), the modern look's display face: width 112, weights 700–900, latin. |
+| `icons/` | **Generated** copies of each idea's `icon-flat.svg` / `icon-3d.svg`. |
 | `offline.html` | Served in place of an idea that isn't cached yet. |
 | `scripts/sw.template.js` | The service worker. `build.js` stamps it into `sw.js`. |
 | `icon*.png`, `icon.svg`, `apple-touch-icon.png` | The "r" monogram. |
@@ -101,7 +123,7 @@ PLAYWRIGHT=/path/to/node_modules/playwright node scripts/test/hub-e2e.mjs
 ### Retro look
 
 The hub has an opt-in **Gingerbread-era Android launcher** look. The modern
-card grid is the default everywhere; the header's "Retro look" button
+front page is the default everywhere; the header's "Retro look" button
 switches to it, and Settings → Retro look (or ≡ → Modern look) switches
 back. The choice is remembered. Three swipeable home screens
 hold every idea as an era tile beside search, clock, new-ideas and
@@ -118,8 +140,8 @@ app. Spec: `docs/superpowers/specs/2026-09-23-hub-gingerbread-retro.md`.
 | `retro.js`, `retro.css` | The launcher (only drawn in the retro look). |
 | `fonts/` | Droid Sans (Apache 2.0, AOSP), subset to WOFF2. |
 
-An idea can set its launcher tile colour with `"icon": "#hex"` in
-`idea.json`; otherwise it's derived from the slug. `"private": true`
+An idea's launcher tile takes its `"color"` (or a retro-only
+`"icon": "#hex"` override) and shows its icon in the chosen style. `"private": true`
 keeps an idea out of recents (the tray, the recents dialog, the retro
 dock) — Ledger uses it.
 

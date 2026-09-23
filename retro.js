@@ -85,7 +85,7 @@
       tile.style.setProperty('--h', v.h);
       tile.style.setProperty('--dl', v.dl);
     }
-    tile.textContent = idea.emoji || '✦';
+    nav.art(tile, idea);
     var label = el('span', 'rt-label');
     label.textContent = idea.title;
     a.appendChild(tile);
@@ -95,6 +95,13 @@
       a.setAttribute('aria-label', idea.title + ' (new)');
     }
     return a;
+  }
+
+  // A small icon beside a search result or a "New ideas" entry.
+  function resultArt(idea) {
+    var e = nav.art(el('span', 'rt-result-emoji', { 'aria-hidden': 'true' }), idea);
+    if (idea.color) e.style.setProperty('--c', idea.color);
+    return e;
   }
 
   /* ------------------------------------------------------- home screens */
@@ -219,8 +226,7 @@
       }
       list.forEach(function (idea) {
         var a = el('a', 'rt-result', { href: idea.url, 'data-slug': idea.slug });
-        var e = el('span', 'rt-result-emoji', { 'aria-hidden': 'true' });
-        e.textContent = idea.emoji || '✦';
+        var e = resultArt(idea);
         var t = el('span', 'rt-result-title');
         t.textContent = idea.title;
         a.appendChild(e);
@@ -298,8 +304,7 @@
     }
     fresh.forEach(function (idea) {
       var a = el('a', 'rt-news-item', { href: idea.url, 'data-slug': idea.slug });
-      var e = el('span', 'rt-result-emoji', { 'aria-hidden': 'true' });
-      e.textContent = idea.emoji || '✦';
+      var e = resultArt(idea);
       var t = el('span');
       t.textContent = idea.title;
       a.appendChild(e);
@@ -962,7 +967,7 @@
     var win = el('div', 'rt-launch', { 'aria-hidden': 'true' });
     var bar = el('div', 'rt-launch-bar');
     var mini = tile.cloneNode(true);
-    mini.className = 'rt-tile rt-launch-icon';
+    mini.classList.add('rt-launch-icon'); // keeps rt-custom / has-art (the idea's colour and icon)
     var name = el('span');
     name.textContent = title;
     bar.appendChild(mini);
@@ -1115,14 +1120,20 @@
     } });
   }
 
+  function iconSummary() { return nav.icons() === '3d' ? '3D (soft clay)' : 'Flat'; }
+
   function renderSettings() {
     var body = ui.settingsBody;
     var top = body.scrollTop;
     body.textContent = '';
 
     sectionHead('Display', 'display');
-    row({ id: 'look', title: 'Retro look', summary: 'The Gingerbread launcher. Turn off for the modern card grid.', checked: true,
+    row({ id: 'look', title: 'Retro look', summary: 'The Gingerbread launcher. Turn off for the modern front page.', checked: true,
       run: function () { nav.setLook('modern'); } });
+    row({ id: 'icons', title: 'Icon style', summary: iconSummary(), run: function (r) {
+      nav.setIcons(nav.icons() === '3d' ? 'flat' : '3d');
+      r._summary.textContent = iconSummary();
+    } });
     toggleRow('motion', 'Wallpaper motion', 'motion', 'The live wallpaper drifts', 'The wallpaper stays still');
     row({ id: 'clock', title: 'Clock style', summary: clockStyle() === 'analog' ? 'Analog' : 'Digital', run: function (r) {
       lset(KEY.clock, clockStyle() === 'analog' ? 'digital' : 'analog');
