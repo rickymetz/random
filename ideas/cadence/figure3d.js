@@ -363,8 +363,9 @@
       camera.updateProjectionMatrix();
     }
 
-    var still = opts.still || (global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches);
-    var stillPhase = F.stillPhase(id);
+    var still = opts.still || typeof opts.phase === 'number' || (global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    // A still shows the working end of the movement, unless a phase is asked for.
+    var stillPhase = typeof opts.phase === 'number' ? opts.phase : F.stillPhase(id);
     var cycle = info.cycle * 1000;
     var started = 0, raf = 0, dirty = true;
 
