@@ -23,8 +23,8 @@ Without the relay, controllers are other tabs of the same browser
 (BroadcastChannel). Add bots with **B**.
 
 The first phone to join is the VIP and starts the game. The TV keyboard works
-too: Enter starts, B / N add or remove a bot, R changes the round count, and
-1–3 pick a game.
+too: Enter starts, B / N add or remove a bot, R changes the round count, G
+switches between Playlist and Microgame Gauntlet, and 1–3 pick a game.
 
 ## Files
 
@@ -32,7 +32,7 @@ too: Enter starts, B / N add or remove a bot, R changes the round count, and
 | --- | --- |
 | `tv.html`, `tv.js` | The host: lobby, loser-picks, intro, game, results, podium. Authoritative for all game state. |
 | `index.html`, `controller.js`, `controller.css` | The phone: join, selfie/doodle, then renders the layouts the TV sends. |
-| `games/*.js` | Minigames: `flap` (free-for-all), `sling` (teams), `chomp` (1 vs rest). Each has a bot. |
+| `games/*.js` | Minigames: `flap` (free-for-all), `sling` (teams), `chomp` (1 vs rest), plus `gauntlet` (the Microgame Gauntlet mode: 9 microgames, lives, speed-ups). Each has a bot. |
 | `net.js` | Transport: WebSocket relay, or BroadcastChannel when there's no relay. |
 | `server.mjs` | Static server plus room relay (a hand-rolled WebSocket, no deps). |
 | `fonts/` | Knewave (title, command words) and League Gothic (labels), The League of Moveable Type, SIL OFL 1.1 (`fonts/OFL.txt`). |

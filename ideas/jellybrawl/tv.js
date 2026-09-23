@@ -8,6 +8,7 @@ import { sfx, unlock } from "./sfx.js";
 import flap from "./games/flap.js";
 import sling from "./games/sling.js";
 import chomp from "./games/chomp.js";
+import gauntlet from "./games/gauntlet.js";
 
 const GAMES = [flap, sling, chomp];
 // canvas text only uses a web font once it's loaded; ask for both up front
@@ -20,7 +21,7 @@ const ROUND_CHOICES = [3, 5, 8];
 const AWARDS = [
   ["wins", "Champion", "wins"], ["flaps", "Flappiest", "flaps"], ["airtime", "Frequent flyer", "s aloft"],
   ["kings", "Kingslayer", "kings popped"], ["blocks", "Demolition crew", "blocks smashed"],
-  ["dots", "Hungriest", "dots eaten"], ["catches", "Best hunter", "catches"], ["gulps", "Tables turned", "hunters gulped"],
+  ["dots", "Hungriest", "dots eaten"], ["cleared", "Microgame machine", "microgames cleared"], ["catches", "Best hunter", "catches"], ["gulps", "Tables turned", "hunters gulped"],
 ];
 
 // Everything draws at 1920×1080 into an offscreen scene; post() then runs the
@@ -33,7 +34,7 @@ const sceneC = mkCanvas(W, H);
 const g = sceneC.getContext("2d");
 const S = {
   scene: "gate", t: 0, players: [], rounds: 5, round: 0, net: null, qr: null, joinUrl: "",
-  game: null, def: null, chooser: null, options: null, picked: null, lastGameId: null,
+  mode: "playlist", game: null, def: null, chooser: null, options: null, picked: null, lastGameId: null,
   result: null, deltas: [], roleCounts: {}, layouts: new Map(),
 };
 window.__jelly = S; // for tests and poking around in devtools
@@ -128,6 +129,7 @@ function act(id, p) {
   if (!isVip) return;
   if (id === "start" && S.scene === "lobby" && S.players.length >= 2) startSession();
   else if (id === "rounds" && S.scene === "lobby") { S.rounds = ROUND_CHOICES[(ROUND_CHOICES.indexOf(S.rounds) + 1) % ROUND_CHOICES.length]; refreshMenus(); }
+  else if (id === "mode" && S.scene === "lobby") { S.mode = S.mode === "playlist" ? "gauntlet" : "playlist"; refreshMenus(); }
   else if (id === "addbot" && S.scene === "lobby") addBot();
   else if (id === "rmbot" && S.scene === "lobby") removeBot();
   else if (id === "rematch" && S.scene === "final") startSession();
@@ -141,7 +143,8 @@ function refreshMenus() {
       layout(p.pid, p === v
         ? { kind: "menu", text: "You're the VIP", sub: S.players.length < 2 ? "Waiting for one more player…" : `${S.players.length} players ready`, actions: [
           ...(S.players.length >= 2 ? [{ id: "start", label: "▶ Start game", big: true }] : []),
-          { id: "rounds", label: `Rounds: ${S.rounds}` }, { id: "addbot", label: "+ Add bot" }, { id: "rmbot", label: "− Remove bot" }] }
+          { id: "mode", label: S.mode === "gauntlet" ? "Mode: Gauntlet" : "Mode: Playlist" },
+          ...(S.mode === "playlist" ? [{ id: "rounds", label: `Rounds: ${S.rounds}` }] : []), { id: "addbot", label: "+ Add bot" }, { id: "rmbot", label: "− Remove bot" }] }
         : { kind: "menu", text: "You're in!", sub: `Waiting for ${v ? v.name : "the VIP"} to start…` });
     } else if (S.scene === "final") {
       layout(p.pid, { kind: "menu", text: finalLine(p), sub: p === v ? "Play again?" : `Waiting for ${v?.name}…`, actions: p === v ? [{ id: "rematch", label: "↻ Rematch", big: true }, { id: "lobby", label: "Back to lobby" }] : [] });
@@ -151,7 +154,9 @@ function refreshMenus() {
   el.hidden = !(S.scene === "lobby" || S.scene === "final");
   document.getElementById("t-start").textContent = S.scene === "final" ? "Rematch (Enter)" : "Start (Enter)";
   document.getElementById("t-rounds").textContent = `Rounds: ${S.rounds} (R)`;
-  for (const id of ["t-tab", "t-rounds", "t-bot", "t-rmbot"]) document.getElementById(id).hidden = S.scene !== "lobby";
+  document.getElementById("t-mode").textContent = `Mode: ${S.mode === "gauntlet" ? "Gauntlet" : "Playlist"} (G)`;
+  for (const id of ["t-tab", "t-mode", "t-rounds", "t-bot", "t-rmbot"]) document.getElementById(id).hidden = S.scene !== "lobby";
+  if (S.mode === "gauntlet") document.getElementById("t-rounds").hidden = true;
 }
 
 function finalLine(p) {
@@ -168,8 +173,11 @@ function startSession() {
   S.roleCounts = {}; S.round = 0; S.lastGameId = null;
   S.players = S.players.filter((p) => p.bot || p.connected);
   document.getElementById("tools").hidden = true;
-  startChoose();
+  if (S.mode === "gauntlet") { S.picked = gauntlet; startIntro(); }
+  else startChoose();
 }
+
+const sessionRounds = () => (S.mode === "gauntlet" ? 1 : S.rounds);
 
 function standings() { return [...S.players].sort((a, b) => b.score - a.score); }
 
@@ -254,7 +262,7 @@ function tick(dt) {
   } else if (S.scene === "results") {
     if (S.t > 6.5) {
       S.round++;
-      if (S.round >= S.rounds) { go("final"); sfx.win(); refreshMenus(); }
+      if (S.round >= sessionRounds()) { go("final"); sfx.win(); refreshMenus(); }
       else startChoose();
     }
   }
@@ -326,7 +334,7 @@ function drawLobby() {
   }
   const v = vip();
   panel(g, 820, 905, 960, 70, INK, 35, 0);
-  text(g, `${S.rounds} ROUNDS · ${v ? `${v.name.toUpperCase()} (VIP) STARTS FROM THEIR PHONE` : "FIRST ONE IN IS THE VIP"}`, 1300, 940, 30, "#ffd400", "center", 900);
+  text(g, `${S.mode === "gauntlet" ? "MICROGAME GAUNTLET · 3 LIVES" : `${S.rounds} ROUNDS`} · ${v ? `${v.name.toUpperCase()} (VIP) STARTS FROM THEIR PHONE` : "FIRST ONE IN IS THE VIP"}`, 1300, 940, 30, "#ffd400", "center", 900);
 }
 
 function scoreStrip(y = 1000) {
@@ -409,7 +417,7 @@ function drawResults() {
     }
     if (won && k >= 1) outlined(g, "WIN!", x - 60, y + h / 2, 44, "#ff2e63", "center", -0.3);
   });
-  outlined(g, S.round + 1 >= S.rounds ? "FINAL RESULTS NEXT…" : `NEXT: ROUND ${S.round + 2} OF ${S.rounds}`, W / 2, 1020, 36, "#fff", "center", -0.02);
+  outlined(g, S.round + 1 >= sessionRounds() ? "FINAL RESULTS NEXT…" : `NEXT: ROUND ${S.round + 2} OF ${S.rounds}`, W / 2, 1020, 36, "#fff", "center", -0.02);
 }
 
 function drawFinal() {
@@ -552,12 +560,14 @@ addEventListener("keydown", (e) => {
   else if (k === "b") act("addbot");
   else if (k === "n") act("rmbot");
   else if (k === "r") act("rounds");
+  else if (k === "g") act("mode");
   else if (S.scene === "choose" && ["1", "2", "3"].includes(k) && !S.picked && S.options[+k - 1]) pick(S.options[+k - 1].id);
 });
 
 const tool = (id, fn) => document.getElementById(id).addEventListener("click", (e) => { e.stopPropagation(); fn(); });
 tool("t-start", () => act(S.scene === "final" ? "rematch" : "start"));
 tool("t-rounds", () => act("rounds"));
+tool("t-mode", () => act("mode"));
 tool("t-bot", () => act("addbot"));
 tool("t-rmbot", () => act("rmbot"));
 tool("t-tab", () => window.open(`index.html?room=${S.net.code}`, "_blank"));

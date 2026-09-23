@@ -143,7 +143,8 @@ function render(l) {
   $("role").textContent = l.role || "";
   view.replaceChildren();
   view.onpointerdown = view.onpointermove = view.onpointerup = null;
-  const kind = { wait, menu, choose, button, dpad, sling }[l.kind] || wait;
+  if (l.command && l.kind !== "wait") add(el("p", { className: "cmd", textContent: l.command }));
+  const kind = { wait, menu, choose, button, dpad, sling, pads }[l.kind] || wait;
   kind(l);
 }
 
@@ -203,6 +204,24 @@ function dpad(l) {
   };
   view.onpointerup = () => { start = null; };
   add(pad, el("p", { className: "hint", textContent: l.hint || "Swipe or tap the arrows" }));
+}
+
+// big coloured/numbered pads (microgames: MATCH!, COUNT!)
+function pads(l) {
+  const grid = el("div", { className: "pads" });
+  for (const p of l.pads) {
+    const b = el("button", { type: "button", textContent: p.label || "" });
+    b.style.background = p.color;
+    b.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      conn.send({ t: "pad", id: p.id });
+      navigator.vibrate?.(20);
+      grid.querySelectorAll("button").forEach((x) => { x.disabled = x !== b; });
+      b.classList.add("down");
+    });
+    grid.append(b);
+  }
+  add(grid, l.hint && el("p", { className: "hint", textContent: l.hint }));
 }
 
 function sling(l) {

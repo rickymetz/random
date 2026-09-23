@@ -113,6 +113,35 @@ Scoring in Playlist mode: free-for-all placements pay 10 / 6 / 4 / 2 / 1 points.
 Team and asymmetric winners get 10 each and losers 2. In Board mode the same
 payouts are coins.
 
+## Microgame Gauntlet (second mode)
+
+Chosen in the lobby (VIP **Mode** button, or **G**), next to Playlist.
+Everyone plays the same microgame at once. The flow is a command slam
+(0.85 s), then play (3–4 s on a burning-fuse bomb), then judging (✓/✗ over
+each blob, lives drop), then the next microgame. Every 5 microgames there's
+a **SPEED UP!** (+18%: shorter timers, faster needles, more taps needed).
+Everyone has **3 lives**; a player who runs out is OUT, and their phone
+says so. Last blob standing wins. Placements follow elimination order and
+pay the usual 10 / 6 / 4 / 2 / 1, so the podium, awards ("Microgame
+machine") and rematch work unchanged. There's a cap of 60 microgames.
+
+| Microgame | Phone | Pass |
+| --- | --- | --- |
+| MASH! | button | reach the tap target (scales with speed) |
+| DON'T TAP! | a tempting "TAP ME" button | don't |
+| WAIT FOR IT… | button (WAIT… → NOW!) | tap after the light turns green; early is a fail |
+| SWIPE! | d-pad / swipe | match the arrow |
+| MATCH! | 4 colour pads (shuffled per phone) | tap the colour on the TV |
+| COUNT! | 4 number pads | count the wobbling blobs |
+| STOP! | button | stop the needle in the green zone |
+| HOLD IT! | button | press within the first ~half, and never let go |
+| FLOAT! | button (flap) | stay between the spikes and the lava |
+
+Each microgame is a small object in `games/gauntlet.js` (`setup`,
+`layout`, `input`, `update`, `draw`, `judge`, `bot`), so adding one doesn't
+touch the runner. Every microgame has a bot, so bots and dropped phones can
+play.
+
 ## Architecture
 
 ```
@@ -176,8 +205,6 @@ them.
 
 ## Follow-ups
 
-0. **Microgame Gauntlet** (wanted, parked for later): 3–5 s microgames
-   back to back at rising speed, with lives; last blob standing wins.
 
 1. Board mode: a loop board, dice on phones, coin, red, duel and star
    spaces, a shop, items kept secret on phones, bonus stars.
