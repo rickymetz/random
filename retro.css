@@ -294,7 +294,7 @@ html:not([data-look="retro"]) #retro { display: none !important; }
 }
 /* :where() keeps this at #retro's specificity, so the absolute layers
    below (drawer, shade, settings) still win. */
-#retro > :where(:not(.rt-wallpaper, .rt-zoom, .rt-loading)) { position: relative; z-index: 1; }
+#retro > :where(:not(.rt-wallpaper, .rt-launch)) { position: relative; z-index: 1; }
 #retro > .rt-drawer, #retro > .rt-shade { position: absolute; }
 /* The status bar stays visible above the drawer, as on the phone, so the
    shade can be pulled down over it. */
@@ -626,21 +626,51 @@ html:not([data-look="retro"]) #retro { display: none !important; }
 
 /* --------------------------------------------------- launch, boot */
 
-.rt-zoom {
-  position: fixed;
+/* The app's starting window: below the status bar, above the nav bar. */
+.rt-launch {
+  position: absolute;
   z-index: 40;
-  display: grid;
-  place-items: center;
-  font-size: 30px;
-  border-radius: 13px;
-  transform-origin: 0 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: calc(env(safe-area-inset-top, 0px) + var(--rt-status-h));
+  display: flex;
+  flex-direction: column;
+  background: var(--rt-bg);
+  /* a faint edge, so black grows visibly out of black */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 10px 40px rgba(0, 0, 0, 0.55);
   pointer-events: none;
+  will-change: transform, opacity;
 }
+@media (prefers-color-scheme: light) {
+  html[data-look="retro"] .rt-launch { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18), 0 10px 40px rgba(0, 0, 0, 0.25); }
+}
+.rt-launch-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 10px;
+  background: linear-gradient(180deg, #5c5c5c, #353535 55%, #2a2a2a);
+  border-bottom: 1px solid #000;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.6);
+}
+.rt-launch-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 15px;
+  transform: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.rt-launch-body { flex: 1; position: relative; }
 .rt-loading {
-  position: fixed;
-  z-index: 41;
+  position: absolute;
   left: 50%;
-  top: 50%;
+  top: 40%;
   transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
