@@ -133,16 +133,21 @@
     });
   }
 
+  // Timers and frames can outlive the launcher (the look switched to modern
+  // mid-swipe): everything below checks it is still there.
   function currentPage() {
+    if (!ui.pages) return CENTRE;
     var w = ui.pages.clientWidth || 1;
     return Math.round(ui.pages.scrollLeft / w);
   }
   function goTo(p, smooth) {
+    if (!ui.pages) return;
     var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     ui.pages.scrollTo({ left: p * ui.pages.clientWidth, behavior: smooth && !reduce ? 'smooth' : 'auto' });
     markDot(p);
   }
   function markDot(p) {
+    if (!ui.dots) return;
     Array.prototype.forEach.call(ui.dots.children, function (b, i) {
       b.setAttribute('aria-current', i === p ? 'true' : 'false');
     });
@@ -1105,6 +1110,7 @@
       root.appendChild(ui.shade);
       // Open on the centre screen, after layout gives the pages a width.
       requestAnimationFrame(function () {
+        if (!mounted || !ui.pages) return;
         goTo(CENTRE, false);
         sizeWallpaper();
         tickControl();
@@ -1126,12 +1132,16 @@
     });
   }
 
-  function unmount() {
+  // keepLayers: a back/forward-cache redraw keeps the drawer, shade or
+  // Settings open; a switch to modern closes them for good.
+  function unmount(keepLayers) {
     if (!mounted) return;
     mounted = false;
+    if (!keepLayers && history.state && history.state.rt) history.replaceState(null, '');
     root.hidden = true;
     root.removeAttribute('data-ready');
     clearInterval(clockTimer);
+    clearTimeout(scrollTimer);
     cancelAnimationFrame(wall.raf);
     root.textContent = '';
     ui = {};
@@ -1166,7 +1176,7 @@
   // Back from an idea can restore this page from the back/forward cache:
   // redraw, so New dots, the dock and the widgets reflect the visit.
   window.addEventListener('pageshow', function (e) {
-    if (e.persisted && mounted) { unmount(); mount(); }
+    if (e.persisted && mounted) { unmount(true); mount(); }
   });
   onLook();
 

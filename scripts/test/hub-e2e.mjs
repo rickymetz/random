@@ -781,6 +781,17 @@ try {
     check(await page.evaluate(() => localStorage.getItem("random-hub:dock") === null), "Reset dock forgets the chosen favourites");
     await page.click(rowSel("look"));
     check((await page.evaluate(() => document.documentElement.dataset.look)) === "modern", "and Retro look off returns to modern");
+    // Switching looks mid-swipe: the launcher's pending timers must not
+    // outlive it (a CI-only race once).
+    const errorsBefore = pageErrors.length;
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(() => window.randomNav.setLook("retro"));
+      await page.waitForSelector("#retro[data-ready]");
+      await page.click(".rt-dots button:nth-child(1)");
+      await page.evaluate(() => window.randomNav.setLook("modern"));
+      await page.waitForTimeout(400);
+    }
+    check(pageErrors.length === errorsBefore, "switching looks mid-swipe leaves nothing behind");
     await ctx.close();
   }
 
