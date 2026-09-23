@@ -106,7 +106,11 @@ kept). The selfie is sent as a 128×128 JPEG data URL, about 6 KB.
 | **Kaiju** | 1 vs rest | 2–8 | kaiju: stick + STOMP; city: stick + DASH | city: knock out the kaiju's HP with cannons; kaiju: squash everyone or outlast 60 s |
 | Mash Race | Free-for-all | 2–8 | mash one button | first to the finish |
 | Reaction Tap | Free-for-all | 2–8 | one button | fastest tap after "GO"; tapping early costs you the round |
-| Hot Potato | Free-for-all | 3–8 | tap a player to pass | whoever holds the bomb when it pops is out |
+| **Blob Soccer** | Teams (2v2–4v4) | 2–8 | stick + KICK | first to 3 goals, or most goals in 90 s; a draw goes to golden-goal overtime |
+| **Sumo Ring** | Free-for-all | 2–8 | stick + BUMP | last blob on the shrinking ring |
+| **Bumper Blobs** | Free-for-all | 2–8 | stick + BOOST | 3 lives in a spiked pen; last blob with lives (or most lives at 60 s) |
+| **Coin Rush** | Free-for-all | 2–8 | stick + DASH | most coins after 45 s; spike rollers and dashes knock coins loose |
+| **Hot Potato** | Free-for-all | 3–8 | stick + DASH | bump to pass the bomb (no instant pass-backs); holder is out when the secret fuse pops |
 | Tilt Maze | Free-for-all | 1–8 | tilt | first to the goal |
 
 The first three are in the slice. The four party classics are follow-ups
@@ -405,11 +409,29 @@ them.
 
 1. Board mode extras: bonus stars, more maps, and map-specific events
    (e.g. a timed volcano eruption).
-2. Party classics: Mash Race, Reaction Tap, Hot Potato, Tilt Maze (with the
-   iOS motion permission).
+2. The rest of the team / free-for-all pack (see below).
 3. Audience: seats past 8 (and anyone who opts in) get bets and emoji
    reactions.
 4. Selfie prompts before some games.
 5. A cloud relay deployment (Fly.io / Render / Cloudflare Durable Objects),
    and a `?relay=` param to point at it.
 6. A tvOS shell (option 2 above) and an App Clip.
+
+## Team and free-for-all pack
+
+A shared top-down engine (`games/arena.js`) drives these: bodies with
+acceleration and friction, a dash, bouncy mass-weighted collisions, walls or a
+round arena, and helpers for bot steering, drawing, stick layouts and results.
+Team games split players into Pink and Cyan (2v2, 3v3, 4v4) and fill an odd
+count with a ghost bot that never appears in the results.
+
+Batch 1 (built): Blob Soccer, Sumo Ring, Bumper Blobs, Coin Rush, Hot Potato.
+Headless all-bot sims (12 rounds at 2/4/5/8 players) check that every round
+finishes and ghosts never place. Soccer bots aim at a moving spot in the goal
+mouth (identical aims deadlocked 1v1s), keep one keeper and push the rest up.
+Before those changes most rounds ended 0–0; now nearly all get a winner.
+
+Batch 2: Paint the Town, Capture the Crown, Jelly Dodgeball, Snake Pit, Tug of
+Jelly. Batch 3: Relay Race, Tower Stack, Bomb Squad (the manual lives on the
+defusers' phones), Tilt Maze (the first tilt control, with the iOS motion
+permission) and Draw Duel (draw on the phone, vote on the TV).

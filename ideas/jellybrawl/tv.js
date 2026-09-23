@@ -12,10 +12,15 @@ import gauntlet from "./games/gauntlet.js";
 import snipe, { blackout } from "./games/snipe.js";
 import tagGame from "./games/tag.js";
 import kaiju from "./games/kaiju.js";
+import soccer from "./games/soccer.js";
+import sumo from "./games/sumo.js";
+import bumper from "./games/bumper.js";
+import coinrush from "./games/coinrush.js";
+import potato from "./games/potato.js";
 import { makeBoard } from "./board.js";
 import { MAP_NAMES } from "./boards.js";
 
-const GAMES = [flap, sling, chomp, snipe, blackout, tagGame, kaiju];
+const GAMES = [flap, sling, chomp, snipe, blackout, tagGame, kaiju, soccer, sumo, bumper, coinrush, potato];
 // canvas text only uses a web font once it's loaded; ask for both up front
 for (const f of [T.display, T.label]) document.fonts?.load(`40px ${f}`).catch(() => {});
 const COLORS = ["#ff2e63", "#00b7ff", "#ffd400", "#35e06b", "#b14dff", "#ff8a00", "#ff6ec7", "#00e0c6"];
@@ -31,6 +36,7 @@ const AWARDS = [
   ["dots", "Hungriest", "dots eaten"], ["cleared", "Microgame machine", "microgames cleared"], ["bosses", "Boss slayer", "bosses beaten"],
   ["stars", "Star collector", "stars bought"], ["duels", "Duelist", "duels won"],
   ["snipes", "Deadeye", "runners sniped"], ["tags", "Patient zero", "blobs infected"],
+  ["goals", "Striker", "goals"], ["shoves", "Sumo slammer", "big shoves"], ["coins", "Coin magnet", "coins grabbed"], ["passes", "Hot hands", "bomb passes"],
   ["squashes", "Stomper", "blobs squashed"], ["cannon", "Artillery", "cannon shots"], ["wrecked", "Wrecking ball", "buildings flattened"], ["loot", "Master thief", "coins stolen"], ["catches", "Best hunter", "catches"], ["gulps", "Tables turned", "hunters gulped"],
 ];
 
