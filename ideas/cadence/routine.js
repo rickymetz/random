@@ -230,16 +230,16 @@
           {
             name: 'On your back',
             items: [
-              { id: 'cervical-retraction', name: 'Supine cervical retraction with towel', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
-              { id: 'horizontal-abduction', name: 'Supine horizontal abduction with chin tuck', mode: 'reps', sets: 2, min: 10, max: 10, rest: 20 },
-              { id: 'supine-external-rotation', name: 'Supine shoulder external rotation with resistance', mode: 'reps', sets: 2, min: 10, max: 10, rest: 20 },
-              { id: 'pnf-d2-flexion', name: 'Supine PNF D2 flexion with resistance', mode: 'reps', sets: 2, min: 10, max: 10, perSide: true, sideWord: 'arm', rest: 20 }
+              { id: 'cervical-retraction', name: 'Supine cervical retraction with towel', mode: 'reps', sets: 2, min: 10, max: 10, rest: 15 },
+              { id: 'horizontal-abduction', name: 'Supine horizontal abduction with chin tuck', mode: 'reps', sets: 2, min: 12, max: 12, rest: 20 },
+              { id: 'supine-external-rotation', name: 'Supine shoulder external rotation with resistance', mode: 'reps', sets: 2, min: 12, max: 12, rest: 20 },
+              { id: 'pnf-d2-flexion', name: 'Supine PNF D2 flexion with resistance', mode: 'reps', sets: 2, min: 12, max: 12, perSide: true, sideWord: 'arm', rest: 20 }
             ]
           },
           {
             name: 'Sitting and standing',
             items: [
-              { id: 'thoracic-extension', name: 'Seated thoracic lumbar extension', mode: 'reps', sets: 1, min: 10, max: 10, rest: 0 },
+              { id: 'thoracic-extension', name: 'Seated thoracic lumbar extension', mode: 'reps', sets: 1, min: 5, max: 10, rest: 0 },
               { id: 'scaption', name: 'Scaption with dumbbells', mode: 'reps', sets: 2, min: 10, max: 10, rest: 20 },
               { id: 'row-head-turn', name: 'Single arm row with opposite head turn', mode: 'reps', sets: 2, min: 10, max: 10, perSide: true, sideWord: 'arm', rest: 20 },
               { id: 'touchdowns', name: 'Touchdowns', mode: 'reps', sets: 2, min: 10, max: 10, rest: 20 }
@@ -408,6 +408,42 @@
     ]
   };
 
+  /* Fuller instructions for an exercise, where the one-line cue isn't
+   * enough: how often it's prescribed, how to set up, the movement, and the
+   * thing to watch. Shown under the figure as "How to". */
+  var GUIDES = {
+    'cervical-retraction': {
+      dose: 'Every day, up to 12 times a day: 1–2 sets of 10, holding each for 5–10 seconds.',
+      setup: 'Lie on your back with a rolled towel under your neck, neck relaxed.',
+      movement: 'Gently tuck your chin straight back, as if making a double chin. Hold, then relax and repeat.',
+      tip: 'Don’t lift your head off the ground. If your shoulders lift, the movement is too big — it’s a small, subtle motion.'
+    },
+    'horizontal-abduction': {
+      dose: 'Every day, twice a day: 2 sets of 12.',
+      setup: 'Lie on your back with your knees bent and the ends of a resistance band in each hand, arms straight up toward the ceiling.',
+      movement: 'Tuck your chin first. Pull your arms apart against the band, straight out to your sides, then slowly bring them back to the start. Relax the chin tuck and repeat.',
+      tip: 'Keep your back flat on the floor throughout.'
+    },
+    'supine-external-rotation': {
+      dose: 'Every day, twice a day: 2 sets of 12.',
+      setup: 'Lie on your back holding the ends of a resistance band in each hand, elbows bent.',
+      movement: 'Rotate your hands outward, keeping your elbows bent, pulling the band apart. Return slowly.',
+      tip: 'Keep your back flat and don’t shrug your shoulders.'
+    },
+    'pnf-d2-flexion': {
+      dose: 'Every day, twice a day: 2 sets of 12 with each arm.',
+      setup: 'Lie on your back with both knees bent, holding a resistance band in both hands, one arm across your body with the thumb pointing toward the opposite hip.',
+      movement: 'Lift that arm up and overhead to the other side, pulling against the band. As your hand goes overhead, turn it so the thumb points away from your body. Hold briefly, then slowly return and repeat.',
+      tip: 'Keep your back flat on the floor and don’t shrug your shoulder.'
+    },
+    'thoracic-extension': {
+      dose: 'Every day, once a day: 1 set of 5–10, holding each for 5 seconds.',
+      setup: 'Sit upright with your arms crossed over your chest and a towel roll across your back at about shoulder-blade height.',
+      movement: 'Slowly arch your trunk backward over the towel roll and hold, then return upright and repeat.',
+      tip: 'Keep it slow and controlled. Don’t move through pain.'
+    }
+  };
+
   /* Mon..Sun. */
   var DAYS = [
     { key: 'mon', label: 'Mon', long: 'Monday' },
@@ -508,6 +544,7 @@
     DEFAULT_SCHEDULE: DEFAULT_SCHEDULE,
     defaultSchedule: function () { return clone(DEFAULT_SCHEDULE); },
     defaultRoutine: function () { return clone(DEFAULT_ROUTINE); },
+    guide: function (id) { return GUIDES[id] || null; },
     amountLabel: amountLabel,
     targetLabel: targetLabel,
     formatSeconds: formatSeconds,

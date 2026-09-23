@@ -497,7 +497,25 @@
       h('div', { class: 'demo-bar' }, [
         h('span', { class: 'demo-cue', text: Figures.cue(ex.id) }),
         h('span', { class: 'demo-controls' }, controls)
-      ])
+      ]),
+      howTo(ex)
+    ]);
+  }
+
+  /* The fuller instructions, for exercises that have them: folded away
+   * under the figure until you want them. */
+  function howTo(ex) {
+    var g = R.guide && R.guide(ex.id);
+    if (!g) return null;
+    var row = function (label, text) {
+      return text ? h('div', { class: 'demo-how-row' }, [h('b', { text: label }), h('p', { text: text })]) : null;
+    };
+    return h('details', { class: 'demo-how' }, [
+      h('summary', { text: 'How to' }),
+      row('Prescribed', g.dose),
+      row('Setup', g.setup),
+      row('Movement', g.movement),
+      row('Tip', g.tip)
     ]);
   }
 

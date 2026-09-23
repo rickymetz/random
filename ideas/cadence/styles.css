@@ -956,6 +956,23 @@ body.is-session .toast { top: 4.5rem; bottom: auto; }
   color: var(--muted);
 }
 .demo-controls { display: flex; gap: 0.3rem; flex: 0 0 auto; }
+.demo-how {
+  margin-top: 0.5rem;
+  text-align: left;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+.demo-how summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+  min-height: 2rem;
+  display: flex;
+  align-items: center;
+}
+.demo-how-row { margin-top: 0.45rem; }
+.demo-how-row b { display: block; font-size: 0.74rem; letter-spacing: 0.02em; color: var(--muted); font-weight: 600; }
+.demo-how-row p { margin: 0.1rem 0 0; }
 .demo-btn {
   min-height: 2rem;
   padding: 0 0.55rem;
