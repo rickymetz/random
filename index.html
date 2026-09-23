@@ -14,6 +14,19 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="random">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<script>
+  // The look (modern cards / retro launcher) is decided before first paint,
+  // so there's no flash of the wrong one. nav.js makes the same call later.
+  (function () {
+    var look;
+    try { look = JSON.parse(localStorage.getItem("random-hub:look")); } catch (e) {}
+    // Modern unless someone has chosen retro.
+    document.documentElement.setAttribute("data-look", look === "retro" ? "retro" : "modern");
+    // The launcher's styles only for people who use it (nav.js loads its
+    // script, and both on the switch to retro).
+    if (look === "retro") document.write('<link rel="stylesheet" href="retro.css" data-retro-css>');
+  })();
+</script>
 <style>
   :root {
     --bg: #faf9f7;
@@ -50,6 +63,7 @@
   }
   .hub-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; }
   .hub-actions button {
+    white-space: nowrap;
     border: 1px solid var(--line);
     border-radius: 999px;
     padding: 0.4rem 0.95rem;
@@ -177,6 +191,7 @@
         </div>
         <div class="hub-actions">
           <button type="button" id="install" hidden>Install</button>
+          <button type="button" id="look-retro">Retro look</button>
           <button type="button" id="badge-toggle" hidden>Badge new ideas</button>
         </div>
       </div>
@@ -255,6 +270,7 @@
       <a href="https://github.com/rickymetz/random">source</a>
     </footer>
   </main>
+  <div id="retro" hidden></div>
   <script src="nav.js" defer></script>
   <script src="hub.js" defer></script>
 </body>

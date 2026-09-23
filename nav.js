@@ -16,6 +16,9 @@
  *   <meta name="random-nav" content="off">      no bar on this page
  *   <meta name="random-nav" content="overlay">  bar, but no bottom spacer
  *   <a data-random-keep>              keep this "← random" link visible
+ *   window.randomNav.look() / .setLook('retro'|'modern'): the hub's two
+ *                                     looks (a 'randomlook' event fires on
+ *                                     window when it changes)
  *   window.randomNav.hide() / .show() tuck the bar away for an immersive
  *                                     moment (a handle or an edge swipe
  *                                     brings it back); full screen hides
@@ -41,7 +44,12 @@
     recents: 'random-hub:recents',
     opened: 'random-hub:opened',
     since: 'random-hub:since',
-    trail: 'random-hub:trail'
+    trail: 'random-hub:trail',
+    look: 'random-hub:look',
+    events: 'random-hub:events',
+    dismissed: 'random-hub:shade-dismissed',
+    sounds: 'random-hub:sounds',
+    haptics: 'random-hub:haptics'
   };
   var MAX_RECENTS = 8;
   var BAR_H = 48;
@@ -70,6 +78,33 @@
   function lset(k, v) { if (local) write(local, k, v); }
   function sget(k, f) { return session ? read(session, k, f) : f; }
   function sset(k, v) { if (session) write(session, k, v); }
+
+  /* -------------------------------------------------------------- look */
+
+  // Two looks: 'modern' (the card grid, the default everywhere) and
+  // 'retro' (the Gingerbread launcher, retro.js), which is opt-in. The
+  // hub's inline head script makes the same decision before first paint.
+  function currentLook() {
+    return lget(KEY.look, null) === 'retro' ? 'retro' : 'modern';
+  }
+  var look = currentLook();
+  document.documentElement.setAttribute('data-look', look);
+  // Back can restore a page from the back/forward cache after the look was
+  // changed elsewhere (≡ → Modern look on an idea page): catch up.
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted && currentLook() !== look) setLook(currentLook());
+  });
+
+  function setLook(next) {
+    if (next !== 'retro' && next !== 'modern') return;
+    lset(KEY.look, next);
+    if (next === look) return;
+    look = next;
+    document.documentElement.setAttribute('data-look', look);
+    applyLook();
+    if (look === 'retro') loadRetro();
+    try { window.dispatchEvent(new CustomEvent('randomlook', { detail: { look: look } })); } catch (e) {}
+  }
 
   /* ---------------------------------------------------- where are we? */
 
@@ -133,6 +168,13 @@
     var known = ideaBySlug(slug);
     // Outside ideas/ only listed slugs count (so /random/docs/ is not an idea).
     if (!known && location.pathname.indexOf(HUB_PATH + 'ideas/') !== 0) return;
+    var opened = lget(KEY.opened, []);
+    if (opened.indexOf(slug) === -1) { opened.push(slug); lset(KEY.opened, opened); }
+    // A private idea (Ledger) leaves no trace in recents.
+    if (known && known.private) {
+      lset(KEY.recents, lget(KEY.recents, []).filter(function (r) { return r && r.slug !== slug; }));
+      return;
+    }
 
     var recents = lget(KEY.recents, []).filter(function (r) { return r && r.slug !== slug; });
     recents.unshift({
@@ -141,9 +183,13 @@
       visitedAt: new Date().toISOString()
     });
     lset(KEY.recents, recents.slice(0, MAX_RECENTS));
-
-    var opened = lget(KEY.opened, []);
-    if (opened.indexOf(slug) === -1) { opened.push(slug); lset(KEY.opened, opened); }
+  }
+  // Recents without private ideas (older entries may predate the flag).
+  function recentList() {
+    return lget(KEY.recents, []).filter(function (r) {
+      var k = r && r.slug && ideaBySlug(r.slug);
+      return r && r.slug && !(k && k.private);
+    });
   }
 
   function isNew(idea) {
@@ -187,6 +233,15 @@
     back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 5.5v13L6.5 12z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
     home: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
     recents: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
+    menu: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
+    wallpaper: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4 17l5-5 4 4 2.5-2.5L20 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="16" cy="9" r="1.6" fill="currentColor"/></svg>',
+    search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M14.5 14.5L20 20" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>',
+    settings: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M5.5 18.5l1.9-1.9M16.6 7.4l1.9-1.9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+    look: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="18" r="1.2" fill="currentColor"/></svg>',
+    about: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="7.8" r="1.2" fill="currentColor"/></svg>',
+    save: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    saved: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    hub: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-6.5 8 6.5M6.5 9.5V19h11V9.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
     share: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4M6 12v6.5A1.5 1.5 0 0 0 7.5 20h9a1.5 1.5 0 0 0 1.5-1.5V12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
   };
@@ -278,6 +333,109 @@
     '.handle::before { content: ""; width: 44px; height: 5px; border-radius: 3px; background: var(--ink); opacity: .35; }',
     '.tucked .handle { display: grid; }',
     '.handle:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 8px; }',
+    '.bar .menu { display: none; }',
+
+    /* ---- retro (Gingerbread) skin: black hardware keys, glowing glyphs,
+       lime press; era dialogs, toast and options panel ---- */
+    '.retro { font-family: "Droid Sans", ui-sans-serif, system-ui, sans-serif; --accent: #9fd01d; }',
+    '.retro .bar { background: linear-gradient(180deg, #232323, #000 55%); border-top: 1px solid #3a3a3a;',
+    '  -webkit-backdrop-filter: none; backdrop-filter: none; }',
+    '.retro .bar .menu { display: grid; }',
+    '.retro .bar button { color: #f2f2f2; border-radius: 4px; filter: drop-shadow(0 0 3px rgba(255,255,255,.55)); }',
+    '@media (hover: hover) { .retro .bar button:hover { background: rgba(255,255,255,.07); } }',
+    '.retro .bar button:active { background: rgba(159,208,29,.3); color: #cff27a; transform: none; }',
+    '.retro .bar button[disabled] { filter: none; }',
+    '.retro .handle::before { background: #9a9a9a; }',
+    '.retro .toast { border-radius: 6px; background: linear-gradient(180deg, #474747, #2b2b2b); color: #fff;',
+    '  border: 1px solid #5a5a5a; padding: 9px 10px 9px 14px; box-shadow: 0 4px 16px rgba(0,0,0,.5); }',
+    '.retro .toast button { border-radius: 4px; background: linear-gradient(180deg, #b6e236, #86b312); color: #000; }',
+    '.retro .sheet { background: linear-gradient(180deg, #2b2b2b, #161616); color: #fff; border-radius: 0;',
+    '  border-top: 1px solid #555; }',
+    '.retro .head h2 { color: #fff; }',
+    '.retro .head button { color: #9fd01d; }',
+    '.retro .card { background: #1f1f1f; border-color: #3a3a3a; border-radius: 4px; color: #fff; }',
+    '.retro .card:active { background: #9fd01d; color: #000; }',
+    '.retro .card .when { color: #a0a0a0; }',
+
+    // The scrim stops above the bar: its keys stay live, as on the phone.
+    '.dscrim { position: fixed; top: 0; left: 0; right: 0; bottom: calc(' + BAR_H + 'px + env(safe-area-inset-bottom, 0px));',
+    '  z-index: 2147483002; background: rgba(0,0,0,.55); display: none; }',
+    '.nobar .dscrim, .tucked .dscrim { bottom: 0; }',
+    '.dscrim.on { display: block; }',
+    '.dlg { position: fixed; z-index: 2147483003; left: 50%; top: 50%; transform: translate(-50%, -50%);',
+    '  width: min(340px, calc(100vw - 32px)); max-height: calc(100vh - 120px); display: flex; flex-direction: column;',
+    '  background: #1b1b1b; color: #fff; border: 1px solid #5a5a5a; border-radius: 4px; box-shadow: 0 10px 40px rgba(0,0,0,.6);',
+    '  font-family: "Droid Sans", ui-sans-serif, system-ui, sans-serif; }',
+    '.dlg-title { display: flex; align-items: center; gap: 10px; margin: 0; padding: 12px 16px; font-size: 17px; font-weight: 700;',
+    '  background: linear-gradient(180deg, #3a3a3a, #262626); border-bottom: 2px solid #9fd01d; }',
+    '.dlg-title .tile { width: 32px; height: 32px; font-size: 18px; border-radius: 7px; transform: none; }',
+    '.dlg-body { overflow-y: auto; padding: 4px 0; }',
+    '.dlg-text { margin: 0; padding: 10px 16px; font-size: 14px; line-height: 1.45; color: #d8d8d8; }',
+    '.dlg-meta { margin: 0; padding: 0 16px 12px; font-size: 13px; color: #a0a0a0; }',
+    '.dlg-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 0 16px;',
+    '  border: 0; border-bottom: 1px solid #2e2e2e; background: none; color: #fff; font: inherit; font-size: 16px;',
+    '  text-align: left; cursor: pointer; }',
+    '.dlg-item:last-child { border-bottom: 0; }',
+    '.dlg-item:hover, .dlg-item:focus-visible { background: #9fd01d; color: #000; outline: none; }',
+    '.dlg-buttons { display: flex; gap: 8px; padding: 10px; background: #2a2a2a; border-top: 1px solid #3a3a3a; }',
+    '.dlg-buttons button, .dlg-buttons a { flex: 1; min-height: 44px; border: 1px solid #666; border-radius: 4px;',
+    '  background: linear-gradient(180deg, #f2f2f2, #c9c9c9); color: #111; font: inherit; font-size: 15px;',
+    '  display: grid; place-items: center; text-decoration: none; cursor: pointer; }',
+    '.dlg-buttons button:active, .dlg-buttons a:active { background: #9fd01d; }',
+    '.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 4px; padding: 14px 8px; }',
+    '.gtile { display: flex; flex-direction: column; align-items: center; gap: 6px; color: #fff; text-decoration: none;',
+    '  font-size: 12px; text-align: center; border-radius: 6px; padding: 4px 2px; }',
+    '.gtile span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+    '.gtile:focus-visible { outline: 2px solid #9fd01d; }',
+    '.gtile:active .tile { box-shadow: 0 0 0 3px #9fd01d; }',
+    '.tile { --h: 95; --dl: 0%; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 12px;',
+    '  font-size: 28px; line-height: 1; transform: perspective(160px) rotateX(9deg);',
+    '  background: linear-gradient(180deg, rgba(255,255,255,.35), rgba(255,255,255,0) 48%),',
+    '    linear-gradient(180deg, hsl(var(--h) 52% calc(58% + var(--dl))), hsl(var(--h) 58% calc(34% + var(--dl))));',
+    '  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 3px 6px rgba(0,0,0,.45); }',
+    '.tile.custom { background: linear-gradient(180deg, rgba(255,255,255,.35), rgba(255,255,255,0) 48%), var(--tile); }',
+    '.none { margin: 0; padding: 18px 16px; color: #a0a0a0; text-align: center; }',
+
+    '.opts { position: fixed; left: 0; right: 0; z-index: 2147483003; bottom: calc(' + BAR_H + 'px + env(safe-area-inset-bottom, 0px));',
+    '  display: grid; grid-template-columns: repeat(3, 1fr); background: linear-gradient(180deg, #3a3a3a, #1c1c1c);',
+    '  border-top: 1px solid #6a6a6a; box-shadow: 0 -6px 24px rgba(0,0,0,.5);',
+    '  font-family: "Droid Sans", ui-sans-serif, system-ui, sans-serif; }',
+    '.opt { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 76px;',
+    '  border: 0; border-right: 1px solid #111; border-bottom: 1px solid #111; box-shadow: inset 1px 1px 0 rgba(255,255,255,.07);',
+    '  background: none; color: #f0f0f0; font: inherit; font-size: 13px; cursor: pointer; padding: 6px 4px; }',
+    '.opt svg { width: 28px; height: 28px; }',
+    '.opt:nth-child(3n) { border-right: 0; }',
+    '.opt:hover, .opt:focus-visible { background: rgba(159,208,29,.25); outline: none; }',
+    '.opt:active { background: #9fd01d; color: #000; }',
+    '.opt[disabled] { opacity: .45; cursor: default; background: none; }',
+    '.opt[aria-pressed="true"] svg { color: #9fd01d; filter: drop-shadow(0 0 4px rgba(159,208,29,.7)); }',
+
+    /* ---- retro, light: "Paper Gingerbread" panels; the bar and the toast
+       stay black, like hardware ---- */
+    '@media (prefers-color-scheme: light) {',
+    '  .retro .sheet { background: linear-gradient(180deg, #faf9f7, #ece8e0); color: #1a1a1a; border-top-color: #bdb8ae; }',
+    '  .retro .head h2 { color: #1a1a1a; }',
+    '  .retro .head button { color: #4d7a00; }',
+    '  .retro .card { background: #fff; border-color: #d8d3c9; color: #1a1a1a; }',
+    '  .retro .card .when { color: #5d5d5d; }',
+    '  .retro .card:active { background: #4d7a00; color: #fff; }',
+    '  .dlg { background: #f4f2ee; color: #1a1a1a; border-color: #b8b3a9; box-shadow: 0 10px 40px rgba(0,0,0,.3); }',
+    '  .dlg-title { background: linear-gradient(180deg, #ffffff, #e9e6df); border-bottom-color: #4d7a00; }',
+    '  .dlg-text { color: #333; }',
+    '  .dlg-meta, .none { color: #5d5d5d; }',
+    '  .dlg-item { color: #1a1a1a; border-bottom-color: #ddd8ce; }',
+    '  .dlg-item:hover, .dlg-item:focus-visible { background: #4d7a00; color: #fff; }',
+    '  .dlg-buttons { background: #e9e6df; border-top-color: #d0cbc1; }',
+    '  .dlg-buttons button:active, .dlg-buttons a:active { background: #4d7a00; color: #fff; }',
+    '  .gtile { color: #1a1a1a; }',
+    '  .gtile:focus-visible { outline-color: #4d7a00; }',
+    '  .gtile:active .tile { box-shadow: 0 0 0 3px #4d7a00; }',
+    '  .opts { background: linear-gradient(180deg, #fbfaf7, #e6e2da); border-top-color: #b8b3a9; box-shadow: 0 -6px 24px rgba(0,0,0,.18); }',
+    '  .opt { color: #1a1a1a; border-right-color: #cfcac0; border-bottom-color: #cfcac0; box-shadow: inset 1px 1px 0 rgba(255,255,255,.8); }',
+    '  .opt:hover, .opt:focus-visible { background: rgba(77,122,0,.16); }',
+    '  .opt:active { background: #4d7a00; color: #fff; }',
+    '  .opt[aria-pressed="true"] svg { color: #4d7a00; filter: none; }',
+    '}',
     '@media (prefers-reduced-motion: reduce) { .sheet, .scrim, .bar { transition: none; } }'
   ].join('\n');
 
@@ -315,9 +473,13 @@
     ui.home = el('button', { type: 'button', 'aria-label': 'Home (all ideas)', title: 'Home' }, ICON.home);
     ui.recents = el('button', { type: 'button', 'aria-label': 'Recent ideas', title: 'Recent',
       'aria-expanded': 'false' }, ICON.recents);
+    ui.menu = el('button', { type: 'button', 'class': 'menu', 'aria-label': 'Menu', title: 'Menu',
+      'aria-haspopup': 'menu', 'aria-expanded': 'false' }, ICON.menu);
     ui.bar.appendChild(ui.back);
     ui.bar.appendChild(ui.home);
     ui.bar.appendChild(ui.recents);
+    ui.bar.appendChild(ui.menu);
+    ui.dscrim = el('div', { 'class': 'dscrim' });
 
     ui.toast = el('div', { 'class': 'toast', role: 'status', hidden: '' }, '<span></span><button type="button"></button>');
     ui.handle = el('button', { type: 'button', 'class': 'handle', 'aria-label': 'Show navigation' });
@@ -327,26 +489,37 @@
     wrap.appendChild(ui.toast);
     wrap.appendChild(ui.bar);
     wrap.appendChild(ui.handle);
+    wrap.appendChild(ui.dscrim);
     root.appendChild(wrap);
     ui.wrap = wrap;
+    ui.root = root;
     matchPage();
     watchPage();
 
-    if (isHub) {
-      ui.home.disabled = true;
-      ui.home.setAttribute('aria-label', 'Home (you are here)');
-    }
+    applyLook();
     if (isHub && !canGoBack()) ui.back.hidden = true;
 
     ui.back.addEventListener('click', function () {
+      // Back closes what's open first, as on the phone.
+      if (layer) { closeLayer(); return; }
+      if (wrap.classList.contains('open')) { toggleTray(false); return; }
       if (canGoBack()) history.back();
       else location.href = HUB.href;
     });
+    ui.menu.addEventListener('click', function () {
+      if (layer && layer.kind === 'options') closeLayer();
+      else openOptions();
+    });
+    ui.dscrim.addEventListener('click', function () { closeLayer(); });
     ui.home.addEventListener('click', function () {
       if (longPressed) { longPressed = false; return; }
+      // On the retro launcher, Home is a launcher action: close whatever is
+      // open and go back to the centre home screen (retro.js listens).
+      if (isHub) { window.dispatchEvent(new CustomEvent('randomhome')); return; }
       location.href = HUB.href;
     });
-    onLongPress(ui.home, share);
+    // Long-press ●: retro, Gingerbread's recent-apps dialog; modern, Share.
+    onLongPress(ui.home, function () { if (look === 'retro') { feedback('long'); recentsDialog(); } else share(); });
     var shareBtn = ui.sheet.querySelector('[data-act="share"]');
     if (shareBtn) shareBtn.addEventListener('click', function () { toggleTray(false); share(); });
     ui.handle.addEventListener('click', function () { show(); });
@@ -357,7 +530,24 @@
       renderTray();
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && wrap.classList.contains('open')) toggleTray(false);
+      // Tab stays inside an open dialog or panel.
+      if (e.key === 'Tab' && layer) {
+        var f = layer.node.querySelectorAll('button:not([disabled]), a[href]');
+        if (!f.length) return;
+        var cur = ui.root.activeElement;
+        var i = Array.prototype.indexOf.call(f, cur);
+        var next = e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : (i === -1 || i === f.length - 1 ? 0 : i + 1);
+        e.preventDefault();
+        f[next].focus();
+        return;
+      }
+      if (e.key !== 'Escape') return;
+      if (layer) closeLayer();
+      else if (wrap.classList.contains('open')) toggleTray(false);
+    });
+
+    ui.bar.addEventListener('pointerdown', function (e) {
+      if (e.target.closest && e.target.closest('button:not([disabled])')) feedback('key');
     });
 
     // The bar is its own UI: a tap on it must not also reach the page (on
@@ -445,8 +635,8 @@
     node.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   }
 
-  function share() {
-    var known = slug && ideaBySlug(slug);
+  function share(target) {
+    var known = target && target.slug ? target : (slug && ideaBySlug(slug));
     var url = known && known.url ? new URL(known.url, HUB).href : (isHub ? HUB.href : location.href);
     var title = known ? known.title : document.title;
     if (navigator.share) {
@@ -475,7 +665,395 @@
     if (ms) toastTimer = setTimeout(function () { ui.toast.hidden = true; }, ms);
   }
 
-  window.randomNav = { hide: hide, show: show, share: share };
+  // What the bar looks like for the current look. On the modern hub Home
+  // has nowhere to go; on the retro launcher it's the launcher's Home key.
+  function applyLook() {
+    if (!ui.home) return;
+    ui.wrap.classList.toggle('retro', look === 'retro');
+    if (look === 'retro') retroFonts();
+    else closeLayer();
+    var inert = isHub && look !== 'retro';
+    ui.home.disabled = inert;
+    ui.home.setAttribute('aria-label', inert ? 'Home (you are here)' : 'Home (all ideas)');
+  }
+
+  window.randomNav = {
+    hide: hide,
+    show: show,
+    share: share,
+    look: function () { return look; },
+    setLook: setLook,
+    // For the launcher: the idea catalogue, and what this device knows.
+    ideas: function () { return ideasReady; },
+    isNew: function (idea) { return isNew(idea); },
+    recents: function () { return recentList(); },
+    toast: function (text, ms) { if (ui.toast) toast(text, null, ms || 2200); },
+    // The launcher pushes history entries (the drawer); Back's visibility
+    // on the hub follows whether there is anywhere to go back to.
+    refreshBack: refreshBack,
+    // A newer hub is waiting: updateReady() says so, applyUpdate() takes it.
+    updateReady: function () { return !!pendingUpdate; },
+    applyUpdate: function () { if (pendingUpdate) pendingUpdate(); },
+    // Offline: the hub worker's saved (pinned) and cached ideas, and
+    // saving one (loads it in a hidden frame unless it's this page).
+    offlineStatus: offlineStatus,
+    saveOffline: saveOffline,
+    clearCached: function () { return ask({ type: 'CLEAR_CACHED' }); },
+    // Things that happened, for the launcher's notification shade.
+    addEvent: addEvent,
+    // Era dialogs, shared by the launcher and idea pages.
+    menu: menuDialog,
+    aboutIdea: aboutIdea,
+    tileVars: tileVars,
+    feedback: function (kind) { feedback(kind); },
+    lastSound: function () { return feedback.last || null; }
+  };
+  var pendingUpdate = null;
+
+  /* ------------------------------------------------ sound and haptics */
+
+  // Retro only. Haptics: a 10 ms tick on keys, a 25 ms buzz for long-press
+  // menus (Android; a silent no-op elsewhere). Sounds: synthesised with Web
+  // Audio, no files; off by default. The launcher's Settings write both.
+  var audio = null;
+  function feedbackOn(name, dflt) {
+    var v = lget(KEY[name], null);
+    return look === 'retro' && (typeof v === 'boolean' ? v : dflt);
+  }
+  function feedback(kind) {
+    if (feedbackOn('haptics', true) && navigator.vibrate) {
+      try { navigator.vibrate(kind === 'long' ? 25 : 10); } catch (e) {}
+    }
+    if (!feedbackOn('sounds', false)) return;
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    try {
+      audio = audio || new Ctx(); // only ever after a user gesture
+      if (audio.state === 'suspended') audio.resume();
+      var t = audio.currentTime;
+      var notes = kind === 'unlock' ? [[660, 0, 0.09], [990, 0.09, 0.16]]
+        : kind === 'swipe' ? [[1800, 0, 0.018]]
+        : kind === 'long' ? [[520, 0, 0.05]]
+        : [[1250, 0, 0.028]];
+      notes.forEach(function (n) {
+        var o = audio.createOscillator();
+        var g = audio.createGain();
+        o.type = kind === 'unlock' ? 'sine' : 'triangle';
+        o.frequency.value = n[0];
+        g.gain.setValueAtTime(0.0001, t + n[1]);
+        g.gain.exponentialRampToValueAtTime(kind === 'unlock' ? 0.12 : 0.07, t + n[1] + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + n[1] + n[2]);
+        o.connect(g).connect(audio.destination);
+        o.start(t + n[1]);
+        o.stop(t + n[1] + n[2] + 0.02);
+      });
+      feedback.last = kind; // for tests: the last sound actually played
+    } catch (e) { /* no audio: fine */ }
+  }
+
+  /* ----------------------------------------------------------- tiles */
+
+  // An idea's launcher tile colour: a hue from a stable FNV-1a hash of its
+  // slug and a lightness step from other bits (or idea.json's "icon").
+  function tileVars(idea) {
+    if (idea.icon) return { custom: idea.icon };
+    var h = 0x811c9dc5;
+    for (var i = 0; i < idea.slug.length; i++) { h ^= idea.slug.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return { h: String(h % 360), dl: [0, -7, 6][(h >>> 9) % 3] + '%' };
+  }
+  function tileEl(idea) {
+    var t = el('span', { 'class': 'tile', 'aria-hidden': 'true' });
+    var v = tileVars(idea);
+    if (v.custom) { t.classList.add('custom'); t.style.setProperty('--tile', v.custom); }
+    else { t.style.setProperty('--h', v.h); t.style.setProperty('--dl', v.dl); }
+    t.textContent = idea.emoji || '✦';
+    return t;
+  }
+
+  var fontsAdded = false;
+  function retroFonts() {
+    if (fontsAdded) return;
+    fontsAdded = true;
+    var css = '';
+    [['DroidSans', 400], ['DroidSans-Bold', 700]].forEach(function (f) {
+      css += '@font-face{font-family:"Droid Sans";font-weight:' + f[1] + ';font-display:swap;src:url("' +
+        new URL('fonts/' + f[0] + '.woff2', HUB).href + '") format("woff2")}';
+    });
+    var st = document.createElement('style');
+    st.textContent = css;
+    (document.head || document.documentElement).appendChild(st);
+  }
+
+  /* ------------------------------------------------------- era dialogs */
+
+  // One layer at a time: a dialog or the options panel. Back, Escape and a
+  // tap outside close it; focus goes back where it was.
+  var layer = null;
+  function openLayer(node, kind) {
+    closeLayer();
+    toggleTray(false);
+    var active = (ui.root && ui.root.activeElement) || document.activeElement;
+    ui.wrap.appendChild(node);
+    ui.dscrim.classList.add('on');
+    layer = { node: node, kind: kind, back: active };
+    refreshBack();
+    if (kind === 'options') ui.menu.setAttribute('aria-expanded', 'true');
+    var first = node.querySelector('button:not([disabled]), a[href]');
+    if (first) first.focus({ preventScroll: true });
+  }
+  function closeLayer() {
+    if (!layer) return;
+    var l = layer;
+    layer = null;
+    l.node.remove();
+    ui.dscrim.classList.remove('on');
+    ui.menu.setAttribute('aria-expanded', 'false');
+    refreshBack();
+    if (l.back && l.back.focus && document.contains(host)) {
+      try { l.back.focus({ preventScroll: true }); } catch (e) {}
+    }
+  }
+
+  var dlgCount = 0;
+  function dialog(title, opts) {
+    opts = opts || {};
+    var id = 'dlg-title-' + (++dlgCount);
+    var d = el('div', { 'class': 'dlg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': id });
+    var h = el('h2', { 'class': 'dlg-title', id: id });
+    if (opts.idea) h.appendChild(tileEl(opts.idea));
+    h.appendChild(document.createTextNode(title));
+    d.appendChild(h);
+    var body = el('div', { 'class': 'dlg-body' });
+    d.appendChild(body);
+    if (opts.buttons && opts.buttons.length) {
+      var row = el('div', { 'class': 'dlg-buttons' });
+      opts.buttons.forEach(function (b) {
+        var n = b.href ? el('a', { href: b.href }) : el('button', { type: 'button' });
+        n.textContent = b.label;
+        n.addEventListener('click', function () { if (b.run) b.run(); if (!b.keep) closeLayer(); });
+        row.appendChild(n);
+      });
+      d.appendChild(row);
+    }
+    return { node: d, body: body };
+  }
+
+  // A Gingerbread context menu: a titled list of actions.
+  function menuDialog(title, items, opts) {
+    var dl = dialog(title, { idea: opts && opts.idea });
+    items.filter(Boolean).forEach(function (it) {
+      var b = el('button', { type: 'button', 'class': 'dlg-item', 'data-act': it.id || '' });
+      b.textContent = it.label;
+      b.addEventListener('click', function () { closeLayer(); it.run(); });
+      dl.body.appendChild(b);
+    });
+    openLayer(dl.node, 'menu');
+  }
+
+  // Long-press ● (retro): the recent-ideas dialog, a 4 × 2 grid.
+  function recentsDialog() {
+    var list = recentList().filter(function (r) { return r.slug !== slug; }).slice(0, 8);
+    var dl = dialog('Recent', {});
+    dl.node.setAttribute('data-kind', 'recents');
+    if (!list.length) {
+      var none = el('p', { 'class': 'none' });
+      none.textContent = 'Ideas you open will show up here.';
+      dl.body.appendChild(none);
+    } else {
+      var grid = el('div', { 'class': 'grid4' });
+      list.forEach(function (r) {
+        var known = ideaBySlug(r.slug) || { slug: r.slug, title: r.title || r.slug, url: 'ideas/' + r.slug + '/' };
+        var a = el('a', { 'class': 'gtile', href: new URL(known.url, HUB).href, 'data-slug': r.slug });
+        a.appendChild(tileEl(known));
+        var label = el('span');
+        label.textContent = known.title;
+        a.appendChild(label);
+        grid.appendChild(a);
+      });
+      dl.body.appendChild(grid);
+    }
+    openLayer(dl.node, 'recents');
+  }
+
+  function offlineLine(idea, st) {
+    if (idea.saveable === false) return 'Keeps itself offline';
+    if (!st) return 'Offline status unavailable';
+    if (st.saved.indexOf(idea.slug) !== -1) return 'Saved for offline';
+    if (st.cached.indexOf(idea.slug) !== -1) return 'Cached (cleared first when space runs low)';
+    return 'Not on this device yet';
+  }
+
+  // About this idea: tile, title, description, date added, offline status.
+  function aboutIdea(idea) {
+    var here = idea.slug === slug;
+    var dl = dialog(idea.title, {
+      idea: idea,
+      buttons: [here ? null : { label: 'Open', href: new URL(idea.url, HUB).href }, { label: 'Close' }].filter(Boolean)
+    });
+    dl.node.setAttribute('data-kind', 'about');
+    if (idea.description) {
+      var p = el('p', { 'class': 'dlg-text' });
+      p.textContent = idea.description;
+      dl.body.appendChild(p);
+    }
+    var meta = el('p', { 'class': 'dlg-meta' });
+    var added = idea.date ? 'Added ' + new Date(idea.date).toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+    meta.textContent = added + (added ? ' · ' : '') + 'Checking offline status…';
+    dl.body.appendChild(meta);
+    openLayer(dl.node, 'about');
+    offlineStatus().then(function (st) { return st; }, function () { return null; }).then(function (st) {
+      meta.textContent = added + (added ? ' · ' : '') + offlineLine(idea, st);
+      meta.setAttribute('data-offline', st ? offlineLine(idea, st) : '');
+    });
+  }
+
+  function aboutHub() {
+    var dl = dialog('random', {
+      idea: { slug: 'random', emoji: 'r', icon: 'linear-gradient(180deg, #e08554, #8f3d1e)' },
+      buttons: [{ label: 'Source', href: 'https://github.com/rickymetz/random' }, { label: 'Close' }]
+    });
+    dl.node.setAttribute('data-kind', 'about-hub');
+    var p = el('p', { 'class': 'dlg-text' });
+    p.textContent = 'Small ideas, each one a tiny page.';
+    dl.body.appendChild(p);
+    var meta = el('p', { 'class': 'dlg-meta' });
+    meta.textContent = (ideas ? ideas.length : 0) + ' ideas';
+    dl.body.appendChild(meta);
+    offlineStatus().then(function (st) {
+      if (st && st.version) meta.textContent += ' · version ' + st.version;
+    }, function () {});
+    openLayer(dl.node, 'about');
+  }
+
+  // ≡ Menu: the Gingerbread options panel, a 3 × 2 grid.
+  function openOptions() {
+    var known = slug && ideaBySlug(slug);
+    var retro = window.randomRetro;
+    var items = isHub ? [
+      { id: 'wallpaper', label: 'Wallpaper motion', icon: ICON.wallpaper,
+        pressed: !!(retro && retro.setting('motion')), run: function () {
+        if (!retro) return;
+        var on = !retro.setting('motion');
+        retro.setSetting('motion', on);
+        toast('Wallpaper motion ' + (on ? 'on' : 'off'), null, 2000);
+      } },
+      { id: 'search', label: 'Search', icon: ICON.search, run: function () { window.dispatchEvent(new CustomEvent('randomsearch')); } },
+      { id: 'settings', label: 'Settings', icon: ICON.settings, run: openSettings },
+      { id: 'look', label: 'Modern look', icon: ICON.look, run: function () { setLook('modern'); } },
+      { id: 'share', label: 'Share', icon: ICON.share, run: function () { share(); } },
+      { id: 'about', label: 'About', icon: ICON.about, run: aboutHub }
+    ] : [
+      { id: 'share', label: 'Share', icon: ICON.share, run: function () { share(); } },
+      known && known.saveable !== false
+        ? { id: 'save', label: 'Save offline', icon: ICON.save, run: function () { toggleSaved(known); } }
+        : { id: 'save', label: 'Works offline', icon: ICON.saved, disabled: !known || known.saveable === false },
+      { id: 'about', label: 'About', icon: ICON.about, disabled: !known, run: function () { aboutIdea(known); } },
+      { id: 'settings', label: 'Settings', icon: ICON.settings, run: openSettings },
+      { id: 'home', label: 'Home', icon: ICON.hub, run: function () { location.href = HUB.href; } },
+      { id: 'look', label: 'Modern look', icon: ICON.look, run: function () { setLook('modern'); } }
+    ];
+    var panel = el('div', { 'class': 'opts', role: 'menu', 'aria-label': 'Options' });
+    items.forEach(function (it) {
+      var b = el('button', { type: 'button', 'class': 'opt', role: 'menuitem', 'data-opt': it.id }, it.icon);
+      var l = el('span');
+      l.textContent = it.label;
+      b.appendChild(l);
+      if (it.disabled) b.disabled = true;
+      if (it.pressed != null) b.setAttribute('aria-pressed', it.pressed ? 'true' : 'false');
+      b.addEventListener('click', function () { closeLayer(); if (it.run) it.run(); });
+      panel.appendChild(b);
+    });
+    openLayer(panel, 'options');
+    // Reflect whether this idea is already saved.
+    var saveBtn = panel.querySelector('[data-opt="save"]:not([disabled])');
+    if (saveBtn) offlineStatus().then(function (st) {
+      if (st && st.saved.indexOf(known.slug) !== -1) {
+        saveBtn.querySelector('span').textContent = 'Saved ✓';
+        saveBtn.setAttribute('aria-pressed', 'true');
+      }
+    }, function () {});
+  }
+
+  function openSettings() {
+    if (isHub) window.dispatchEvent(new CustomEvent('randomsettings'));
+    else location.href = HUB.href + '#settings';
+  }
+
+  function toggleSaved(idea) {
+    offlineStatus().then(function (st) {
+      var on = !(st && st.saved.indexOf(idea.slug) !== -1);
+      toast(on ? 'Saving ' + idea.title + '…' : 'Removing…', null, 0);
+      return saveOffline(idea.slug, on).then(function () {
+        toast(on ? 'Saved for offline' : 'No longer saved', null, 2200);
+      });
+    }).catch(function () { toast("Couldn't reach offline storage", null, 2600); });
+  }
+
+  /* ------------------------------------------------ offline, events */
+
+  function ask(msg) {
+    if (!('serviceWorker' in navigator)) return Promise.reject(new Error('no worker'));
+    return navigator.serviceWorker.getRegistration(HUB.href).then(function (reg) {
+      var worker = reg && reg.active;
+      if (!worker) throw new Error('no worker');
+      return new Promise(function (resolve, reject) {
+        var channel = new MessageChannel();
+        var timer = setTimeout(function () { reject(new Error('timeout')); }, 10000);
+        channel.port1.onmessage = function (e) { clearTimeout(timer); resolve(e.data); };
+        worker.postMessage(msg, [channel.port2]);
+      });
+    });
+  }
+  function offlineStatus() { return ask({ type: 'STATUS' }); }
+
+  // Open the idea in a hidden frame, so the hub worker sees — and caches —
+  // every file it loads, exactly as a visit would. (nav.js stays out of
+  // frames, so this doesn't count as opening it.)
+  function loadHidden(url) {
+    return new Promise(function (resolve) {
+      var frame = document.createElement('iframe');
+      frame.setAttribute('aria-hidden', 'true');
+      frame.tabIndex = -1;
+      frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:390px;height:844px;border:0;visibility:hidden;';
+      var done = false;
+      function finish() {
+        if (done) return;
+        done = true;
+        // A moment for what the idea fetches after load (data files).
+        setTimeout(function () { frame.remove(); resolve(); }, 2500);
+      }
+      frame.addEventListener('load', finish);
+      setTimeout(finish, 20000);
+      frame.src = url;
+      document.body.appendChild(frame);
+    });
+  }
+
+  function saveOffline(s, on) {
+    return ideasReady.then(function () {
+      var idea = ideaBySlug(s);
+      return on && s !== slug && idea ? loadHidden(new URL(idea.url, HUB).href) : null;
+    }).then(function () { return ask({ type: 'PIN', slug: s, on: !!on }); }).then(function (st) {
+      if (on) addEvent({ id: 'saved:' + s, type: 'saved', slug: s });
+      return st;
+    });
+  }
+
+  function addEvent(ev) {
+    var list = lget(KEY.events, []).filter(function (e) { return e && e.id !== ev.id; });
+    ev.at = ev.at || new Date().toISOString();
+    list.unshift(ev);
+    lset(KEY.events, list.slice(0, 12));
+    lset(KEY.dismissed, lget(KEY.dismissed, []).filter(function (d) { return d !== ev.id; }));
+    try { window.dispatchEvent(new CustomEvent('randomevent', { detail: ev })); } catch (e) {}
+  }
+
+  // On the hub Back hides when there's nowhere to go, but never while a
+  // dialog, the options panel or the tray is open: then it closes them.
+  function refreshBack() {
+    if (ui.back && isHub) ui.back.hidden = !canGoBack() && !layer && !(ui.wrap && ui.wrap.classList.contains('open'));
+  }
+  window.addEventListener('popstate', function () { setTimeout(refreshBack, 0); });
 
   // Ideas that predate the bar carry their own link home: "← random", or an
   // icon-only arrow with just an aria-label. While the bar is up it is
@@ -573,7 +1151,7 @@
   }
 
   function renderTray() {
-    var list = lget(KEY.recents, []).filter(function (r) { return r && r.slug && r.slug !== slug; });
+    var list = recentList().filter(function (r) { return r.slug !== slug; });
     ui.strip.textContent = '';
     ui.sheet.querySelector('[data-act="clear"]').hidden = !list.length;
     if (!list.length) {
@@ -611,6 +1189,7 @@
     ui.wrap.classList.toggle('open', open);
     ui.sheet.setAttribute('aria-hidden', open ? 'false' : 'true');
     ui.recents.setAttribute('aria-expanded', open ? 'true' : 'false');
+    refreshBack();
     if (open) {
       var first = ui.strip.querySelector('.card');
       if (first) first.focus({ preventScroll: true });
@@ -630,12 +1209,15 @@
     var refreshing = false;
     navigator.serviceWorker.register(new URL('sw.js', HUB).href, { scope: HUB.href }).then(function (reg) {
       function offer(worker) {
-        toast('New ideas available', { label: 'Refresh', run: function () {
+        pendingUpdate = function () {
           worker.addEventListener('statechange', function () {
             if (worker.state === 'activated' && !refreshing) { refreshing = true; location.reload(); }
           });
           worker.postMessage({ type: 'SKIP_WAITING' });
-        } });
+        };
+        toast('New ideas available', { label: 'Refresh', run: pendingUpdate });
+        // The retro launcher also lists it in its notification shade.
+        try { window.dispatchEvent(new CustomEvent('randomupdate')); } catch (e) {}
       }
       // Only an *update* is news: the very first install has no older
       // version to replace.
@@ -652,7 +1234,28 @@
     }).catch(function () { /* unsupported or blocked: the bar still works */ });
   }
 
+  // The launcher's files load only for people who use it: on the hub, when
+  // the look is (or becomes) retro. Styles first, then the script.
+  var retroRequested = false;
+  function loadRetro() {
+    if (!isHub || retroRequested || window.randomRetro) return;
+    retroRequested = true;
+    function addScript() {
+      var sc = document.createElement('script');
+      sc.src = new URL('retro.js', HUB).href;
+      document.body.appendChild(sc);
+    }
+    if (document.querySelector('link[data-retro-css]')) { addScript(); return; }
+    var css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = new URL('retro.css', HUB).href;
+    css.setAttribute('data-retro-css', '');
+    css.onload = css.onerror = addScript;
+    document.head.appendChild(css);
+  }
+
   function start() {
+    if (look === 'retro') loadRetro();
     mount();
     watchUpdates();
   }

@@ -2156,7 +2156,11 @@
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     global.addEventListener('load', function () {
-      var hadController = !!navigator.serviceWorker.controller;
+      // Only Cadence's own worker counts: on a first visit the random hub's
+      // worker (whose scope contains this folder) may control the page, and
+      // Cadence claiming it then is a first install, not an update to reload for.
+      var own = navigator.serviceWorker.controller;
+      var hadController = !!own && /\/ideas\/cadence\/sw\.js$/.test(own.scriptURL);
       var reloading = false;
 
       navigator.serviceWorker.register('sw.js').then(function (reg) {
