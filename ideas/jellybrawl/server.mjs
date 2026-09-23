@@ -44,7 +44,16 @@ const server = http.createServer((req, res) => {
   if (!file.startsWith(dir + path.sep)) return void res.writeHead(403).end();
   fs.readFile(file, (err, body) => {
     if (err) return void res.writeHead(404).end("Not found");
-    res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", "cache-control": "no-store" });
+    const head = { "content-type": TYPES[path.extname(file)] || "application/octet-stream", "cache-control": "no-store", "accept-ranges": "bytes" };
+    // byte ranges, so the preview page's video can seek
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
+    if (range && (range[1] || range[2])) {
+      const start = range[1] ? +range[1] : Math.max(0, body.length - +range[2]), end = range[1] && range[2] ? Math.min(+range[2], body.length - 1) : body.length - 1;
+      if (start > end || start >= body.length) return void res.writeHead(416, { "content-range": `bytes */${body.length}` }).end();
+      res.writeHead(206, { ...head, "content-range": `bytes ${start}-${end}/${body.length}` });
+      return void res.end(body.subarray(start, end + 1));
+    }
+    res.writeHead(200, head);
     res.end(body);
   });
 });

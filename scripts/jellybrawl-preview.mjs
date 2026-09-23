@@ -166,11 +166,14 @@ const REC = () => {
 };
 let sizzleMs = 0;
 const cutDone = new Set(); // a retried game doesn't get a second cut
-// MediaRecorder's WebM has no duration (it's written as it goes), so players
-// show a broken seek bar. Add one to the Segment's Info element.
+// A MediaRecorder WebM streamed in chunks has no duration (Chrome only
+// finalises it when recorded in one piece), so players show a broken seek
+// bar. If the Segment's size is unknown, add a duration to its Info element.
 function withDuration(buf, ms) {
+  const seg = buf.indexOf(Buffer.from([0x18, 0x53, 0x80, 0x67]));
+  if (seg < 0 || buf[seg + 4] !== 0x01 || buf.readUIntBE(seg + 5, 6) !== 0xffffffffffff || buf[seg + 11] !== 0xff) return buf; // already finalised
   const vint = (at) => { const b = buf[at]; let len = 1; while (len <= 8 && !(b & (0x80 >> (len - 1)))) len++; let v = b & (0xff >> len); for (let i = 1; i < len; i++) v = v * 256 + buf[at + i]; return { len, v }; };
-  const info = buf.indexOf(Buffer.from([0x15, 0x49, 0xa9, 0x66]));
+  const info = buf.indexOf(Buffer.from([0x15, 0x49, 0xa9, 0x66]), seg + 12);
   const has = info < 0 ? -1 : buf.indexOf(Buffer.from([0x44, 0x89]), info);
   if (info < 0 || (has >= 0 && has - info < 64)) return buf; // no Info, or it already has a duration
   const size = vint(info + 4), body = buf.subarray(info + 4 + size.len, info + 4 + size.len + size.v);
@@ -229,7 +232,7 @@ async function toChoose() {
   for (let k = 0; k < 60; k++) {
     const scene = await S(() => {
       const S = window.__jelly;
-      if (S.scene === "game" && S.game && !S.game.result) { const pids = S.players.map((p) => p.pid).sort(() => Math.random() - 0.5); S.game.result = { ranking: pids.map((p) => [p]), headline: `${S.players.find((p) => p.pid === pids[0]).name} wins the round!` }; }
+      if (S.scene === "game" && S.game && !S.game.result) { const pids = S.players.map((p) => p.pid).sort(() => Math.random() - 0.5); S.game.result = { ranking: pids.map((p) => [p]), headline: `${S.players.find((p) => p.pid === pids[0]).name} wins the round!` }; window.__finish(); }
       if (S.scene === "results") S.t = Math.max(S.t, 7);
       return S.scene;
     });
@@ -293,7 +296,7 @@ for (let i = 0; i < queue.length; i++) {
   if (!tvShots.length && queue[i].tries++ < 2) { queue.push(queue[i]); continue; } // ended before we got a picture: go again later
   manifest.games.push({ ...def, tv: tvShots, phone: phoneShot });
   if (i === 2) { // one results screen, from a (made-up) finishing order
-    await S(() => { const S = window.__jelly; if (S.scene === "game" && S.game && !S.game.result) S.game.result = { ranking: S.players.map((p) => [p.pid]).reverse(), headline: `${S.players[S.players.length - 1].name} wins the round!` }; });
+    await S(() => { const S = window.__jelly; if (S.scene === "game" && S.game && !S.game.result) { S.game.result = { ranking: S.players.map((p) => [p.pid]).reverse(), headline: `${S.players[S.players.length - 1].name} wins the round!` }; window.__finish(); } });
     await until(() => window.__jelly.scene === "results", 10000).catch(() => {});
     await sleep(2800); await shot(tv, "screen-results.jpg", "Results: rows slide into the standings; lead changes get called out", manifest.screens);
   }
@@ -308,7 +311,7 @@ await tv.keyboard.press("1");
 for (let k = 0; k < 80 && (await S(() => window.__jelly.scene)) !== "final"; k++) {
   await S(() => {
     const S = window.__jelly;
-    if (S.scene === "game" && S.game && !S.game.result) S.game.result = { ranking: S.players.map((p) => [p.pid]), headline: "Final round!" };
+    if (S.scene === "game" && S.game && !S.game.result) { S.game.result = { ranking: S.players.map((p) => [p.pid]), headline: "Final round!" }; window.__finish(); }
     if (S.scene === "results") S.t = Math.max(S.t, 7);
   });
   await ph.click("text=READY!").catch(() => {});
@@ -429,15 +432,15 @@ for (const id of PAIRS) {
   const g = manifest.games.find((x) => x.id === id);
   if (!g || !g.phone) continue;
   const c = COLOR[KIND(g.kind)];
-  await slide(`slide-pair-${id}.jpg`, `<div style="--c:${c};padding:44px 50px;height:1080px;display:grid;grid-template-columns:1fr 372px;grid-template-rows:auto 1fr;gap:26px 50px">
-    <div style="grid-column:1/-1;display:flex;align-items:baseline;gap:26px">
-      <div class="k" style="font-size:96px;line-height:1;color:${c};text-shadow:6px 7px 0 #0b0710;transform:rotate(-2deg)">${esc(g.title)}</div>
+  await slide(`slide-pair-${id}.jpg`, `<div style="--c:${c}">
+    <div style="position:absolute;left:50px;top:36px;display:flex;align-items:center;gap:30px">
+      <div class="k" style="font-size:100px;line-height:1.1;color:${c};text-shadow:6px 7px 0 #0b0710;transform:rotate(-2deg)">${esc(g.title)}</div>
       <span class="chip">${esc(g.kind)}</span>
-      <span style="margin-left:auto;font-size:40px;letter-spacing:3px;color:#ece6f5;text-transform:uppercase">📱 ${esc(g.controls)}</span>
     </div>
-    <div style="align-self:start;border:6px solid #0b0710;box-shadow:12px 12px 0 ${c};aspect-ratio:16/9;background:#000"><img src="${g.tv[g.tv.length - 1]}"></div>
-    <div style="align-self:start;height:806px;border:14px solid #0b0710;border-radius:46px;overflow:hidden;box-shadow:12px 12px 0 #ff2a6d,0 0 0 3px #3a2656;background:#000;transform:rotate(2deg)"><img src="${g.phone}" style="object-fit:cover;object-position:top"></div>
-    <div style="position:absolute;left:50px;bottom:40px;width:1330px;font-size:44px;letter-spacing:1px;background:#0b0710;padding:10px 20px;border-left:10px solid ${c}">${esc(g.blurb)}</div>
+    <div style="position:absolute;left:50px;top:190px;width:1320px;aspect-ratio:16/9;border:6px solid #0b0710;box-shadow:12px 12px 0 ${c};background:#000"><img src="${g.tv[g.tv.length - 1]}"></div>
+    <div style="position:absolute;right:70px;top:150px;width:392px;height:846px;border:14px solid #0b0710;border-radius:46px;overflow:hidden;box-shadow:12px 12px 0 #ff2a6d,0 0 0 3px #3a2656;background:#000;transform:rotate(2deg)"><img src="${g.phone}" style="object-fit:cover;object-position:top"></div>
+    <div style="position:absolute;left:50px;top:955px;width:1320px;font-size:42px;line-height:1.1;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(g.blurb)}</div>
+    <div style="position:absolute;left:50px;top:1010px;width:1320px;font-size:32px;letter-spacing:2px;text-transform:uppercase;color:#a99bc0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📱 ${esc(g.controls)}</div>
   </div>`, `${g.title}: the TV and a phone`);
 }
 
