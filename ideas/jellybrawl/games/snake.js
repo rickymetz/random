@@ -129,7 +129,7 @@ export default {
         rrect(g, 0, 0, W, 120, 0, "rgba(8,20,12,.9)");
         const lead = A.live().sort((a, b) => b.len - a.len)[0];
         if (lead) text(g, `LONGEST: ${lead.ghost ? "BOT" : lead.p.name} · ${lead.len}`, 380, 60, 36, "#39ff14", "center", 900);
-        outlined(g, String(ck.left()), W / 2, 60, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 60, 70, ck.ink());
         text(g, `SLITHERING ${A.live().length}/${n}`, W - 360, 60, 36, "#fff", "center", 900);
         ck.overlay(g, "SLITHER!");
       },

@@ -143,7 +143,7 @@ export default {
         rrect(g, 0, 0, W, 130, 0, "rgba(20,14,8,.92)");
         text(g, "ARMOUR", 250, 42, 28, "#56b064", "center", 900);
         rrect(g, 90, 66, 340, 34, 6, "#222"); rrect(g, 90, 66, 340 * Math.max(0, tank.hp / armour), 34, 6, tank.hp / armour > 0.3 ? "#56b064" : "#ff2a3d");
-        outlined(g, String(ck.left()), W / 2, 66, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 66, 70, ck.ink());
         text(g, `CHEWING: ${swarm.filter((s) => s.latch).length}`, W - 330, 66, 40, "#ff6b00", "center", 900);
         ck.overlay(g, "SWARM!");
       },

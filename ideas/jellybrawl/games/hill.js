@@ -98,7 +98,7 @@ export default {
         rrect(g, 0, 0, W, 130, 0, "rgba(14,20,10,.92)");
         const top = [...A.bodies].sort((a, b) => b.score - a.score).slice(0, 3);
         top.forEach((b, i) => text(g, `${i + 1}. ${b.ghost ? "BOT" : b.p.name} ${Math.floor(b.score)}s`, 150 + i * 260, 66, 30, b.p.color, "left", 900));
-        outlined(g, String(ck.left()), W - 200, 66, 70, "#fff");
+        outlined(g, String(ck.left()), W - 200, 66, 70, ck.ink());
         if (king) text(g, `👑 ${king.ghost ? "BOT" : king.p.name} · ${Math.floor(crownT)}s`, W - 560, 66, 36, "#ffd400", "center", 900);
         ck.overlay(g, "CLIMB!");
       },

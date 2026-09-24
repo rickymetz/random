@@ -171,7 +171,7 @@ export default {
         rrect(g, 0, 0, W, 130, 0, "rgba(5,2,6,.92)");
         text(g, "ECTOPLASM", 250, 45, 28, "#b9f6ff", "center", 900);
         rrect(g, 100, 70, 300, 30, 6, "#222"); rrect(g, 100, 70, 300 * Math.max(0, ghost.hp / hpMax), 30, 6, "#b9f6ff");
-        outlined(g, String(ck.left()), W / 2, 66, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 66, 70, ck.ink());
         text(g, `HUNTERS LEFT ${hunters.filter((b) => !b.out).length}/${hunters.length}`, W - 330, 66, 36, "#fff", "center", 900);
         ck.overlay(g, "BOO!");
       },

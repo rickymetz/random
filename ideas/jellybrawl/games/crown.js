@@ -103,7 +103,7 @@ export default {
           rrect(g, t === 0 ? x + 420 * (1 - k) : x, 50, 420 * k, 40, 6, TEAM[t].color);
           outlined(g, String(Math.floor(score[t])), t === 0 ? x - 10 : x + 430, 70, 40, TEAM[t].color, t === 0 ? "right" : "left");
         }
-        text(g, String(ck.left()), W / 2, 70, 44, "#fff", "center", 900);
+        text(g, String(ck.left()), W / 2, 70, 44, ck.ink(), "center", 900);
         ck.overlay(g, "GRAB IT!");
       },
     };

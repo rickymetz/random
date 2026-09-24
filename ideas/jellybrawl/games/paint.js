@@ -114,7 +114,7 @@ export default {
         rrect(g, W / 2 + 514 - 1028 * k1, 30, 1028 * k1, 42, 6, TEAM[1].color);
         outlined(g, `${Math.round(k0 * 100)}%`, W / 2 - 600, 52, 44, TEAM[0].color);
         outlined(g, `${Math.round(k1 * 100)}%`, W / 2 + 600, 52, 44, TEAM[1].color);
-        text(g, String(ck.left()), W / 2, 52, 40, "#fff", "center", 900);
+        text(g, String(ck.left()), W / 2, 52, 40, ck.ink(), "center", 900);
         ck.overlay(g, "PAINT IT!");
       },
     };

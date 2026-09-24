@@ -548,7 +548,7 @@ export default {
         if (lives[pid] <= 0) { outAt[pid] = n; ctx.sfx.ko(ctx.players.find((q) => q.pid === pid)); ctx.buzz(pid, 500); } // out
         else ctx.buzz(pid, 250);
       }
-      (anyFail ? ctx.sfx.hit : ctx.sfx.join)();
+      (anyFail ? ctx.sfx.hit : ctx.sfx.clear)();
       if (anyFail) ctx.shake(18);
       for (const pid of st.pids) ctx.layout(pid, lives[pid] <= 0
         ? { kind: "wait", text: "OUT!", sub: "So close. Not really." }

@@ -93,7 +93,7 @@ export default {
         outlined(g, String(score[0]), W / 2 - 200, 76, 80, TEAM[0].color);
         outlined(g, String(score[1]), W / 2 + 200, 76, 80, TEAM[1].color);
         if (overtime) text(g, "GOLDEN GOAL", W / 2, 76, 40, "#f9f002", "center", 900);
-        else text(g, `${Math.floor(ck.left() / 60)}:${String(ck.left() % 60).padStart(2, "0")}`, W / 2, 76, 44, "#fff", "center", 900);
+        else text(g, `${Math.floor(ck.left() / 60)}:${String(ck.left() % 60).padStart(2, "0")}`, W / 2, 76, 44, ck.ink(), "center", 900);
         if (flash && (flash.t += FX.dt) < 1.2) shout(g, flash.team < 0 ? "GOLDEN GOAL!" : "GOOOAL!", W / 2, H / 2, flash.team < 0 ? 150 : 200, flash.team < 0 ? "#f9f002" : TEAM[flash.team].color, flash.t);
         ck.overlay(g, "KICK OFF!");
       },

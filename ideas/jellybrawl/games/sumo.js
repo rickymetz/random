@@ -68,7 +68,7 @@ export default {
         A.live().sort((a, b) => a.y - b.y).forEach((b) => A.drawBody(g, b));
         rrect(g, 0, 0, W, 120, 0, "rgba(13,2,33,.85)");
         text(g, `ON THE RING ${A.live().length}/${A.bodies.length}`, 330, 60, 40, "#fff", "center", 900);
-        outlined(g, String(ck.left()), W / 2, 60, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 60, 70, ck.ink());
         text(g, "THE RING IS SHRINKING", W - 360, 60, 30, "#ff2a6d", "center", 900);
         ck.overlay(g, "SHOVE!");
       },

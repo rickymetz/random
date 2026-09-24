@@ -100,7 +100,7 @@ export default {
         rrect(g, 0, 0, W, 120, 0, "rgba(13,2,33,.85)");
         const lead = [...A.bodies].sort((a, b) => b.coins - a.coins)[0];
         text(g, `LEADER: ${lead.ghost ? "BOT" : lead.p.name} · ${lead.coins}`, 360, 60, 36, "#ffd400", "center", 900);
-        outlined(g, String(ck.left()), W / 2, 60, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 60, 70, ck.ink());
         ck.overlay(g, "GRAB IT!");
       },
     };

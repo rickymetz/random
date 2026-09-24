@@ -199,6 +199,8 @@ export function clock(ctx, total) {
     return true;
   };
   c.left = () => Math.max(0, Math.ceil(total - Math.max(0, c.t)));
+  // the timer's colour: the last 10 s (the music's hot layer) yellow, the last 5 (the ticks) flashing red, so it's seen as well as heard
+  c.ink = () => { const r = total - c.t; return c.t < 0 || r > 10 ? "#fff" : r > 5 ? "#f9f002" : r % 1 > 0.5 ? "#ff3b3b" : "#fff"; };
   c.overlay = (g, word = "GO!") => { countdown(g, -c.t); if (c.t >= 0 && c.t < 0.6) shout(g, word, W / 2, H / 2, 240, "#f9f002", c.t); };
   return c;
 }

@@ -79,7 +79,7 @@ export default {
         for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 1) shout(g, p.word, p.x, p.y, 44, "#ff2a6d", p.t); }
         rrect(g, 0, 0, W, 120, 0, "rgba(13,2,33,.85)");
         text(g, `STILL DRIVING ${A.live().length}/${A.bodies.length}`, 330, 60, 38, "#fff", "center", 900);
-        outlined(g, String(ck.left()), W / 2, 60, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 60, 70, ck.ink());
         ck.overlay(g, "BUMP!");
       },
     };

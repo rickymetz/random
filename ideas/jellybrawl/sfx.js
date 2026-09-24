@@ -12,17 +12,18 @@ import { createMusic, masterChain } from "./music.js";
 const MUSIC_LEVEL = 0.5;
 let ac = null, master = null, fxBus = null, musicBus = null, tune = null;
 let mix = { sfx: 1, music: 1, soft: false }, want = null; // the song asked for before audio was unlocked
-let soften = null; // the effects' tone control: open, or rounded off for reduced motion
+let soften = null, softenMusic = null; // tone controls: open, or rounded off for reduced motion
 export function unlock() {
   try {
     if (!ac) {
       ac = new (window.AudioContext || window.webkitAudioContext)();
       // a gentle cap on the very top (a TV's tweeter makes noise hats and pulse edges fizz)
-      const cap = ac.createBiquadFilter(); cap.type = "lowpass"; cap.frequency.value = 12000; cap.Q.value = 0.5;
+      const cap = ac.createBiquadFilter(); cap.type = "lowpass"; cap.frequency.value = 12000; cap.Q.value = -3; // (a lowpass's Q is in dB here: -3 has no bump)
       master = ac.createGain(); master.connect(cap).connect(masterChain(ac, ac.destination));
-      soften = ac.createBiquadFilter(); soften.type = "lowpass"; soften.frequency.value = 20000; soften.Q.value = 0.5; soften.connect(master);
+      soften = ac.createBiquadFilter(); soften.type = "lowpass"; soften.frequency.value = 20000; soften.Q.value = -3; soften.connect(master);
       fxBus = ac.createGain(); fxBus.connect(soften);
-      musicBus = ac.createGain(); musicBus.gain.value = MUSIC_LEVEL; musicBus.connect(master);
+      softenMusic = ac.createBiquadFilter(); softenMusic.type = "lowpass"; softenMusic.frequency.value = 20000; softenMusic.Q.value = -3; softenMusic.connect(master);
+      musicBus = ac.createGain(); musicBus.gain.value = MUSIC_LEVEL; musicBus.connect(softenMusic);
       tune = createMusic(ac, musicBus);
       setMix(mix);
       if (want) music.play(...want);
@@ -39,6 +40,7 @@ export function setMix(m) {
   fxBus.gain.setTargetAtTime(mix.sfx ** 2, ac.currentTime, 0.05);
   musicBus.gain.setTargetAtTime(MUSIC_LEVEL * mix.music ** 2, ac.currentTime, 0.1);
   soften.frequency.setTargetAtTime(mix.soft ? 4500 : 20000, ac.currentTime, 0.05);
+  softenMusic.frequency.setTargetAtTime(mix.soft ? 6000 : 20000, ac.currentTime, 0.05); // the hats and washes too
   tune?.soft(mix.soft);
   tune?.enable(mix.music > 0); // music off: don't keep synthesising it at zero volume
 }
@@ -150,9 +152,10 @@ function noise(dur, vol = 0.15, { lowpass = 0, highpass = 0, delay = 0, sweep = 
   s.buffer = noiseBuf; s.playbackRate.value = 2 ** (place.cents / 1200);
   g.gain.value = 0;
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol * place.amp * (mix.soft ? 0.7 : 1), t + (sweep ? dur * 0.9 : mix.soft ? 0.01 : 0.003));
+  const atk = sweep ? dur * 0.9 : mix.soft ? 0.01 : 0.003;
+  g.gain.exponentialRampToValueAtTime(vol * place.amp * (mix.soft ? 0.7 : 1), t + atk);
   if (sweep) g.gain.linearRampToValueAtTime(0, t + dur);
-  else g.gain.setTargetAtTime(0, t + 0.003, dur / 3); // a natural decay: noise keeps its body
+  else g.gain.setTargetAtTime(0, t + atk, dur / 3); // a natural decay: noise keeps its body
   let head = s;
   if (lowpass || highpass) {
     const f = ac.createBiquadFilter(); f.type = lowpass ? "lowpass" : "highpass"; f.frequency.value = lowpass || highpass;
@@ -231,6 +234,9 @@ const RAW = {
   buzzer: () => { const f = scaleNote(-7); tone(f, 0.3, { type: 0.5, vol: 0.07 }); tone(f * 2 ** (1 / 12), 0.3, { type: 0.5, vol: 0.06 }); noise(0.25, 0.08, { lowpass: 900 }); }, // the tonic and its b2
   // small social sounds: READY, a reaction, a row of the results tally, a new leader
   ready: () => tone(scaleNote(4 + P()), 0.09, { type: "triangle", vol: 0.12 }),
+  // a microgame cleared: a quick two-note chime up to the octave; coins lost on the board: a short fall (not the loss stinger)
+  clear: () => { tone(scaleNote(4), 0.07, { type: 0.25, vol: 0.1 }); tone(scaleNote(7), 0.14, { type: 0.25, vol: 0.1, delay: 0.07 }); },
+  drop: () => { tone(scaleNote(2 + P()), 0.08, { type: 0.25, vol: 0.1 }); tone(scaleNote(-1 + P()), 0.16, { type: 0.25, vol: 0.1, delay: 0.08, slide: -40 }); },
   react: () => tone(scaleNote(9 + P()), 0.1, { type: 0.25, slide: 300, vol: 0.2 }),
   tally: (i = 0) => tone(scaleNote(4 + Math.min(i, 8)), 0.12, { type: 0.25, vol: 0.2 }), // up the scale from the 5th
   lead: () => [7, 9, 11, 14].forEach((d, i) => tone(scaleNote(d), 0.1, { type: 0.25, delay: i * 0.06, vol: 0.1 })), // the song's own triad
@@ -248,7 +254,7 @@ const CUES = {
   power: { max: 2, seat: "tonal" }, dot: { max: 2, seat: "tonal" }, join: { seat: "tonal" }, ready: { seat: "tonal" }, react: { max: 2, seat: "tonal" },
   hit: { seat: "narrow" }, crunch: { max: 2, seat: "narrow" }, pop: { seat: "narrow" }, flap: { max: 2, seat: "narrow" }, launch: { seat: "narrow" },
   ko: { max: 3, seat: "narrow" }, whoosh: { seat: "narrow" },
-  final: { max: 1 }, buzzer: { max: 1, dip: 500 }, tally: { max: 2 }, lead: { max: 1, dip: 400 },
+  clear: { max: 1 }, drop: { max: 1, seat: "tonal" }, final: { max: 1 }, buzzer: { max: 1, dip: 500 }, tally: { max: 2 }, lead: { max: 1, dip: 400 },
   dice: { max: 1 }, star: { group: "stinger", dip: 900 }, duel: { max: 1, dip: 800 },
 };
 export const sfx = Object.fromEntries(Object.entries(RAW).map(([k, fn]) => [k, voiced(k, fn, CUES[k])]));

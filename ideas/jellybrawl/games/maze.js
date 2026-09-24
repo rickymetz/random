@@ -157,7 +157,7 @@ export default {
         rrect(g, 0, 0, W, 130, 0, "rgba(10,15,31,.92)");
         text(g, `ESCAPED ${done.length}/${Math.min(3, n)}`, 330, 66, 38, "#39ff14", "center", 900);
         done.forEach((b, i) => text(g, `${i + 1}. ${b.p.name}`, W - 560 + i * 200, 66, 28, b.p.color, "center", 900));
-        outlined(g, String(ck.left()), W / 2, 66, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 66, 70, ck.ink());
         ck.overlay(g, "TILT!");
       },
     };

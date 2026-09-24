@@ -60,18 +60,22 @@ const MARKS = ["●", "▲", "■", "◆", "★", "✚", "✖", "♥"]; // one p
    Kept on the TV (localStorage). Reduced motion follows the system setting
    until someone picks. */
 const SETTINGS = {
-  motion: { label: "Motion", values: ["full", "reduced"], names: { full: "Full", reduced: "Reduced" } },
+  // (squared: 0 / -6 / -14 dB, even steps a room can hear over talking)
+  music: { label: "Music", values: [1, 0.7, 0.45, 0], names: { 1: "High", 0.7: "Medium", 0.45: "Low", 0: "Off" } },
+  sounds: { label: "Sound effects", values: [1, 0.7, 0.45, 0], names: { 1: "High", 0.7: "Medium", 0.45: "Low", 0: "Off" } },
+  motion: { label: "Motion", values: ["full", "reduced"], names: { full: "Full", reduced: "Reduced (softer sound too)" } },
   crt: { label: "CRT filter", values: ["full", "light", "off"], names: { full: "Full", light: "Light", off: "Off" } },
   text: { label: "Text size", values: [1, 1.25, 1.5], names: { 1: "Normal", 1.25: "Large", 1.5: "Huge" } },
   marks: { label: "Colour-blind shapes", values: [false, true], names: { false: "Off", true: "On" } },
   bright: { label: "Brightness boost", values: [false, true], names: { false: "Off", true: "On" } },
   haptics: { label: "Phone buzz", values: [true, false], names: { true: "On", false: "Off" } },
-  music: { label: "Music", values: [1, 0.6, 0.3, 0], names: { 1: "High", 0.6: "Medium", 0.3: "Low", 0: "Off" } },
-  sounds: { label: "Sound effects", values: [1, 0.6, 0.3, 0], names: { 1: "High", 0.6: "Medium", 0.3: "Low", 0: "Off" } },
 };
+// only what someone picked is saved (so reduced motion keeps following the system until then)
+const picked = new Set();
 function loadSettings() {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem("jb-settings") || "{}"); } catch {}
+  for (const k of Object.keys(saved)) picked.add(k);
   const reduced = matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const o = { motion: reduced ? "reduced" : "full", crt: "full", text: 1, marks: false, bright: false, haptics: true, music: 1, sounds: 1, ...saved };
   for (const k of ["music", "sounds"]) if (typeof o[k] === "boolean") o[k] = o[k] ? 1 : 0; // saved when these were on/off
@@ -81,7 +85,7 @@ function applySettings() {
   PREFS.motion = S.opt.motion === "reduced" ? 0.25 : 1;
   PREFS.marks = S.opt.marks; PREFS.text = S.opt.text;
   setMix({ music: S.opt.music, sfx: S.opt.sounds, soft: S.opt.motion === "reduced" }); // reduced motion: softer hits too
-  try { localStorage.setItem("jb-settings", JSON.stringify(S.opt)); } catch {}
+  try { localStorage.setItem("jb-settings", JSON.stringify(Object.fromEntries([...picked].map((k) => [k, S.opt[k]])))); } catch {}
 }
 const BOT_NAMES = ["Wobbles", "Gloop", "Jiggly", "Squish", "Blorp", "Mochi", "Puddin", "Boing"];
 const MAX = 8;
@@ -254,10 +258,12 @@ function act(id, p) {
   }
   if (id === "end" && S.paused) { pause(false); S.game = null; go("final"); sfx.win(); return refreshMenus(); }
   if (id === "settings" && S.scene === "lobby") { S.settingsOpen = !S.settingsOpen; return refreshMenus(); }
-  if (id.startsWith("set-") && SETTINGS[id.slice(4)]) {
+  if (id.startsWith("set-") && SETTINGS[id.slice(4)] && (S.scene === "lobby" || (S.paused && (id === "set-music" || id === "set-sounds")))) {
     const k = id.slice(4), vals = SETTINGS[k].values;
     S.opt[k] = vals[(vals.indexOf(S.opt[k]) + 1) % vals.length];
-    applySettings(); return refreshMenus();
+    picked.add(k); applySettings();
+    if (k === "sounds") sfx.ready(vip()); // a sample of the new level
+    return S.paused ? pause(true) : refreshMenus();
   }
   if (id === "start" && S.scene === "lobby" && S.players.length >= 2) startSession();
   else if (id === "rounds" && S.scene === "lobby") { S.rounds = ROUND_CHOICES[(ROUND_CHOICES.indexOf(S.rounds) + 1) % ROUND_CHOICES.length]; refreshMenus(); }
@@ -472,7 +478,8 @@ function pause(on) {
   const v = vip();
   if (on) {
     for (const p of humans()) send(p, { t: "layout", kind: "menu", text: "PAUSED", sub: p === v ? "Take five." : `${v?.name ?? "The VIP"} paused the game.`, you: { name: p.name, color: p.color },
-      actions: p === v ? [{ id: "resume", label: "▶ Resume", big: true }, ...(S.scene === "game" || S.scene === "intro" ? [{ id: "skip", label: "⏭ Skip this game" }] : []), { id: "end", label: "🏁 End the night" }] : [] });
+      actions: p === v ? [{ id: "resume", label: "▶ Resume", big: true }, ...(S.scene === "game" || S.scene === "intro" ? [{ id: "skip", label: "⏭ Skip this game" }] : []), { id: "end", label: "🏁 End the night" },
+        ...["music", "sounds"].map((k) => ({ id: `set-${k}`, label: `${SETTINGS[k].label}: ${SETTINGS[k].names[S.opt[k]]}` }))] : [] }); // the volume, mid-game too
   } else for (const p of humans()) { const l = S.layouts.get(p.pid); if (l) send(p, l); }
 }
 

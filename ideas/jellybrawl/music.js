@@ -93,7 +93,7 @@ const FORMS = {
   lobby: { loop: 0, secs: [
     { bars: 8, drums: "half", lead: false, arp: true, prog: "A" },
     { bars: 8, drums: "sparse", lead: false, arp: true, prog: "B" },
-    { bars: 8, drums: "sparse", lead: false, arp: false, prog: "A", low: true },
+    { bars: 8, drums: "breath", lead: false, arp: false, prog: "A", low: true }, // (the breath kit keeps the pad: a lobby sits here for minutes)
   ] },
   board: { loop: 0, secs: [
     { bars: 8, drums: "half", lead: false, arp: true, prog: "A" },
@@ -168,13 +168,13 @@ const SONGS = {
       { name: "A2", bars: 4, drums: "main", lead: true, arp: true, prog: "A", open: true, level: -2.5 }, // open hats: A climbs
       { name: "breath", bars: 2, drums: "breath", lead: "call", arp: false, prog: "A", low: true, level: -2 },
       { name: "build", bars: 2, drums: "build", lead: false, arp: true, chords: [3, E_MAJ], level: -7, rise: true },
-      { name: "B", bars: 6, drums: "main", lead: true, leadUp: 12, arp: true, arpDouble: true, bass: "synco", prog: "B", lift: true, open: true, level: 1.5 },
+      { name: "B", bars: 6, drums: "main", lead: true, arp: true, arpDouble: true, bass: "synco", prog: "B", lift: true, open: true, level: 1.5 },
       { name: "build", bars: 2, drums: "build", lead: false, arp: true, chords: [3, E_MAJ], level: -7, rise: true }, // iv, V: a fake-out into F the first time, home to A major the second
       { name: "card", bars: 2, end: true, level: -9 }, // (the glue and limiter pull it back up) // the end card: one big chord (the song ends here)
     ] },
     ...BEATS.amen, bass: BASSES.rolling, lead: "x..x..x.x.x.x...", leadSeed: 11, leadDuty: 0.25, echo: true,
     // the hook climbs the minor triad (A C E A), which the end card's sound logo answers in major (A C# E A)
-    hook: [[[0, 0], [3, 2], [6, 4], [8, 7], [10, 6], [12, 4]], [[0, 2], [3, 4], [6, 5], [8, 7], [10, 5], [12, 4]],
+    hook: [[[0, 0], [3, 2], [6, 4], [8, 7], [10, 6], [12, 4]], [[0, 2], [3, 4], [6, 5], [8, 7], [10, 5], [12, 4, true]],
       [[0, 4], [3, 6], [6, 7], [8, 9], [10, 7], [12, 6]], [[0, 6], [3, 4], [6, 2], [8, 1]]],
     arp: "xxxxxxxxxxxxxxxx", arpDuty: 0.5, pad: 0.6,
   }),
@@ -292,7 +292,7 @@ export function createMusic(ac, out) {
   }
   // a crash: shorter in the game (a long wash masks the effects), and softer for reduced motion
   let soft = false;
-  function crash(t, dst, v, dur = 1.1) { noiseHit(t, dst, { freq: soft ? 5000 : 7000, type: "highpass", vol: (soft ? 0.06 : 0.12) * v, dur }); }
+  function crash(t, dst, v, dur = 1.1) { noiseHit(t, dst, { freq: 7000, type: "highpass", vol: (soft ? 0.06 : 0.12) * v, dur: soft ? Math.min(dur, 0.7) : dur }); }
   function note(t, dst, midi, { type, vol, dur, cutoff = 0, attack = 0.003, vibrato = 0, from = null, ring = false }) {
     const o = osc(type), g = ac.createGain();
     if (from != null) { o.frequency.setValueAtTime(hz(from), t); o.frequency.exponentialRampToValueAtTime(hz(midi), t + 0.05); } // a slide into the note
@@ -332,9 +332,13 @@ export function createMusic(ac, out) {
   }
   // the lead's note: d scale steps from the key's tonic (borrowed chords: the
   // parallel minor), strong beats snapped to the chord
-  function leadNote(s, deg, d, i) {
+  function leadNote(s, deg, d, i, asWritten = false) {
     const sc = typeof deg === "object" ? MODES.minor : scaleOf(s);
     let m = s.root + sc[((d % 7) + 7) % 7] + 12 * Math.floor(d / 7);
+    if (s.hook) { // a written hook keeps its own shape: its octave (from the tonic around A5), and a note marked as written isn't snapped
+      if (i % 4 === 0 && !asWritten) { const pcs = chordNotes(s, deg).map((n) => n % 12); for (const o of [0, -1, 1, -2, 2]) if (pcs.includes((m + o + 120) % 12)) { m += o; break; } }
+      return (s.lastLead = m + 36); // (the song's root is in the bass octave: the hook's tonic is three up)
+    }
     if (i % 4 === 0) {
       const pcs = chordNotes(s, deg).map((n) => n % 12);
       for (const o of [0, -1, 1, -2, 2]) if (pcs.includes((m + o + 120) % 12)) { m += o; break; }
@@ -362,6 +366,8 @@ export function createMusic(ac, out) {
     const s = SONGS[which](seed, kind);
     s.fill = FILLS[hash(`${which}${seed}`) % FILLS.length];
     if (s.lead) s.tune = s.hook || melody(s.leadSeed || hash(seed) || 1, s.lead); // a song can bring its own tune
+    // B sections answer with a tune of their own (a written hook plays through both)
+    if (s.lead && !s.hook) { const h2 = ((s.leadSeed || hash(seed) || 1) ^ 0x5bd1) >>> 0; s.tuneB = melody(h2, pick(LEADS, h2, 3)); }
     s.baseBpm = s.bpm; s.baseRoot = s.root;
     const gain = ac.createGain(); gain.connect(bus);
     s.bassGain = ac.createGain(); s.bassGain.connect(gain);
@@ -500,13 +506,15 @@ export function createMusic(ac, out) {
       // lead: the song's tune, bar by bar ("call" plays only the first half of each bar)
       if (i === 0 && (pb % 4 === 0 || inSec === 0)) s.lastLead = null; // each phrase starts from the same place, so the hook repeats
       if (s.tune && sec.lead) {
-        const line = s.tune[pb % 4], hit = line.find(([st]) => st === i);
+        const line = (sec.prog === "B" && s.tuneB ? s.tuneB : s.tune)[pb % 4], hit = line.find(([st]) => st === i);
         if (hit && !(sec.lead === "call" && i >= 8 && pb % 4 !== 3)) { // a call still lands the answer's last note
-          const later = line.find(([st]) => st > i), len = Math.min(sixteenth * 3, ((later ? later[0] : 16) - i) * sixteenth * 0.9);
-          let m = leadNote(s, deg, hit[1], i);
+          // (the phrase's last note may ring on, so its delayed vibrato opens)
+          const later = line.find(([st]) => st > i), len = Math.min(sixteenth * (!later && pb % 4 === 3 ? 6 : 3), ((later ? later[0] : 16) - i) * sixteenth * 0.9);
+          let m = leadNote(s, deg, hit[1], i, hit[2]);
           if (sec.leadUp && m + sec.leadUp <= 96) m += sec.leadUp;
-          const scoop = pb % 4 === 0 && i === line[0][0] && !soft; // the chip bend: a phrase slides up into its first note
-          note(t, dst, m, { type: s.leadDuty || 0.25, vol: 0.085 * v, dur: len, vibrato: len > 0.2 ? 20 : 0, cutoff: 5000, from: scoop ? m - 2 : null });
+          let scoop = null; // the chip bend: a phrase slides up into its first note, from the scale note below
+          if (pb % 4 === 0 && i === line[0][0] && !soft) { const sc = scaleOf(s); scoop = m - 1; while (!sc.includes((((scoop - s.root) % 12) + 12) % 12)) scoop--; }
+          note(t, dst, m, { type: s.leadDuty || 0.25, vol: 0.085 * v, dur: len, vibrato: len > 0.2 ? 20 : 0, cutoff: 5000, from: scoop });
           const clash = line.some(([st]) => st > i && st <= i + 4); // the echo only in the tune's gaps, an octave down
           if (s.echo && !clash) note(t + sixteenth * 3, dst, m - 12, { type: s.leadDuty || 0.25, vol: 0.035 * v, dur: len * 0.8, cutoff: 3000 });
           s.leadAt = step;

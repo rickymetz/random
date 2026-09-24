@@ -113,7 +113,7 @@ export default {
           }
         }
         for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 48, "#f9f002", p.t); }
-        outlined(g, String(ck.left()), W / 2, 90, 60, "#fff");
+        outlined(g, String(ck.left()), W / 2, 90, 60, ck.ink());
         ck.overlay(g, "RUN!");
       },
     };

@@ -95,7 +95,7 @@ export function makeBoard(api) {
   function land(p) {
     const s = spaces[p.pos];
     if (s.k === "B") { p.score += BLUE; say(`+${BLUE} coins`, "#05d9e8", 0.9); api.sfx.dot(); B.phase = "next"; }
-    else if (s.k === "R") { p.score = Math.max(0, p.score - RED); say(`−${RED} coins`, "#ff2a6d", 0.9); api.sfx.lose(); B.phase = "next"; }
+    else if (s.k === "R") { p.score = Math.max(0, p.score - RED); say(`−${RED} coins`, "#ff2a6d", 0.9); api.sfx.drop(p); B.phase = "next"; }
     else if (s.k === "$") openShop(p);
     else if (s.k === "D") openDuel(p);
     else if (s.k === "?") { event(p); B.phase = B.phase === "move" ? "move" : "next"; }
