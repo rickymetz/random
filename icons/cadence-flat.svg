@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <!-- Cadence: kettlebell, flat -->
-  <ellipse cx="64" cy="109.5" rx="34" ry="5" fill="#b95625"/>
-  <path d="M42 62 C34 44 34 16 54 15 L74 15 C94 16 94 44 86 62" fill="none" stroke="#141414" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M43.5 108 A38 38 0 1 1 84.5 108 Z" fill="#141414"/>
-  <path d="M55 12 L73 12" fill="none" stroke="#fff8ec" stroke-width="3" stroke-linecap="round"/>
-  <path d="M37 68.8 A28 28 0 0 1 50 51.8" fill="none" stroke="#fff8ec" stroke-width="5" stroke-linecap="round"/>
-  <rect x="50" y="80" width="28" height="11" rx="5.5" fill="#eda171"/>
-</svg>
