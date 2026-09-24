@@ -1,6 +1,6 @@
 {
- "generated": "2026-09-24T05:41:24.972Z",
- "commit": "d762dea4",
+ "generated": "2026-09-24T06:23:11.353Z",
+ "commit": "bac97562",
  "video": {
   "file": "bumper.webm",
   "seconds": 33.1,
@@ -359,8 +359,7 @@
    "blurb": "Grow your tail, cut them off. Don't bonk a tail.",
    "controls": "Stick to steer, tap BOOST for a burst (costs tail)",
    "tv": [
-    "shots/snake-tv-1.webp",
-    "shots/snake-tv-2.webp"
+    "shots/snake-tv-1.webp"
    ],
    "phone": "shots/snake-phone.webp"
   },
