@@ -66,7 +66,8 @@ const ANSWER = "x..x..x.x.......";
 // Sections: bars, drums ("main" | "half" | "sparse" | "none" | "build"),
 // lead (true | false | "call": the first half of each bar only), arp
 // (true | false | "gaps": only where the lead rests), prog ("A" | "B"),
-// lift (a fuller pad), low (a breakdown: the bass eased, no pad). A form
+// lift (a fuller pad), open (open hats on the off-beats), low (a breakdown:
+// the bass eased, no pad). A form
 // plays through once, then loops from section `loop` (default 0).
 const FORMS = {
   game: { loop: 0, secs: [
@@ -165,7 +166,7 @@ const SONGS = {
       { name: "A", bars: 8, drums: "main", lead: true, arp: true, prog: "A" },
       { name: "breath", bars: 2, drums: "half", lead: "call", arp: false, prog: "A", low: true },
       { name: "build", bars: 2, drums: "build", lead: false, arp: true, prog: "B" },
-      { name: "B", bars: 5, drums: "main", lead: true, arp: "gaps", prog: "B", lift: true },
+      { name: "B", bars: 5, drums: "main", lead: true, arp: "gaps", prog: "B", lift: true, open: true },
       { name: "build", bars: 2, drums: "build", lead: false, arp: true, prog: "A" },
       { name: "A", bars: 8, drums: "main", lead: true, arp: true, prog: "A" },
     ] },
@@ -447,7 +448,7 @@ export function createMusic(ac, out) {
         if (lightFill) snare(t, dst, v * 0.6, "x", i - 12);
         const k = at(kit.kick, n), sn = at(kit.snare, n);
         let hh = at(kit.hat, n);
-        if ((P.hot || s.fastHats) && kit === s && i % 4 === 2) hh = "o"; // the last seconds: open hats on the off-beats
+        if ((P.hot || s.fastHats || sec.open) && kit === s && i % 4 === 2) hh = "o"; // the last seconds (or a lifted section): open hats on the off-beats
         if (k !== ".") { // the kick, and the sub ducks a little under it
           kick(t, dst, v);
           const sc = s.bassGain.gain; sc.setValueAtTime(sc.value, t - 0.003); sc.linearRampToValueAtTime(0.55, t); sc.setTargetAtTime(1, t + 0.015, 0.025);

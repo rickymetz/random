@@ -125,10 +125,11 @@ const REC = async () => {
   const { createMusic, masterChain } = await import(new URL("music.js", location.href).href);
   game.setMix({ music: 0 }); game.unlock();
   const ax = new AudioContext(), mixOut = ax.createMediaStreamDestination(), bus = masterChain(ax, mixOut); // the game's limiter too
-  const tuneGain = ax.createGain(); tuneGain.gain.value = 0.6; tuneGain.connect(bus);
+  // a trailer plays loud: more level into the limiter than the game uses (about -16 LUFS)
+  const tuneGain = ax.createGain(); tuneGain.gain.value = 1.5; tuneGain.connect(bus);
   const tune = createMusic(ax, tuneGain);
   const fx = game.tap();
-  if (fx) { const fxGain = ax.createGain(); fxGain.gain.value = 0.7; ax.createMediaStreamSource(fx).connect(fxGain).connect(bus); }
+  if (fx) { const fxGain = ax.createGain(); fxGain.gain.value = 1.6; ax.createMediaStreamSource(fx).connect(fxGain).connect(bus); }
   await ax.suspend();
   tune.play("trailer");
   const type = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find((t) => MediaRecorder.isTypeSupported(t));
