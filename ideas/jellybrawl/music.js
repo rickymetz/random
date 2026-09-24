@@ -36,7 +36,7 @@ const LEADS = ["x..x..x.x.x.x...", "x.x...x.x...x.xx", "x...x.x...x.x.x.", "xx..
 const SONGS = {
   // a liquid groove: half the drums, no lead, soft arps
   lobby: () => ({
-    bpm: 170, root: 45, scale: MINOR, prog: [0, 5, 2, 6], vol: 1.25, lead: null, pad: 1, arp: "x.x.x.x.x.x.x.x.", arpDuty: 0.25,
+    bpm: 170, root: 45, scale: MINOR, prog: [0, 5, 2, 6], vol: 0.9, arpVol: 0.03, lead: null, pad: 1, arp: "x.x.x.x.x.x.x.x.", arpDuty: 0.25,
     kick: "x.........x.....", snare: "....x.......x...", hat: "..x...x...x...x.", bass: "x.......x.......",
   }),
   game: (seed) => {
@@ -64,15 +64,18 @@ const SONGS = {
 };
 
 // The master chain every mix goes through (the game's and the sizzle
-// recorder's): gentle glue compression, then a limiter so a pile-up of
-// sounds can't clip. Returns the node to connect into.
+// recorder's): a limiter, a trim for the compressor's own automatic makeup
+// gain, then a gentle soft clip that catches the few overs a Web Audio
+// compressor (not a brickwall) lets through. Returns the node to connect into.
 export function masterChain(ac, dest) {
-  const glue = ac.createDynamicsCompressor(), limit = ac.createDynamicsCompressor();
-  glue.threshold.value = -14; glue.knee.value = 6; glue.ratio.value = 3; glue.attack.value = 0.005; glue.release.value = 0.15;
+  const limit = ac.createDynamicsCompressor(), trim = ac.createGain(), clip = ac.createWaveShaper();
   limit.threshold.value = -3; limit.knee.value = 0; limit.ratio.value = 20; limit.attack.value = 0.001; limit.release.value = 0.08;
-  const makeup = ac.createGain(); makeup.gain.value = 1.4; // +3 dB into the limiter
-  glue.connect(makeup).connect(limit).connect(dest);
-  return glue;
+  trim.gain.value = 0.84;
+  const curve = new Float32Array(1025);
+  for (let i = 0; i < curve.length; i++) { const x = (i / 512) - 1; curve[i] = Math.abs(x) < 0.8 ? x : Math.sign(x) * (0.8 + 0.15 * Math.tanh((Math.abs(x) - 0.8) / 0.15)); }
+  clip.curve = curve; clip.oversample = "4x";
+  limit.connect(trim).connect(clip).connect(dest);
+  return limit;
 }
 
 export function createMusic(ac, out) {
@@ -191,16 +194,16 @@ export function createMusic(ac, out) {
       }
     } else {
       const k = at(s.kick, i), sn = at(s.snare, i), hh = at(s.hat, i), b = at(s.bass, i);
-      if (k !== ".") { // the kick, and the bass ducks under it
+      if (k !== ".") { // the kick, and the sub ducks a little under it
         kick(t, dst, v);
-        const sc = s.bassGain.gain; sc.setValueAtTime(0.35, t); sc.setTargetAtTime(1, t + 0.03, 0.04);
+        const sc = s.bassGain.gain; sc.setValueAtTime(sc.value, t - 0.003); sc.linearRampToValueAtTime(0.55, t); sc.setTargetAtTime(1, t + 0.015, 0.025);
       }
       if (sn !== ".") snare(t, dst, v, sn);
       if (hh !== ".") hat(t, dst, v, hh);
       if (b !== ".") {
-        const n = chord[0] + (b === "o" ? 12 : b === "f" ? 7 : 0);
-        note(t, s.bassGain, n, { type: 0.25, vol: 0.12 * v, dur: sixteenth * 1.8, cutoff: 1400 }); // the grit
-        note(t, s.bassGain, n - 12, { type: "triangle", vol: 0.24 * v, dur: sixteenth * 1.8 }); // the sub, 41-65 Hz: a TV can play it
+        const r = 28 + ((chord[0] - 28) % 12); // the root folded into E1-D#2 (41-78 Hz) in any key
+        note(t, dst, r + 12 + (b === "o" ? 12 : b === "f" ? 7 : 0), { type: 0.25, vol: 0.12 * v, dur: sixteenth * 1.8, cutoff: 1400 }); // the grit
+        note(t, s.bassGain, r, { type: "triangle", vol: 0.24 * v, dur: sixteenth * 1.8 }); // the sub
       }
       if (at(s.lead, i) === "x") {
         const len = at(s.lead, i + 1) === "." ? sixteenth * 2.6 : sixteenth * 0.9;
@@ -209,7 +212,7 @@ export function createMusic(ac, out) {
     }
     if (at(s.arp, i) !== ".") {
       const up = chord.map((n) => n + 24), order = i % 2 ? [up[2], up[1], up[0]] : up;
-      arp(t, dst, order, sixteenth, { duty: s.arpDuty, vol: (intro ? 0.03 + 0.02 * (bar + i / 16) : 0.05) * v });
+      arp(t, dst, order, sixteenth, { duty: s.arpDuty, vol: (intro ? 0.03 + 0.02 * (bar + i / 16) : (s.arpVol ?? 0.05) * (s.arpDuty === 0.5 ? 0.7 : 1) * (at(s.lead, i) === "x" ? 0.6 : 1)) * v });
     }
     if (s.pad && i === 0) { // soft held chord (a narrow pulse, filtered)
       for (const n of chord) note(t, dst, n + 12, { type: 0.25, vol: 0.018 * s.pad * v * (intro ? 2 : 1), dur: sixteenth * 14, attack: sixteenth * 3, cutoff: 1800 });
@@ -256,10 +259,10 @@ export function createMusic(ac, out) {
       song = null; songGain = null; name = null; seedKey = null;
     },
     duck(down) { bus.gain.setTargetAtTime(down ? 0.25 : 1, ac.currentTime, 0.1); },
-    // a quick dip (about -6 dB) under an important sound effect
-    dip(ms = 250) {
+    // a quick dip under an important sound effect (depth as a gain, 0.5 = -6 dB)
+    dip(ms = 250, depth = 0.5) {
       const t = ac.currentTime, g = dipper.gain;
-      g.cancelScheduledValues(t); g.setTargetAtTime(0.5, t, 0.015); g.setTargetAtTime(1, t + ms / 1000, 0.08);
+      g.cancelScheduledValues(t); g.setTargetAtTime(depth, t, 0.015); g.setTargetAtTime(1, t + ms / 1000, 0.08);
     },
     get playing() { return name; },
   };
