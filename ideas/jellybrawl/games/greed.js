@@ -4,7 +4,7 @@
 // picked it (alone = all of it), and the bomb door costs you half your gems.
 // The big prize is tempting... which is why everyone goes for it. Five rounds.
 
-import { arena, clock, rnd, shuffle, W, H, INK, text, outlined, shout, rrect, circle, blob, tag } from "./arena.js";
+import { arena, clock, rnd, shuffle, W, H, INK, text, outlined, shout, rrect, circle, blob, tag, musicCues } from "./arena.js";
 import { FX, fade } from "../gfx.js";
 
 const ROUNDS = 5, PICK_T = 9, SHOW_T = 3.4, DOOR_COLORS = ["#ff2a6d", "#05d9e8", "#f9f002"];
@@ -15,12 +15,14 @@ export default {
   controls: "Tap a door on your phone",
 
   create(ctx) {
+    const cues = musicCues(ctx);
     const A = arena(ctx, {});
     const n = A.bodies.length, pops = [];
     let round = 0, phase = "pick", t = -2, doors = [], endAt = null, bombAt = -1;
     for (const b of A.bodies) { b.gems = 0; b.door = null; b.gain = 0; }
 
     function deal() {
+      if (round === ROUNDS - 1) ctx.music?.hot(); // the last round
       const prizes = shuffle([rnd(4, 7), rnd(8, 12), rnd(14, 20)].map(Math.round));
       bombAt = Math.floor(rnd(0, 3));
       doors = prizes.map((prize, i) => ({ prize, i }));
@@ -51,7 +53,7 @@ export default {
         const b = A.of(pid);
         if (!b || m.t !== "pad" || phase !== "pick" || t < 0 || b.door != null) return;
         const i = +m.id; if (!(i >= 0 && i < 3)) return;
-        b.door = i; ctx.sfx.dot();
+        b.door = i; ctx.sfx.dot(b);
         ctx.layout(pid, { kind: "wait", text: `DOOR ${i + 1}`, sub: "Locked in. No take-backs!" });
         if (A.bodies.every((o) => o.door != null)) t = Math.max(t, PICK_T - 1); // everyone's in: reveal a beat later
       },
@@ -66,6 +68,7 @@ export default {
       },
       update(dt) {
         if (inst.result) return;
+        cues(t, 0); // the music: build over the countdown, drop on GO
         t += dt;
         if (endAt != null) { if (t >= endAt) inst.result = inst.pending; return; }
         if (phase === "pick" && t >= PICK_T) reveal();

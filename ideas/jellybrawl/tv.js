@@ -4,7 +4,7 @@
 import { hostRoom } from "./net.js";
 import { W, H, INK, POP, T, fit, grid, neon, text, outlined, rrect, shout, sunburst, halftone, panel, bomb, circle, blob, tag, star, shade, CRISP, flushCrisp, FX, PREFS } from "./gfx.js";
 import { qr } from "./qr.js";
-import { sfx, unlock } from "./sfx.js";
+import { sfx, unlock, music, setMix } from "./sfx.js";
 import flap from "./games/flap.js";
 import sling from "./games/sling.js";
 import chomp from "./games/chomp.js";
@@ -60,23 +60,32 @@ const MARKS = ["●", "▲", "■", "◆", "★", "✚", "✖", "♥"]; // one p
    Kept on the TV (localStorage). Reduced motion follows the system setting
    until someone picks. */
 const SETTINGS = {
-  motion: { label: "Motion", values: ["full", "reduced"], names: { full: "Full", reduced: "Reduced" } },
+  // (squared: 0 / -6 / -14 dB, even steps a room can hear over talking)
+  music: { label: "Music", values: [1, 0.7, 0.45, 0], names: { 1: "High", 0.7: "Medium", 0.45: "Low", 0: "Off" } },
+  sounds: { label: "Sound effects", values: [1, 0.7, 0.45, 0], names: { 1: "High", 0.7: "Medium", 0.45: "Low", 0: "Off" } },
+  motion: { label: "Motion", values: ["full", "reduced"], names: { full: "Full", reduced: "Reduced (softer sound too)" } },
   crt: { label: "CRT filter", values: ["full", "light", "off"], names: { full: "Full", light: "Light", off: "Off" } },
   text: { label: "Text size", values: [1, 1.25, 1.5], names: { 1: "Normal", 1.25: "Large", 1.5: "Huge" } },
   marks: { label: "Colour-blind shapes", values: [false, true], names: { false: "Off", true: "On" } },
   bright: { label: "Brightness boost", values: [false, true], names: { false: "Off", true: "On" } },
   haptics: { label: "Phone buzz", values: [true, false], names: { true: "On", false: "Off" } },
 };
+// only what someone picked is saved (so reduced motion keeps following the system until then)
+const picked = new Set();
 function loadSettings() {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem("jb-settings") || "{}"); } catch {}
+  for (const k of Object.keys(saved)) picked.add(k);
   const reduced = matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  return { motion: reduced ? "reduced" : "full", crt: "full", text: 1, marks: false, bright: false, haptics: true, ...saved };
+  const o = { motion: reduced ? "reduced" : "full", crt: "full", text: 1, marks: false, bright: false, haptics: true, music: 1, sounds: 1, ...saved };
+  for (const k of ["music", "sounds"]) if (typeof o[k] === "boolean") o[k] = o[k] ? 1 : 0; // saved when these were on/off
+  return o;
 }
 function applySettings() {
   PREFS.motion = S.opt.motion === "reduced" ? 0.25 : 1;
   PREFS.marks = S.opt.marks; PREFS.text = S.opt.text;
-  try { localStorage.setItem("jb-settings", JSON.stringify(S.opt)); } catch {}
+  setMix({ music: S.opt.music, sfx: S.opt.sounds, soft: S.opt.motion === "reduced" }); // reduced motion: softer hits too
+  try { localStorage.setItem("jb-settings", JSON.stringify(Object.fromEntries([...picked].map((k) => [k, S.opt[k]])))); } catch {}
 }
 const BOT_NAMES = ["Wobbles", "Gloop", "Jiggly", "Squish", "Blorp", "Mochi", "Puddin", "Boing"];
 const MAX = 8;
@@ -173,7 +182,7 @@ function onJoin(pid, name) {
     removeBot();
   }
   p = addPlayer(pid, (name || "Player").slice(0, 12));
-  sfx.join();
+  sfx.join(p); // each player first hears their own pitch here
   if (S.scene === "lobby" || S.scene === "final") refreshMenus();
   else layout(pid, { kind: "wait", text: "You're in!", sub: "You'll play from the next minigame." });
 }
@@ -212,7 +221,7 @@ function onInput(pid, m) {
       p.taps.push(now); p.held = true;
     } else p.held = false;
   }
-  if (m.t === "react" && REACTS.includes(m.e) && now - (p.reactAt || 0) > 500) { p.reactAt = now; S.reacts.push({ e: m.e, p, t: 0, x: 120 + (S.players.indexOf(p) + 0.5) * ((W - 240) / S.players.length) + (Math.random() - 0.5) * 40 }); return; }
+  if (m.t === "react" && REACTS.includes(m.e) && now - (p.reactAt || 0) > 500) { p.reactAt = now; sfx.react(p); S.reacts.push({ e: m.e, p, t: 0, x: 120 + (S.players.indexOf(p) + 0.5) * ((W - 240) / S.players.length) + (Math.random() - 0.5) * 40 }); return; }
   if (m.t === "heckle" && S.scene === "game" && now - (p.heckleAt || 0) > 4000 && S.gctx?.arena?.heckle(p)) { p.heckleAt = now; p.stats.heckles = (p.stats.heckles || 0) + 1; return; }
   if (m.t === "noface") { p.noFace = true; if (S.scene === "lobby") refreshMenus(); return; }
   if (m.t === "act") return act(m.id, p);
@@ -224,8 +233,7 @@ function onInput(pid, m) {
 function addBot() {
   if (S.players.length >= MAX) return;
   const name = BOT_NAMES.find((n) => !S.players.some((p) => p.name === n)) || "Bot";
-  addPlayer("bot-" + Math.random().toString(36).slice(2, 8), name, true);
-  sfx.join();
+  sfx.join(addPlayer("bot-" + Math.random().toString(36).slice(2, 8), name, true));
   refreshMenus();
 }
 function removeBot() {
@@ -237,7 +245,7 @@ function removeBot() {
 /* ------------------------------------------------------------------ menus */
 
 function act(id, p) {
-  if (id === "ready" && S.scene === "intro" && p) { p.ready = true; return layout(p.pid, { kind: "wait", text: "READY!", sub: "Waiting for the others…" }); }
+  if (id === "ready" && S.scene === "intro" && p) { if (!p.ready) { sfx.ready(p); send(p, { t: "buzz", ms: [60, 40, 60] }); } p.ready = true; return layout(p.pid, { kind: "wait", text: "READY!", sub: "Waiting for the others…" }); }
   const isVip = !p || p === vip();
   if (!isVip) return;
   if (id === "pause" && !S.paused && S.scene !== "lobby" && S.scene !== "final") return pause(true);
@@ -250,10 +258,12 @@ function act(id, p) {
   }
   if (id === "end" && S.paused) { pause(false); S.game = null; go("final"); sfx.win(); return refreshMenus(); }
   if (id === "settings" && S.scene === "lobby") { S.settingsOpen = !S.settingsOpen; return refreshMenus(); }
-  if (id.startsWith("set-") && SETTINGS[id.slice(4)]) {
+  if (id.startsWith("set-") && SETTINGS[id.slice(4)] && (S.scene === "lobby" || (S.paused && (id === "set-music" || id === "set-sounds")))) {
     const k = id.slice(4), vals = SETTINGS[k].values;
     S.opt[k] = vals[(vals.indexOf(S.opt[k]) + 1) % vals.length];
-    applySettings(); return refreshMenus();
+    picked.add(k); applySettings();
+    if (k === "sounds") sfx.ready(vip()); // a sample of the new level
+    return S.paused ? pause(true) : refreshMenus();
   }
   if (id === "start" && S.scene === "lobby" && S.players.length >= 2) startSession();
   else if (id === "rounds" && S.scene === "lobby") { S.rounds = ROUND_CHOICES[(ROUND_CHOICES.indexOf(S.rounds) + 1) % ROUND_CHOICES.length]; refreshMenus(); }
@@ -296,6 +306,9 @@ function refreshMenus() {
   document.getElementById("t-rounds").textContent = `Rounds: ${S.rounds} (R)`;
   document.getElementById("t-mode").textContent = `Mode: ${MODE_NAME[S.mode]} (G)`;
   for (const id of ["t-tab", "t-mode", "t-rounds", "t-bot", "t-rmbot"]) document.getElementById(id).hidden = S.scene !== "lobby";
+  // extra controllers in this browser only make sense without the relay
+  if (S.net?.mode !== "local") document.getElementById("t-tab").hidden = true;
+  else document.getElementById("t-tab").textContent = onePhone() ? "📱 Play on this phone" : "Open a controller tab";
   if (S.mode === "gauntlet") document.getElementById("t-rounds").hidden = true;
 }
 
@@ -405,8 +418,9 @@ function gameCtx(seats) {
     players: seats,
     layout,
     sfx,
+    music, // countdown / half / hot / speed: the game drives its song
     send: (pid, m) => send(byPid(pid), m),
-    shake: (n) => { S.shake = Math.max(S.shake || 0, n); if (n >= 25 && PREFS.motion === 1) S.hitstop = 0.09; }, // big hits freeze a beat
+    shake: (n) => { S.shake = Math.max(S.shake || 0, n); if (n >= 25) { music.dip(120, 0.4); if (PREFS.motion === 1) S.hitstop = 0.09; } }, // big hits freeze a beat, and punch a hole in the music
     buzz: (pid, ms) => send(byPid(pid), { t: "buzz", ms }),
     stat: (pid, k, n) => { const p = byPid(pid); if (p) p.stats[k] = (p.stats[k] || 0) + n; },
     lag: (pid) => Math.min(0.15, (byPid(pid)?.rtt || 0) / 2000), // one-way delay, for timing games
@@ -464,17 +478,27 @@ function pause(on) {
   const v = vip();
   if (on) {
     for (const p of humans()) send(p, { t: "layout", kind: "menu", text: "PAUSED", sub: p === v ? "Take five." : `${v?.name ?? "The VIP"} paused the game.`, you: { name: p.name, color: p.color },
-      actions: p === v ? [{ id: "resume", label: "▶ Resume", big: true }, ...(S.scene === "game" || S.scene === "intro" ? [{ id: "skip", label: "⏭ Skip this game" }] : []), { id: "end", label: "🏁 End the night" }] : [] });
+      actions: p === v ? [{ id: "resume", label: "▶ Resume", big: true }, ...(S.scene === "game" || S.scene === "intro" ? [{ id: "skip", label: "⏭ Skip this game" }] : []), { id: "end", label: "🏁 End the night" },
+        ...["music", "sounds"].map((k) => ({ id: `set-${k}`, label: `${SETTINGS[k].label}: ${SETTINGS[k].names[S.opt[k]]}` }))] : [] }); // the volume, mid-game too
   } else for (const p of humans()) { const l = S.layouts.get(p.pid); if (l) send(p, l); }
 }
 
 function tick(dt) {
   if (S.paused) return;
+  const was = S.t;
   S.t += dt;
   for (const p of S.players) p.bob += dt;
+  if (S.scene === "results" && S.rows) { // the tally ticks as each row lands, and a new leader gets a fanfare
+    // (each row's "+n" lands at (1 + 0.3·max(i, from)) / 3 s; the tick climbs in the order they land)
+    const lands = S.rows.map((r, i) => ({ at: (1 + 0.3 * Math.max(i, r.from)) / 3, d: r.d })).filter((r) => r.d > 0).sort((a, b) => a.at - b.at);
+    lands.forEach((r, k) => { if (was < r.at && S.t >= r.at) sfx.tally(k); });
+    if (S.leadChange && was < 2.0 && S.t >= 2.0) sfx.lead();
+  }
+  if (S.scene !== "choose") S.chooseTick = null;
   if (S.scene === "choose") {
     const auto = !S.chooser || byPid(S.chooser)?.bot || !byPid(S.chooser)?.connected;
     if (!S.picked && ((auto && S.t > 2.5) || S.t > 15)) pick(S.options[Math.floor(Math.random() * S.options.length)].id);
+    if (!S.picked && !auto) { const left = Math.ceil(15 - S.t); if (left <= 5 && left < (S.chooseTick ?? 99)) { S.chooseTick = left; sfx.tick(); } } // the last seconds to choose
     if (S.picked && S.t - S.pickedAt > 1.4) startIntro();
   } else if (S.scene === "intro") {
     // at least 4.5 s; then as soon as everyone's tapped READY (12 s at most)
@@ -818,7 +842,7 @@ function frame(now) {
   S.frameMs = (S.frameMs ?? 16) * 0.97 + dt * 1000 * 0.03;
   if (S.frameMs > 24) S.slowFor = (S.slowFor || 0) + dt; else S.slowFor = 0;
   if (S.slowFor > 3) S.slow = true;
-  try { tick(dt); draw(); }
+  try { tick(dt); draw(); syncNav(); syncMusic(); }
   catch (err) {
     console.error(err);
     // a minigame that throws is abandoned as a tie rather than taking the night down with it
@@ -869,4 +893,58 @@ tool("t-rounds", () => act("rounds"));
 tool("t-mode", () => act("mode"));
 tool("t-bot", () => act("addbot"));
 tool("t-rmbot", () => act("rmbot"));
-tool("t-tab", () => window.open(`index.html?room=${S.net.code}`, "_blank"));
+tool("t-tab", () => (onePhone() ? playHere() : window.open(`index.html?room=${S.net.code}`, "_blank")));
+
+// On a phone, or in the installed app (no tabs), a controller in another tab
+// can't work: you can't get back to this one, and a hidden tab stops
+// drawing, so the game would freeze. Instead the controller goes right
+// here, under the TV picture, in a frame: both stay on screen and talk over
+// the same BroadcastChannel.
+function onePhone() {
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  return standalone || matchMedia("(pointer: coarse)").matches || Math.min(innerWidth, innerHeight) < 600;
+}
+function playHere() {
+  const f = document.getElementById("solo");
+  if (!document.body.classList.contains("solo")) { f.src = `index.html?room=${S.net.code}`; f.hidden = false; document.body.classList.add("solo"); }
+  f.focus();
+}
+
+// The music follows the scene: a laid-back groove in the lobby and between
+// games, a driving track for each game (its tempo and key from the game),
+// a bouncy one on the board and a victory lap at the end. Paused, it ducks.
+// The game drives its song from there (games/arena.js clock): it vamps
+// through the intro, builds over the countdown and drops on GO. Games without
+// the shared clock drop when play starts. When a game ends, one last chord
+// rings out before the next song. Paused, the music ducks and holds.
+let ducked = false, lastScene = null, goCheck = 0, stinger = false;
+function syncMusic() {
+  const sc = S.scene;
+  if (sc === "gate") return;
+  if (sc !== lastScene) {
+    const real = !(sc === "results" && S.result?.skipped);
+    if ((lastScene === "game" || lastScene === "duel") && sc !== "intro" && real) { music.outro(); stinger = true; } // no fanfare for a skipped game
+    if (sc === "game" || sc === "duel") goCheck = performance.now() + 400;
+    lastScene = sc;
+  }
+  if (goCheck && performance.now() > goCheck) { goCheck = 0; music.go(); } // no countdown came: drop now
+  if (sc === "game" && finalDouble() && music.state?.section === "A" && !music.state.hot) music.hot(); // the double-points final round runs hot
+  if (stinger && S.t < (S.leadChange && sc === "results" ? 2.6 : 2.2) && (sc === "results" || sc === "board" || sc === "final")) return; // let it ring (past a new leader's fanfare)
+  stinger = false;
+  if (sc === "intro" || sc === "game") music.play("game", S.def?.id || "game", S.def?.kind); // the mood from the kind of game
+  else if (sc === "duel") music.play("game", "duel");
+  else if (sc === "board" || (S.mode === "board" && sc === "results")) music.play("board", S.round + (sc === "results" ? 1 : 0)); // a new tune each round (results already has the next one)
+  else if (sc === "final") music.play("final");
+  else music.play("lobby");
+  if (!!S.paused !== ducked) { ducked = !!S.paused; music.pause(ducked); }
+}
+
+// The hub's bottom bar shows on the title, lobby and final screens and tucks
+// away during play (its handle at the bottom edge brings it back).
+let navShown = null;
+function syncNav() {
+  const want = S.scene === "gate" || S.scene === "lobby" || S.scene === "final";
+  if (want === navShown) return;
+  navShown = want;
+  if (want) window.randomNav?.show(); else window.randomNav?.hide();
+}

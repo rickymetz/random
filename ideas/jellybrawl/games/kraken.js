@@ -158,7 +158,7 @@ export default {
         for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 1) shout(g, p.word, p.x, p.y, 60, "#f9f002", p.t); }
         rrect(g, 0, 0, W, 130, 0, "rgba(3,20,32,.9)");
         text(g, raft.leg < 3 ? `NEXT: BUOY ${raft.leg + 1}` : "NEXT: THE DOCK", 300, 66, 38, "#f9f002", "center", 900);
-        outlined(g, String(ck.left()), W / 2, 66, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 66, 70, ck.ink());
         text(g, `🐙 ${kraken.ghost ? "BOT" : kraken.p.name} · TENTACLES ${tents.filter((t) => t.state === "idle" && t.cool <= 0).length}/${TENTACLES}`, W - 400, 66, 34, "#c77dff", "center", 900);
         ck.overlay(g, "ROW!");
       },

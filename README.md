@@ -33,6 +33,11 @@ idea), add an `ideas/<slug>/idea.json`:
 }
 ```
 
+`entry` (optional) sends the hub's links (the homepage card, the launcher,
+recents and app shortcuts) to a page inside the idea instead of its
+`index.html`, e.g. `"entry": "preview/"` for a store-style page in front of
+the app. "Save offline" still saves the idea itself.
+
 `color` is the idea's colour: its full-colour block on the homepage, its
 swatch and its launcher tile. Text on it is white or ink, whichever reads
 better (the build warns if neither reaches 4.5:1). Without it, a colour is
@@ -71,7 +76,10 @@ are secondaries, and the rest are compact rows. Spec:
 - The bar appends a spacer to `<body>` so it never covers the end of the
   page. An idea that already pads for it (via `--random-nav-h`) opts out
   with `<meta name="random-nav" content="overlay">`; `content="off"` hides
-  the bar altogether.
+  the bar altogether in a browser tab. In the installed app, which has no
+  browser chrome, an "off" page still gets the tucked bar's handle at the
+  bottom edge, so there's always a way back; keep `env(safe-area-inset-bottom)`
+  clear of controls.
 - Use relative URLs only; the site is served under `/random/`, so absolute
   paths like `/foo.png` will break. (Relative URLs are also what makes an
   idea work offline once it has been opened.)

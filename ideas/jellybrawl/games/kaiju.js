@@ -6,6 +6,7 @@
 // squashing everyone or outlasting the clock.
 
 import { W, H, INK, text, outlined, shout, rrect, circle, blob, tag, countdown, makeSplat, drawSplat } from "../gfx.js";
+import { musicCues } from "./arena.js";
 import { FX, fade } from "../gfx.js";
 
 const TIME = 60, R = 24, KR = 105, SPEED = 250, K_SPEED = 135, WINDUP = 0.7, STOMP_R = 185, STOMP_COOL = 1.6;
@@ -19,6 +20,7 @@ export default {
   controls: "Kaiju: stick + STOMP. City: stick + DASH, stand on cannon pads",
 
   create(ctx) {
+    const cues = musicCues(ctx);
     const kPid = ctx.pickOne();
     const kp = ctx.players.find((p) => p.pid === kPid);
     const others = ctx.players.filter((p) => p !== kp);
@@ -103,6 +105,7 @@ export default {
         if (d < 12) { r.mx = r.my = 0; } else { r.mx = dx / d; r.my = dy / d; }
       },
       update(dt) {
+        cues(t, TIME); // the music: build over the countdown, drop on GO, half time, the last 10 s
         t += dt;
         if (t < 0) { if (Math.ceil(-t) < lastTick) { lastTick = Math.ceil(-t); ctx.sfx.tick(); } return; }
         if (lastTick > 0) { lastTick = 0; ctx.sfx.go(); }
@@ -113,7 +116,7 @@ export default {
         const ks = k.wind > 0 ? 0.25 : 1; // rooted while winding up
         k.x = Math.max(F.x0 + KR * 0.6, Math.min(F.x1 - KR * 0.6, k.x + k.mx * K_SPEED * ks * dt));
         k.y = Math.max(F.y0 + KR * 0.6, Math.min(F.y1 - KR * 0.6, k.y + k.my * K_SPEED * ks * dt));
-        for (const b of blocks) if (!b.down && k.x + KR * 0.6 > b.x && k.x - KR * 0.6 < b.x + b.w && k.y + KR * 0.5 > b.y && k.y - KR * 0.5 < b.y + b.h) { b.down = true; ctx.sfx.crunch(); ctx.shake(8); ctx.stat(kp.pid, "wrecked", 1); }
+        for (const b of blocks) if (!b.down && k.x + KR * 0.6 > b.x && k.x - KR * 0.6 < b.x + b.w && k.y + KR * 0.5 > b.y && k.y - KR * 0.5 < b.y + b.h) { b.down = true; ctx.sfx.crunch(b); ctx.shake(8); ctx.stat(kp.pid, "wrecked", 1); }
         for (const r of runners) {
           if (r.out) continue;
           r.dash = Math.max(0, r.dash - dt); r.dashCool -= dt;
@@ -133,6 +136,7 @@ export default {
           if (on.length) p.charge += (dt / charge) * (1 + 0.6 * (on.length - 1));
           if (p.charge >= 1) {
             p.charge = 0; p.flash = 0.3; k.hp--; k.hit = 0.35;
+            if (k.hp === 1) ctx.music?.hot(); // one more hit brings it down
             shots.push({ x0: p.x, y0: p.y, t: 0 });
             ctx.sfx.launch(); ctx.shake(20);
             for (const r of on) ctx.stat(r.p.pid, "cannon", 1);

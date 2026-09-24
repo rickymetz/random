@@ -47,7 +47,7 @@ export default {
     };
 
     function spook(b) {
-      b.out = true; out.push(b); ctx.sfx.lose(); ctx.shake(18);
+      b.out = true; out.push(b); ctx.sfx.ko(b); ctx.shake(18); if (!b.ghost) ctx.buzz(b.pid, 400);
       pops.push({ x: b.x, y: b.y - 60, t: 0, word: "BOO!", c: "#b9f6ff" });
       if (!ghost.ghost) ctx.stat(gPid, "spooks", 1);
       if (!b.ghost) { ctx.buzz(b.pid, 500); ctx.layout(b.pid, { kind: "wait", text: "SPOOKED", sub: "You're a goner. Cheer them on." }); }
@@ -171,7 +171,7 @@ export default {
         rrect(g, 0, 0, W, 130, 0, "rgba(5,2,6,.92)");
         text(g, "ECTOPLASM", 250, 45, 28, "#b9f6ff", "center", 900);
         rrect(g, 100, 70, 300, 30, 6, "#222"); rrect(g, 100, 70, 300 * Math.max(0, ghost.hp / hpMax), 30, 6, "#b9f6ff");
-        outlined(g, String(ck.left()), W / 2, 66, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 66, 70, ck.ink());
         text(g, `HUNTERS LEFT ${hunters.filter((b) => !b.out).length}/${hunters.length}`, W - 330, 66, 36, "#fff", "center", 900);
         ck.overlay(g, "BOO!");
       },

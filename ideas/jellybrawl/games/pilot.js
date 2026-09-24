@@ -72,7 +72,7 @@ export default {
         }
         // bump
         const [a, b] = cars, d = Math.hypot(a.x - b.x, a.y - b.y);
-        if (d < 64 && d > 0) { const p = (64 - d) / 2, ux = (b.x - a.x) / d, uy = (b.y - a.y) / d; a.x -= ux * p; a.y -= uy * p; b.x += ux * p; b.y += uy * p; a.v *= 0.7; b.v *= 0.7; if (d < 60) ctx.sfx.crunch(); }
+        if (d < 64 && d > 0) { const p = (64 - d) / 2, ux = (b.x - a.x) / d, uy = (b.y - a.y) / d; a.x -= ux * p; a.y -= uy * p; b.x += ux * p; b.y += uy * p; a.v *= 0.7; b.v *= 0.7; if (d < 60) ctx.sfx.crunch(b); }
         // the private maps, ~10 times a second
         if (Math.floor(ck.t * 10) !== Math.floor((ck.t - dt) * 10)) for (const c of cars) {
           const dots = cars.map((o) => [nxm(o.x), nym(o.y), TEAM[o.t].color, o === c ? 10 : 6]);
@@ -113,7 +113,7 @@ export default {
           text(g, `${TEAM[c.t].name.toUpperCase()} · ${c.pilot.ghost ? "BOT" : c.pilot.p.name}`, x, 46, 32, TEAM[c.t].color, "center", 900);
           for (let k = 0; k < totalCp; k++) circle(g, x - (totalCp - 1) * 14 + k * 28, 96, 10, k < c.cp - 1 ? TEAM[c.t].color : "rgba(255,255,255,.12)", INK, 2);
         }
-        outlined(g, String(ck.left()), W / 2, 70, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 70, 70, ck.ink());
         text(g, "NAVIGATORS: CHECK YOUR PHONES", W / 2, 124, 24, "#c8c8d0", "center", 900);
         ck.overlay(g, "DRIVE!");
       },

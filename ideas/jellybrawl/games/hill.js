@@ -52,7 +52,7 @@ export default {
         if (!ck.tick(dt) || inst.result) return;
         if (endAt != null) { if (ck.t >= endAt) inst.result = inst.pending; return; }
         const { hits } = A.step(dt);
-        for (const h of hits) if (h.speed > 260) { ctx.sfx.hit(); ctx.shake(Math.min(18, h.speed / 45)); for (const [x, y] of [[h.a, h.b], [h.b, h.a]]) if (x.dash > 0 && y === king && !x.ghost) ctx.stat(x.pid, "shoves", 1); }
+        for (const h of hits) if (h.speed > 260) { ctx.sfx.hit(h.a); ctx.shake(Math.min(18, h.speed / 45)); for (const [x, y] of [[h.a, h.b], [h.b, h.a]]) if (x.dash > 0 && y === king && !x.ghost) ctx.stat(x.pid, "shoves", 1); }
         const on = A.bodies.filter(onHill);
         if (king && !onHill(king)) { // toppled
           pops.push({ x: king.x, y: king.y - king.r - 50, t: 0, word: "TOPPLED!" }); ctx.sfx.crunch(); ctx.shake(24);
@@ -68,7 +68,7 @@ export default {
             crownT += dt;
             setSize(b, Math.min(MAX_S, b.size + GROW * dt));
             const was = Math.floor(b.score); b.score += dt;
-            if (Math.floor(b.score) > was) { ctx.sfx.dot(); if (!b.ghost) ctx.stat(b.pid, "reign", 1); }
+            if (Math.floor(b.score) > was) { ctx.sfx.dot(b); if (!b.ghost) ctx.stat(b.pid, "reign", 1); }
           } else if (b.size > 1) setSize(b, Math.max(1, b.size - 1.4 * dt));
         }
         if (ck.t >= TIME) {
@@ -98,7 +98,7 @@ export default {
         rrect(g, 0, 0, W, 130, 0, "rgba(14,20,10,.92)");
         const top = [...A.bodies].sort((a, b) => b.score - a.score).slice(0, 3);
         top.forEach((b, i) => text(g, `${i + 1}. ${b.ghost ? "BOT" : b.p.name} ${Math.floor(b.score)}s`, 150 + i * 260, 66, 30, b.p.color, "left", 900));
-        outlined(g, String(ck.left()), W - 200, 66, 70, "#fff");
+        outlined(g, String(ck.left()), W - 200, 66, 70, ck.ink());
         if (king) text(g, `👑 ${king.ghost ? "BOT" : king.p.name} · ${Math.floor(crownT)}s`, W - 560, 66, 36, "#ffd400", "center", 900);
         ck.overlay(g, "CLIMB!");
       },

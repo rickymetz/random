@@ -153,8 +153,18 @@ function collectIdeas() {
       console.warn(`warning: ideas/${slug} ships only ${Object.values(art)[0].split("-").pop()}; icons need both icon-flat.svg and icon-3d.svg, using the emoji`);
     }
 
+    // Where the hub's links land: the idea's folder, or a page inside it
+    // ("entry" in idea.json, e.g. a preview page in front of the app).
+    let url = `ideas/${slug}/`;
+    if (meta.entry != null) {
+      const entry = String(meta.entry);
+      if (/^(?!\/)(?!.*\.\.)[\w./-]+$/.test(entry) && fs.existsSync(path.join(dir, entry.endsWith("/") ? entry + "index.html" : entry))) url += entry;
+      else console.warn(`warning: ideas/${slug}/idea.json "entry" must be a page inside the idea, ignoring ${JSON.stringify(meta.entry)}`);
+    }
+
     ideas.push({
       slug,
+      url,
       title,
       description,
       emoji: meta.emoji || "",
@@ -212,7 +222,7 @@ function renderCard(idea, kind, i) {
   // id new-<slug>), then the blurb as the description, not the whole card.
   const describe = idea.description ? ` aria-describedby="about-${slug}"` : "";
   return `      <${tag} class="card-wrap ${kind}${idea.saveable ? " saveable" : ""}" style="--c: ${idea.color}; --on: ${idea.ink}; --i: ${Math.min(i, 9)}">
-        <a class="card" href="ideas/${slug}/" data-slug="${slug}" aria-labelledby="title-${slug} new-${slug}"${describe}>
+        <a class="card" href="${idea.url}" data-slug="${slug}" aria-labelledby="title-${slug} new-${slug}"${describe}>
           ${renderArt(idea, kind === "lead")}
           <span class="card-body">
             <span class="card-top">${kicker}<time datetime="${date}">${prettyDate(idea.date)}</time></span>
@@ -689,7 +699,7 @@ function renderManifest(ideas) {
     // icon where the platform takes SVG and the app icon where it doesn't.
     shortcuts: ideas.slice(0, 4).map((idea) => ({
       name: idea.title,
-      url: `ideas/${idea.slug}/`,
+      url: idea.url,
       icons: [
         ...(idea.art ? [{ src: idea.art["3d"], sizes: "any", type: "image/svg+xml" }] : []),
         { src: "icon-192.png", sizes: "192x192", type: "image/png" },
@@ -707,7 +717,7 @@ function renderIdeasJson(ideas) {
     color: idea.color,
     ...(idea.art ? { art: idea.art } : {}),
     date: idea.date.toISOString(),
-    url: `ideas/${idea.slug}/`,
+    url: idea.url,
     saveable: idea.saveable,
     ...(idea.icon ? { icon: idea.icon } : {}),
     ...(idea.private ? { private: true } : {}),

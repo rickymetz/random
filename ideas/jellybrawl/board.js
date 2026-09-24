@@ -80,14 +80,14 @@ export function makeBoard(api) {
     p.dbl = false;
     B.dice = { vals: d, t: 0 }; B.steps = d.reduce((a, b) => a + b, 0);
     B.phase = "dice"; B.t = 0;
-    api.sfx.tick();
+    api.sfx.dice();
     api.layout(p.pid, { kind: "wait", text: `You rolled ${B.steps}!`, sub: "Hop hop hop…" });
   }
 
   function passStar(p) {
     if (p.score >= STAR_COST) {
       p.score -= STAR_COST; p.stars++; p.stats.stars = (p.stats.stars || 0) + 1;
-      say(`★ ${p.name} buys a STAR! ★`, "#f9f002", 1.8); api.sfx.win(); api.shake(14);
+      say(`★ ${p.name} buys a STAR! ★`, "#f9f002", 1.8); api.sfx.star(); api.shake(14);
       relocateStar();
     } else say(`${p.name} can't afford the star (${STAR_COST} coins)`, "#888", 1.2);
   }
@@ -95,7 +95,7 @@ export function makeBoard(api) {
   function land(p) {
     const s = spaces[p.pos];
     if (s.k === "B") { p.score += BLUE; say(`+${BLUE} coins`, "#05d9e8", 0.9); api.sfx.dot(); B.phase = "next"; }
-    else if (s.k === "R") { p.score = Math.max(0, p.score - RED); say(`−${RED} coins`, "#ff2a6d", 0.9); api.sfx.lose(); B.phase = "next"; }
+    else if (s.k === "R") { p.score = Math.max(0, p.score - RED); say(`−${RED} coins`, "#ff2a6d", 0.9); api.sfx.drop(p); B.phase = "next"; }
     else if (s.k === "$") openShop(p);
     else if (s.k === "D") openDuel(p);
     else if (s.k === "?") { event(p); B.phase = B.phase === "move" ? "move" : "next"; }
@@ -155,7 +155,7 @@ export function makeBoard(api) {
 
   function openDuel(p) {
     B.phase = "duelpick"; B.t = 0;
-    say(`DUEL! ${p.name} picks a rival`, "#b026ff", 1.2); api.sfx.slam();
+    say(`DUEL! ${p.name} picks a rival`, "#b026ff", 1.2); api.sfx.duel();
     if (!auto(p)) api.layout(p.pid, { kind: "choose", text: "Pick your rival", options: P().filter((q) => q !== p).map((q) => ({ id: q.pid, title: q.name, kind: `${q.score} coins`, blurb: `Winner takes up to ${DUEL_POT} coins` })) });
   }
   function startDuel(p, rivalPid) {

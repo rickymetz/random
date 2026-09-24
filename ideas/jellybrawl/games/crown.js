@@ -27,13 +27,13 @@ export default {
       const a = by ? Math.atan2(h.y - by.y, h.x - by.x) + rnd(-0.6, 0.6) : rnd(0, 6.28);
       crown.x = h.x; crown.y = h.y; crown.vx = Math.cos(a) * 520; crown.vy = Math.sin(a) * 520; crown.z = 40;
       crown.lock = h; crown.lockT = 0.8;
-      pops.push({ x: h.x, y: h.y - 70, t: 0, word: "KNOCKED!" }); ctx.sfx.crunch(); ctx.shake(14);
+      pops.push({ x: h.x, y: h.y - 70, t: 0, word: "KNOCKED!" }); ctx.sfx.crunch(h); ctx.shake(14);
       if (!h.ghost) ctx.buzz(h.pid, 300);
       if (by && !by.ghost) ctx.stat(by.pid, "knocks", 1);
       relayout();
     }
     function grab(b) {
-      crown.holder = b; b.speedMul = 0.82; ctx.sfx.power(); ctx.shake(4);
+      crown.holder = b; b.speedMul = 0.82; ctx.sfx.power(b); ctx.shake(4);
       pops.push({ x: b.x, y: b.y - 70, t: 0, word: "GOT IT!" });
       relayout();
     }
@@ -103,7 +103,7 @@ export default {
           rrect(g, t === 0 ? x + 420 * (1 - k) : x, 50, 420 * k, 40, 6, TEAM[t].color);
           outlined(g, String(Math.floor(score[t])), t === 0 ? x - 10 : x + 430, 70, 40, TEAM[t].color, t === 0 ? "right" : "left");
         }
-        text(g, String(ck.left()), W / 2, 70, 44, "#fff", "center", 900);
+        text(g, String(ck.left()), W / 2, 70, 44, ck.ink(), "center", 900);
         ck.overlay(g, "GRAB IT!");
       },
     };

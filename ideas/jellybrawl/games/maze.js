@@ -109,12 +109,12 @@ export default {
             const nx = Math.max(x, Math.min(x + w, b.x)), ny = Math.max(y, Math.min(y + h, b.y)), dx = b.x - nx, dy = b.y - ny, d = Math.hypot(dx, dy);
             if (d >= R || d === 0) continue;
             const ux = dx / d, uy = dy / d; b.x = nx + ux * R; b.y = ny + uy * R;
-            const vn = b.vx * ux + b.vy * uy; if (vn < 0) { b.vx -= 1.4 * vn * ux; b.vy -= 1.4 * vn * uy; if (-vn > 250) ctx.sfx.dot(); }
+            const vn = b.vx * ux + b.vy * uy; if (vn < 0) { b.vx -= 1.4 * vn * ux; b.vy -= 1.4 * vn * uy; if (-vn > 250) ctx.sfx.dot(b); }
           }
           const [c, r] = cellOf(b), dd = dist[r * COLS + c];
           if (dd < b.best) { b.best = dd; if (dd % 5 === 0) { const [x, y] = cell(c, r); b.cp = [x, y]; } }
           for (const h of holes) if (Math.hypot(h.x - b.x, h.y - b.y) < HOLE_R) {
-            b.fall = 0.9; b.x = h.x; b.y = h.y; ctx.sfx.lose(); ctx.shake(6);
+            b.fall = 0.9; b.x = h.x; b.y = h.y; ctx.sfx.lose(b); ctx.shake(6);
             pops.push({ x: h.x, y: h.y - 40, t: 0, word: "PLOP!" });
             if (!b.ghost) { ctx.buzz(b.pid, 250); ctx.stat(b.pid, "plops", 1); }
             break;
@@ -157,7 +157,7 @@ export default {
         rrect(g, 0, 0, W, 130, 0, "rgba(10,15,31,.92)");
         text(g, `ESCAPED ${done.length}/${Math.min(3, n)}`, 330, 66, 38, "#39ff14", "center", 900);
         done.forEach((b, i) => text(g, `${i + 1}. ${b.p.name}`, W - 560 + i * 200, 66, 28, b.p.color, "center", 900));
-        outlined(g, String(ck.left()), W / 2, 66, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 66, 70, ck.ink());
         ck.overlay(g, "TILT!");
       },
     };

@@ -4,6 +4,7 @@
 // The chomper role rotates to whoever has been "the one" least.
 
 import { W, H, INK, text, outlined, shout, rrect, panel, circle, grid as neonGrid, bomb, makeSplat, drawSplat, blob, tag, countdown } from "../gfx.js";
+import { musicCues } from "./arena.js";
 
 const MAP = [
   "#####################",
@@ -33,6 +34,7 @@ export default {
   controls: "Swipe or use the d-pad",
 
   create(ctx) {
+    const cues = musicCues(ctx);
     const one = ctx.pickOne();
     const grid = MAP.map((r) => r.split(""));
     let dotsLeft = 0;
@@ -138,6 +140,7 @@ export default {
         if (step) e.want = step;
       },
       update(dt) {
+        cues(t, TIME); // the music: build over the countdown, drop on GO, half time, the last 10 s
         t += dt; dotSfx -= dt;
         if (t < 0) { if (Math.ceil(-t) < lastTick) { lastTick = Math.ceil(-t); ctx.sfx.tick(); } return; }
         if (lastTick > 0) { lastTick = 0; ctx.sfx.go(); }
@@ -154,10 +157,11 @@ export default {
           if (power > 0) {
             splats.push(makeSplat(...px(h), 34, h.p.color)); ctx.shake(18);
             h.stun = 3; h.x = h.sx; h.y = h.sy; h.dir = [0, 0];
-            ctx.stat(chomper.p.pid, "gulps", 1); ctx.sfx.pop(); ctx.buzz(h.p.pid, 300);
+            ctx.stat(chomper.p.pid, "gulps", 1); ctx.sfx.pop(h); ctx.buzz(h.p.pid, 300);
           } else if (invuln <= 0) {
             splats.push(makeSplat(...px(chomper), 44, chomper.p.color)); ctx.shake(34);
-            lives--; ctx.stat(h.p.pid, "catches", 1); ctx.sfx.hit(); ctx.buzz(chomper.p.pid, 400);
+            lives--; ctx.stat(h.p.pid, "catches", 1); ctx.sfx.hit(chomper); ctx.buzz(chomper.p.pid, 400);
+            if (lives === 1) ctx.music?.hot(); // the chomper's last life
             if (lives > 0) reset();
             break;
           }

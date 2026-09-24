@@ -47,7 +47,7 @@ export default {
     function knockOut(v, by) {
       if (!by.ghost) ctx.stat(by.pid, "hits", 1);
       if (--v.lives > 0) {
-        v.safe = 1.2; ctx.sfx.crunch(); ctx.shake(12);
+        v.safe = 1.2; ctx.sfx.crunch(v); ctx.shake(12);
         pops.push({ x: v.x, y: v.y - 60, t: 0, word: "OOF!", c: TEAM[by.team].color });
         if (!v.ghost) ctx.buzz(v.pid, 200);
         return;
@@ -55,7 +55,7 @@ export default {
       v.out = true; out[v.team].push(v);
       for (const x of balls) if (x.held === v) { x.held = null; x.vx = x.vy = 0; }
       pops.push({ x: v.x, y: v.y - 60, t: 0, word: "OUT!", c: TEAM[by.team].color });
-      ctx.sfx.hit(); ctx.shake(22);
+      ctx.sfx.ko(v); ctx.shake(22);
       if (!v.ghost) { ctx.buzz(v.pid, 400); ctx.layout(v.pid, { kind: "wait", text: "OUT!", sub: "Cheer your team on." }); }
     }
 
@@ -124,7 +124,7 @@ export default {
         // HUD: players left per side as pips
         rrect(g, W / 2 - 420, 20, 840, 100, 12, "rgba(13,2,33,.9)", "#fff", 4);
         for (const t of [0, 1]) A.teams[t].forEach((b, i) => circle(g, t === 0 ? W / 2 - 110 - i * 44 : W / 2 + 110 + i * 44, 70, 16, b.out ? "rgba(255,255,255,.12)" : TEAM[t].color, INK, 3));
-        text(g, String(ck.left()), W / 2, 70, 44, "#fff", "center", 900);
+        text(g, String(ck.left()), W / 2, 70, 44, ck.ink(), "center", 900);
         ck.overlay(g, "DODGE!");
       },
     };

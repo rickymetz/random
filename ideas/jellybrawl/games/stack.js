@@ -118,7 +118,7 @@ export default {
           text(g, endAt == null ? `▶ ${who.ghost ? "BOT" : who.p.name}` : "", cx[t] + 40, 88, 28, who.ghost ? "#aaa" : who.p.color, "center", 900);
         }
         for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 0.9) shout(g, p.word, p.x, p.y, 54, "#f9f002", p.t); }
-        outlined(g, String(ck.left()), W / 2, 70, 60, "#fff");
+        outlined(g, String(ck.left()), W / 2, 70, 60, ck.ink());
         ck.overlay(g, "STACK!");
       },
     };

@@ -45,7 +45,7 @@ export default {
         if (!ck.tick(dt) || inst.result) return;
         if (endAt != null) { if (ck.t >= endAt) inst.result = inst.pending; return; }
         const { hits } = A.step(dt);
-        for (const h of hits) for (const [x, y] of [[h.a, h.b], [h.b, h.a]]) if (x.dash > 0 && y.hurt <= 0 && h.speed > 200) { drop(y, 1); y.hurt = 0.6; ctx.sfx.crunch(); }
+        for (const h of hits) for (const [x, y] of [[h.a, h.b], [h.b, h.a]]) if (x.dash > 0 && y.hurt <= 0 && h.speed > 200) { drop(y, 1); y.hurt = 0.6; ctx.sfx.crunch(y); }
         for (const b of A.bodies) b.hurt = Math.max(0, b.hurt - dt);
         // coins rain faster as time runs out
         rain -= dt;
@@ -59,7 +59,7 @@ export default {
         for (const b of A.bodies) for (let i = coins.length - 1; i >= 0; i--) {
           const c = coins[i];
           if (c.z > 10 || c.t < 0.3 || Math.hypot(c.x - b.x, c.y - b.y) > A.R + COIN_R) continue;
-          coins.splice(i, 1); b.coins++; if (!b.ghost) ctx.stat(b.pid, "coins", 1); ctx.sfx.dot();
+          coins.splice(i, 1); b.coins++; if (!b.ghost) ctx.stat(b.pid, "coins", 1); ctx.sfx.dot(b);
         }
         for (const r of rollers) {
           r.x += r.vx * dt; r.y += r.vy * dt; r.rot += dt * 6;
@@ -67,7 +67,7 @@ export default {
           if (r.y < F.y0 + r.r || r.y > F.y1 - r.r) r.vy *= -1;
           for (const b of A.bodies) {
             const d = Math.hypot(b.x - r.x, b.y - r.y);
-            if (d < r.r + A.R && b.hurt <= 0) { drop(b, 3); b.hurt = 1; b.vx += ((b.x - r.x) / d) * 700; b.vy += ((b.y - r.y) / d) * 700; ctx.sfx.hit(); ctx.shake(10); if (!b.ghost) ctx.buzz(b.pid, 200); }
+            if (d < r.r + A.R && b.hurt <= 0) { drop(b, 3); b.hurt = 1; b.vx += ((b.x - r.x) / d) * 700; b.vy += ((b.y - r.y) / d) * 700; ctx.sfx.hit(b); ctx.shake(10); if (!b.ghost) ctx.buzz(b.pid, 200); }
           }
         }
         if (ck.t >= TIME) {
@@ -100,7 +100,7 @@ export default {
         rrect(g, 0, 0, W, 120, 0, "rgba(13,2,33,.85)");
         const lead = [...A.bodies].sort((a, b) => b.coins - a.coins)[0];
         text(g, `LEADER: ${lead.ghost ? "BOT" : lead.p.name} · ${lead.coins}`, 360, 60, 36, "#ffd400", "center", 900);
-        outlined(g, String(ck.left()), W / 2, 60, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 60, 70, ck.ink());
         ck.overlay(g, "GRAB IT!");
       },
     };

@@ -93,7 +93,7 @@ export default {
         rrect(g, W / 2 - 400, 30, 800, 60, 12, "rgba(13,2,33,.9)", "#fff", 4);
         rrect(g, W / 2 - 390, 40, 390, 40, 6, TEAM[0].color + "55"); rrect(g, W / 2, 40, 390, 40, 6, TEAM[1].color + "55");
         circle(g, W / 2 + (pos / WIN) * 380, 60, 18, "#f9f002", INK, 4);
-        text(g, String(ck.left()), W / 2, 130, 44, "#fff", "center", 900);
+        text(g, String(ck.left()), W / 2, 130, 44, ck.ink(), "center", 900);
         text(g, TEAM[0].name.toUpperCase() + " PULLS ←", 300, 60, 32, TEAM[0].color, "center", 900);
         text(g, "→ " + TEAM[1].name.toUpperCase() + " PULLS", W - 300, 60, 32, TEAM[1].color, "center", 900);
         ck.overlay(g, "PULL!");

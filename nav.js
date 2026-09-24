@@ -13,7 +13,9 @@
  *
  * Ideas talk to it through a small, documented surface (README):
  *   --random-nav-h                    set on <html>; offset bottom UI by it
- *   <meta name="random-nav" content="off">      no bar on this page
+ *   <meta name="random-nav" content="off">      no bar on this page (in the
+ *                                     installed app, just the tucked bar's
+ *                                     handle, so there's always a way back)
  *   <meta name="random-nav" content="overlay">  bar, but no bottom spacer
  *   <a data-random-keep>              keep this "← random" link visible
  *   window.randomNav.look() / .setLook('retro'|'modern'): the hub's two
@@ -64,6 +66,15 @@
 
   var metaNav = document.querySelector('meta[name="random-nav"]');
   var navMode = metaNav ? (metaNav.getAttribute('content') || '').trim() : '';
+  // The installed app has no browser chrome, so a page with the bar "off"
+  // would leave no way back at all: there it keeps an escape hatch, the
+  // tucked bar's handle (tap it, or swipe up from the bottom edge).
+  var startTucked = false;
+  if (navMode === 'off' && isStandalone()) { navMode = 'overlay'; startTucked = true; }
+  function isStandalone() {
+    try { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
+    catch (e) { return false; }
+  }
 
   /* ------------------------------------------------------------ storage */
 
@@ -354,11 +365,15 @@
     '  bottom: calc(' + BAR_H + 'px + env(safe-area-inset-bottom, 0px));',
     '  background: var(--sheet); border-top: 1px solid var(--line);',
     '  border-radius: 16px 16px 0 0; padding: 14px 0 16px;',
-    '  transform: translateY(calc(100% + ' + BAR_H + 'px)); transition: transform .24s cubic-bezier(.32,.72,0,1);',
+    // Closed, it drops below the screen's bottom edge (safe area included,
+    // which the bar would otherwise have covered) and is hidden outright,
+    // so on a page without the bar no strip of it peeks up or takes taps.
+    '  transform: translateY(calc(100% + ' + BAR_H + 'px + env(safe-area-inset-bottom, 0px) + 40px));',
+    '  visibility: hidden; transition: transform .24s cubic-bezier(.32,.72,0,1), visibility 0s linear .24s;',
     '  box-shadow: 0 -8px 30px rgba(0,0,0,.12);',
     '}',
     '.open .scrim { opacity: 1; pointer-events: auto; }',
-    '.open .sheet { transform: none; }',
+    '.open .sheet { transform: none; visibility: visible; transition: transform .24s cubic-bezier(.32,.72,0,1), visibility 0s; }',
     '.head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 16px 10px; }',
     '.head h2 { margin: 0; font-size: 15px; font-weight: 600; flex: 1; }',
     '.head button { border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; padding: 6px; }',
@@ -529,6 +544,7 @@
 
     ui.scrim = el('div', { 'class': 'scrim' });
     ui.sheet = el('div', { 'class': 'sheet', role: 'dialog', 'aria-label': 'Recent ideas', 'aria-hidden': 'true' });
+    ui.sheet.inert = true;
     ui.sheet.appendChild(el('div', { 'class': 'head' },
       '<h2>Recent</h2>' +
       (slug ? '<button type="button" class="share" data-act="share">' + ICON.share + 'Share</button>' : '') +
@@ -641,6 +657,7 @@
       }
       hideOwnHubLinks();
       watchImmersive();
+      if (startTucked) hide();
     }
   }
 
@@ -1106,7 +1123,8 @@
   function saveOffline(s, on) {
     return ideasReady.then(function () {
       var idea = ideaBySlug(s);
-      return on && s !== slug && idea ? loadHidden(new URL(idea.url, HUB).href) : null;
+      // the idea itself, not an entry page in front of it (a preview)
+      return on && s !== slug && idea ? loadHidden(new URL('ideas/' + s + '/', HUB).href) : null;
     }).then(function () { return ask({ type: 'PIN', slug: s, on: !!on }); }).then(function (st) {
       if (on) addEvent({ id: 'saved:' + s, type: 'saved', slug: s });
       return st;
@@ -1262,6 +1280,7 @@
     if (open) renderTray();
     ui.wrap.classList.toggle('open', open);
     ui.sheet.setAttribute('aria-hidden', open ? 'false' : 'true');
+    ui.sheet.inert = !open;
     ui.recents.setAttribute('aria-expanded', open ? 'true' : 'false');
     refreshBack();
     if (open) {

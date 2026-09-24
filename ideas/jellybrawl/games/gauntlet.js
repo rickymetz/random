@@ -545,10 +545,10 @@ export default {
         }
         anyFail = true;
         lives[pid]--;
-        if (lives[pid] <= 0) outAt[pid] = n;
-        ctx.buzz(pid, 250);
+        if (lives[pid] <= 0) { outAt[pid] = n; ctx.sfx.ko(ctx.players.find((q) => q.pid === pid)); ctx.buzz(pid, 500); } // out
+        else ctx.buzz(pid, 250);
       }
-      (anyFail ? ctx.sfx.hit : ctx.sfx.join)();
+      (anyFail ? ctx.sfx.hit : ctx.sfx.clear)();
       if (anyFail) ctx.shake(18);
       for (const pid of st.pids) ctx.layout(pid, lives[pid] <= 0
         ? { kind: "wait", text: "OUT!", sub: "So close. Not really." }
@@ -581,7 +581,8 @@ export default {
         else if (phase === "judge" && t >= JUDGE) {
           const a = alive();
           if (ctx.duel || a.length === 0 || (ctx.players.length > 1 && a.length <= 1) || n >= MAX_MICROS) return finish();
-          if (n % 5 === 0) { speedLevel++; phase = "speedup"; t = 0; ctx.sfx.power(); for (const pid of a) ctx.layout(pid, { kind: "wait", text: "SPEED UP!", shout: true }); }
+          if (a.length === 2 && ctx.players.length > 2) ctx.music?.hot(); // the last two
+          if (n % 5 === 0) { speedLevel++; phase = "speedup"; t = 0; ctx.sfx.power(); ctx.music?.speed(speedLevel); for (const pid of a) ctx.layout(pid, { kind: "wait", text: "SPEED UP!", shout: true }); }
           else nextMicro();
         } else if (phase === "speedup" && t >= SPEEDUP) nextMicro();
       },

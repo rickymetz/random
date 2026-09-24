@@ -42,11 +42,11 @@ export default {
         if (!ck.tick(dt) || inst.result) return;
         if (endAt != null) { if (ck.t >= endAt) inst.result = inst.pending; return; }
         const { hits } = A.step(dt);
-        for (const h of hits) if (h.speed > 250) { ctx.sfx.hit(); ctx.shake(Math.min(20, h.speed / 40)); for (const b of [h.a, h.b]) if (b.dash > 0 && !b.ghost) ctx.stat(b.pid, "shoves", 1); }
+        for (const h of hits) if (h.speed > 250) { ctx.sfx.hit(h.a); ctx.shake(Math.min(20, h.speed / 40)); for (const b of [h.a, h.b]) if (b.dash > 0 && !b.ghost) ctx.stat(b.pid, "shoves", 1); }
         const rr = radius();
         for (const b of A.live()) if (edge(b) > rr + A.R * 0.4) {
           b.out = true; falling.push({ b, t: 0 }); out.push([b]);
-          ctx.sfx.lose(); ctx.shake(14); if (!b.ghost) { ctx.buzz(b.pid, 400); ctx.layout(b.pid, { kind: "wait", text: "RING OUT!", sub: "Shoved into the void." }); }
+          ctx.sfx.ko(b); ctx.shake(14); if (!b.ghost) { ctx.buzz(b.pid, 400); ctx.layout(b.pid, { kind: "wait", text: "RING OUT!", sub: "Shoved into the void." }); }
         }
         const live = A.live();
         if (live.length <= 1 || ck.t >= TIME) {
@@ -68,7 +68,7 @@ export default {
         A.live().sort((a, b) => a.y - b.y).forEach((b) => A.drawBody(g, b));
         rrect(g, 0, 0, W, 120, 0, "rgba(13,2,33,.85)");
         text(g, `ON THE RING ${A.live().length}/${A.bodies.length}`, 330, 60, 40, "#fff", "center", 900);
-        outlined(g, String(ck.left()), W / 2, 60, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 60, 70, ck.ink());
         text(g, "THE RING IS SHRINKING", W - 360, 60, 30, "#ff2a6d", "center", 900);
         ck.overlay(g, "SHOVE!");
       },

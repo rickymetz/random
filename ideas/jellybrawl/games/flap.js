@@ -2,6 +2,7 @@
 // screen; placements are by elimination order, last blob flying wins.
 
 import { W, H, INK, text, outlined, shout, rrect, panel, grid, makeSplat, drawSplat, blob, tag, countdown } from "../gfx.js";
+import { musicCues } from "./arena.js";
 
 const GROUND = H - 90, X = 560, R = 34, GRAV = 2300, FLAP = -760, PW = 130;
 
@@ -11,6 +12,7 @@ export default {
   controls: "Tap FLAP on your phone",
 
   create(ctx) {
+    const cues = musicCues(ctx);
     const birds = ctx.players.map((p, i) => ({ p, y: 300 + (i * 480) / Math.max(1, ctx.players.length - 1 || 1), vy: 0, alive: true, diedAt: null, x: X - i * 14, phase: i, botCool: 0, botErr: 0 }));
     let splats = [];
     let t = -3, dist = 0, nextPipe = 1100, pipes = [], endAt = null, lastTick = 3;
@@ -41,6 +43,7 @@ export default {
         if (b.botCool <= 0 && b.y > target && b.vy > -150) { inst.input(pid, { t: "btn", down: true }); b.botCool = 0.2 + Math.random() * 0.12; }
       },
       update(dt) {
+        cues(t, 0); // the music: build over the countdown, drop on GO
         t += dt;
         if (t < 0) {
           if (Math.ceil(-t) < lastTick) { lastTick = Math.ceil(-t); ctx.sfx.tick(); }
@@ -69,7 +72,8 @@ export default {
             splats.push(makeSplat(b.x + dist, Math.min(b.y, GROUND - 10), 46, b.p.color));
             ctx.shake(26);
             ctx.stat(b.p.pid, "airtime", Math.round(t));
-            ctx.sfx.hit(); ctx.buzz(b.p.pid, 200);
+            ctx.sfx.ko(b); ctx.buzz(b.p.pid, 200);
+            if (birds.length > 2 && birds.filter((q) => q.alive).length === 2) ctx.music?.hot(); // down to the last two
             ctx.layout(b.p.pid, { kind: "wait", text: "Splat!", sub: `You lasted ${t.toFixed(1)}s` });
           }
         }

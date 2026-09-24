@@ -38,14 +38,14 @@ export default {
         if (endAt != null) { if (ck.t >= endAt) inst.result = inst.pending; return; }
         for (const b of A.bodies) b.shield = Math.max(0, b.shield - dt);
         const { hits, walls } = A.step(dt);
-        for (const h of hits) if (h.speed > 200) { ctx.sfx.crunch(); ctx.shake(Math.min(16, h.speed / 50)); }
+        for (const h of hits) if (h.speed > 200) { ctx.sfx.crunch(h.a); ctx.shake(Math.min(16, h.speed / 50)); }
         for (const w of walls) {
           const b = w.b;
           if (b.shield > 0 || b.out) continue;
-          b.lives--; b.shield = SHIELD; ctx.sfx.hit(); ctx.shake(20);
+          b.lives--; b.shield = SHIELD; ctx.sfx.hit(b); ctx.shake(20);
           pops.push({ x: b.x, y: b.y - 60, t: 0, word: b.lives > 0 ? "OUCH!" : "WRECKED!" });
           if (!b.ghost) ctx.buzz(b.pid, 300);
-          if (b.lives <= 0) { b.out = true; out.push([b]); if (!b.ghost) ctx.layout(b.pid, { kind: "wait", text: "WRECKED", sub: "Spiked. Watch the rest." }); }
+          if (b.lives <= 0) { b.out = true; out.push([b]); ctx.sfx.ko(b); if (!b.ghost) ctx.layout(b.pid, { kind: "wait", text: "WRECKED", sub: "Spiked. Watch the rest." }); }
           else { b.x = W / 2 + (Math.random() - 0.5) * 300; b.y = 620 + (Math.random() - 0.5) * 200; b.vx = b.vy = 0; }
         }
         const live = A.live();
@@ -79,7 +79,7 @@ export default {
         for (const p of fade(pops)) { p.t += FX.dt; if (p.t < 1) shout(g, p.word, p.x, p.y, 44, "#ff2a6d", p.t); }
         rrect(g, 0, 0, W, 120, 0, "rgba(13,2,33,.85)");
         text(g, `STILL DRIVING ${A.live().length}/${A.bodies.length}`, 330, 60, 38, "#fff", "center", 900);
-        outlined(g, String(ck.left()), W / 2, 60, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 60, 70, ck.ink());
         ck.overlay(g, "BUMP!");
       },
     };

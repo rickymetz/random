@@ -95,7 +95,7 @@ export default {
             const m = moles.find((m) => m.hole === s.i);
             if (m) {
               const lost = Math.min(LOSE, m.gems); m.gems -= lost; bank -= lost;
-              m.hole = -1; m.stun = STUN; ctx.sfx.hit(); ctx.shake(20);
+              m.hole = -1; m.stun = STUN; ctx.sfx.hit(m); ctx.shake(20);
               pops.push({ x: holes[s.i].x, y: holes[s.i].y - 120, t: 0, word: "BONK!" });
               if (!hammer.ghost) ctx.stat(hPid, "bonks", 1);
               if (!m.ghost) { ctx.buzz(m.pid, 300); relayout(m); }
@@ -140,7 +140,7 @@ export default {
         text(g, "MOLE GEMS", 250, 42, 28, "#ffd400", "center", 900);
         rrect(g, 90, 66, 340, 34, 6, "#222"); rrect(g, 90, 66, 340 * Math.min(1, Math.max(0, bank / goal)), 34, 6, "#ffd400");
         text(g, `${Math.max(0, bank)} / ${goal}`, 250, 83, 24, INK, "center", 900);
-        outlined(g, String(ck.left()), W / 2, 66, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 66, 70, ck.ink());
         text(g, `🔨 ${hammer.ghost ? "BOT" : hammer.p.name}`, W - 330, 66, 40, "#c9ced8", "center", 900);
         ck.overlay(g, "WHACK!");
       },

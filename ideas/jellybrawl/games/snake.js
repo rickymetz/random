@@ -32,7 +32,7 @@ export default {
       b.out = true; out.push([b]);
       for (let k = 0; k < b.trail.length; k += 3) spawnPellet(b.trail[k].x + rnd(-8, 8), b.trail[k].y + rnd(-8, 8), true);
       pops.push({ x: b.x, y: b.y - 50, t: 0, word: why });
-      ctx.sfx.hit(); ctx.shake(18);
+      ctx.sfx.ko(b); ctx.shake(18);
       if (!b.ghost) { ctx.buzz(b.pid, 400); ctx.layout(b.pid, { kind: "wait", text: "BONK!", sub: `Your tail was ${b.len} long.` }); }
     }
 
@@ -129,7 +129,7 @@ export default {
         rrect(g, 0, 0, W, 120, 0, "rgba(8,20,12,.9)");
         const lead = A.live().sort((a, b) => b.len - a.len)[0];
         if (lead) text(g, `LONGEST: ${lead.ghost ? "BOT" : lead.p.name} · ${lead.len}`, 380, 60, 36, "#39ff14", "center", 900);
-        outlined(g, String(ck.left()), W / 2, 60, 70, "#fff");
+        outlined(g, String(ck.left()), W / 2, 60, 70, ck.ink());
         text(g, `SLITHERING ${A.live().length}/${n}`, W - 360, 60, 36, "#fff", "center", 900);
         ck.overlay(g, "SLITHER!");
       },
