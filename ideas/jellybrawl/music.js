@@ -227,6 +227,7 @@ export function createMusic(ac, out) {
 
   // ------------------------------------------------------------ instruments
   function env(g, t, peak, a, d) {
+    g.gain.value = 0; // not the default 1 for a sample before the first event
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + a);
     g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
@@ -241,10 +242,17 @@ export function createMusic(ac, out) {
     s.buffer = noiseBuffer(); s.loop = dur > 0.5; f.type = type; f.frequency.value = freq; f.Q.value = q;
     if (sweep) { // a riser: the filter opens and the level climbs (linearly, so it's heard all the way)
       f.frequency.exponentialRampToValueAtTime(sweep, t + dur);
-      g.gain.setValueAtTime(0.006, t); g.gain.linearRampToValueAtTime(vol, t + dur * 0.95); g.gain.linearRampToValueAtTime(0, t + dur);
+      g.gain.value = 0; g.gain.setValueAtTime(0.006, t); g.gain.linearRampToValueAtTime(vol, t + dur * 0.95); g.gain.linearRampToValueAtTime(0, t + dur);
     } else env(g, t, vol, 0.001, dur);
     s.connect(f).connect(g).connect(dst);
     s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.05);
+    return g;
+  }
+  // do something on the audio clock (not the wall clock, which keeps going while a context is suspended)
+  function later(t, fn) {
+    const c = ac.createConstantSource(); c.offset.value = 0; c.connect(dipper);
+    c.onended = () => { c.disconnect(); fn(); };
+    c.start(); c.stop(Math.max(ac.currentTime + 0.01, t));
   }
   function kick(t, dst, v) {
     const o = osc("triangle"), g = ac.createGain();
@@ -325,7 +333,9 @@ export function createMusic(ac, out) {
   // seconds; any other song runs its form by itself.
   const VAMP = { name: "vamp", bars: 1, drums: "half", lead: false, arp: true, prog: "A", low: true };
   const BUILD = { name: "build", bars: 2, drums: "build", lead: false, arp: true, prog: "B" };
-  let cur = null, fading = [], lobbyAt = null, timer = null, paused = false;
+  let cur = null, fading = [], timer = null, paused = false, pausedAt = 0, enabled = true;
+  const resumeAt = {}; // where the lobby / board songs were, to pick up there next time
+  const SPEED_BPM = [0, 6, 11, 15, 18, 20, 22, 24], SPEED_KEY = [0, 1, 2, 3, 5]; // the gauntlet's steps, capped
   const firstMain = (secs) => Math.max(0, secs.findIndex((x) => x.drums === "main"));
 
   function newPlayer(which, seed, kind, key, at) {
@@ -336,7 +346,8 @@ export function createMusic(ac, out) {
     const gain = ac.createGain(); gain.connect(bus);
     s.bassGain = ac.createGain(); s.bassGain.connect(gain);
     return { s, gain, name: which, key, step: 0, bar: 0, pb: 0, next: at, k: 0, sec: s.form.secs[0], inSec: 0, first: true,
-      section: "main", driven: false, hot: false, cue: null, dropT: null, buildT: null, allowBuild: false, stopAt: null };
+      section: "main", driven: false, hot: false, cue: null, dropT: null, buildT: null, allowBuild: false, stopAt: null,
+      at, speedNext: null, outroAt: null, riser: null };
   }
   function enter(P, name) {
     const secs = P.s.form.secs;
@@ -349,6 +360,12 @@ export function createMusic(ac, out) {
   function advance(P) {
     const { secs, loop = 0 } = P.s.form;
     P.inSec++; P.pb++; P.first = false;
+    if (P.speedNext != null) { // the gauntlet's speed-up lands on the bar line
+      const l = P.speedNext; P.speedNext = null;
+      P.s.bpm = P.s.baseBpm + SPEED_BPM[Math.min(l, SPEED_BPM.length - 1)];
+      P.s.root = P.s.baseRoot + SPEED_KEY[Math.min(l, SPEED_KEY.length - 1)];
+      P.s.fastHats = l >= SPEED_BPM.length - 1;
+    }
     if (P.cue) { enter(P, P.cue); P.cue = null; return; }
     if (P.sec === VAMP) { P.inSec = 0; return; } // hold until the countdown
     if (P.sec === BUILD) { if (P.dropT == null && P.inSec >= BUILD.bars) enter(P, secs[firstMain(secs)].name); return; }
@@ -372,13 +389,15 @@ export function createMusic(ac, out) {
     const prog = sec.prog === "B" && s.B ? s.B : s.A, deg = prog[pb % prog.length], chord = chordNotes(s, deg);
     const building = sec.drums === "build";
     if (building && P.buildT == null) P.buildT = t;
-    // the build's progress, and the silent beat before the drop (timed to GO when the game set one)
+    // the build's progress and steps left, and the silent beat before the drop (timed to GO when the game set one)
+    const left = !building ? 99 : P.dropT != null ? Math.round((P.dropT - t) / sixteenth) : (sec.bars - inSec) * 16 - i;
     const q = !building ? 0 : P.dropT != null ? Math.min(1, (t - P.buildT) / Math.max(0.1, P.dropT - P.buildT)) : (inSec + i / 16) / sec.bars;
-    const drop = building && (P.dropT != null ? P.dropT - t <= 4 * sixteenth + 0.001 : inSec === sec.bars - 1 && i >= 12);
+    const drop = building && left <= 4;
+    if (P.outroAt != null && t >= P.outroAt - 0.001) { P.section = "outro"; P.outroAt = null; }
     if (P.section === "outro") {
       if (!s.outroDone) { // one last big chord and a crash, on the next step
         s.outroDone = true;
-        const home = chordNotes(s, 0);
+        const home = [s.root, s.root + 4, s.root + 7]; // a major tonic chord (a Picardy third in the minor songs): the win jingle's key
         kick(t, dst, v); snare(t, dst, v, "o"); noiseHit(t, dst, { freq: 6000, type: "highpass", vol: 0.28 * v, dur: 2 });
         for (const n of home) note(t, dst, n + 12, { type: 0.5, vol: 0.06 * v, dur: 6, attack: 0.01 });
         note(t, dst, home[0] + 24, { type: 0.125, vol: 0.07 * v, dur: 5, vibrato: 25 });
@@ -397,23 +416,25 @@ export function createMusic(ac, out) {
       // a crash on each new section (a full fill only in full-drum sections; half-time
       // gets a light one before the next section unless that's a build; a new song opens
       // without a crash)
-      const fill = sec.drums === "main" && (P.hot ? inSec % 2 === 1 : inSec % 4 === 3);
+      const outFill = P.stopAt != null && P.stopAt - t <= 4 * sixteenth + 0.001; // handing over to the next song
+      const fill = sec.drums === "main" && (inSec % 4 === 3 || outFill);
       const lightFill = sec.drums === "half" && sec !== VAMP && inSec === sec.bars - 1 && nextSec?.drums !== "build" && i >= 12;
       const kit = fill ? s.fill : sec.drums === "half" ? HALF : sec.drums === "sparse" ? SPARSE : sec.drums === "none" ? null : s;
       const n = kit === s ? inSec * 16 + i : i; // 32-step breaks run over bar pairs within a section
       if (inSec === 0 && i === 0 && !building && sec !== VAMP && sec.drums !== "none" && !P.first) crash(t, dst, v);
       if (building) { // a roll: 8ths, then 16ths, rising, over a riser; then a silent beat before the drop
-        if (!drop && (q >= 0.5 || i % 2 === 0)) snare(t, dst, v * 0.65 * (0.3 + 0.6 * q), "x", Math.round(q * 9));
+        // 8ths, then 16ths in the last bar, then a beat of rest
+        if (!drop && (left <= 16 || i % 2 === 0)) snare(t, dst, v * 0.55 * (0.3 + 0.6 * q), "x", Math.round(q * 9));
         if (t === P.buildT) {
-          const len = P.dropT != null ? P.dropT - t - 4 * sixteenth : sixteenth * (16 * sec.bars - 4);
-          if (len > 0.3) noiseHit(t, dst, { freq: 400, type: "highpass", vol: 0.14 * v, dur: len, sweep: 5000 });
+          const len = (left - 4) * sixteenth;
+          if (len > 0.3) P.riser = noiseHit(t, dst, { freq: 400, type: "highpass", vol: 0.09 * v, dur: len, sweep: 5000 });
         }
         if (i % 4 === 0 && !drop) kick(t, dst, v * 0.7);
       } else if (kit) {
         if (lightFill) snare(t, dst, v * 0.6, "x", i - 12);
         const k = at(kit.kick, n), sn = at(kit.snare, n);
         let hh = at(kit.hat, n);
-        if (P.hot && kit === s && hh === ".") hh = "g"; // the last seconds: 16th hats
+        if ((P.hot || s.fastHats) && kit === s && i % 4 === 2) hh = "o"; // the last seconds: open hats on the off-beats
         if (k !== ".") { // the kick, and the sub ducks a little under it
           kick(t, dst, v);
           const sc = s.bassGain.gain; sc.setValueAtTime(sc.value, t - 0.003); sc.linearRampToValueAtTime(0.55, t); sc.setTargetAtTime(1, t + 0.015, 0.025);
@@ -426,7 +447,7 @@ export function createMusic(ac, out) {
       if (b !== "." && sec.drums !== "none" && !drop) {
         const seventh = typeof deg === "object" ? 10 : ((scaleOf(s)[(deg + 6) % 7] - scaleOf(s)[deg] + 12) % 12);
         const r = fold(chord[0]), up = b === "o" ? 12 : b === "f" ? 7 : b === "b" ? seventh : 0, bv = sec.low ? 0.6 : 1;
-        note(t, dst, r + 12 + up, { type: 0.25, vol: 0.12 * v * bv, dur: sixteenth * 1.8, cutoff: 1400, from: b === "s" ? r + seventh : null }); // the grit
+        note(t, dst, r + 12 + up, { type: 0.25, vol: 0.12 * v * bv, dur: sixteenth * 1.8, cutoff: P.hot ? 3000 : 1400, from: b === "s" ? r + seventh : null }); // the grit
         note(t, s.bassGain, r + (b === "f" ? 7 : 0), { type: "triangle", vol: 0.24 * v * bv, dur: sixteenth * 1.8, from: b === "s" ? r - 2 : null }); // the sub
       }
       // lead: the song's tune, bar by bar ("call" plays only the first half of each bar)
@@ -444,15 +465,15 @@ export function createMusic(ac, out) {
     }
     // arp: the section says on, off, or "gaps" (only where the lead rests: call and response)
     const leadNow = s.leadAt != null && step - s.leadAt <= 1;
-    if (!drop && at(s.arp, i) !== "." && (intro || P.hot || sec.arp === true || (sec.arp === "gaps" && !leadNow))) {
-      const up = chord.map((n) => n + 24), order = i % 2 ? [up[2], up[1], up[0]] : up;
+    if (!drop && at(s.arp, i) !== "." && (intro || sec.arp === true || (P.hot && sec.arp !== "gaps") || (sec.arp === "gaps" && !leadNow))) {
+      const up = chord.map((n) => { let m = n + 24 + (P.hot ? 12 : 0); while (m > 91) m -= 12; return m; }), order = i % 2 ? [up[2], up[1], up[0]] : up;
       const base = (s.arpVol ?? 0.05) * (s.arpDuty === 0.5 ? 0.7 : 1) * (leadNow ? 0.6 : 1);
       arp(t, dst, order, sixteenth, { duty: s.arpDuty, vol: (intro ? 0.03 + 0.02 * (P.bar + i / 16) : base) * v });
     }
-    if (s.pad && i === 0 && !sec.low && !drop) { // soft held chord (a narrow pulse, filtered); add9 on the calm songs; fuller in a lift
+    if (s.pad && i === 0 && !sec.low && !drop && !P.hot) { // soft held chord (a narrow pulse, filtered); add9 on the calm songs; fuller in a lift
       const tones = s.add9 ? [...chord, degreeNote(s, deg, 1) + 12] : chord;
-      const len = building && P.dropT == null && inSec === sec.bars - 1 ? 11 : 14;
-      for (const n of tones) note(t, dst, n + 12, { type: 0.25, vol: 0.018 * s.pad * v * (intro ? 2 : 1) * (sec.lift ? 1.5 : 1), dur: sixteenth * len, attack: sixteenth * 3, cutoff: 1800 });
+      const len = building && left <= 16 ? Math.max(2, left - 5) : 14; // clear of the silent beat
+      for (const n of tones.map((x) => { let m = x + 12; while (m > 76) m -= 12; return m - 12; })) note(t, dst, n + 12, { type: 0.25, vol: 0.018 * s.pad * v * (intro ? 2 : 1) * (sec.lift ? 1.5 : 1), dur: sixteenth * len, attack: sixteenth * 3, cutoff: 1800 });
     }
   }
   function run(P, ahead) {
@@ -460,6 +481,7 @@ export function createMusic(ac, out) {
     while (P.next < ahead && (P.stopAt == null || P.next < P.stopAt - 0.001)) {
       if (P.dropT != null && P.next >= P.dropT - 0.002) { // GO: the drop lands exactly on it
         P.next = P.dropT; P.dropT = null; P.step = 0; P.bar = s0(P); P.pb = 0; enter(P, P.s.form.secs[firstMain(P.s.form.secs)].name); P.first = false;
+        if (P.next < ac.currentTime) P.next = ac.currentTime + 0.02;
       }
       playStep(P, P.next);
       P.next += 60 / P.s.bpm / 4;
@@ -468,13 +490,19 @@ export function createMusic(ac, out) {
   }
   const s0 = (P) => P.s.intro || 0;
   function schedule() {
-    if (paused || ac.state !== "running") return;
+    if (!cur && !fading.length) { clearInterval(timer); timer = null; return; } // nothing playing: stop ticking
+    if (paused || !enabled || ac.state !== "running") return;
     const ahead = ac.currentTime + 0.12;
-    fading = fading.filter((P) => P.next < P.stopAt - 0.001);
     for (const P of fading) run(P, ahead);
+    fading = fading.filter((P) => {
+      if (P.next < P.stopAt - 0.001) return true;
+      if (P.name === "lobby" || P.name === "board") resumeAt[P.name] = lobbyState(P); // it stopped on a downbeat
+      return false;
+    });
     if (cur) run(cur, ahead);
   }
   const lobbyState = (P) => ({ step: P.step, bar: P.bar, pb: P.pb, k: P.k, sec: P.sec, inSec: P.inSec });
+  const ensureTimer = () => { timer ??= setInterval(schedule, 25); };
 
   return {
     // start a song (or keep the one that's playing if it's the same), on the old one's next downbeat
@@ -483,27 +511,38 @@ export function createMusic(ac, out) {
       if (cur && key === cur.key) return;
       if (!SONGS[which]) return;
       const now = ac.currentTime;
-      let at = now + 0.05;
-      if (cur) {
-        const sx = 60 / cur.s.bpm / 4, left = (16 - (cur.step % 16)) % 16, down = cur.next + left * sx;
-        if (!paused && down - now < 1 && down > now) at = down; // not more than a second away
-        if (cur.name === "lobby") lobbyAt = lobbyState(cur);
+      let at = now + 0.05, onBeat = false;
+      if (cur && cur.next <= cur.at + 0.001) { // the current song hasn't sounded yet: just replace it
+        at = Math.max(at, cur.at); onBeat = true;
+        cur.gain.disconnect(); cur = null;
+      } else if (cur) {
+        const sx = 60 / cur.s.bpm / 4, toBar = (16 - (cur.step % 16)) % 16, toBeat = (4 - (cur.step % 4)) % 4;
+        if (!paused && cur.section !== "outro") { // (after a stinger, straight in)
+          const down = cur.next + toBar * sx, beat = cur.next + toBeat * sx;
+          at = down - now <= 16 * sx + 0.01 ? down : beat; onBeat = true;
+        }
+        if (at < now + 0.02) at = now + 0.05;
         cur.stopAt = at; fading.push(cur);
-        const g = cur.gain.gain; g.setValueAtTime(1, at); g.linearRampToValueAtTime(0.0001, at + 0.5);
-        const old = cur.gain; setTimeout(() => old.disconnect(), (at - now + 0.8) * 1000);
+        const g = cur.gain.gain; g.cancelAndHoldAtTime(at); g.linearRampToValueAtTime(0.0001, at + 0.5);
+        const old = cur.gain; later(at + 0.7, () => old.disconnect());
       }
       const P = newPlayer(which, seed, kind, key, at);
-      if (which === "lobby" && lobbyAt) Object.assign(P, lobbyAt, { first: false });
-      if (which === "game") { P.driven = false; enter(P, "vamp"); } // a game song vamps until the game says go
-      P.gain.gain.setValueAtTime(0.0001, now); P.gain.gain.setValueAtTime(0.3, at); P.gain.gain.linearRampToValueAtTime(1, at + 0.15);
+      if (resumeAt[which]) Object.assign(P, resumeAt[which], { first: false });
+      if (which === "game") enter(P, "vamp"); // a game song vamps until the game says go
+      else if (which !== "lobby") P.first = false; // board and final come in with a crash
+      const g = P.gain.gain; g.value = 0; g.setValueAtTime(0.0001, now);
+      if (onBeat) g.setValueAtTime(1, at); else { g.setValueAtTime(0.3, at); g.linearRampToValueAtTime(1, at + 0.15); }
       cur = P;
-      timer ??= setInterval(schedule, 25);
+      ensureTimer();
       schedule();
     },
     // the countdown: build now, and drop into the groove exactly `secs` from now (on GO)
     countdown(secs) {
       if (!cur || cur.name !== "game") return;
-      cur.driven = true; cur.dropT = ac.currentTime + secs; enter(cur, "build");
+      const dropT = ac.currentTime + secs, sx = 60 / cur.s.bpm / 4;
+      const n = Math.max(0, Math.round((dropT - cur.next) / sx)); // whole steps to GO: the grid lands on it
+      cur.next = dropT - n * sx; cur.step = (16 - (n % 16)) % 16;
+      cur.driven = true; cur.dropT = dropT; enter(cur, "build");
     },
     // GO without a countdown (games that don't use the shared clock): drop on the next beat
     go() {
@@ -513,23 +552,44 @@ export function createMusic(ac, out) {
     // half time: the breakdown (and the build out of it) at the next bar
     half() { if (cur?.driven && !cur.hot) cur.cue = "break"; },
     // the last seconds: hotter (16th hats, fills every 2 bars, arp always on), no breakdowns
-    hot(on = true) { if (!cur || cur.name !== "game") return; cur.hot = on; if (on && (cur.sec.low || cur.sec.drums !== "main")) cur.cue = cur.s.form.secs[firstMain(cur.s.form.secs)].name; },
-    // the gauntlet's speed-ups: +6 bpm and up a semitone each time, WarioWare style
-    speed(level) { if (!cur) return; cur.s.bpm = cur.s.baseBpm + 6 * level; cur.s.root = cur.s.baseRoot + level; },
-    // the end of a game (or the trailer): stop the groove, one last big chord on the next step
-    outro() { if (cur) { cur.section = "outro"; cur.s.outroDone = false; } },
+    // (open off-beat hats, the arp up an octave, a brighter bass, no pad; fills stay every 4 bars)
+    hot(on = true) { if (!cur || cur.name !== "game") return; cur.hot = on; if (on && (cur.sec.low || cur.sec.drums !== "main") && cur.sec !== VAMP && cur.sec !== BUILD) cur.cue = cur.s.form.secs[firstMain(cur.s.form.secs)].name; },
+    // the gauntlet's speed-ups, WarioWare style: faster (capped at +24 bpm, then busier hats) and up in key (up to a 4th), from the next bar
+    speed(level) { if (cur) cur.speedNext = level; },
+    // the end of a game (or the trailer): stop the groove, one last big chord on the next beat
+    outro() {
+      if (!cur || cur.section === "outro") return;
+      const sx = 60 / cur.s.bpm / 4; cur.s.outroDone = false;
+      cur.outroAt = cur.next + ((4 - (cur.step % 4)) % 4) * sx;
+    },
+    // the song's key, so the win / lose jingles can play in it
+    get key() { return cur && { root: cur.s.root, major: ["major", "mixolydian"].includes(cur.s.mode) }; },
+    // music switched off: stop working at it
+    enable(on) { enabled = on; if (on) { for (const P of [cur, ...fading]) if (P) P.next = Math.max(P.next, ac.currentTime + 0.05); } },
     stop() {
       if (!cur) return;
-      if (cur.name === "lobby") lobbyAt = lobbyState(cur);
-      const old = cur.gain; old.gain.setTargetAtTime(0.0001, ac.currentTime, 0.15); setTimeout(() => old.disconnect(), 800);
+      if (cur.name === "lobby" || cur.name === "board") resumeAt[cur.name] = lobbyState(cur);
+      const old = cur.gain; old.gain.setTargetAtTime(0.0001, ac.currentTime, 0.15); later(ac.currentTime + 0.8, () => old.disconnect());
       cur = null;
     },
     // paused: the music ducks and stops in place, and carries on in time after
+    // (every scheduled time shifts by the pause, so a drop still lands on GO)
     pause(on) {
       bus.gain.setTargetAtTime(on ? 0.25 : 1, ac.currentTime, 0.1);
       if (on === paused) return;
       paused = on;
-      if (!on) for (const P of [cur, ...fading]) if (P) P.next = ac.currentTime + 0.05;
+      const now = ac.currentTime;
+      if (on) {
+        pausedAt = now;
+        for (const P of [cur, ...fading]) if (P?.riser) { P.riser.gain.cancelScheduledValues(now); P.riser.gain.setTargetAtTime(0, now, 0.05); P.riser = null; }
+        return;
+      }
+      const d = now + 0.05 - pausedAt;
+      for (const P of [cur, ...fading]) {
+        if (!P) continue;
+        P.next = Math.max(P.next + d, now + 0.05);
+        for (const k of ["dropT", "buildT", "stopAt", "outroAt"]) if (P[k] != null) P[k] += d;
+      }
     },
     duck(down) { this.pause(down); },
     // a quick dip under an important sound effect (depth as a gain, 0.5 = -6 dB)

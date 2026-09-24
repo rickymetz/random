@@ -74,7 +74,10 @@ export default {
             endAt = ck.t + 1.4;
             inst.pending = A.ffaResult([live, ...out.slice().reverse()], live.length ? `${live[0].p.name} survives the potato!` : "Nobody survives!");
             ctx.sfx.win();
-          } else gap = 1.6;
+          } else { // between rounds: a build that drops as the next potato lands
+            gap = 1.6; ctx.music?.countdown(1.6);
+            if (live.length === 2) ctx.music?.hot();
+          }
         }
       },
       draw(g) {

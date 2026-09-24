@@ -170,18 +170,29 @@ export function arena(ctx, o) {
   return A;
 }
 
-/** Common countdown / clock / GO! wrapper for arena games. It also drives the
- *  music: a build over the countdown that drops on GO, the breakdown at half
- *  time, and the hotter layer for the last 10 seconds. */
+/** Music cues from a game's own clock (t runs from -countdown up to total):
+ *  a build over the countdown that drops on GO, the breakdown at half time
+ *  (when it and the build out of it fit before the end), and the hotter
+ *  layer for the last 10 seconds. Call it every update with the game's t. */
+export function musicCues(ctx) {
+  let cue = 0;
+  return (t, total = 0) => {
+    if (cue === 0) { cue = 1; if (t < 0) ctx.music?.countdown(-t); else ctx.music?.go(); }
+    if (!total || t < 0) return;
+    const left = total - t;
+    if (cue === 1 && t >= total / 2 && left > 22) { cue = 2; ctx.music?.half(); }
+    if (cue < 3 && left <= 10) { cue = 3; ctx.music?.hot(); }
+  };
+}
+
+/** Common countdown / clock / GO! wrapper for arena games; it drives the music too. */
 export function clock(ctx, total) {
-  const c = { t: -3, lastTick: 3, total, cue: 0 };
+  const c = { t: -3, lastTick: 3, total }, cues = musicCues(ctx);
   c.tick = (dt) => {
-    if (c.cue === 0) { c.cue = 1; ctx.music?.countdown(-c.t); }
+    cues(c.t, total);
     c.t += dt;
     if (c.t < 0) { if (Math.ceil(-c.t) < c.lastTick) { c.lastTick = Math.ceil(-c.t); ctx.sfx.tick(); } return false; }
     if (c.lastTick > 0) { c.lastTick = 0; ctx.sfx.go(); }
-    if (c.cue === 1 && total >= 30 && c.t >= total / 2) { c.cue = 2; ctx.music?.half(); }
-    if (c.cue < 3 && total - c.t <= 10) { c.cue = 3; ctx.music?.hot(); }
     return true;
   };
   c.left = () => Math.max(0, Math.ceil(total - Math.max(0, c.t)));

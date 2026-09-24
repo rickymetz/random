@@ -5,6 +5,7 @@
 // first, then the infected, latest-turned first.
 
 import { W, H, INK, text, outlined, shout, rrect, circle, blob, tag, countdown, makeSplat, drawSplat } from "../gfx.js";
+import { musicCues } from "./arena.js";
 import { FX, fade } from "../gfx.js";
 
 const TIME = 45, R = 28, SPEED = 230, ZERO_SPEED = 238, IT_SPEED = 205, DASH = 0.28, DASH_MUL = 2.4, DASH_COOL = 2.5;
@@ -19,6 +20,7 @@ export default {
   controls: "Stick to move, DASH to escape (or pounce)",
 
   create(ctx) {
+    const cues = musicCues(ctx);
     const zero = ctx.pickOne();
     const pillars = [];
     for (let tries = 0; pillars.length < 7 && tries < 300; tries++) {
@@ -78,6 +80,7 @@ export default {
         [b.mx, b.my] = b.bot.dir;
       },
       update(dt) {
+        cues(t, TIME); // the music: build over the countdown, drop on GO, half time, the last 10 s
         t += dt;
         if (t < 0) { if (Math.ceil(-t) < lastTick) { lastTick = Math.ceil(-t); ctx.sfx.tick(); } return; }
         if (lastTick > 0) { lastTick = 0; ctx.sfx.go(); }

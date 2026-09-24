@@ -4,6 +4,7 @@
 // after the shot limit, the team with more kings standing wins.
 
 import { W, H, INK, text, outlined, shout, rrect, panel, circle, grid, makeSplat, drawSplat, bomb, blob, tag, shuffle } from "../gfx.js";
+import { musicCues } from "./arena.js";
 import { FX, fade } from "../gfx.js";
 
 const GROUND = 930, B = 48, COLS = 5, GRAV = 1000, BALL = 28, SHOTS = 5, TURN = 15;
@@ -24,6 +25,7 @@ export default {
   controls: "Drag back on your phone, release to launch",
 
   create(ctx) {
+    const cues = musicCues(ctx);
     const shuffled = shuffle([...ctx.players]);
     const teams = [
       { name: "Left", color: "#ff2e63", side: -1, x0: 110, sling: 470, players: [], fort: makeFort(false), shots: 0, turn: 0 },
@@ -117,6 +119,7 @@ export default {
         if (turnT <= botPlan.at) fire(botPlan);
       },
       update(dt) {
+        cues(t, 0); // the music: build over the countdown, drop on GO
         t += dt;
         for (const d of debris) { d.vy += GRAV * dt; d.x += d.vx * dt; d.y += d.vy * dt; d.life -= dt; }
         debris = debris.filter((d) => d.life > 0);

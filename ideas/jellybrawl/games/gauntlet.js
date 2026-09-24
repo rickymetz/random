@@ -581,6 +581,7 @@ export default {
         else if (phase === "judge" && t >= JUDGE) {
           const a = alive();
           if (ctx.duel || a.length === 0 || (ctx.players.length > 1 && a.length <= 1) || n >= MAX_MICROS) return finish();
+          if (a.length === 2 && ctx.players.length > 2) ctx.music?.hot(); // the last two
           if (n % 5 === 0) { speedLevel++; phase = "speedup"; t = 0; ctx.sfx.power(); ctx.music?.speed(speedLevel); for (const pid of a) ctx.layout(pid, { kind: "wait", text: "SPEED UP!", shout: true }); }
           else nextMicro();
         } else if (phase === "speedup" && t >= SPEEDUP) nextMicro();

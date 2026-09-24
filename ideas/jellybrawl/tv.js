@@ -413,7 +413,7 @@ function gameCtx(seats) {
     sfx,
     music, // countdown / half / hot / speed: the game drives its song
     send: (pid, m) => send(byPid(pid), m),
-    shake: (n) => { S.shake = Math.max(S.shake || 0, n); if (n >= 25 && PREFS.motion === 1) S.hitstop = 0.09; }, // big hits freeze a beat
+    shake: (n) => { S.shake = Math.max(S.shake || 0, n); if (n >= 25) { music.dip(120, 0.4); if (PREFS.motion === 1) S.hitstop = 0.09; } }, // big hits freeze a beat, and punch a hole in the music
     buzz: (pid, ms) => send(byPid(pid), { t: "buzz", ms }),
     stat: (pid, k, n) => { const p = byPid(pid); if (p) p.stats[k] = (p.stats[k] || 0) + n; },
     lag: (pid) => Math.min(0.15, (byPid(pid)?.rtt || 0) / 2000), // one-way delay, for timing games
@@ -905,16 +905,18 @@ function syncMusic() {
   const sc = S.scene;
   if (sc === "gate") return;
   if (sc !== lastScene) {
-    if ((lastScene === "game" || lastScene === "duel") && sc !== "intro") { music.outro(); stinger = true; }
+    const real = !(sc === "results" && S.result?.skipped);
+    if ((lastScene === "game" || lastScene === "duel") && sc !== "intro" && real) { music.outro(); stinger = true; } // no fanfare for a skipped game
     if (sc === "game" || sc === "duel") goCheck = performance.now() + 400;
     lastScene = sc;
   }
   if (goCheck && performance.now() > goCheck) { goCheck = 0; music.go(); } // no countdown came: drop now
+  if (sc === "game" && finalDouble() && music.state?.section === "A" && !music.state.hot) music.hot(); // the double-points final round runs hot
   if (stinger && S.t < 2.2 && (sc === "results" || sc === "board" || sc === "final")) return; // let it ring
   stinger = false;
   if (sc === "intro" || sc === "game") music.play("game", S.def?.id || "game", S.def?.kind); // the mood from the kind of game
   else if (sc === "duel") music.play("game", "duel");
-  else if (sc === "board" || (S.mode === "board" && sc === "results")) music.play("board", S.round); // a new tune each round
+  else if (sc === "board" || (S.mode === "board" && sc === "results")) music.play("board", S.round + (sc === "results" ? 1 : 0)); // a new tune each round (results already has the next one)
   else if (sc === "final") music.play("final");
   else music.play("lobby");
   if (!!S.paused !== ducked) { ducked = !!S.paused; music.pause(ducked); }

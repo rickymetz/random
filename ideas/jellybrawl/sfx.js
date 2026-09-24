@@ -33,6 +33,7 @@ export function setMix(m) {
   if (!ac) return;
   fxBus.gain.setTargetAtTime(mix.sfx, ac.currentTime, 0.05);
   musicBus.gain.setTargetAtTime(MUSIC_LEVEL * mix.music, ac.currentTime, 0.1);
+  tune?.enable(mix.music > 0); // music off: don't keep synthesising it at zero volume
 }
 
 export const music = {
@@ -47,6 +48,7 @@ export const music = {
   hot(on) { tune?.hot(on); },
   speed(level) { tune?.speed(level); },
   outro() { tune?.outro(); },
+  dip(ms, depth) { tune?.dip(ms, depth); },
   get state() { return tune?.state; },
 };
 
@@ -124,6 +126,12 @@ function voiced(name, fn, { max = 3, dip = 0, depth = 0.5, group = null } = {}) 
   };
 }
 
+// a note st semitones over the song's tonic, around C5 (C major before any song)
+function jingleHz(st) {
+  const root = tune?.key?.root ?? 60, base = 60 + (((root - 60) % 12) + 12) % 12;
+  return 440 * 2 ** ((base + st - 69) / 12);
+}
+
 const RAW = {
   whoosh: () => { noise(0.25, 0.08); tone(300, 0.25, { type: "sawtooth", slide: 900, vol: 0.03 }); },
   slam: () => { tone(90, 0.3, { type: "square", slide: -50, vol: 0.12 }); tone(180, 0.22, { type: "square", slide: -90, vol: 0.06 }); noise(0.15, 0.2); }, // the 180 Hz layer reads on TV speakers
@@ -137,11 +145,12 @@ const RAW = {
   power: () => [0, 0.07, 0.14].forEach((d, i) => tone(440 * (1 + i * 0.5), 0.1, { type: "triangle", delay: d })),
   tick: () => tone(1000, 0.05, { type: "sine", vol: 0.09 }),
   go: () => tone(880, 0.3, { type: "square", vol: 0.085 }),
-  win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.18, { type: "triangle", delay: i * 0.1, vol: 0.11 })),
-  lose: () => [392, 330, 262].forEach((f, i) => tone(f, 0.2, { type: "triangle", delay: i * 0.12, vol: 0.085 })),
+  // the jingles play in the song's key (a major arpeggio up for a win, a minor one down for a loss)
+  win: () => [0, 4, 7, 12].forEach((st, i) => tone(jingleHz(st), 0.18, { type: "triangle", delay: i * 0.1, vol: 0.11 })),
+  lose: () => [7, 3, 0].forEach((st, i) => tone(jingleHz(st), 0.2, { type: "triangle", delay: i * 0.12, vol: 0.085 })),
 };
 
-// the jingles and GO dip the music so they cut through; busy ones are capped harder
-// (slam and hit already sit well above the music; the jingles and GO need the room)
-const CUES = { slam: { max: 1 }, win: { group: "stinger", dip: 650 }, lose: { group: "stinger", dip: 650 }, go: { dip: 350, max: 1 }, power: { max: 2 }, dot: { max: 2 }, crunch: { max: 2 }, flap: { max: 2 } };
+// the jingles dip the music so they cut through; busy ones are capped harder
+// (slam and hit already sit well above the music; GO lands on the music's drop, which carries it)
+const CUES = { slam: { max: 1 }, win: { group: "stinger", dip: 650 }, lose: { group: "stinger", dip: 650 }, go: { max: 1 }, power: { max: 2 }, dot: { max: 2 }, crunch: { max: 2 }, flap: { max: 2 } };
 export const sfx = Object.fromEntries(Object.entries(RAW).map(([k, fn]) => [k, voiced(k, fn, CUES[k])]));

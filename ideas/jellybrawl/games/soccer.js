@@ -65,7 +65,7 @@ export default {
           }
           if ((side === 0 ? ball.x < lim + BALL_R : ball.x > lim - BALL_R) && !inMouth) { ball.x = side === 0 ? lim + BALL_R : lim - BALL_R; ball.vx = -ball.vx * 0.8; }
         }
-        if (ck.t >= TIME && !overtime && score[0] === score[1]) { overtime = true; flash = { team: -1, t: 0 }; ctx.sfx.slam(); ctx.shake(18); kickoff(); return; }
+        if (ck.t >= TIME && !overtime && score[0] === score[1]) { overtime = true; flash = { team: -1, t: 0 }; ctx.sfx.slam(); ctx.shake(18); ctx.music?.countdown(1); kickoff(); return; }
         if (ck.t >= (overtime ? TIME + OT : TIME)) finish();
       },
       draw(g) {

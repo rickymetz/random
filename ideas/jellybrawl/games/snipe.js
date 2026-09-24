@@ -19,6 +19,7 @@
 // runner. The sniper role rotates.
 
 import { W, H, INK, text, outlined, shout, rrect, circle, blob, tag, countdown, makeSplat, drawSplat } from "../gfx.js";
+import { musicCues } from "./arena.js";
 import { FX, fade } from "../gfx.js";
 
 const BOUNCE = 0.7, KNOCK_DAMP = 5; // solid blobs: restitution, and how fast a shove fades (1/s)
@@ -73,6 +74,7 @@ function makeSniper(V) {
     id: V.id, title: V.title, command: V.command, kind: V.kind, min: V.min, max: V.max, blurb: V.blurb, controls: V.controls,
 
     create(ctx) {
+    const cues = musicCues(ctx);
       const sniperPid = ctx.pickOne();
       const sniper = ctx.players.find((p) => p.pid === sniperPid);
       const runnersP = ctx.players.filter((p) => p !== sniper);
@@ -357,6 +359,7 @@ function makeSniper(V) {
           if (d < 10) { r.bot.goal = null; r.mx = r.my = 0; } else { const k = 0.6 + 0.3 * Math.random(); r.mx = (dx / d) * k; r.my = (dy / d) * k; }
         },
         update(dt) {
+          cues(t, TIME); // the music: build over the countdown, drop on GO, half time, the last 10 s
           t += dt;
           if (t < 0) { if (Math.ceil(-t) < lastTick) { lastTick = Math.ceil(-t); ctx.sfx.tick(); } return; }
           if (lastTick > 0) { lastTick = 0; ctx.sfx.go(); }
