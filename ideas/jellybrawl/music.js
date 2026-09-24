@@ -164,8 +164,8 @@ const SONGS = {
   trailer: () => ({
     bpm: 1200 / 7, root: 45, mode: "minor", A: [0, 5, 2, 6], B: [5, 6, 0, 0], vol: 1, intro: 1, introLevel: -5, arpRange: 65,
     form: { loop: 0, secs: [
-      { name: "A", bars: 4, drums: "main", lead: true, arp: true, prog: "A", level: -2 },
-      { name: "A2", bars: 4, drums: "main", lead: true, arp: true, prog: "A", open: true, level: -1 }, // open hats: A climbs
+      { name: "A", bars: 4, drums: "main", lead: true, arp: true, prog: "A", level: -3.5 },
+      { name: "A2", bars: 4, drums: "main", lead: true, arp: true, prog: "A", open: true, level: -2.5 }, // open hats: A climbs
       { name: "breath", bars: 2, drums: "breath", lead: "call", arp: false, prog: "A", low: true, level: -2 },
       { name: "build", bars: 2, drums: "build", lead: false, arp: true, chords: [3, E_MAJ], level: -7, rise: true },
       { name: "B", bars: 6, drums: "main", lead: true, leadUp: 12, arp: true, arpDouble: true, bass: "synco", prog: "B", lift: true, open: true, level: 1.5 },
@@ -173,6 +173,9 @@ const SONGS = {
       { name: "card", bars: 2, end: true, level: -9 }, // (the glue and limiter pull it back up) // the end card: one big chord (the song ends here)
     ] },
     ...BEATS.amen, bass: BASSES.rolling, lead: "x..x..x.x.x.x...", leadSeed: 11, leadDuty: 0.25, echo: true,
+    // the hook climbs the minor triad (A C E A), which the end card's sound logo answers in major (A C# E A)
+    hook: [[[0, 0], [3, 2], [6, 4], [8, 7], [10, 6], [12, 4]], [[0, 2], [3, 4], [6, 5], [8, 7], [10, 5], [12, 4]],
+      [[0, 4], [3, 6], [6, 7], [8, 9], [10, 7], [12, 6]], [[0, 6], [3, 4], [6, 2], [8, 1]]],
     arp: "xxxxxxxxxxxxxxxx", arpDuty: 0.5, pad: 0.6,
   }),
 };
@@ -287,7 +290,9 @@ export function createMusic(ac, out) {
   function hat(t, dst, v, kind) {
     noiseHit(t, dst, { freq: 9000, type: "highpass", vol: (kind === "o" ? 0.1 : kind === "g" ? 0.03 : 0.06) * v, dur: kind === "o" ? 0.12 : 0.025 });
   }
-  function crash(t, dst, v) { noiseHit(t, dst, { freq: 7000, type: "highpass", vol: 0.12 * v, dur: 1.4 }); }
+  // a crash: shorter in the game (a long wash masks the effects), and softer for reduced motion
+  let soft = false;
+  function crash(t, dst, v, dur = 1.1) { noiseHit(t, dst, { freq: soft ? 5000 : 7000, type: "highpass", vol: (soft ? 0.06 : 0.12) * v, dur }); }
   function note(t, dst, midi, { type, vol, dur, cutoff = 0, attack = 0.003, vibrato = 0, from = null, ring = false }) {
     const o = osc(type), g = ac.createGain();
     if (from != null) { o.frequency.setValueAtTime(hz(from), t); o.frequency.exponentialRampToValueAtTime(hz(midi), t + 0.05); } // a slide into the note
@@ -356,7 +361,7 @@ export function createMusic(ac, out) {
   function newPlayer(which, seed, kind, key, at) {
     const s = SONGS[which](seed, kind);
     s.fill = FILLS[hash(`${which}${seed}`) % FILLS.length];
-    if (s.lead) s.tune = melody(s.leadSeed || hash(seed) || 1, s.lead);
+    if (s.lead) s.tune = s.hook || melody(s.leadSeed || hash(seed) || 1, s.lead); // a song can bring its own tune
     s.baseBpm = s.bpm; s.baseRoot = s.root;
     const gain = ac.createGain(); gain.connect(bus);
     s.bassGain = ac.createGain(); s.bassGain.connect(gain);
@@ -500,7 +505,8 @@ export function createMusic(ac, out) {
           const later = line.find(([st]) => st > i), len = Math.min(sixteenth * 3, ((later ? later[0] : 16) - i) * sixteenth * 0.9);
           let m = leadNote(s, deg, hit[1], i);
           if (sec.leadUp && m + sec.leadUp <= 96) m += sec.leadUp;
-          note(t, dst, m, { type: s.leadDuty || 0.25, vol: 0.085 * v, dur: len, vibrato: len > 0.2 ? 20 : 0, cutoff: 5000 });
+          const scoop = pb % 4 === 0 && i === line[0][0] && !soft; // the chip bend: a phrase slides up into its first note
+          note(t, dst, m, { type: s.leadDuty || 0.25, vol: 0.085 * v, dur: len, vibrato: len > 0.2 ? 20 : 0, cutoff: 5000, from: scoop ? m - 2 : null });
           const clash = line.some(([st]) => st > i && st <= i + 4); // the echo only in the tune's gaps, an octave down
           if (s.echo && !clash) note(t + sixteenth * 3, dst, m - 12, { type: s.leadDuty || 0.25, vol: 0.035 * v, dur: len * 0.8, cutoff: 3000 });
           s.leadAt = step;
@@ -641,6 +647,7 @@ export function createMusic(ac, out) {
     },
     duck(down) { this.pause(down); },
     // a quick dip under an important sound effect (depth as a gain, 0.5 = -6 dB)
+    soft(on) { soft = !!on; },
     dip(ms = 250, depth = 0.5) {
       const t = ac.currentTime, g = dipper.gain;
       g.cancelScheduledValues(t); g.setTargetAtTime(depth, t, 0.015); g.setTargetAtTime(1, t + ms / 1000, 0.08);

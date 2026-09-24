@@ -11,13 +11,17 @@ import { createMusic, masterChain } from "./music.js";
 
 const MUSIC_LEVEL = 0.5;
 let ac = null, master = null, fxBus = null, musicBus = null, tune = null;
-let mix = { sfx: 1, music: 1 }, want = null; // the song asked for before audio was unlocked
+let mix = { sfx: 1, music: 1, soft: false }, want = null; // the song asked for before audio was unlocked
+let soften = null; // the effects' tone control: open, or rounded off for reduced motion
 export function unlock() {
   try {
     if (!ac) {
       ac = new (window.AudioContext || window.webkitAudioContext)();
-      master = ac.createGain(); master.connect(masterChain(ac, ac.destination));
-      fxBus = ac.createGain(); fxBus.connect(master);
+      // a gentle cap on the very top (a TV's tweeter makes noise hats and pulse edges fizz)
+      const cap = ac.createBiquadFilter(); cap.type = "lowpass"; cap.frequency.value = 12000; cap.Q.value = 0.5;
+      master = ac.createGain(); master.connect(cap).connect(masterChain(ac, ac.destination));
+      soften = ac.createBiquadFilter(); soften.type = "lowpass"; soften.frequency.value = 20000; soften.Q.value = 0.5; soften.connect(master);
+      fxBus = ac.createGain(); fxBus.connect(soften);
       musicBus = ac.createGain(); musicBus.gain.value = MUSIC_LEVEL; musicBus.connect(master);
       tune = createMusic(ac, musicBus);
       setMix(mix);
@@ -27,12 +31,15 @@ export function unlock() {
   } catch { ac = null; }
 }
 
-// { sfx: 0..1, music: 0..1 }
+// { sfx: 0..1, music: 0..1, soft: rounder attacks and no bright edges (reduced motion) }
+// The levels are steps a listener picks, so they're heard as loudness: squared.
 export function setMix(m) {
   mix = { ...mix, ...m };
   if (!ac) return;
-  fxBus.gain.setTargetAtTime(mix.sfx, ac.currentTime, 0.05);
-  musicBus.gain.setTargetAtTime(MUSIC_LEVEL * mix.music, ac.currentTime, 0.1);
+  fxBus.gain.setTargetAtTime(mix.sfx ** 2, ac.currentTime, 0.05);
+  musicBus.gain.setTargetAtTime(MUSIC_LEVEL * mix.music ** 2, ac.currentTime, 0.1);
+  soften.frequency.setTargetAtTime(mix.soft ? 4500 : 20000, ac.currentTime, 0.05);
+  tune?.soft(mix.soft);
   tune?.enable(mix.music > 0); // music off: don't keep synthesising it at zero volume
 }
 
@@ -122,7 +129,7 @@ function tone(freq, dur, { type = "square", vol = 0.08, slide = 0, delay = 0, to
   if (slide || to) o.frequency.exponentialRampToValueAtTime(Math.max(30, to ?? freq + slide), t + dur);
   g.gain.value = 0;
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol * place.amp, t + 0.003); // a 3 ms attack: no click
+  g.gain.exponentialRampToValueAtTime(vol * place.amp, t + (mix.soft ? 0.012 : 0.003)); // a 3 ms attack: no click (softer still for reduced motion)
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g); out(g);
   o.start(t);
@@ -143,9 +150,9 @@ function noise(dur, vol = 0.15, { lowpass = 0, highpass = 0, delay = 0, sweep = 
   s.buffer = noiseBuf; s.playbackRate.value = 2 ** (place.cents / 1200);
   g.gain.value = 0;
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol * place.amp, t + (sweep ? dur * 0.9 : 0.002));
+  g.gain.exponentialRampToValueAtTime(vol * place.amp * (mix.soft ? 0.7 : 1), t + (sweep ? dur * 0.9 : mix.soft ? 0.01 : 0.003));
   if (sweep) g.gain.linearRampToValueAtTime(0, t + dur);
-  else g.gain.setTargetAtTime(0, t + 0.002, dur / 3); // a natural decay: noise keeps its body
+  else g.gain.setTargetAtTime(0, t + 0.003, dur / 3); // a natural decay: noise keeps its body
   let head = s;
   if (lowpass || highpass) {
     const f = ac.createBiquadFilter(); f.type = lowpass ? "lowpass" : "highpass"; f.frequency.value = lowpass || highpass;

@@ -66,19 +66,21 @@ const SETTINGS = {
   marks: { label: "Colour-blind shapes", values: [false, true], names: { false: "Off", true: "On" } },
   bright: { label: "Brightness boost", values: [false, true], names: { false: "Off", true: "On" } },
   haptics: { label: "Phone buzz", values: [true, false], names: { true: "On", false: "Off" } },
-  music: { label: "Music", values: [true, false], names: { true: "On", false: "Off" } },
-  sounds: { label: "Sound effects", values: [true, false], names: { true: "On", false: "Off" } },
+  music: { label: "Music", values: [1, 0.6, 0.3, 0], names: { 1: "High", 0.6: "Medium", 0.3: "Low", 0: "Off" } },
+  sounds: { label: "Sound effects", values: [1, 0.6, 0.3, 0], names: { 1: "High", 0.6: "Medium", 0.3: "Low", 0: "Off" } },
 };
 function loadSettings() {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem("jb-settings") || "{}"); } catch {}
   const reduced = matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  return { motion: reduced ? "reduced" : "full", crt: "full", text: 1, marks: false, bright: false, haptics: true, music: true, sounds: true, ...saved };
+  const o = { motion: reduced ? "reduced" : "full", crt: "full", text: 1, marks: false, bright: false, haptics: true, music: 1, sounds: 1, ...saved };
+  for (const k of ["music", "sounds"]) if (typeof o[k] === "boolean") o[k] = o[k] ? 1 : 0; // saved when these were on/off
+  return o;
 }
 function applySettings() {
   PREFS.motion = S.opt.motion === "reduced" ? 0.25 : 1;
   PREFS.marks = S.opt.marks; PREFS.text = S.opt.text;
-  setMix({ music: S.opt.music ? 1 : 0, sfx: S.opt.sounds ? 1 : 0 });
+  setMix({ music: S.opt.music, sfx: S.opt.sounds, soft: S.opt.motion === "reduced" }); // reduced motion: softer hits too
   try { localStorage.setItem("jb-settings", JSON.stringify(S.opt)); } catch {}
 }
 const BOT_NAMES = ["Wobbles", "Gloop", "Jiggly", "Squish", "Blorp", "Mochi", "Puddin", "Boing"];
