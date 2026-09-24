@@ -41,6 +41,7 @@ const BEATS = {
   think: { kick: "x.........x.x...x......x..x.....", snare: "....o..g.go..o.g....o..g..g.o.gg", hat: "xgx.xgx.xgxox.x.xgx.xgx.xgx.xox." },
 };
 const HALF = { kick: "x.........x.....", snare: "........o.......", hat: "x.x.x.x.x.x.x.xo" }; // half-time: the snare on 3
+const BREATH = { kick: "x...............", snare: "........g.......", hat: "x...x...x...x..." }; // one kick a bar: the low end empties out
 const SPARSE = { kick: "x...............", snare: "................", hat: "..x...x...x...x." }; // hats and a pulse
 const FILLS = [
   { kick: "x.........x.....", snare: "....o...o.gooooo", hat: "x.x.x.x.x.x....." },
@@ -163,12 +164,12 @@ const SONGS = {
   trailer: () => ({
     bpm: 1200 / 7, root: 45, mode: "minor", A: [0, 5, 2, 6], B: [3, 4, 0, 0], vol: 1, intro: 2,
     form: { loop: 0, secs: [
-      { name: "A", bars: 8, drums: "main", lead: true, arp: true, prog: "A" },
-      { name: "breath", bars: 2, drums: "half", lead: "call", arp: false, prog: "A", low: true },
-      { name: "build", bars: 2, drums: "build", lead: false, arp: true, prog: "B" },
-      { name: "B", bars: 5, drums: "main", lead: true, arp: "gaps", prog: "B", lift: true, open: true },
-      { name: "build", bars: 2, drums: "build", lead: false, arp: true, prog: "A" },
-      { name: "A", bars: 8, drums: "main", lead: true, arp: true, prog: "A" },
+      { name: "A", bars: 8, drums: "main", lead: true, arp: true, prog: "A", level: -1.5 },
+      { name: "breath", bars: 2, drums: "breath", lead: "call", arp: false, prog: "A", low: true, level: -2 },
+      { name: "build", bars: 2, drums: "build", lead: false, arp: true, prog: "B", level: -4, rise: true },
+      { name: "B", bars: 5, drums: "main", lead: true, leadUp: 12, arp: true, arpDouble: true, bass: "synco", prog: "B", lift: true, open: true, level: 0 },
+      { name: "build", bars: 2, drums: "build", lead: false, arp: true, prog: "A", level: -4, rise: true },
+      { name: "card", bars: 2, end: true, level: 0 }, // the end card: one big chord (the song ends here)
     ] },
     ...BEATS.amen, bass: BASSES.rolling, lead: "x..x..x.x.x.x...", leadSeed: 11, leadDuty: 0.25, echo: true,
     arp: "xxxxxxxxxxxxxxxx", arpDuty: 0.5, pad: 0.6,
@@ -203,10 +204,10 @@ function melody(seed, rhythm) {
 // recorder's): a limiter, a trim for the compressor's own automatic makeup
 // gain, then a gentle soft clip that catches the few overs a Web Audio
 // compressor (not a brickwall) lets through. Returns the node to connect into.
-export function masterChain(ac, dest) {
+export function masterChain(ac, dest, { trim: level = 0.84, release = 0.08 } = {}) {
   const limit = ac.createDynamicsCompressor(), trim = ac.createGain(), clip = ac.createWaveShaper();
-  limit.threshold.value = -3; limit.knee.value = 0; limit.ratio.value = 20; limit.attack.value = 0.001; limit.release.value = 0.08;
-  trim.gain.value = 0.84;
+  limit.threshold.value = -3; limit.knee.value = 0; limit.ratio.value = 20; limit.attack.value = 0.001; limit.release.value = release;
+  trim.gain.value = level;
   const curve = new Float32Array(1025);
   for (let i = 0; i < curve.length; i++) { const x = (i / 512) - 1; curve[i] = Math.abs(x) < 0.8 ? x : Math.sign(x) * (0.8 + 0.15 * Math.tanh((Math.abs(x) - 0.8) / 0.15)); }
   clip.curve = curve; clip.oversample = "4x";
@@ -238,11 +239,12 @@ export function createMusic(ac, out) {
 
 
   // ------------------------------------------------------------ instruments
-  function env(g, t, peak, a, d) {
+  function env(g, t, peak, a, d, ring = false) {
     g.gain.value = 0; // not the default 1 for a sample before the first event
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + a);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
+    if (ring) { g.gain.setTargetAtTime(0, t + a, d / 3); g.gain.linearRampToValueAtTime(0, t + a + d); } // a slower, bell-like fade that holds on
+    else g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
   }
   function osc(type) {
     const o = ac.createOscillator();
@@ -285,7 +287,7 @@ export function createMusic(ac, out) {
     noiseHit(t, dst, { freq: 9000, type: "highpass", vol: (kind === "o" ? 0.1 : kind === "g" ? 0.03 : 0.06) * v, dur: kind === "o" ? 0.12 : 0.025 });
   }
   function crash(t, dst, v) { noiseHit(t, dst, { freq: 7000, type: "highpass", vol: 0.12 * v, dur: 1.4 }); }
-  function note(t, dst, midi, { type, vol, dur, cutoff = 0, attack = 0.003, vibrato = 0, from = null }) {
+  function note(t, dst, midi, { type, vol, dur, cutoff = 0, attack = 0.003, vibrato = 0, from = null, ring = false }) {
     const o = osc(type), g = ac.createGain();
     if (from != null) { o.frequency.setValueAtTime(hz(from), t); o.frequency.exponentialRampToValueAtTime(hz(midi), t + 0.05); } // a slide into the note
     else o.frequency.value = hz(midi);
@@ -294,7 +296,7 @@ export function createMusic(ac, out) {
       lfo.frequency.value = 6; depth.gain.setValueAtTime(0, t); depth.gain.linearRampToValueAtTime(vibrato, t + Math.min(0.25, dur * 0.6));
       lfo.connect(depth).connect(o.detune); lfo.start(t); lfo.stop(t + attack + dur + 0.05);
     }
-    env(g, t, vol, attack, dur);
+    env(g, t, vol, attack, dur, ring);
     if (cutoff) { const f = ac.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = cutoff; o.connect(f).connect(g); }
     else o.connect(g);
     g.connect(dst); o.start(t); o.stop(t + attack + dur + 0.05);
@@ -391,11 +393,27 @@ export function createMusic(ac, out) {
       }
       if (secs[k].name === "build") P.allowBuild = false;
     }
-    P.k = k; P.sec = secs[k]; P.inSec = 0;
+    P.prevBuild = P.sec?.drums === "build"; P.k = k; P.sec = secs[k]; P.inSec = 0;
   }
 
+  const dbGain = (db) => 10 ** (db / 20);
+  // the one big chord (with the win jingle's arpeggio over it: the game's sound logo)
+  function hitOutro(s, t, dst, v, len = 2.6) {
+    const home = [s.root, s.root + 4, s.root + 7]; // a major tonic chord (a Picardy third in the minor songs)
+    kick(t, dst, v); snare(t, dst, v, "o"); noiseHit(t, dst, { freq: 6000, type: "highpass", vol: 0.28 * v, dur: Math.min(2, len) });
+    for (const n of home) note(t, dst, n + 12, { type: 0.5, vol: 0.045 * v, dur: len, attack: 0.01, ring: true });
+    [0, 4, 7, 12].forEach((st, k) => note(t + k * 0.09, dst, home[0] + 24 + st, { type: 0.25, vol: 0.06 * v, dur: k === 3 ? len * 0.8 : 0.2, vibrato: k === 3 ? 25 : 0, ring: k === 3 }));
+    note(t, dst, fold(home[0]), { type: "triangle", vol: 0.12 * v, dur: len, ring: true });
+    note(t, dst, fold(home[0]) + 12, { type: 0.25, vol: 0.08 * v, dur: len * 0.8, cutoff: 1800, ring: true }); // harmonics a phone speaker can play
+  }
   function playStep(P, t) {
     const s = P.s, dst = P.gain, i = P.step % 16, v = s.vol, sixteenth = 60 / s.bpm / 4, step = P.step;
+    if (i === 0 && P.inSec === 0 && P.sec.level != null && !(s.intro && P.bar < s.intro)) {
+      const g = P.gain.gain, from = dbGain(P.sec.level);
+      g.cancelScheduledValues(t); g.setTargetAtTime(from, t, 0.02);
+      if (P.sec.rise) g.linearRampToValueAtTime(1, t + P.sec.bars * 16 * sixteenth - 4 * sixteenth); // a build climbs to full
+    }
+    if (P.sec.end) { if (P.inSec === 0 && i === 0 && !P.ended) { P.ended = true; hitOutro(s, t, dst, v, P.sec.bars * 16 * sixteenth + 0.9); } return; } // rings through the card and the fade after it
     const intro = s.intro && P.bar < s.intro, sec = P.sec, inSec = P.inSec, pb = P.pb;
     const { secs, loop = 0 } = s.form, nextSec = P.k >= 0 ? secs[P.k + 1] || secs[loop] : null;
     const prog = sec.prog === "B" && s.B ? s.B : s.A, deg = prog[pb % prog.length], chord = chordNotes(s, deg);
@@ -407,17 +425,11 @@ export function createMusic(ac, out) {
     const drop = building && left <= 4;
     if (P.outroAt != null && t >= P.outroAt - 0.001) { P.section = "outro"; P.outroAt = null; }
     if (P.section === "outro") {
-      if (!s.outroDone) { // one last big chord and a crash, on the next step
-        s.outroDone = true;
-        const home = [s.root, s.root + 4, s.root + 7]; // a major tonic chord (a Picardy third in the minor songs): the win jingle's key
-        kick(t, dst, v); snare(t, dst, v, "o"); noiseHit(t, dst, { freq: 6000, type: "highpass", vol: 0.28 * v, dur: 2 });
-        for (const n of home) note(t, dst, n + 12, { type: 0.5, vol: 0.06 * v, dur: 6, attack: 0.01 });
-        note(t, dst, home[0] + 24, { type: 0.125, vol: 0.07 * v, dur: 5, vibrato: 25 });
-        note(t, dst, fold(home[0]), { type: "triangle", vol: 0.3 * v, dur: 6 });
-      }
+      if (!s.outroDone) { s.outroDone = true; hitOutro(s, t, dst, v, 4); } // one last big chord, on the beat
       return;
     }
     if (intro) {
+      if (i === 0 && P.bar === 0) { note(t, s.bassGain, fold(chord[0]), { type: "triangle", vol: 0.3 * v, dur: 0.6, from: fold(chord[0]) + 12 }); crash(t, dst, v); } // the logo lands
       if (i === 0) note(t, dst, fold(chord[0]) + 12, { type: "triangle", vol: 0.26 * v, dur: sixteenth * 14 });
       if (P.bar === s.intro - 1 && i < 15) { // the bar before the drop: a roll that speeds up (8ths, 16ths, 32nds) and rises; then a silent step
         hat(t, dst, v * (0.5 + i / 16), "x");
@@ -432,9 +444,12 @@ export function createMusic(ac, out) {
       const outFill = P.stopAt != null && P.stopAt - t <= 4 * sixteenth + 0.001; // handing over to the next song
       const fill = sec.drums === "main" && (inSec % 4 === 3 || outFill);
       const lightFill = sec.drums === "half" && sec !== VAMP && inSec === sec.bars - 1 && nextSec?.drums !== "build" && i >= 12;
-      const kit = fill ? s.fill : sec.drums === "half" ? HALF : sec.drums === "sparse" ? SPARSE : sec.drums === "none" ? null : s;
+      const kit = fill ? s.fill : sec.drums === "half" ? HALF : sec.drums === "breath" ? BREATH : sec.drums === "sparse" ? SPARSE : sec.drums === "none" ? null : s;
       const n = kit === s ? inSec * 16 + i : i; // 32-step breaks run over bar pairs within a section
-      if (inSec === 0 && i === 0 && !building && sec !== VAMP && sec.drums !== "none" && !P.first) crash(t, dst, v);
+      if (inSec === 0 && i === 0 && !building && sec !== VAMP && sec.drums !== "none" && !P.first) {
+        if (P.prevBuild) { noiseHit(t, dst, { freq: 7000, type: "highpass", vol: 0.14 * v, dur: 2.5 }); note(t, s.bassGain, fold(chord[0]) - 12 + 12, { type: "triangle", vol: 0.35 * v, dur: 0.5, from: fold(chord[0]) + 12 }); } // the drop lands
+        else crash(t, dst, v);
+      }
       if (building) { // a roll: 8ths, then 16ths, rising, over a riser; then a silent beat before the drop
         // 8ths, then 16ths in the last bar, then a beat of rest
         if (!drop && (left <= 16 || i % 2 === 0)) snare(t, dst, v * 0.55 * (0.3 + 0.6 * q), "x", Math.round(q * 9));
@@ -443,7 +458,15 @@ export function createMusic(ac, out) {
           const len = (left - 4) * sixteenth;
           if (len > 0.3) P.riser = noiseHit(t, dst, { freq: 400, type: "highpass", vol: 0.09 * v, dur: len, sweep: 5000 });
         }
-        if (i % 4 === 0 && !drop) kick(t, dst, v * 0.7);
+        if (!drop && (left <= 16 ? i % 2 === 0 : i % 4 === 0)) kick(t, dst, v * 0.7); // 8ths in the last bar
+        if (t === P.buildT && sec.rise) { // a pitched riser under the noise one
+          const len = (left - 4) * sixteenth, o = osc(0.5), g = ac.createGain();
+          if (len > 0.3) {
+            o.frequency.setValueAtTime(hz(s.root + 12), t); o.frequency.exponentialRampToValueAtTime(hz(s.root + 36), t + len);
+            g.gain.value = 0; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.04 * v, t + len); g.gain.linearRampToValueAtTime(0, t + len + 0.01);
+            o.connect(g).connect(dst); o.start(t); o.stop(t + len + 0.05);
+          }
+        }
       } else if (kit) {
         if (lightFill) snare(t, dst, v * 0.6, "x", i - 12);
         const k = at(kit.kick, n), sn = at(kit.snare, n);
@@ -457,19 +480,20 @@ export function createMusic(ac, out) {
         if (hh !== ".") hat(t, dst, v, hh);
       }
       // bass
-      const b = at(s.bass, i);
-      if (b !== "." && sec.drums !== "none" && !drop) {
+      const b = at(sec.bass ? BASSES[sec.bass] : s.bass, i);
+      if (b !== "." && sec.drums !== "none" && !drop && (!building || left <= 16)) { // (a build keeps its bass for the last bar)
         const seventh = typeof deg === "object" ? 10 : ((scaleOf(s)[(deg + 6) % 7] - scaleOf(s)[deg] + 12) % 12);
         const r = fold(chord[0]), up = b === "o" ? 12 : b === "f" ? 7 : b === "b" ? seventh : 0, bv = sec.low ? 0.6 : 1;
-        note(t, dst, r + 12 + up, { type: 0.25, vol: 0.12 * v * bv, dur: sixteenth * 1.8, cutoff: P.hot ? 3000 : 1400, from: b === "s" ? r + seventh : null }); // the grit
-        note(t, s.bassGain, r + (b === "f" ? 7 : 0), { type: "triangle", vol: 0.24 * v * bv, dur: sixteenth * 1.8, from: b === "s" ? r - 2 : null }); // the sub
+        note(t, dst, r + 12 + up, { type: 0.25, vol: 0.12 * v * bv, dur: sixteenth * 1.8, cutoff: sec.low ? 500 : P.hot ? 3000 : 1400, from: b === "s" ? r + seventh : null }); // the grit
+        if (!sec.low) note(t, s.bassGain, r + (b === "f" ? 7 : 0), { type: "triangle", vol: 0.24 * v * bv, dur: sixteenth * 1.8, from: b === "s" ? r - 2 : null }); // the sub (not in a breakdown)
       }
       // lead: the song's tune, bar by bar ("call" plays only the first half of each bar)
       if (s.tune && sec.lead) {
         const line = s.tune[pb % 4], hit = line.find(([st]) => st === i);
         if (hit && !(sec.lead === "call" && i >= 8 && pb % 4 !== 3)) { // a call still lands the answer's last note
           const later = line.find(([st]) => st > i), len = Math.min(sixteenth * 3, ((later ? later[0] : 16) - i) * sixteenth * 0.9);
-          const m = leadNote(s, deg, hit[1], i);
+          let m = leadNote(s, deg, hit[1], i);
+          if (sec.leadUp && m + sec.leadUp <= 96) m += sec.leadUp;
           note(t, dst, m, { type: s.leadDuty || 0.25, vol: 0.085 * v, dur: len, vibrato: len > 0.2 ? 20 : 0, cutoff: 5000 });
           const clash = line.some(([st]) => st > i && st <= i + 4); // the echo only in the tune's gaps, an octave down
           if (s.echo && !clash) note(t + sixteenth * 3, dst, m - 12, { type: s.leadDuty || 0.25, vol: 0.035 * v, dur: len * 0.8, cutoff: 3000 });
@@ -479,15 +503,17 @@ export function createMusic(ac, out) {
     }
     // arp: the section says on, off, or "gaps" (only where the lead rests: call and response)
     const leadNow = s.leadAt != null && step - s.leadAt <= 1;
-    if (!drop && at(s.arp, i) !== "." && (intro || sec.arp === true || (P.hot && sec.arp !== "gaps") || (sec.arp === "gaps" && !leadNow))) {
+    const introHush = intro && P.bar === s.intro - 1 && i >= 12; // the intro's last beat before the drop
+    if (!drop && !introHush && at(s.arp, i) !== "." && (intro || sec.arp === true || (P.hot && sec.arp !== "gaps") || (sec.arp === "gaps" && !leadNow))) {
       const up = chord.map((n) => { let m = n + 24 + (P.hot ? 12 : 0); while (m > 91) m -= 12; return m; }), order = i % 2 ? [up[2], up[1], up[0]] : up;
       const base = (s.arpVol ?? 0.05) * (s.arpDuty === 0.5 ? 0.7 : 1) * (leadNow ? 0.6 : 1);
-      arp(t, dst, order, sixteenth, { duty: s.arpDuty, vol: (intro ? 0.03 + 0.02 * (P.bar + i / 16) : base) * v });
+      arp(t, dst, order, sixteenth, { duty: s.arpDuty, vol: (intro ? Math.min(0.035, 0.02 + 0.01 * (P.bar + i / 16)) : base) * v });
+      if (sec.arpDouble) arp(t, dst, order.map((n) => n - 12), sixteenth, { duty: s.arpDuty, vol: base * 0.6 * v }); // doubled an octave down
     }
-    if (s.pad && i === 0 && !sec.low && !drop && !P.hot) { // soft held chord (a narrow pulse, filtered); add9 on the calm songs; fuller in a lift
+    if (s.pad && i === 0 && (!sec.low || sec.drums === "breath") && !drop && !P.hot) { // soft held chord (a narrow pulse, filtered); add9 on the calm songs; fuller in a lift
       const tones = s.add9 ? [...chord, degreeNote(s, deg, 1) + 12] : chord;
       const len = building && left <= 16 ? Math.max(2, left - 5) : 14; // clear of the silent beat
-      for (const n of tones.map((x) => { let m = x + 12; while (m > 76) m -= 12; return m - 12; })) note(t, dst, n + 12, { type: 0.25, vol: 0.018 * s.pad * v * (intro ? 2 : 1) * (sec.lift ? 1.5 : 1), dur: sixteenth * len, attack: sixteenth * 3, cutoff: 1800 });
+      for (const n of tones.map((x) => { let m = x + 12; while (m > 76) m -= 12; return m - 12; })) note(t, dst, n + 12, { type: 0.25, vol: 0.018 * s.pad * v * (intro || sec.drums === "breath" ? 2.5 : 1) * (sec.lift ? 1.5 : 1), dur: sixteenth * len, attack: sixteenth * 3, cutoff: 1800 });
     }
   }
   function run(P, ahead) {

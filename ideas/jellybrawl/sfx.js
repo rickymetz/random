@@ -71,9 +71,11 @@ function pulse(duty) {
 }
 // The key: pitched effects play in the current song's scale (the last one
 // heard, when nothing's playing), so they never clash with the music.
-let lastKey = { root: 60, scale: [0, 2, 4, 5, 7, 9, 11] };
+let lastKey = { root: 60, scale: [0, 2, 4, 5, 7, 9, 11] }, forcedKey = null;
+// pin the key (the sizzle recorder plays its own song, not the game's)
+export function setKey(k) { forcedKey = k?.scale ? k : null; }
 function keyOf() {
-  const k = tune?.key;
+  const k = forcedKey || tune?.key;
   if (k?.scale) lastKey = k;
   return { tonic: 60 + (((lastKey.root - 60) % 12) + 12) % 12, sc: lastKey.scale };
 }

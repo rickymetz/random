@@ -124,14 +124,32 @@ const REC = async () => {
   const game = await import(new URL("sfx.js", location.href).href);
   const { createMusic, masterChain } = await import(new URL("music.js", location.href).href);
   game.setMix({ music: 0 }); game.unlock();
-  const ax = new AudioContext(), mixOut = ax.createMediaStreamDestination(), bus = masterChain(ax, mixOut); // the game's limiter too
-  // a trailer plays loud: more level into the limiter than the game uses (about -16 LUFS)
-  const tuneGain = ax.createGain(); tuneGain.gain.value = 1.5; tuneGain.connect(bus);
+  const ax = new AudioContext(), mixOut = ax.createMediaStreamDestination();
+  mixOut.channelCount = 1; // the music is centred and the effects' seats mean nothing without players: mono
+  // A trailer plays loud (about -16 LUFS, peaks under -1 dBTP): the lows
+  // cleaned up (no rumble below 30 Hz, less boom, which would only drive the
+  // limiter), a little presence for phone speakers, a gentle glue compressor
+  // for the body, then the game's limiter, slower to let go, and a last trim.
+  const bus = ax.createBiquadFilter(), shelf = ax.createBiquadFilter(), presence = ax.createBiquadFilter(), glue = ax.createDynamicsCompressor(), push = ax.createGain(), out = ax.createGain();
+  bus.type = "highpass"; bus.frequency.value = 30;
+  shelf.type = "lowshelf"; shelf.frequency.value = 90; shelf.gain.value = -6;
+  presence.type = "peaking"; presence.frequency.value = 2500; presence.Q.value = 0.7; presence.gain.value = 3;
+  glue.threshold.value = -20; glue.ratio.value = 3; glue.knee.value = 6; glue.attack.value = 0.01; glue.release.value = 0.15;
+  push.gain.value = 1.45; out.gain.value = 0.9; out.connect(mixOut);
+  bus.connect(shelf).connect(presence).connect(glue).connect(push).connect(masterChain(ax, out, { trim: 0.88, release: 0.12 }));
+  const TUNE = 3, tuneGain = ax.createGain(); tuneGain.gain.value = TUNE; tuneGain.connect(bus);
   const tune = createMusic(ax, tuneGain);
-  const fx = game.tap();
-  if (fx) { const fxGain = ax.createGain(); fxGain.gain.value = 1.6; ax.createMediaStreamSource(fx).connect(fxGain).connect(bus); }
+  const fx = game.tap(), fxGain = ax.createGain();
+  fxGain.gain.value = 0;
+  if (fx) {
+    // the effects get their own gentle compressor so a stray crash can't punch a hole in the music
+    const squash = ax.createDynamicsCompressor(), fxLevel = ax.createGain();
+    squash.threshold.value = -20; squash.ratio.value = 4; squash.attack.value = 0.003; squash.release.value = 0.15; fxLevel.gain.value = 1.8;
+    ax.createMediaStreamSource(fx).connect(squash).connect(fxLevel).connect(fxGain).connect(bus);
+  }
   await ax.suspend();
   tune.play("trailer");
+  game.setKey(tune.key); // effects in the trailer's key, not the (silent) game song's
   const type = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find((t) => MediaRecorder.isTypeSupported(t));
   const stream = new MediaStream([...c.captureStream(30).getVideoTracks(), ...mixOut.stream.getAudioTracks()]);
   const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 2.2e6, audioBitsPerSecond: 96e3 });
@@ -150,7 +168,7 @@ const REC = async () => {
     g.save(); g.globalAlpha = 0.07; g.translate(960, 540); g.rotate(-0.12 + t * 0.02);
     for (let i = -14; i < 14; i++) { g.fillStyle = i % 2 ? "#ff2a6d" : "#05d9e8"; g.fillRect(i * 150 - (t * 120) % 300, -1200, 70, 2400); }
     g.restore();
-    const k = Math.min(1, t / 0.4), s = 2 - back(k);
+    const k = Math.min(1, t / (o.end ? 0.08 : 0.4)), s = o.end ? 1.12 - 0.12 * k : 2 - back(k); // the end logo lands with the final hit
     g.save(); g.translate(960, o.sub ? 450 : 520); g.rotate(-0.06); g.scale(s, s);
     g.shadowColor = "#ff2a6d"; g.shadowBlur = 40;
     words(t, "Jellybrawl", 0, 0, 250, "Knewave", "#ff2a6d");
@@ -173,7 +191,8 @@ const REC = async () => {
     g.fillStyle = "#f9f002"; g.fillText(o.label, x + 60, 944);
     if (o.sub) { g.font = "36px 'League Gothic'"; g.letterSpacing = "5px"; g.fillStyle = "#0b0710"; g.fillRect(x + 36, 840, g.measureText(o.sub.toUpperCase()).width + 44, 46); g.fillStyle = "#05d9e8"; g.fillText(o.sub.toUpperCase(), x + 58, 864); g.letterSpacing = "0px"; }
   }
-  let cut = null, crt = null, ms = 0;
+  let cut = null, crt = null, ms = 0, want = 0;
+  const log = [];
   function paint() {
     if (!cut) return;
     const t = (performance.now() - cut.at) / 1000;
@@ -181,15 +200,28 @@ const REC = async () => {
   }
   (function loop() { paint(); requestAnimationFrame(loop); })();
   window.__rec = {
-    async on(o) {
+    // Plays one cut and resolves when it's over. Cuts end on the music's own
+    // clock, against the running total of cut lengths, so the soundtrack and
+    // the pictures can't drift apart however late the page is.
+    async play(o, len, tail = 0) {
       cut = { ...o, at: performance.now() };
       crt = window.__jelly.opt.crt; window.__jelly.opt.crt = "light"; // scanlines compress better than the full filter's noise
-      if (o.outro) tune.outro();
       paint(); // so the first frame after a resume is this cut, not the last one
-      await ax.resume();
       if (rec.state === "inactive") rec.start(); else rec.resume();
+      await ax.resume();
+      const t = ax.currentTime, end = (want += (len + tail) / 1000);
+      // effects fade in and out with each cut (no clicks at the joins); the music plays straight through
+      fxGain.gain.cancelScheduledValues(t); fxGain.gain.setValueAtTime(0, t); fxGain.gain.linearRampToValueAtTime(o.card ? 0 : 1, t + 0.02);
+      if (!o.card) fxGain.gain.setValueAtTime(1, end - 0.06), fxGain.gain.linearRampToValueAtTime(0, end);
+      if (tail) tuneGain.gain.setValueAtTime(TUNE, end - tail / 1000), tuneGain.gain.linearRampToValueAtTime(0.0001, end);
+      while (ax.currentTime < end - 0.03) await new Promise((r) => setTimeout(r, Math.max(1, (end - ax.currentTime - 0.03) * 1000)));
+      while (ax.currentTime < end) await new Promise((r) => setTimeout(r, 0));
+      await ax.suspend();
+      if (rec.state === "recording") rec.pause();
+      log.push([o.label || (o.card ? "card" : "?"), tune.state?.section, +(ax.currentTime - want).toFixed(3)]);
+      ms += performance.now() - cut.at; cut = null; if (crt) window.__jelly.opt.crt = crt;
     },
-    off() { if (rec.state === "recording") rec.pause(); ax.suspend(); if (cut) ms += performance.now() - cut.at; cut = null; if (crt) window.__jelly.opt.crt = crt; },
+    log: () => log,
     stop: () => new Promise((done) => {
       rec.onstop = async () => {
         const bytes = new Uint8Array(await new Blob(parts, { type }).arrayBuffer());
@@ -219,11 +251,9 @@ function withDuration(buf, ms) {
   const n = body.length + dur.length, head = Buffer.alloc(8); head[0] = 0x01; head.writeUIntBE(n, 2, 6);
   return Buffer.concat([buf.subarray(0, info + 4), head, body, dur, buf.subarray(info + 4 + size.len + size.v)]);
 }
-async function cut(o, ms, during = sleep) {
-  await tv.evaluate((o) => window.__rec.on(o), o);
+async function cut(o, ms, during = sleep, tail = 0) {
   const busy = during(ms); // the phone keeps playing, but the cut ends on time
-  await sleep(ms);
-  await tv.evaluate(() => window.__rec.off());
+  await tv.evaluate(([o, ms, tail]) => window.__rec.play(o, ms, tail), [o, ms, tail]);
   await busy;
 }
 
@@ -317,7 +347,7 @@ for (let i = 0; i < queue.length; i++) {
   let phoneShot = null;
   for (const [k, at] of when.entries()) {
     if (k === 0 && SIZZLE.includes(def.id) && !cutDone.has(def.id)) { // this game's cut for the sizzle, just before the first picture
-      await wiggle(Math.max(0, at * 1000 - CUT - 150 - (Date.now() - t0)));
+      await wiggle(Math.max(0, Math.max(3500, at * 1000 - CUT - 150) - (Date.now() - t0))); // never before GO has had a moment
       if (await S(() => window.__jelly.scene === "game")) cutDone.add(def.id), await cut({ label: def.title, sub: def.kind }, CUT, wiggle);
     }
     await wiggle(Math.max(0, at * 1000 - (Date.now() - t0)));
@@ -392,7 +422,10 @@ for (const [map, title] of [["city", "Neon City"], ["sewers", "Slime Sewers"], [
 }
 
 // ------------------------------------------------------------ sizzle, done
-await cut({ card: true, outro: true, sub: `${manifest.games.length} minigames · 3 boards · 1 gauntlet`, sub2: "1–8 players · play in your browser" }, 2 * CUT);
+await cut({ card: true, end: true, sub: `${manifest.games.length} minigames · 3 boards · 1 gauntlet`, sub2: "1–8 players · play in your browser" }, 2 * CUT, sleep, 900);
+const cutLog = await tv.evaluate(() => window.__rec.log());
+console.log("\nsizzle cuts (label, music section, late s):", JSON.stringify(cutLog));
+if (!process.env.ONLY && cutLog.length !== SIZZLE.length + 5) console.warn(`sizzle: expected ${SIZZLE.length + 5} cuts, got ${cutLog.length}`);
 const got = await tv.evaluate(() => window.__rec.stop());
 const webm = withDuration(Buffer.from(got.b64, "base64"), got.ms);
 sizzleMs = got.ms;

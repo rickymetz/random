@@ -1,9 +1,9 @@
 {
- "generated": "2026-09-24T04:20:24.118Z",
- "commit": "854f04dc",
+ "generated": "2026-09-24T05:06:09.319Z",
+ "commit": "6f91e6f5",
  "video": {
   "file": "bumper.webm",
-  "seconds": 33.1,
+  "seconds": 32.9,
   "poster": "shots/slide-poster.webp"
  },
  "slides": [
@@ -359,8 +359,7 @@
    "blurb": "Grow your tail, cut them off. Don't bonk a tail.",
    "controls": "Stick to steer, tap BOOST for a burst (costs tail)",
    "tv": [
-    "shots/snake-tv-1.webp",
-    "shots/snake-tv-2.webp"
+    "shots/snake-tv-1.webp"
    ],
    "phone": "shots/snake-phone.webp"
   },
@@ -374,8 +373,7 @@
    "blurb": "Mash to pull the other team into the goo. Tap hard on HEAVE!",
    "controls": "Mash PULL. Taps during HEAVE! count triple",
    "tv": [
-    "shots/tug-tv-1.webp",
-    "shots/tug-tv-2.webp"
+    "shots/tug-tv-1.webp"
    ],
    "phone": "shots/tug-phone.webp"
   },
@@ -539,7 +537,8 @@
    "blurb": "The TV is dark. Your pilot drives; the navigators see the track on their phones.",
    "controls": "Pilot: stick to steer. Navigators: read the map, shout directions!",
    "tv": [
-    "shots/pilot-tv-1.webp"
+    "shots/pilot-tv-1.webp",
+    "shots/pilot-tv-2.webp"
    ],
    "phone": "shots/pilot-phone.webp"
   },

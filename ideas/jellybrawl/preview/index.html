@@ -315,9 +315,17 @@ function show(i) {
     media.addEventListener("ended", () => auto && show(at + 1));
     if (auto) media.play().catch(() => { auto && (timer = setTimeout(() => show(at + 1), DWELL)); }); // autoplay blocked: treat it like a picture
     // browsers only autoplay muted: one clear button to hear the soundtrack
-    const sound = el("button", { type: "button", className: "sound", textContent: "🔇 Sound on" });
-    sound.addEventListener("click", () => { media.muted = !media.muted; if (!media.muted) media.play().catch(() => {}); });
-    media.addEventListener("volumechange", () => { sound.textContent = media.muted ? "🔇 Sound on" : "🔊 Sound off"; });
+    // (turning it on restarts a sizzle that's well under way, so the music is heard from its start)
+    const sound = el("button", { type: "button", className: "sound", ariaPressed: "false" }, el("span", { ariaHidden: "true", textContent: "🔇 " }), "Sound");
+    const icon = sound.firstChild;
+    icon.setAttribute("aria-hidden", "true");
+    sound.addEventListener("click", () => {
+      stop();
+      media.muted = !media.muted;
+      if (!media.muted) { if (media.duration && media.currentTime > media.duration * 0.4) media.currentTime = 0; media.play().catch(() => {}); }
+    });
+    media.addEventListener("volumechange", () => { sound.setAttribute("aria-pressed", String(!media.muted)); icon.textContent = media.muted ? "🔇 " : "🔊 "; });
+    sound.setAttribute("aria-pressed", "false");
     stage.append(sound);
   } else {
     media = el("img", { src: it.src, alt: it.caption, width: 1920, height: 1080 });
