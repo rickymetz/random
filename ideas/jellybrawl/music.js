@@ -41,7 +41,7 @@ const BEATS = {
   think: { kick: "x.........x.x...x......x..x.....", snare: "....o..g.go..o.g....o..g..g.o.gg", hat: "xgx.xgx.xgxox.x.xgx.xgx.xgx.xox." },
 };
 const HALF = { kick: "x.........x.....", snare: "........o.......", hat: "x.x.x.x.x.x.x.xo" }; // half-time: the snare on 3
-const BREATH = { kick: "x...............", snare: "........g.......", hat: "x...x...x...x..." }; // one kick a bar: the low end empties out
+const BREATH = { kick: "x...............", snare: "........g.....o.", hat: "x...x...x...x..." }; // one kick a bar: the low end empties out
 const SPARSE = { kick: "x...............", snare: "................", hat: "..x...x...x...x." }; // hats and a pulse
 const FILLS = [
   { kick: "x.........x.....", snare: "....o...o.gooooo", hat: "x.x.x.x.x.x....." },
@@ -111,7 +111,7 @@ const FORMS = {
 
 // Chord progressions are scale degrees, or {st, q} for a borrowed chord
 // (semitones above the root, "maj" or "min"): the Mario-style bVI-bVII-I.
-const BVI = { st: 8, q: "maj" }, BVII = { st: 10, q: "maj" };
+const BVI = { st: 8, q: "maj" }, BVII = { st: 10, q: "maj" }, E_MAJ = { st: 7, q: "maj" }; // E_MAJ: the major V of a minor key
 const MOODS = {
   // 1 vs the rest: dark and stalking, Phrygian, half-time into a Think break
   tense: { mode: "phrygian", bpm: [170, 172], beats: ["think", "twostep"], basses: ["stab", "synco"], progs: [[[0, 1, 0, 6], [5, 1, 0, 0]], [[0, 0, 1, 0], [6, 5, 1, 0]]], arp: "x...x...x.x.x...", arpDuty: 0.25, leadDuty: 0.125, form: "tense" },
@@ -162,14 +162,14 @@ const SONGS = {
   // half-time breath at the midpoint, a 2-bar build, a lifted second drop,
   // a 2-bar build into silence, and the end card's big major chord (outro).
   trailer: () => ({
-    bpm: 1200 / 7, root: 45, mode: "minor", A: [0, 5, 2, 6], B: [3, 4, 0, 0], vol: 1, intro: 2,
+    bpm: 1200 / 7, root: 45, mode: "minor", A: [0, 5, 2, 6], B: [5, 6, 0, 0], vol: 1, intro: 2, introLevel: -5, arpRange: 65,
     form: { loop: 0, secs: [
       { name: "A", bars: 8, drums: "main", lead: true, arp: true, prog: "A", level: -1.5 },
       { name: "breath", bars: 2, drums: "breath", lead: "call", arp: false, prog: "A", low: true, level: -2 },
-      { name: "build", bars: 2, drums: "build", lead: false, arp: true, prog: "B", level: -4, rise: true },
+      { name: "build", bars: 2, drums: "build", lead: false, arp: true, chords: [3, E_MAJ], level: -4, rise: true },
       { name: "B", bars: 5, drums: "main", lead: true, leadUp: 12, arp: true, arpDouble: true, bass: "synco", prog: "B", lift: true, open: true, level: 0 },
-      { name: "build", bars: 2, drums: "build", lead: false, arp: true, prog: "A", level: -4, rise: true },
-      { name: "card", bars: 2, end: true, level: 0 }, // the end card: one big chord (the song ends here)
+      { name: "build", bars: 2, drums: "build", lead: false, arp: true, chords: [3, E_MAJ], level: -4, rise: true }, // iv, V: a fake-out into F the first time, home to A major the second
+      { name: "card", bars: 2, end: true, level: -3.5 }, // the end card: one big chord (the song ends here)
     ] },
     ...BEATS.amen, bass: BASSES.rolling, lead: "x..x..x.x.x.x...", leadSeed: 11, leadDuty: 0.25, echo: true,
     arp: "xxxxxxxxxxxxxxxx", arpDuty: 0.5, pad: 0.6,
@@ -374,6 +374,7 @@ export function createMusic(ac, out) {
   function advance(P) {
     const { secs, loop = 0 } = P.s.form;
     P.inSec++; P.pb++; P.first = false;
+    if (P.sec.end) return; // the end card: the song is over, nothing comes back in under its fade
     if (P.speedNext != null) { // the gauntlet's speed-up lands on the bar line
       const l = P.speedNext; P.speedNext = null;
       P.s.bpm = P.s.baseBpm + SPEED_BPM[Math.min(l, SPEED_BPM.length - 1)];
@@ -398,9 +399,9 @@ export function createMusic(ac, out) {
 
   const dbGain = (db) => 10 ** (db / 20);
   // the one big chord (with the win jingle's arpeggio over it: the game's sound logo)
-  function hitOutro(s, t, dst, v, len = 2.6) {
+  function hitOutro(s, t, dst, v, len = 2.6, hiss = 0.28) {
     const home = [s.root, s.root + 4, s.root + 7]; // a major tonic chord (a Picardy third in the minor songs)
-    kick(t, dst, v); snare(t, dst, v, "o"); noiseHit(t, dst, { freq: 6000, type: "highpass", vol: 0.28 * v, dur: Math.min(2, len) });
+    kick(t, dst, v); snare(t, dst, v, "o"); noiseHit(t, dst, { freq: 6000, type: "highpass", vol: hiss * v, dur: Math.min(2, len) });
     for (const n of home) note(t, dst, n + 12, { type: 0.5, vol: 0.045 * v, dur: len, attack: 0.01, ring: true });
     [0, 4, 7, 12].forEach((st, k) => note(t + k * 0.09, dst, home[0] + 24 + st, { type: 0.25, vol: 0.06 * v, dur: k === 3 ? len * 0.8 : 0.2, vibrato: k === 3 ? 25 : 0, ring: k === 3 }));
     note(t, dst, fold(home[0]), { type: "triangle", vol: 0.12 * v, dur: len, ring: true });
@@ -408,15 +409,18 @@ export function createMusic(ac, out) {
   }
   function playStep(P, t) {
     const s = P.s, dst = P.gain, i = P.step % 16, v = s.vol, sixteenth = 60 / s.bpm / 4, step = P.step;
+    if (i === 0 && P.bar === 0 && s.introLevel != null) P.gain.gain.setValueAtTime(dbGain(s.introLevel), t); // the title card sits under the first drop
     if (i === 0 && P.inSec === 0 && P.sec.level != null && !(s.intro && P.bar < s.intro)) {
       const g = P.gain.gain, from = dbGain(P.sec.level);
-      g.cancelScheduledValues(t); g.setTargetAtTime(from, t, 0.02);
-      if (P.sec.rise) g.linearRampToValueAtTime(1, t + P.sec.bars * 16 * sixteenth - 4 * sixteenth); // a build climbs to full
+      g.cancelScheduledValues(t);
+      // a build climbs from its level to just under the drop's (a ramp needs an explicit start: it runs from the last event)
+      if (P.sec.rise) { g.setValueAtTime(from, t); g.linearRampToValueAtTime(dbGain(-3), t + P.sec.bars * 16 * sixteenth - 4 * sixteenth); }
+      else g.setTargetAtTime(from, t, 0.02);
     }
-    if (P.sec.end) { if (P.inSec === 0 && i === 0 && !P.ended) { P.ended = true; hitOutro(s, t, dst, v, P.sec.bars * 16 * sixteenth + 0.9); } return; } // rings through the card and the fade after it
+    if (P.sec.end) { if (P.inSec === 0 && i === 0 && !P.ended) { P.ended = true; hitOutro(s, t, dst, v, P.sec.bars * 16 * sixteenth + 0.9, 0.15); } return; } // rings through the card and the fade after it
     const intro = s.intro && P.bar < s.intro, sec = P.sec, inSec = P.inSec, pb = P.pb;
     const { secs, loop = 0 } = s.form, nextSec = P.k >= 0 ? secs[P.k + 1] || secs[loop] : null;
-    const prog = sec.prog === "B" && s.B ? s.B : s.A, deg = prog[pb % prog.length], chord = chordNotes(s, deg);
+    const prog = sec.prog === "B" && s.B ? s.B : s.A, deg = sec.chords ? sec.chords[inSec % sec.chords.length] : prog[pb % prog.length], chord = chordNotes(s, deg);
     const building = sec.drums === "build";
     if (building && P.buildT == null) P.buildT = t;
     // the build's progress and steps left, and the silent beat before the drop (timed to GO when the game set one)
@@ -431,7 +435,7 @@ export function createMusic(ac, out) {
     if (intro) {
       if (i === 0 && P.bar === 0) { note(t, s.bassGain, fold(chord[0]), { type: "triangle", vol: 0.3 * v, dur: 0.6, from: fold(chord[0]) + 12 }); crash(t, dst, v); } // the logo lands
       if (i === 0) note(t, dst, fold(chord[0]) + 12, { type: "triangle", vol: 0.26 * v, dur: sixteenth * 14 });
-      if (P.bar === s.intro - 1 && i < 15) { // the bar before the drop: a roll that speeds up (8ths, 16ths, 32nds) and rises; then a silent step
+      if (P.bar === s.intro - 1 && i < 12) { // the bar before the drop: a roll that speeds up (8ths, 16ths, 32nds) and rises; then a silent step
         hat(t, dst, v * (0.5 + i / 16), "x");
         if (i % 2 === 0 || i >= 8) snare(t, dst, v * (0.3 + i / 24), "x", i);
         if (i >= 12) snare(t + sixteenth / 2, dst, v * (0.4 + i / 24), "x", i + 1);
@@ -447,7 +451,7 @@ export function createMusic(ac, out) {
       const kit = fill ? s.fill : sec.drums === "half" ? HALF : sec.drums === "breath" ? BREATH : sec.drums === "sparse" ? SPARSE : sec.drums === "none" ? null : s;
       const n = kit === s ? inSec * 16 + i : i; // 32-step breaks run over bar pairs within a section
       if (inSec === 0 && i === 0 && !building && sec !== VAMP && sec.drums !== "none" && !P.first) {
-        if (P.prevBuild) { noiseHit(t, dst, { freq: 7000, type: "highpass", vol: 0.14 * v, dur: 2.5 }); note(t, s.bassGain, fold(chord[0]) - 12 + 12, { type: "triangle", vol: 0.35 * v, dur: 0.5, from: fold(chord[0]) + 12 }); } // the drop lands
+        if (P.prevBuild) { noiseHit(t, dst, { freq: 7000, type: "highpass", vol: 0.14 * v, dur: 2.5 }); note(t, s.bassGain, fold(chord[0]), { type: "triangle", vol: 0.35 * v, dur: 0.5, from: fold(chord[0]) + 12 }); } // the drop lands
         else crash(t, dst, v);
       }
       if (building) { // a roll: 8ths, then 16ths, rising, over a riser; then a silent beat before the drop
@@ -488,6 +492,7 @@ export function createMusic(ac, out) {
         if (!sec.low) note(t, s.bassGain, r + (b === "f" ? 7 : 0), { type: "triangle", vol: 0.24 * v * bv, dur: sixteenth * 1.8, from: b === "s" ? r - 2 : null }); // the sub (not in a breakdown)
       }
       // lead: the song's tune, bar by bar ("call" plays only the first half of each bar)
+      if (i === 0 && (pb % 4 === 0 || inSec === 0)) s.lastLead = null; // each phrase starts from the same place, so the hook repeats
       if (s.tune && sec.lead) {
         const line = s.tune[pb % 4], hit = line.find(([st]) => st === i);
         if (hit && !(sec.lead === "call" && i >= 8 && pb % 4 !== 3)) { // a call still lands the answer's last note
@@ -505,7 +510,9 @@ export function createMusic(ac, out) {
     const leadNow = s.leadAt != null && step - s.leadAt <= 1;
     const introHush = intro && P.bar === s.intro - 1 && i >= 12; // the intro's last beat before the drop
     if (!drop && !introHush && at(s.arp, i) !== "." && (intro || sec.arp === true || (P.hot && sec.arp !== "gaps") || (sec.arp === "gaps" && !leadNow))) {
-      const up = chord.map((n) => { let m = n + 24 + (P.hot ? 12 : 0); while (m > 91) m -= 12; return m; }), order = i % 2 ? [up[2], up[1], up[0]] : up;
+      // a song with an arpRange keeps the arp in one octave from there (the nearest inversion, under the lead)
+      const up = s.arpRange ? chord.map((n) => s.arpRange + ((n - s.arpRange) % 12 + 12) % 12).sort((a, b) => a - b)
+        : chord.map((n) => { let m = n + 24 + (P.hot ? 12 : 0); while (m > 91) m -= 12; return m; }), order = i % 2 ? [up[2], up[1], up[0]] : up;
       const base = (s.arpVol ?? 0.05) * (s.arpDuty === 0.5 ? 0.7 : 1) * (leadNow ? 0.6 : 1);
       arp(t, dst, order, sixteenth, { duty: s.arpDuty, vol: (intro ? Math.min(0.035, 0.02 + 0.01 * (P.bar + i / 16)) : base) * v });
       if (sec.arpDouble) arp(t, dst, order.map((n) => n - 12), sixteenth, { duty: s.arpDuty, vol: base * 0.6 * v }); // doubled an octave down
