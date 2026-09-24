@@ -899,7 +899,7 @@ let ducked = false;
 function syncMusic() {
   const sc = S.scene;
   if (sc === "gate") return;
-  if (sc === "intro" || sc === "game") music.play("game", S.def?.id || "game");
+  if (sc === "intro" || sc === "game") music.play("game", S.def?.id || "game", S.def?.kind); // the mood from the kind of game
   else if (sc === "duel") music.play("game", "duel");
   else if (sc === "board" || (S.mode === "board" && sc === "results")) music.play("board");
   else if (sc === "final") music.play("final");
