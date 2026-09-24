@@ -2,7 +2,11 @@
 // Jellybrawl relay: serves this folder over HTTP and relays messages between
 // the TV (host) and phones (players) over WebSocket at /ws. Zero dependencies.
 //
-//   node ideas/jellybrawl/server.mjs [port]      (default 8787)
+//   node ideas/jellybrawl/server.mjs [port] [--p2p]     (default 8787)
+//
+// --p2p serves the peer-to-peer signalling instead (signal.mjs, rooms in
+// memory), the way the Netlify deploy works: phones talk to the TV directly
+// over WebRTC and this server only introduces them.
 //
 // Open http://<this machine's LAN address>:8787/tv.html on the big screen
 // (a laptop on HDMI, or AirPlay a browser to an Apple TV), and phones on the
@@ -24,9 +28,14 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { signal, memoryStore, DEFAULT_ICE } from "./signal.mjs";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
-const port = Number(process.argv[2] || process.env.PORT || 8787);
+const port = Number(process.argv.slice(2).find((a) => /^\d+$/.test(a)) || process.env.PORT || 8787);
+const P2P = process.argv.includes("--p2p") || process.env.JB_P2P === "1";
+let ice = DEFAULT_ICE;
+try { const v = JSON.parse(process.env.JB_ICE_SERVERS || "null"); if (Array.isArray(v)) ice = v; } catch {}
+const sig = P2P ? signal(memoryStore(), { iceServers: ice }) : null;
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webm": "video/webm", ".woff2": "font/woff2" };
 
 function lanUrls() {
@@ -38,6 +47,18 @@ function lanUrls() {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, "http://x");
+  if (!sig && url.pathname.startsWith("/api/jellybrawl/")) return void res.writeHead(204).end(); // no peer-to-peer here: the phones use the relay
+  if (sig && url.pathname.startsWith("/api/jellybrawl/")) { // the signalling, as the Netlify Function serves it
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", async () => {
+      const body = req.method === "POST" ? Buffer.concat(chunks).toString() : undefined;
+      const out = await sig.handle(new Request(`http://${req.headers.host}${req.url}`, { method: req.method, body }));
+      res.writeHead(out.status, Object.fromEntries(out.headers));
+      res.end(out.status === 204 ? undefined : Buffer.from(await out.arrayBuffer()));
+    });
+    return;
+  }
   let rel = decodeURIComponent(url.pathname).replace(/^\/+/, "") || "index.html";
   if (rel.endsWith("/")) rel += "index.html";
   const file = path.join(dir, rel);
@@ -174,6 +195,6 @@ server.on("upgrade", (req, socket) => {
 });
 
 server.listen(port, () => {
-  console.log("Jellybrawl relay running.");
+  console.log(`Jellybrawl ${P2P ? "peer-to-peer signalling" : "relay"} running.`);
   for (const u of lanUrls()) console.log(`  TV:     ${u}tv.html\n  Phones: ${u}`);
 });

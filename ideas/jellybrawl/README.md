@@ -18,6 +18,17 @@ Open the printed `…/tv.html` on the big screen: a laptop on HDMI, or a
 browser AirPlayed to an Apple TV. Phones scan the QR code or go to the printed
 address and type the room code.
 
+**With real phones, on Netlify**: deploy the repo as it is. `netlify.toml`
+adds `netlify/functions/jellybrawl.mjs`, which only introduces each phone to
+the TV (a WebRTC offer and answer, kept for a moment in Netlify Blobs); the
+game itself then runs peer-to-peer, phone to TV, so on the same Wi-Fi it never
+leaves the room. Nothing to install and nothing to configure: open `tv.html`
+and phones scan the QR code. Phones on a different network (mobile data) may
+not get through without a TURN server: set the site's `JB_ICE_SERVERS`
+environment variable to a JSON array of ICE servers, e.g.
+`[{"urls":"stun:stun.l.google.com:19302"},{"urls":"turn:turn.example.com:3478","username":"u","credential":"p"}]`.
+`node server.mjs --p2p` runs the same signalling locally (rooms in memory).
+
 **Solo / on GitHub Pages**: open `tv.html` and use **Open a controller tab**.
 Without the relay, controllers are other tabs of the same browser
 (BroadcastChannel). Add bots with **B**.
@@ -34,8 +45,10 @@ cycles Playlist → Board → Microgame Gauntlet, M picks the board map, and 1�
 | `index.html`, `controller.js`, `controller.css` | The phone: join, selfie/doodle, then renders the layouts the TV sends. |
 | `games/*.js` | Minigames: `flap` (free-for-all), `sling` (teams), `chomp` (1 vs rest), `snipe` (Sniper Plaza and Sniper Blackout, 1 vs rest, one engine), `tag` (Infection), `kaiju` (Kaiju), `soccer`, `paint`, `crown`, `dodgeball`, `tug`, `relay`, `stack` and `bombsquad` (teams) and `sumo`, `bumper`, `coinrush`, `potato`, `snake`, `maze` (tilt) and `draw` (free-for-all), plus the asymmetric `haunted`, `whack`, `kraken`, `tank`, `hill` and `pilot`, and the secret-pick `greed`, on the shared `arena` engine, plus `gauntlet` (the Microgame Gauntlet mode: 9 microgames, lives, speed-ups). Each has a bot. |
 | `board.js`, `boards.js`, `boardart.js` | Board mode: dice, forks, coins and stars, shop and secret items, duels, events; the three themed maps (Neon City, Slime Sewers, Volcano Isle); and the board art (tiles, roads, scenery). |
-| `net.js` | Transport: WebSocket relay, or BroadcastChannel when there's no relay. |
-| `server.mjs` | Static server plus room relay (a hand-rolled WebSocket, no deps). |
+| `net.js` | Transport: peer-to-peer WebRTC where the site has the signalling (Netlify), else the WebSocket relay, else BroadcastChannel. Long messages (selfies) go in pieces. |
+| `signal.mjs` | The peer-to-peer signalling: rooms, offers and answers over a few HTTP calls, on any key-value store. |
+| `server.mjs` | Static server plus room relay (a hand-rolled WebSocket, no deps); `--p2p` serves the signalling instead. |
+| `../../netlify/functions/jellybrawl.mjs` | The signalling as a Netlify Function at `/api/jellybrawl/*`, on Netlify Blobs (vendored in `netlify/vendor/`, so no install step). |
 | `fonts/` | Knewave (title, command words) and League Gothic (labels), The League of Moveable Type, SIL OFL 1.1 (`fonts/OFL.txt`). |
 | `gfx.js`, `qr.js`, `sfx.js` | Canvas helpers and the blob renderer, a QR encoder, and synthesised SFX. |
 

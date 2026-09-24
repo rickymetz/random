@@ -1,0 +1,6 @@
+# Netlify: the site's build and publish settings stay in the Netlify UI; this
+# only adds Jellybrawl's signalling function (peer-to-peer play with real
+# phones, see ideas/jellybrawl/README.md).
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"

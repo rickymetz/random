@@ -863,8 +863,8 @@ async function open() {
   unlock();
   S.net = await hostRoom({ onJoin, onLeave, onInput });
   const base = S.net.joinUrl;
-  S.joinUrl = S.net.mode === "relay" ? base : base + "index.html";
-  if (S.net.mode === "relay") S.qr = qr(`${base}?room=${S.net.code}`);
+  S.joinUrl = S.net.mode !== "local" ? base : base + "index.html";
+  if (S.net.mode !== "local") S.qr = qr(`${base}?room=${S.net.code}`);
   go("lobby");
   refreshMenus();
   setInterval(() => { for (const p of humans()) send(p, { t: "ping", ts: performance.now() }); }, 2000);
