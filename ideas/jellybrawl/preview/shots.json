@@ -1,9 +1,9 @@
 {
- "generated": "2026-09-23T23:21:35.405Z",
- "commit": "e7570ded",
+ "generated": "2026-09-24T04:20:24.118Z",
+ "commit": "854f04dc",
  "video": {
   "file": "bumper.webm",
-  "seconds": 32.9,
+  "seconds": 33.1,
   "poster": "shots/slide-poster.webp"
  },
  "slides": [
@@ -539,8 +539,7 @@
    "blurb": "The TV is dark. Your pilot drives; the navigators see the track on their phones.",
    "controls": "Pilot: stick to steer. Navigators: read the map, shout directions!",
    "tv": [
-    "shots/pilot-tv-1.webp",
-    "shots/pilot-tv-2.webp"
+    "shots/pilot-tv-1.webp"
    ],
    "phone": "shots/pilot-phone.webp"
   },
