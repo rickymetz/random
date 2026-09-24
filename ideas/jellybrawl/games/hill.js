@@ -68,7 +68,7 @@ export default {
             crownT += dt;
             setSize(b, Math.min(MAX_S, b.size + GROW * dt));
             const was = Math.floor(b.score); b.score += dt;
-            if (Math.floor(b.score) > was) { ctx.sfx.dot(); if (!b.ghost) ctx.stat(b.pid, "reign", 1); }
+            if (Math.floor(b.score) > was) { ctx.sfx.dot(b); if (!b.ghost) ctx.stat(b.pid, "reign", 1); }
           } else if (b.size > 1) setSize(b, Math.max(1, b.size - 1.4 * dt));
         }
         if (ck.t >= TIME) {

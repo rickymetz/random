@@ -42,10 +42,10 @@ export default {
         for (const w of walls) {
           const b = w.b;
           if (b.shield > 0 || b.out) continue;
-          b.lives--; b.shield = SHIELD; ctx.sfx.hit(); ctx.shake(20);
+          b.lives--; b.shield = SHIELD; ctx.sfx.hit(b); ctx.shake(20);
           pops.push({ x: b.x, y: b.y - 60, t: 0, word: b.lives > 0 ? "OUCH!" : "WRECKED!" });
           if (!b.ghost) ctx.buzz(b.pid, 300);
-          if (b.lives <= 0) { b.out = true; out.push([b]); if (!b.ghost) ctx.layout(b.pid, { kind: "wait", text: "WRECKED", sub: "Spiked. Watch the rest." }); }
+          if (b.lives <= 0) { b.out = true; out.push([b]); ctx.sfx.ko(b); if (!b.ghost) ctx.layout(b.pid, { kind: "wait", text: "WRECKED", sub: "Spiked. Watch the rest." }); }
           else { b.x = W / 2 + (Math.random() - 0.5) * 300; b.y = 620 + (Math.random() - 0.5) * 200; b.vx = b.vy = 0; }
         }
         const live = A.live();

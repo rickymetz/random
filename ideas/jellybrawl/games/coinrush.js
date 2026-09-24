@@ -59,7 +59,7 @@ export default {
         for (const b of A.bodies) for (let i = coins.length - 1; i >= 0; i--) {
           const c = coins[i];
           if (c.z > 10 || c.t < 0.3 || Math.hypot(c.x - b.x, c.y - b.y) > A.R + COIN_R) continue;
-          coins.splice(i, 1); b.coins++; if (!b.ghost) ctx.stat(b.pid, "coins", 1); ctx.sfx.dot();
+          coins.splice(i, 1); b.coins++; if (!b.ghost) ctx.stat(b.pid, "coins", 1); ctx.sfx.dot(b);
         }
         for (const r of rollers) {
           r.x += r.vx * dt; r.y += r.vy * dt; r.rot += dt * 6;
@@ -67,7 +67,7 @@ export default {
           if (r.y < F.y0 + r.r || r.y > F.y1 - r.r) r.vy *= -1;
           for (const b of A.bodies) {
             const d = Math.hypot(b.x - r.x, b.y - r.y);
-            if (d < r.r + A.R && b.hurt <= 0) { drop(b, 3); b.hurt = 1; b.vx += ((b.x - r.x) / d) * 700; b.vy += ((b.y - r.y) / d) * 700; ctx.sfx.hit(); ctx.shake(10); if (!b.ghost) ctx.buzz(b.pid, 200); }
+            if (d < r.r + A.R && b.hurt <= 0) { drop(b, 3); b.hurt = 1; b.vx += ((b.x - r.x) / d) * 700; b.vy += ((b.y - r.y) / d) * 700; ctx.sfx.hit(b); ctx.shake(10); if (!b.ghost) ctx.buzz(b.pid, 200); }
           }
         }
         if (ck.t >= TIME) {

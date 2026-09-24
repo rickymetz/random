@@ -53,7 +53,7 @@ export default {
         const b = A.of(pid);
         if (!b || m.t !== "pad" || phase !== "pick" || t < 0 || b.door != null) return;
         const i = +m.id; if (!(i >= 0 && i < 3)) return;
-        b.door = i; ctx.sfx.dot();
+        b.door = i; ctx.sfx.dot(b);
         ctx.layout(pid, { kind: "wait", text: `DOOR ${i + 1}`, sub: "Locked in. No take-backs!" });
         if (A.bodies.every((o) => o.door != null)) t = Math.max(t, PICK_T - 1); // everyone's in: reveal a beat later
       },

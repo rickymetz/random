@@ -109,12 +109,12 @@ export default {
             const nx = Math.max(x, Math.min(x + w, b.x)), ny = Math.max(y, Math.min(y + h, b.y)), dx = b.x - nx, dy = b.y - ny, d = Math.hypot(dx, dy);
             if (d >= R || d === 0) continue;
             const ux = dx / d, uy = dy / d; b.x = nx + ux * R; b.y = ny + uy * R;
-            const vn = b.vx * ux + b.vy * uy; if (vn < 0) { b.vx -= 1.4 * vn * ux; b.vy -= 1.4 * vn * uy; if (-vn > 250) ctx.sfx.dot(); }
+            const vn = b.vx * ux + b.vy * uy; if (vn < 0) { b.vx -= 1.4 * vn * ux; b.vy -= 1.4 * vn * uy; if (-vn > 250) ctx.sfx.dot(b); }
           }
           const [c, r] = cellOf(b), dd = dist[r * COLS + c];
           if (dd < b.best) { b.best = dd; if (dd % 5 === 0) { const [x, y] = cell(c, r); b.cp = [x, y]; } }
           for (const h of holes) if (Math.hypot(h.x - b.x, h.y - b.y) < HOLE_R) {
-            b.fall = 0.9; b.x = h.x; b.y = h.y; ctx.sfx.lose(); ctx.shake(6);
+            b.fall = 0.9; b.x = h.x; b.y = h.y; ctx.sfx.lose(b); ctx.shake(6);
             pops.push({ x: h.x, y: h.y - 40, t: 0, word: "PLOP!" });
             if (!b.ghost) { ctx.buzz(b.pid, 250); ctx.stat(b.pid, "plops", 1); }
             break;

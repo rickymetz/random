@@ -46,7 +46,7 @@ export default {
         const rr = radius();
         for (const b of A.live()) if (edge(b) > rr + A.R * 0.4) {
           b.out = true; falling.push({ b, t: 0 }); out.push([b]);
-          ctx.sfx.lose(); ctx.shake(14); if (!b.ghost) { ctx.buzz(b.pid, 400); ctx.layout(b.pid, { kind: "wait", text: "RING OUT!", sub: "Shoved into the void." }); }
+          ctx.sfx.ko(b); ctx.shake(14); if (!b.ghost) { ctx.buzz(b.pid, 400); ctx.layout(b.pid, { kind: "wait", text: "RING OUT!", sub: "Shoved into the void." }); }
         }
         const live = A.live();
         if (live.length <= 1 || ck.t >= TIME) {

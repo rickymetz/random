@@ -62,7 +62,7 @@ export function arena(ctx, o) {
       const [fx, fy] = Math.hypot(b.mx, b.my) > 0.1 ? [b.mx, b.my] : b.face;
       const l = Math.hypot(fx, fy) || 1;
       b.vx += (fx / l) * speed * (dash.mul - 1); b.vy += (fy / l) * speed * (dash.mul - 1);
-      ctx.sfx.flap();
+      ctx.sfx.flap(b);
       return true;
     },
 
@@ -72,7 +72,7 @@ export function arena(ctx, o) {
       const hits = [], walls = [];
       for (let i = hazards.length - 1; i >= 0; i--) { const h = hazards[i]; h.t += dt; if (h.t > 9) hazards.splice(i, 1); }
       for (const b of bodies) if (!b.out) for (const h of hazards) if (h.t > 0.6 && Math.hypot(b.x - h.x, b.y - h.y) < R + 34 && !(b.slipT > 0)) {
-        b.slipT = 0.8; const a = Math.random() * Math.PI * 2; b.vx += Math.cos(a) * 520; b.vy += Math.sin(a) * 520; ctx.sfx.pop(); // whee
+        b.slipT = 0.8; const a = Math.random() * Math.PI * 2; b.vx += Math.cos(a) * 520; b.vy += Math.sin(a) * 520; ctx.sfx.pop(b); // whee
       }
       for (const b of bodies) {
         if (b.out) continue;
@@ -170,18 +170,21 @@ export function arena(ctx, o) {
   return A;
 }
 
-/** Music cues from a game's own clock (t runs from -countdown up to total):
- *  a build over the countdown that drops on GO, the breakdown at half time
- *  (when it and the build out of it fit before the end), and the hotter
- *  layer for the last 10 seconds. Call it every update with the game's t. */
+/** Music and sound cues from a game's own clock (t runs from -countdown up
+ *  to total): a build over the countdown that drops on GO, the breakdown at
+ *  half time (when it and the build out of it fit before the end), the hotter
+ *  layer for the last 10 seconds, rising ticks for the last 5 and a buzzer at
+ *  zero. Call it every update with the game's t. */
 export function musicCues(ctx) {
-  let cue = 0;
+  let cue = 0, sec = 6, buzzed = false;
   return (t, total = 0) => {
     if (cue === 0) { cue = 1; if (t < 0) ctx.music?.countdown(-t); else ctx.music?.go(); }
     if (!total || t < 0) return;
     const left = total - t;
     if (cue === 1 && t >= total / 2 && left > 22) { cue = 2; ctx.music?.half(); }
     if (cue < 3 && left <= 10) { cue = 3; ctx.music?.hot(); }
+    if (left > 0 && left <= 5 && Math.ceil(left) < sec) { sec = Math.ceil(left); ctx.sfx.final?.(sec); }
+    if (left <= 0 && !buzzed) { buzzed = true; ctx.sfx.buzzer?.(); }
   };
 }
 

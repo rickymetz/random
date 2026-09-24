@@ -72,7 +72,7 @@ export default {
             splats.push(makeSplat(b.x + dist, Math.min(b.y, GROUND - 10), 46, b.p.color));
             ctx.shake(26);
             ctx.stat(b.p.pid, "airtime", Math.round(t));
-            ctx.sfx.hit(); ctx.buzz(b.p.pid, 200);
+            ctx.sfx.ko(b); ctx.buzz(b.p.pid, 200);
             if (birds.length > 2 && birds.filter((q) => q.alive).length === 2) ctx.music?.hot(); // down to the last two
             ctx.layout(b.p.pid, { kind: "wait", text: "Splat!", sub: `You lasted ${t.toFixed(1)}s` });
           }

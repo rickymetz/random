@@ -33,7 +33,7 @@ export default {
       relayout();
     }
     function grab(b) {
-      crown.holder = b; b.speedMul = 0.82; ctx.sfx.power(); ctx.shake(4);
+      crown.holder = b; b.speedMul = 0.82; ctx.sfx.power(b); ctx.shake(4);
       pops.push({ x: b.x, y: b.y - 70, t: 0, word: "GOT IT!" });
       relayout();
     }

@@ -47,7 +47,7 @@ export default {
     };
 
     function spook(b) {
-      b.out = true; out.push(b); ctx.sfx.lose(); ctx.shake(18);
+      b.out = true; out.push(b); ctx.sfx.ko(b); ctx.shake(18);
       pops.push({ x: b.x, y: b.y - 60, t: 0, word: "BOO!", c: "#b9f6ff" });
       if (!ghost.ghost) ctx.stat(gPid, "spooks", 1);
       if (!b.ghost) { ctx.buzz(b.pid, 500); ctx.layout(b.pid, { kind: "wait", text: "SPOOKED", sub: "You're a goner. Cheer them on." }); }

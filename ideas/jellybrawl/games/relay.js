@@ -43,7 +43,7 @@ export default {
       start() { place(0); place(1); },
       input(pid, m) {
         const b = A.of(pid); if (!b || !active().includes(b)) return;
-        if (A.input(pid, m) === "action" && ck.t >= 0 && b.jump <= 0 && b.trip <= 0) { b.jump = JUMP_T; ctx.sfx.flap(); }
+        if (A.input(pid, m) === "action" && ck.t >= 0 && b.jump <= 0 && b.trip <= 0) { b.jump = JUMP_T; ctx.sfx.flap(b); }
       },
       bot(pid, dt) { botPlay(A.of(pid), dt); },
       update(dt) {
@@ -64,12 +64,12 @@ export default {
           for (const o of course) {
             if (o.kind === "hurdle" && !b.passed.has(o) && b.x > o.x - 8 && b.x < o.x + 8) {
               b.passed.add(o);
-              if (b.z < 22) { b.trip = TRIP; b.vx = -120; ctx.sfx.crunch(); ctx.shake(8); pops.push({ x: b.x, y: b.y - 60, t: 0, word: "TRIP!" }); if (!b.ghost) ctx.buzz(b.pid, 200); }
+              if (b.z < 22) { b.trip = TRIP; b.vx = -120; ctx.sfx.crunch(b); ctx.shake(8); pops.push({ x: b.x, y: b.y - 60, t: 0, word: "TRIP!" }); if (!b.ghost) ctx.buzz(b.pid, 200); }
             }
             if (o.kind === "hurdle" && b.x < o.x - 8) b.passed.delete(o); // went back: jump it again
             if (o.kind === "bumper") {
               const by = laneY[t] + LANE_H / 2 + Math.sin(ck.t * o.sp + o.ph) * (LANE_H / 2 - 50), d = Math.hypot(b.x - o.x, b.y - by);
-              if (d < A.R + 34 && b.z < 30) { b.vx = ((b.x - o.x) / d) * 700 - 200; b.vy = ((b.y - by) / d) * 700; ctx.sfx.hit(); ctx.shake(6); }
+              if (d < A.R + 34 && b.z < 30) { b.vx = ((b.x - o.x) / d) * 700 - 200; b.vy = ((b.y - by) / d) * 700; ctx.sfx.hit(b); ctx.shake(6); }
             }
           }
           if (b.x >= X1) {
@@ -139,7 +139,7 @@ export default {
           b.bot.jumpAt ??= rnd(50, 110);
           if (d > 0 && d < b.bot.jumpAt && b.bot.decided !== o) { // one go per hurdle; now and then a bot fluffs it
             b.bot.decided = o; b.bot.jumpAt = null;
-            if (Math.random() < 0.88) { b.jump = JUMP_T; ctx.sfx.flap(); }
+            if (Math.random() < 0.88) { b.jump = JUMP_T; ctx.sfx.flap(b); }
           }
         }
       }

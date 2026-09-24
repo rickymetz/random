@@ -215,7 +215,7 @@ function onInput(pid, m) {
       p.taps.push(now); p.held = true;
     } else p.held = false;
   }
-  if (m.t === "react" && REACTS.includes(m.e) && now - (p.reactAt || 0) > 500) { p.reactAt = now; S.reacts.push({ e: m.e, p, t: 0, x: 120 + (S.players.indexOf(p) + 0.5) * ((W - 240) / S.players.length) + (Math.random() - 0.5) * 40 }); return; }
+  if (m.t === "react" && REACTS.includes(m.e) && now - (p.reactAt || 0) > 500) { p.reactAt = now; sfx.react(p); S.reacts.push({ e: m.e, p, t: 0, x: 120 + (S.players.indexOf(p) + 0.5) * ((W - 240) / S.players.length) + (Math.random() - 0.5) * 40 }); return; }
   if (m.t === "heckle" && S.scene === "game" && now - (p.heckleAt || 0) > 4000 && S.gctx?.arena?.heckle(p)) { p.heckleAt = now; p.stats.heckles = (p.stats.heckles || 0) + 1; return; }
   if (m.t === "noface") { p.noFace = true; if (S.scene === "lobby") refreshMenus(); return; }
   if (m.t === "act") return act(m.id, p);
@@ -240,7 +240,7 @@ function removeBot() {
 /* ------------------------------------------------------------------ menus */
 
 function act(id, p) {
-  if (id === "ready" && S.scene === "intro" && p) { p.ready = true; return layout(p.pid, { kind: "wait", text: "READY!", sub: "Waiting for the others…" }); }
+  if (id === "ready" && S.scene === "intro" && p) { if (!p.ready) sfx.ready(p); p.ready = true; return layout(p.pid, { kind: "wait", text: "READY!", sub: "Waiting for the others…" }); }
   const isVip = !p || p === vip();
   if (!isVip) return;
   if (id === "pause" && !S.paused && S.scene !== "lobby" && S.scene !== "final") return pause(true);
@@ -477,11 +477,18 @@ function pause(on) {
 
 function tick(dt) {
   if (S.paused) return;
+  const was = S.t;
   S.t += dt;
   for (const p of S.players) p.bob += dt;
+  if (S.scene === "results" && S.rows) { // the tally ticks as each row lands, and a new leader gets a fanfare
+    S.rows.forEach((r, i) => { const at = 0.7 + i * 0.12; if (was < at && S.t >= at && r.d > 0) sfx.tally(i); });
+    if (S.leadChange && was < 2.2 && S.t >= 2.2) sfx.lead();
+  }
+  if (S.scene !== "choose") S.chooseTick = null;
   if (S.scene === "choose") {
     const auto = !S.chooser || byPid(S.chooser)?.bot || !byPid(S.chooser)?.connected;
     if (!S.picked && ((auto && S.t > 2.5) || S.t > 15)) pick(S.options[Math.floor(Math.random() * S.options.length)].id);
+    if (!S.picked && !auto) { const left = Math.ceil(15 - S.t); if (left <= 5 && left < (S.chooseTick ?? 99)) { S.chooseTick = left; sfx.final(left); } } // the last seconds to choose
     if (S.picked && S.t - S.pickedAt > 1.4) startIntro();
   } else if (S.scene === "intro") {
     // at least 4.5 s; then as soon as everyone's tapped READY (12 s at most)

@@ -116,7 +116,7 @@ export default {
         const ks = k.wind > 0 ? 0.25 : 1; // rooted while winding up
         k.x = Math.max(F.x0 + KR * 0.6, Math.min(F.x1 - KR * 0.6, k.x + k.mx * K_SPEED * ks * dt));
         k.y = Math.max(F.y0 + KR * 0.6, Math.min(F.y1 - KR * 0.6, k.y + k.my * K_SPEED * ks * dt));
-        for (const b of blocks) if (!b.down && k.x + KR * 0.6 > b.x && k.x - KR * 0.6 < b.x + b.w && k.y + KR * 0.5 > b.y && k.y - KR * 0.5 < b.y + b.h) { b.down = true; ctx.sfx.crunch(); ctx.shake(8); ctx.stat(kp.pid, "wrecked", 1); }
+        for (const b of blocks) if (!b.down && k.x + KR * 0.6 > b.x && k.x - KR * 0.6 < b.x + b.w && k.y + KR * 0.5 > b.y && k.y - KR * 0.5 < b.y + b.h) { b.down = true; ctx.sfx.crunch(b); ctx.shake(8); ctx.stat(kp.pid, "wrecked", 1); }
         for (const r of runners) {
           if (r.out) continue;
           r.dash = Math.max(0, r.dash - dt); r.dashCool -= dt;

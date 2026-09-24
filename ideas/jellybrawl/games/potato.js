@@ -66,7 +66,7 @@ export default {
         fuse -= dt;
         if (fuse <= 0 && holder) {
           const b = holder; b.out = true; out.push([b]); holder = null;
-          pops.push({ x: b.x, y: b.y - 60, t: 0 }); ctx.sfx.hit(); ctx.shake(34);
+          pops.push({ x: b.x, y: b.y - 60, t: 0 }); ctx.sfx.hit(b); ctx.sfx.ko(b); ctx.shake(34);
           for (const o of A.live()) { const d = Math.hypot(o.x - b.x, o.y - b.y) || 1; if (d < 260) { o.vx += ((o.x - b.x) / d) * 600; o.vy += ((o.y - b.y) / d) * 600; } }
           if (!b.ghost) { ctx.buzz(b.pid, 600); ctx.layout(b.pid, { kind: "wait", text: "KABOOM", sub: "You were holding it." }); }
           const live = A.live();
