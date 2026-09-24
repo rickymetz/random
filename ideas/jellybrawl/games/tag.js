@@ -44,7 +44,7 @@ export default {
       ctx.stat(by.p.pid, "tags", 1);
       splats.push(makeSplat(b.x, b.y, 30, SLIME));
       pops.push({ x: b.x, y: b.y - 70, word: "INFECTED!", t: 0 });
-      ctx.sfx.hit(); ctx.shake(12); ctx.buzz(b.p.pid, 300);
+      ctx.sfx.hit(b); ctx.shake(12); ctx.buzz(b.p.pid, 300);
       ctx.layout(b.p.pid, layoutFor(b));
     }
 

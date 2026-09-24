@@ -157,10 +157,10 @@ export default {
           if (power > 0) {
             splats.push(makeSplat(...px(h), 34, h.p.color)); ctx.shake(18);
             h.stun = 3; h.x = h.sx; h.y = h.sy; h.dir = [0, 0];
-            ctx.stat(chomper.p.pid, "gulps", 1); ctx.sfx.pop(); ctx.buzz(h.p.pid, 300);
+            ctx.stat(chomper.p.pid, "gulps", 1); ctx.sfx.pop(h); ctx.buzz(h.p.pid, 300);
           } else if (invuln <= 0) {
             splats.push(makeSplat(...px(chomper), 44, chomper.p.color)); ctx.shake(34);
-            lives--; ctx.stat(h.p.pid, "catches", 1); ctx.sfx.hit(); ctx.buzz(chomper.p.pid, 400);
+            lives--; ctx.stat(h.p.pid, "catches", 1); ctx.sfx.hit(chomper); ctx.buzz(chomper.p.pid, 400);
             if (lives === 1) ctx.music?.hot(); // the chomper's last life
             if (lives > 0) reset();
             break;

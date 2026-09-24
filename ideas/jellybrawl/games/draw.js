@@ -31,7 +31,7 @@ export default {
 
   create(ctx) {
     const A = arena(ctx, {});
-    const ck = clock(ctx, DRAW_T + VOTE_T + REVEAL_T + 3), pops = [];
+    const ck = clock(ctx, 0), pops = []; // the countdown and drop only: its phases keep their own time
     const prompt = PROMPTS[Math.floor(rnd(0, PROMPTS.length))];
     const n = A.bodies.length, order = shuffle(A.bodies.slice()); // gallery order (anonymous)
     let phase = "draw", phaseT = 0, endAt = null, started = false;

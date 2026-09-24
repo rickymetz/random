@@ -47,7 +47,7 @@ export default {
     function knockOut(v, by) {
       if (!by.ghost) ctx.stat(by.pid, "hits", 1);
       if (--v.lives > 0) {
-        v.safe = 1.2; ctx.sfx.crunch(); ctx.shake(12);
+        v.safe = 1.2; ctx.sfx.crunch(v); ctx.shake(12);
         pops.push({ x: v.x, y: v.y - 60, t: 0, word: "OOF!", c: TEAM[by.team].color });
         if (!v.ghost) ctx.buzz(v.pid, 200);
         return;
@@ -55,7 +55,7 @@ export default {
       v.out = true; out[v.team].push(v);
       for (const x of balls) if (x.held === v) { x.held = null; x.vx = x.vy = 0; }
       pops.push({ x: v.x, y: v.y - 60, t: 0, word: "OUT!", c: TEAM[by.team].color });
-      ctx.sfx.hit(); ctx.shake(22);
+      ctx.sfx.ko(v); ctx.shake(22);
       if (!v.ghost) { ctx.buzz(v.pid, 400); ctx.layout(v.pid, { kind: "wait", text: "OUT!", sub: "Cheer your team on." }); }
     }
 

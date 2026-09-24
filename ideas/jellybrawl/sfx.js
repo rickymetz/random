@@ -69,17 +69,43 @@ function pulse(duty) {
   for (let k = 1; k < n; k++) imag[k] = (2 / (k * Math.PI)) * Math.sin(k * Math.PI * duty);
   return (pulses[duty] = ac.createPeriodicWave(real, imag));
 }
-// where a sound comes from: its player's side of the screen (pan) and pitch
+// The key: pitched effects play in the current song's scale (the last one
+// heard, when nothing's playing), so they never clash with the music.
+let lastKey = { root: 60, scale: [0, 2, 4, 5, 7, 9, 11] };
+function keyOf() {
+  const k = tune?.key;
+  if (k?.scale) lastKey = k;
+  return { tonic: 60 + (((lastKey.root - 60) % 12) + 12) % 12, sc: lastKey.scale };
+}
+const mhz = (m) => 440 * 2 ** ((m - 69) / 12);
+// scale degree d of the current song (0 = the tonic around C4-B4, 7 = an octave up)
+function scaleNote(d) {
+  const { tonic, sc } = keyOf();
+  return mhz(tonic + sc[((d % 7) + 7) % 7] + 12 * Math.floor(d / 7));
+}
+
+// Where a sound comes from: its player's side of the screen (pan, level-
+// compensated so a panned sound is as loud as a centred one) and that
+// player's pitch, a step of the song's scale: chord tones for the first
+// four seats. Tonal effects take the whole step; noisy / sliding ones only
+// a little of it, so nobody's hits sound heavier than anyone else's.
 const PALETTE = ["#ff2e63", "#00b7ff", "#ffd400", "#35e06b", "#b14dff", "#ff8a00", "#ff6ec7", "#00e0c6"];
-const SEAT_STEPS = [0, 2, 4, 5, 7, 9, -2, -5]; // semitones, one per player colour
-let place = { pan: 0, cents: 0 };
-function placeOf(at) {
-  if (!at || typeof at !== "object") return { pan: 0, cents: 0 };
+const SEAT_DEG = [0, 2, 4, -3, 5, 1, 7, -1];
+const NONE = { pan: 0, panned: false, amp: 1, deg: 0, cents: 0, seat: -1 };
+let place = NONE;
+function placeOf(at, mode) {
+  if (!at || typeof at !== "object") return NONE;
   const x = at.x, p = at.p || (at.color ? at : null), seat = p ? PALETTE.indexOf(p.color) : -1;
-  return { pan: typeof x === "number" ? Math.max(-1, Math.min(1, (x / 1920) * 2 - 1)) * 0.6 : 0, cents: seat >= 0 ? SEAT_STEPS[seat] * 100 : 0 };
+  const panned = typeof x === "number", deg = seat >= 0 && mode ? SEAT_DEG[seat] : 0;
+  const narrow = Math.max(-2, Math.min(2, deg)); // hits and slides: at most two steps
+  return {
+    pan: panned ? Math.max(-1, Math.min(1, (x / 1920) * 2 - 1)) * 0.5 : 0, panned, amp: panned ? Math.SQRT2 : 1, seat,
+    deg: mode === "tonal" ? deg : 0,
+    cents: mode === "narrow" && narrow ? 1200 * Math.log2(scaleNote(narrow) / scaleNote(0)) : 0,
+  };
 }
 function out(g) { // through a panner when the sound has a side
-  if (!place.pan) return g.connect(voice || fxBus);
+  if (!place.panned) return g.connect(voice || fxBus);
   const pn = ac.createStereoPanner(); pn.pan.value = place.pan;
   return g.connect(pn).connect(voice || fxBus);
 }
@@ -94,7 +120,7 @@ function tone(freq, dur, { type = "square", vol = 0.08, slide = 0, delay = 0, to
   if (slide || to) o.frequency.exponentialRampToValueAtTime(Math.max(30, to ?? freq + slide), t + dur);
   g.gain.value = 0;
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol, t + 0.003); // a 3 ms attack: no click
+  g.gain.exponentialRampToValueAtTime(vol * place.amp, t + 0.003); // a 3 ms attack: no click
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g); out(g);
   o.start(t);
@@ -115,7 +141,7 @@ function noise(dur, vol = 0.15, { lowpass = 0, highpass = 0, delay = 0, sweep = 
   s.buffer = noiseBuf; s.playbackRate.value = 2 ** (place.cents / 1200);
   g.gain.value = 0;
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol, t + (sweep ? dur * 0.9 : 0.002));
+  g.gain.exponentialRampToValueAtTime(vol * place.amp, t + (sweep ? dur * 0.9 : 0.002));
   if (sweep) g.gain.linearRampToValueAtTime(0, t + dur);
   else g.gain.setTargetAtTime(0, t + 0.002, dur / 3); // a natural decay: noise keeps its body
   let head = s;
@@ -125,87 +151,95 @@ function noise(dur, vol = 0.15, { lowpass = 0, highpass = 0, delay = 0, sweep = 
     head = s.connect(f);
   }
   head.connect(g); out(g);
-  s.start(t, Math.random() * (2 - Math.min(1.9, dur)));
+  s.start(t, Math.random() * Math.max(0, 2 - dur * s.playbackRate.value - 0.05));
   s.stop(t + dur + 0.02);
 }
 
-// Voice caps: at most `max` of one effect per 120 ms; the 2nd and later in a
-// burst get a little random delay and detune, so they don't phase-stack.
-// Effects in a group share one voice and the newest wins (win and lose: the
-// later call is the verdict). Timed on the wall clock, which keeps going even
-// if the audio is interrupted.
+// Voice caps: at most `max` of one effect per 120 ms (for effects from
+// players, one per player and four in all, so a burst doesn't just play the
+// first seats); the 2nd and later in a burst get a little random delay and
+// detune, so they don't phase-stack. Effects in a group share one voice and
+// the newest wins (win and lose: the later call is the verdict). Timed on
+// the wall clock, which keeps going even if the audio is interrupted.
 const jitter = { t: 0, cents: 0 };
 const recent = {}, owned = {};
 let voice = null; // while a grouped effect plays, its notes go through this gain
-function voiced(name, fn, { max = 3, dip = 0, depth = 0.5, group = null } = {}) {
+let buzzAt = -1e9, verdictAt = -1e9;
+function voiced(name, fn, { max = 3, dip = 0, depth = 0.5, group = null, seat = false } = {}) {
   return (...a) => {
     if (!ac) return;
     const now = performance.now();
-    place = placeOf(a[0]);
+    if ((name === "final" || name === "buzzer") && now - verdictAt < 2500) return; // the game's already decided
+    place = placeOf(a[0], seat);
     if (group) { // steal: fade whatever this group is still playing
+      if (name === "win" || name === "lose") verdictAt = now;
       owned[group]?.gain.setTargetAtTime(0, ac.currentTime, 0.01);
       voice = ac.createGain(); voice.connect(fxBus);
-      fn(...a); owned[group] = voice; voice = null;
+      jitter.t = now - buzzAt < 400 ? 0.45 : 0; // after the buzzer, not on top of it
+      fn(...a); owned[group] = voice; voice = null; jitter.t = 0;
     } else {
-      const list = (recent[name] = (recent[name] || []).filter((t) => now - t < 120));
-      if (list.length >= max) return;
-      list.push(now);
+      const list = (recent[name] = (recent[name] || []).filter((r) => now - r.t < 120));
+      if (list.length >= (place.seat >= 0 ? 4 : max) || (place.seat >= 0 && list.some((r) => r.seat === place.seat))) { place = NONE; return; }
+      list.push({ t: now, seat: place.seat });
       const extra = list.length > 1;
       jitter.t = extra ? Math.random() * 0.012 : 0;
       jitter.cents = extra ? (Math.random() * 2 - 1) * 15 : 0;
       fn(...a);
       jitter.t = 0; jitter.cents = 0;
     }
+    if (name === "buzzer") buzzAt = now;
     if (dip) tune?.dip(dip, depth);
-    place = { pan: 0, cents: 0 };
+    place = NONE;
   };
 }
 
-// a note st semitones over the song's tonic, around C5 (C major before any song)
-function jingleHz(st) {
-  const root = tune?.key?.root ?? 60, base = 60 + (((root - 60) % 12) + 12) % 12;
-  return 440 * 2 ** ((base + st - 69) / 12);
-}
+// a note st semitones over the song's tonic, around C4-B4 (C major before any song)
+function jingleHz(st) { return mhz(keyOf().tonic + st); }
+const P = () => place.deg; // the player's step, for tonal effects
 
 // Every effect can take where it came from: a body (with .x and .p) or a
 // player, for its side of the screen and that player's pitch.
 const RAW = {
   whoosh: () => { noise(0.25, 0.08, { highpass: 600 }); tone(300, 0.25, { type: 0.25, slide: 900, vol: 0.03 }); },
   slam: () => { tone(90, 0.3, { type: 0.5, slide: -50, vol: 0.12 }); tone(180, 0.22, { type: 0.5, slide: -90, vol: 0.06 }); noise(0.15, 0.2, { lowpass: 1600 }); }, // the 180 Hz layer reads on TV speakers
-  join: () => { tone(523, 0.1, { type: "triangle" }); tone(784, 0.14, { type: "triangle", delay: 0.08 }); },
+  join: () => { tone(scaleNote(0 + P()), 0.1, { type: "triangle" }); tone(scaleNote(4 + P()), 0.14, { type: "triangle", delay: 0.08 }); },
   flap: () => tone(380, 0.08, { type: "triangle", slide: 260, vol: 0.14 }),
   hit: () => { noise(0.18, 0.2, { lowpass: 1200 }); tone(180, 0.2, { type: 0.25, slide: -120, vol: 0.08 }); }, // under the hats, with a pitched body
   pop: () => { tone(900, 0.07, { type: 0.125, slide: 600, vol: 0.07 }); noise(0.08, 0.08, { highpass: 2000 }); },
   crunch: () => { noise(0.12, 0.16, { lowpass: 1400 }); tone(120, 0.1, { type: 0.25, slide: -60, vol: 0.05 }); },
-  launch: () => tone(200, 0.3, { type: 0.25, slide: 500, vol: 0.09 }),
-  dot: () => tone(1320, 0.07, { type: 0.25, vol: 0.13 }), // above the arp's register
-  power: () => [0, 0.07, 0.14].forEach((d, i) => tone(440 * (1 + i * 0.5), 0.1, { type: "triangle", delay: d })),
-  tick: () => tone(1000, 0.05, { type: "sine", vol: 0.09 }),
-  go: () => tone(880, 0.3, { type: 0.5, vol: 0.085 }),
+  launch: () => tone(200, 0.3, { type: 0.25, slide: 500, vol: 0.15 }),
+  dot: () => tone(scaleNote(11 + P()), 0.09, { type: 0.25, vol: 0.24 }), // the 5th an octave up: above the arp
+  power: () => [0, 4, 7].forEach((d, i) => tone(scaleNote(d + P()), 0.1, { type: "triangle", delay: i * 0.07 })),
+  tick: () => tone(scaleNote(4), 0.07, { type: "triangle", vol: 0.12 }), // the 5th, resolving to GO's tonic
+  go: () => tone(scaleNote(7), 0.3, { type: 0.5, vol: 0.085 }),
   // the jingles play in the song's key (a major arpeggio up for a win, a minor one down for a loss)
   win: () => [0, 4, 7, 12].forEach((st, i) => tone(jingleHz(st), 0.18, { type: "triangle", delay: i * 0.1, vol: 0.11 })),
   lose: () => [7, 3, 0].forEach((st, i) => tone(jingleHz(st), 0.2, { type: "triangle", delay: i * 0.12, vol: 0.085 })),
   // knocked out: a falling chip glide and a burst, in that player's pitch
-  ko: () => { tone(800, 0.35, { type: 0.125, to: 100, vol: 0.1 }); noise(0.2, 0.12, { lowpass: 2500 }); },
-  // the last seconds: ticks rising a step each second, and a buzzer at zero
-  final: (n = 5) => tone(880 * 1.5 ** ((5 - Math.min(5, n)) / 4), 0.1, { type: 0.5, vol: 0.15 }),
-  buzzer: () => { tone(110, 0.45, { type: 0.25, vol: 0.14 }); tone(116, 0.45, { type: 0.25, vol: 0.08 }); noise(0.3, 0.1, { lowpass: 900 }); },
+  ko: () => { tone(800, 0.35, { type: 0.25, to: 100, vol: 0.1 }); noise(0.2, 0.12, { lowpass: 2500 }); },
+  // the last seconds: ticks climbing the scale a step a second (up to the octave), and a buzzer at zero
+  final: (n = 5) => tone(scaleNote(13 - Math.min(5, n)), 0.14, { type: 0.5, vol: 0.2 }),
+  buzzer: () => { const f = scaleNote(-7); tone(f, 0.3, { type: 0.5, vol: 0.07 }); tone(f * 2 ** (1 / 12), 0.3, { type: 0.5, vol: 0.06 }); noise(0.25, 0.08, { lowpass: 900 }); }, // the tonic and its b2
   // small social sounds: READY, a reaction, a row of the results tally, a new leader
-  ready: () => tone(660, 0.06, { type: "triangle", vol: 0.07 }),
-  react: () => tone(1100, 0.06, { type: 0.125, slide: 400, vol: 0.06 }),
-  tally: (i = 0) => tone(660 * 2 ** (Math.min(i, 12) / 12), 0.06, { type: 0.25, vol: 0.09 }),
-  lead: () => [12, 16, 19, 24].forEach((st, i) => tone(jingleHz(st), 0.1, { type: 0.25, delay: i * 0.06, vol: 0.07 })),
-  // the board: a dice roulette that slows to a thunk, a star fanfare, a duel's riser and slam
-  dice: () => { let d = 0; for (let k = 0; k < 11; k++) { tone(1400 - k * 40, 0.03, { type: 0.25, delay: d, vol: 0.05 }); d += 0.035 + k * 0.014; } tone(150, 0.15, { type: 0.5, slide: -60, delay: d, vol: 0.12 }); },
+  ready: () => tone(scaleNote(4 + P()), 0.09, { type: "triangle", vol: 0.12 }),
+  react: () => tone(scaleNote(9 + P()), 0.1, { type: 0.25, slide: 300, vol: 0.2 }),
+  tally: (i = 0) => tone(scaleNote(4 + Math.min(i, 8)), 0.12, { type: 0.25, vol: 0.2 }), // up the scale from the 5th
+  lead: () => [7, 9, 11, 14].forEach((d, i) => tone(scaleNote(d), 0.1, { type: 0.25, delay: i * 0.06, vol: 0.1 })), // the song's own triad
+  // the board: a dice roulette that slows to a thunk as the die stops, a star fanfare, a duel's riser and slam
+  dice: () => { let d = 0; for (let k = 0; k < 11; k++) { tone(1400 - k * 40, 0.045, { type: 0.25, delay: d, vol: 0.1 }); d += 0.024 + k * 0.0095; } tone(150, 0.15, { type: 0.5, slide: -60, delay: d, vol: 0.12 }); },
   star: () => { [0, 4, 7, 12, 16].forEach((st, i) => tone(jingleHz(st), 0.14, { type: 0.25, delay: i * 0.08, vol: 0.09 })); tone(jingleHz(24), 0.6, { type: 0.125, delay: 0.42, vol: 0.07 }); },
   duel: () => { noise(0.6, 0.1, { highpass: 400, sweep: 5000 }); tone(90, 0.3, { type: 0.5, slide: -50, vol: 0.12, delay: 0.6 }); noise(0.15, 0.2, { lowpass: 1600, delay: 0.6 }); },
 };
 
 // the jingles dip the music so they cut through; busy ones are capped harder
 // (slam and hit already sit well above the music; GO lands on the music's drop, which carries it)
+// seat: "tonal" (the player's whole scale step) or "narrow" (at most two steps, for hits and slides)
 const CUES = {
-  slam: { max: 1 }, win: { group: "stinger", dip: 650 }, lose: { group: "stinger", dip: 650 }, go: { max: 1 }, power: { max: 2 }, dot: { max: 2 }, crunch: { max: 2 }, flap: { max: 2 },
-  ko: { max: 3 }, final: { max: 1 }, buzzer: { max: 1, dip: 500 }, react: { max: 2 }, tally: { max: 2 }, lead: { max: 1, dip: 400 },
+  slam: { max: 1, seat: "narrow" }, win: { group: "stinger", dip: 650 }, lose: { group: "stinger", dip: 650 }, go: { max: 1 },
+  power: { max: 2, seat: "tonal" }, dot: { max: 2, seat: "tonal" }, join: { seat: "tonal" }, ready: { seat: "tonal" }, react: { max: 2, seat: "tonal" },
+  hit: { seat: "narrow" }, crunch: { max: 2, seat: "narrow" }, pop: { seat: "narrow" }, flap: { max: 2, seat: "narrow" }, launch: { seat: "narrow" },
+  ko: { max: 3, seat: "narrow" }, whoosh: { seat: "narrow" },
+  final: { max: 1 }, buzzer: { max: 1, dip: 500 }, tally: { max: 2 }, lead: { max: 1, dip: 400 },
   dice: { max: 1 }, star: { group: "stinger", dip: 900 }, duel: { max: 1, dip: 800 },
 };
 export const sfx = Object.fromEntries(Object.entries(RAW).map(([k, fn]) => [k, voiced(k, fn, CUES[k])]));

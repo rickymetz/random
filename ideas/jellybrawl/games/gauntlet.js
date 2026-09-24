@@ -545,8 +545,8 @@ export default {
         }
         anyFail = true;
         lives[pid]--;
-        if (lives[pid] <= 0) outAt[pid] = n;
-        ctx.buzz(pid, 250);
+        if (lives[pid] <= 0) { outAt[pid] = n; ctx.sfx.ko(ctx.players.find((q) => q.pid === pid)); ctx.buzz(pid, 500); } // out
+        else ctx.buzz(pid, 250);
       }
       (anyFail ? ctx.sfx.hit : ctx.sfx.join)();
       if (anyFail) ctx.shake(18);

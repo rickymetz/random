@@ -6,7 +6,20 @@ import { joinRoom } from "./net.js";
 
 const $ = (id) => document.getElementById(id);
 let haptics = true; // the TV can switch buzzing off
-const vib = (ms) => haptics && navigator.vibrate?.(ms);
+// A buzz for your own moments (ready, hit, out). Phones that can't vibrate
+// from the web (iPhone) get a short, quiet beep from the phone instead.
+let beeper = null;
+addEventListener("pointerdown", () => { try { beeper ??= new AudioContext(); if (beeper.state === "suspended") beeper.resume(); } catch {} }, { capture: true });
+function vib(ms) {
+  if (!haptics) return;
+  if (navigator.vibrate) return navigator.vibrate(ms);
+  if (!beeper || beeper.state !== "running") return;
+  const len = Math.min(0.25, (Array.isArray(ms) ? ms[0] : ms) / 1000), t = beeper.currentTime;
+  const o = beeper.createOscillator(), g = beeper.createGain();
+  o.type = "square"; o.frequency.value = len > 0.2 ? 220 : 440; // a long buzz (knocked out) is lower
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  o.connect(g).connect(beeper.destination); o.start(t); o.stop(t + len + 0.02);
+}
 const store = {
   get(k) { try { return sessionStorage.getItem(k) ?? localStorage.getItem(k); } catch { return null; } },
   set(k, v, local) { try { (local ? localStorage : sessionStorage).setItem(k, v); } catch {} },

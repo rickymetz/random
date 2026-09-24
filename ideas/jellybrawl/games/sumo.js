@@ -42,7 +42,7 @@ export default {
         if (!ck.tick(dt) || inst.result) return;
         if (endAt != null) { if (ck.t >= endAt) inst.result = inst.pending; return; }
         const { hits } = A.step(dt);
-        for (const h of hits) if (h.speed > 250) { ctx.sfx.hit(); ctx.shake(Math.min(20, h.speed / 40)); for (const b of [h.a, h.b]) if (b.dash > 0 && !b.ghost) ctx.stat(b.pid, "shoves", 1); }
+        for (const h of hits) if (h.speed > 250) { ctx.sfx.hit(h.a); ctx.shake(Math.min(20, h.speed / 40)); for (const b of [h.a, h.b]) if (b.dash > 0 && !b.ghost) ctx.stat(b.pid, "shoves", 1); }
         const rr = radius();
         for (const b of A.live()) if (edge(b) > rr + A.R * 0.4) {
           b.out = true; falling.push({ b, t: 0 }); out.push([b]);

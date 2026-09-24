@@ -95,7 +95,7 @@ export default {
             const m = moles.find((m) => m.hole === s.i);
             if (m) {
               const lost = Math.min(LOSE, m.gems); m.gems -= lost; bank -= lost;
-              m.hole = -1; m.stun = STUN; ctx.sfx.hit(); ctx.shake(20);
+              m.hole = -1; m.stun = STUN; ctx.sfx.hit(m); ctx.shake(20);
               pops.push({ x: holes[s.i].x, y: holes[s.i].y - 120, t: 0, word: "BONK!" });
               if (!hammer.ghost) ctx.stat(hPid, "bonks", 1);
               if (!m.ghost) { ctx.buzz(m.pid, 300); relayout(m); }

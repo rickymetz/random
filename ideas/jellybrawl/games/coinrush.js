@@ -45,7 +45,7 @@ export default {
         if (!ck.tick(dt) || inst.result) return;
         if (endAt != null) { if (ck.t >= endAt) inst.result = inst.pending; return; }
         const { hits } = A.step(dt);
-        for (const h of hits) for (const [x, y] of [[h.a, h.b], [h.b, h.a]]) if (x.dash > 0 && y.hurt <= 0 && h.speed > 200) { drop(y, 1); y.hurt = 0.6; ctx.sfx.crunch(); }
+        for (const h of hits) for (const [x, y] of [[h.a, h.b], [h.b, h.a]]) if (x.dash > 0 && y.hurt <= 0 && h.speed > 200) { drop(y, 1); y.hurt = 0.6; ctx.sfx.crunch(y); }
         for (const b of A.bodies) b.hurt = Math.max(0, b.hurt - dt);
         // coins rain faster as time runs out
         rain -= dt;

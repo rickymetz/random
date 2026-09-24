@@ -27,7 +27,7 @@ export default {
       const a = by ? Math.atan2(h.y - by.y, h.x - by.x) + rnd(-0.6, 0.6) : rnd(0, 6.28);
       crown.x = h.x; crown.y = h.y; crown.vx = Math.cos(a) * 520; crown.vy = Math.sin(a) * 520; crown.z = 40;
       crown.lock = h; crown.lockT = 0.8;
-      pops.push({ x: h.x, y: h.y - 70, t: 0, word: "KNOCKED!" }); ctx.sfx.crunch(); ctx.shake(14);
+      pops.push({ x: h.x, y: h.y - 70, t: 0, word: "KNOCKED!" }); ctx.sfx.crunch(h); ctx.shake(14);
       if (!h.ghost) ctx.buzz(h.pid, 300);
       if (by && !by.ghost) ctx.stat(by.pid, "knocks", 1);
       relayout();

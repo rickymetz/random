@@ -38,7 +38,7 @@ export default {
         if (endAt != null) { if (ck.t >= endAt) inst.result = inst.pending; return; }
         for (const b of A.bodies) b.shield = Math.max(0, b.shield - dt);
         const { hits, walls } = A.step(dt);
-        for (const h of hits) if (h.speed > 200) { ctx.sfx.crunch(); ctx.shake(Math.min(16, h.speed / 50)); }
+        for (const h of hits) if (h.speed > 200) { ctx.sfx.crunch(h.a); ctx.shake(Math.min(16, h.speed / 50)); }
         for (const w of walls) {
           const b = w.b;
           if (b.shield > 0 || b.out) continue;

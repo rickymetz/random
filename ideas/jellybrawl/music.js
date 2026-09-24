@@ -563,7 +563,7 @@ export function createMusic(ac, out) {
       cur.outroAt = cur.next + ((4 - (cur.step % 4)) % 4) * sx;
     },
     // the song's key, so the win / lose jingles can play in it
-    get key() { return cur && { root: cur.s.root, major: ["major", "mixolydian"].includes(cur.s.mode) }; },
+    get key() { if (!cur) return null; const sc = scaleOf(cur.s); return { root: cur.s.root, mode: cur.s.mode, scale: sc, major: sc[2] === 4 }; },
     // music switched off: stop working at it
     enable(on) { enabled = on; if (on) { for (const P of [cur, ...fading]) if (P) P.next = Math.max(P.next, ac.currentTime + 0.05); } },
     stop() {

@@ -52,7 +52,7 @@ export default {
         if (!ck.tick(dt) || inst.result) return;
         if (endAt != null) { if (ck.t >= endAt) inst.result = inst.pending; return; }
         const { hits } = A.step(dt);
-        for (const h of hits) if (h.speed > 260) { ctx.sfx.hit(); ctx.shake(Math.min(18, h.speed / 45)); for (const [x, y] of [[h.a, h.b], [h.b, h.a]]) if (x.dash > 0 && y === king && !x.ghost) ctx.stat(x.pid, "shoves", 1); }
+        for (const h of hits) if (h.speed > 260) { ctx.sfx.hit(h.a); ctx.shake(Math.min(18, h.speed / 45)); for (const [x, y] of [[h.a, h.b], [h.b, h.a]]) if (x.dash > 0 && y === king && !x.ghost) ctx.stat(x.pid, "shoves", 1); }
         const on = A.bodies.filter(onHill);
         if (king && !onHill(king)) { // toppled
           pops.push({ x: king.x, y: king.y - king.r - 50, t: 0, word: "TOPPLED!" }); ctx.sfx.crunch(); ctx.shake(24);

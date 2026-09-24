@@ -32,7 +32,7 @@ export default {
       b.out = true; out.push([b]);
       for (let k = 0; k < b.trail.length; k += 3) spawnPellet(b.trail[k].x + rnd(-8, 8), b.trail[k].y + rnd(-8, 8), true);
       pops.push({ x: b.x, y: b.y - 50, t: 0, word: why });
-      ctx.sfx.hit(); ctx.shake(18);
+      ctx.sfx.ko(b); ctx.shake(18);
       if (!b.ghost) { ctx.buzz(b.pid, 400); ctx.layout(b.pid, { kind: "wait", text: "BONK!", sub: `Your tail was ${b.len} long.` }); }
     }
 

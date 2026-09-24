@@ -176,7 +176,7 @@ function onJoin(pid, name) {
     removeBot();
   }
   p = addPlayer(pid, (name || "Player").slice(0, 12));
-  sfx.join();
+  sfx.join(p); // each player first hears their own pitch here
   if (S.scene === "lobby" || S.scene === "final") refreshMenus();
   else layout(pid, { kind: "wait", text: "You're in!", sub: "You'll play from the next minigame." });
 }
@@ -227,8 +227,7 @@ function onInput(pid, m) {
 function addBot() {
   if (S.players.length >= MAX) return;
   const name = BOT_NAMES.find((n) => !S.players.some((p) => p.name === n)) || "Bot";
-  addPlayer("bot-" + Math.random().toString(36).slice(2, 8), name, true);
-  sfx.join();
+  sfx.join(addPlayer("bot-" + Math.random().toString(36).slice(2, 8), name, true));
   refreshMenus();
 }
 function removeBot() {
@@ -240,7 +239,7 @@ function removeBot() {
 /* ------------------------------------------------------------------ menus */
 
 function act(id, p) {
-  if (id === "ready" && S.scene === "intro" && p) { if (!p.ready) sfx.ready(p); p.ready = true; return layout(p.pid, { kind: "wait", text: "READY!", sub: "Waiting for the others…" }); }
+  if (id === "ready" && S.scene === "intro" && p) { if (!p.ready) { sfx.ready(p); send(p, { t: "buzz", ms: [60, 40, 60] }); } p.ready = true; return layout(p.pid, { kind: "wait", text: "READY!", sub: "Waiting for the others…" }); }
   const isVip = !p || p === vip();
   if (!isVip) return;
   if (id === "pause" && !S.paused && S.scene !== "lobby" && S.scene !== "final") return pause(true);
@@ -481,14 +480,16 @@ function tick(dt) {
   S.t += dt;
   for (const p of S.players) p.bob += dt;
   if (S.scene === "results" && S.rows) { // the tally ticks as each row lands, and a new leader gets a fanfare
-    S.rows.forEach((r, i) => { const at = 0.7 + i * 0.12; if (was < at && S.t >= at && r.d > 0) sfx.tally(i); });
-    if (S.leadChange && was < 2.2 && S.t >= 2.2) sfx.lead();
+    // (each row's "+n" lands at (1 + 0.3·max(i, from)) / 3 s; the tick climbs in the order they land)
+    const lands = S.rows.map((r, i) => ({ at: (1 + 0.3 * Math.max(i, r.from)) / 3, d: r.d })).filter((r) => r.d > 0).sort((a, b) => a.at - b.at);
+    lands.forEach((r, k) => { if (was < r.at && S.t >= r.at) sfx.tally(k); });
+    if (S.leadChange && was < 2.0 && S.t >= 2.0) sfx.lead();
   }
   if (S.scene !== "choose") S.chooseTick = null;
   if (S.scene === "choose") {
     const auto = !S.chooser || byPid(S.chooser)?.bot || !byPid(S.chooser)?.connected;
     if (!S.picked && ((auto && S.t > 2.5) || S.t > 15)) pick(S.options[Math.floor(Math.random() * S.options.length)].id);
-    if (!S.picked && !auto) { const left = Math.ceil(15 - S.t); if (left <= 5 && left < (S.chooseTick ?? 99)) { S.chooseTick = left; sfx.final(left); } } // the last seconds to choose
+    if (!S.picked && !auto) { const left = Math.ceil(15 - S.t); if (left <= 5 && left < (S.chooseTick ?? 99)) { S.chooseTick = left; sfx.tick(); } } // the last seconds to choose
     if (S.picked && S.t - S.pickedAt > 1.4) startIntro();
   } else if (S.scene === "intro") {
     // at least 4.5 s; then as soon as everyone's tapped READY (12 s at most)
@@ -919,7 +920,7 @@ function syncMusic() {
   }
   if (goCheck && performance.now() > goCheck) { goCheck = 0; music.go(); } // no countdown came: drop now
   if (sc === "game" && finalDouble() && music.state?.section === "A" && !music.state.hot) music.hot(); // the double-points final round runs hot
-  if (stinger && S.t < 2.2 && (sc === "results" || sc === "board" || sc === "final")) return; // let it ring
+  if (stinger && S.t < (S.leadChange && sc === "results" ? 2.6 : 2.2) && (sc === "results" || sc === "board" || sc === "final")) return; // let it ring (past a new leader's fanfare)
   stinger = false;
   if (sc === "intro" || sc === "game") music.play("game", S.def?.id || "game", S.def?.kind); // the mood from the kind of game
   else if (sc === "duel") music.play("game", "duel");
