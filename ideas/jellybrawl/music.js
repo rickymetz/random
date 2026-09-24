@@ -162,14 +162,15 @@ const SONGS = {
   // half-time breath at the midpoint, a 2-bar build, a lifted second drop,
   // a 2-bar build into silence, and the end card's big major chord (outro).
   trailer: () => ({
-    bpm: 1200 / 7, root: 45, mode: "minor", A: [0, 5, 2, 6], B: [5, 6, 0, 0], vol: 1, intro: 2, introLevel: -5, arpRange: 65,
+    bpm: 1200 / 7, root: 45, mode: "minor", A: [0, 5, 2, 6], B: [5, 6, 0, 0], vol: 1, intro: 1, introLevel: -5, arpRange: 65,
     form: { loop: 0, secs: [
-      { name: "A", bars: 8, drums: "main", lead: true, arp: true, prog: "A", level: -1.5 },
+      { name: "A", bars: 4, drums: "main", lead: true, arp: true, prog: "A", level: -2 },
+      { name: "A2", bars: 4, drums: "main", lead: true, arp: true, prog: "A", open: true, level: -1 }, // open hats: A climbs
       { name: "breath", bars: 2, drums: "breath", lead: "call", arp: false, prog: "A", low: true, level: -2 },
-      { name: "build", bars: 2, drums: "build", lead: false, arp: true, chords: [3, E_MAJ], level: -4, rise: true },
-      { name: "B", bars: 5, drums: "main", lead: true, leadUp: 12, arp: true, arpDouble: true, bass: "synco", prog: "B", lift: true, open: true, level: 0 },
-      { name: "build", bars: 2, drums: "build", lead: false, arp: true, chords: [3, E_MAJ], level: -4, rise: true }, // iv, V: a fake-out into F the first time, home to A major the second
-      { name: "card", bars: 2, end: true, level: -3.5 }, // the end card: one big chord (the song ends here)
+      { name: "build", bars: 2, drums: "build", lead: false, arp: true, chords: [3, E_MAJ], level: -7, rise: true },
+      { name: "B", bars: 6, drums: "main", lead: true, leadUp: 12, arp: true, arpDouble: true, bass: "synco", prog: "B", lift: true, open: true, level: 1.5 },
+      { name: "build", bars: 2, drums: "build", lead: false, arp: true, chords: [3, E_MAJ], level: -7, rise: true }, // iv, V: a fake-out into F the first time, home to A major the second
+      { name: "card", bars: 2, end: true, level: -9 }, // (the glue and limiter pull it back up) // the end card: one big chord (the song ends here)
     ] },
     ...BEATS.amen, bass: BASSES.rolling, lead: "x..x..x.x.x.x...", leadSeed: 11, leadDuty: 0.25, echo: true,
     arp: "xxxxxxxxxxxxxxxx", arpDuty: 0.5, pad: 0.6,
@@ -414,7 +415,7 @@ export function createMusic(ac, out) {
       const g = P.gain.gain, from = dbGain(P.sec.level);
       g.cancelScheduledValues(t);
       // a build climbs from its level to just under the drop's (a ramp needs an explicit start: it runs from the last event)
-      if (P.sec.rise) { g.setValueAtTime(from, t); g.linearRampToValueAtTime(dbGain(-3), t + P.sec.bars * 16 * sixteenth - 4 * sixteenth); }
+      if (P.sec.rise) { g.setValueAtTime(from, t); g.linearRampToValueAtTime(dbGain(-4.5), t + P.sec.bars * 16 * sixteenth - 4 * sixteenth); }
       else g.setTargetAtTime(from, t, 0.02);
     }
     if (P.sec.end) { if (P.inSec === 0 && i === 0 && !P.ended) { P.ended = true; hitOutro(s, t, dst, v, P.sec.bars * 16 * sixteenth + 0.9, 0.15); } return; } // rings through the card and the fade after it
@@ -519,7 +520,7 @@ export function createMusic(ac, out) {
     }
     if (s.pad && i === 0 && (!sec.low || sec.drums === "breath") && !drop && !P.hot) { // soft held chord (a narrow pulse, filtered); add9 on the calm songs; fuller in a lift
       const tones = s.add9 ? [...chord, degreeNote(s, deg, 1) + 12] : chord;
-      const len = building && left <= 16 ? Math.max(2, left - 5) : 14; // clear of the silent beat
+      const len = building && left <= 16 ? Math.max(2, left - 5) : sec.drums === "breath" ? 17 : 14; // clear of the silent beat; a breath's pad holds on (no dropout)
       for (const n of tones.map((x) => { let m = x + 12; while (m > 76) m -= 12; return m - 12; })) note(t, dst, n + 12, { type: 0.25, vol: 0.018 * s.pad * v * (intro || sec.drums === "breath" ? 2.5 : 1) * (sec.lift ? 1.5 : 1), dur: sixteenth * len, attack: sixteenth * 3, cutoff: 1800 });
     }
   }

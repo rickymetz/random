@@ -54,7 +54,7 @@
   .stage:hover .arrow, .stage .arrow:focus-visible { opacity: 1; }
   .stage .prev { left: 0; } .stage .next { right: 0; }
   @media (hover: none) { .stage .arrow { opacity: .8; } }
-  .stage .sound { position: absolute; right: 10px; top: 10px; z-index: 1; font: 18px/1 var(--label); letter-spacing: 2px; text-transform: uppercase;
+  .stage .sound { position: absolute; left: 10px; top: 10px; z-index: 1; font: 18px/1 var(--label); letter-spacing: 2px; text-transform: uppercase;
     color: #fff; background: rgba(11,6,22,.78); border: 2px solid var(--cyan); padding: 8px 12px; cursor: pointer; box-shadow: 3px 3px 0 var(--pink); }
   .stage .sound:hover { background: #2a0845; }
   .caption { font-size: 14px; color: var(--dim); margin: 6px 0 0; min-height: 1.5em; }
@@ -316,7 +316,7 @@ function show(i) {
     if (auto) media.play().catch(() => { auto && (timer = setTimeout(() => show(at + 1), DWELL)); }); // autoplay blocked: treat it like a picture
     // browsers only autoplay muted: one clear button to hear the soundtrack
     // (turning it on restarts a sizzle that's well under way, so the music is heard from its start)
-    const sound = el("button", { type: "button", className: "sound", ariaPressed: "false" }, el("span", { ariaHidden: "true", textContent: "🔇 " }), "Sound");
+    const sound = el("button", { type: "button", className: "sound", ariaPressed: "false" }, el("span", { ariaHidden: "true", textContent: "🔇 " }), el("span", { textContent: "Tap for sound" }));
     const icon = sound.firstChild;
     icon.setAttribute("aria-hidden", "true");
     sound.addEventListener("click", () => {
@@ -324,7 +324,7 @@ function show(i) {
       media.muted = !media.muted;
       if (!media.muted) { if (media.duration && media.currentTime > media.duration * 0.4) media.currentTime = 0; media.play().catch(() => {}); }
     });
-    media.addEventListener("volumechange", () => { sound.setAttribute("aria-pressed", String(!media.muted)); icon.textContent = media.muted ? "🔇 " : "🔊 "; });
+    media.addEventListener("volumechange", () => { sound.setAttribute("aria-pressed", String(!media.muted)); icon.textContent = media.muted ? "🔇 " : "🔊 "; sound.lastChild.textContent = media.muted ? "Tap for sound" : "Sound on"; });
     sound.setAttribute("aria-pressed", "false");
     stage.append(sound);
   } else {
