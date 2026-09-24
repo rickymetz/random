@@ -322,9 +322,11 @@ function show(i) {
     sound.addEventListener("click", () => {
       stop();
       media.muted = !media.muted;
-      if (!media.muted) { if (media.duration && media.currentTime > media.duration * 0.4) media.currentTime = 0; media.play().catch(() => {}); }
+      if (!media.muted) { if (media.duration && media.currentTime > media.duration * 0.4) media.load(); media.play().catch(() => {}); } // load(): back to the start even where the file can't seek
+      label(); // (load() drops the queued volumechange)
     });
-    media.addEventListener("volumechange", () => { sound.setAttribute("aria-pressed", String(!media.muted)); icon.textContent = media.muted ? "🔇 " : "🔊 "; sound.lastChild.textContent = media.muted ? "Tap for sound" : "Sound on"; });
+    const label = () => { sound.setAttribute("aria-pressed", String(!media.muted)); icon.textContent = media.muted ? "🔇 " : "🔊 "; sound.lastChild.textContent = media.muted ? "Tap for sound" : "Sound on"; };
+    media.addEventListener("volumechange", label);
     sound.setAttribute("aria-pressed", "false");
     stage.append(sound);
   } else {

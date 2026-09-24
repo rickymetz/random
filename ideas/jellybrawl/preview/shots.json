@@ -1,9 +1,9 @@
 {
- "generated": "2026-09-24T05:06:09.319Z",
- "commit": "6f91e6f5",
+ "generated": "2026-09-24T05:41:24.972Z",
+ "commit": "d762dea4",
  "video": {
   "file": "bumper.webm",
-  "seconds": 32.9,
+  "seconds": 33.1,
   "poster": "shots/slide-poster.webp"
  },
  "slides": [
@@ -98,6 +98,11 @@
    "kind": "tv"
   },
   {
+   "file": "shots/screen-pause.webp",
+   "caption": "The VIP can pause, skip a game or end the night",
+   "kind": "tv"
+  },
+  {
    "file": "shots/screen-heckle.webp",
    "caption": "Knocked out? Drop goo on the living and send emoji",
    "kind": "tv"
@@ -106,11 +111,6 @@
    "file": "shots/phone-heckle.webp",
    "caption": "…from the waiting screen",
    "kind": "phone"
-  },
-  {
-   "file": "shots/screen-pause.webp",
-   "caption": "The VIP can pause, skip a game or end the night",
-   "kind": "tv"
   },
   {
    "file": "shots/screen-final.webp",
@@ -359,7 +359,8 @@
    "blurb": "Grow your tail, cut them off. Don't bonk a tail.",
    "controls": "Stick to steer, tap BOOST for a burst (costs tail)",
    "tv": [
-    "shots/snake-tv-1.webp"
+    "shots/snake-tv-1.webp",
+    "shots/snake-tv-2.webp"
    ],
    "phone": "shots/snake-phone.webp"
   },
@@ -373,7 +374,8 @@
    "blurb": "Mash to pull the other team into the goo. Tap hard on HEAVE!",
    "controls": "Mash PULL. Taps during HEAVE! count triple",
    "tv": [
-    "shots/tug-tv-1.webp"
+    "shots/tug-tv-1.webp",
+    "shots/tug-tv-2.webp"
    ],
    "phone": "shots/tug-phone.webp"
   },
