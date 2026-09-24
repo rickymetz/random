@@ -411,6 +411,7 @@ function gameCtx(seats) {
     players: seats,
     layout,
     sfx,
+    music, // countdown / half / hot / speed: the game drives its song
     send: (pid, m) => send(byPid(pid), m),
     shake: (n) => { S.shake = Math.max(S.shake || 0, n); if (n >= 25 && PREFS.motion === 1) S.hitstop = 0.09; }, // big hits freeze a beat
     buzz: (pid, ms) => send(byPid(pid), { t: "buzz", ms }),
@@ -895,16 +896,28 @@ function playHere() {
 // The music follows the scene: a laid-back groove in the lobby and between
 // games, a driving track for each game (its tempo and key from the game),
 // a bouncy one on the board and a victory lap at the end. Paused, it ducks.
-let ducked = false;
+// The game drives its song from there (games/arena.js clock): it vamps
+// through the intro, builds over the countdown and drops on GO. Games without
+// the shared clock drop when play starts. When a game ends, one last chord
+// rings out before the next song. Paused, the music ducks and holds.
+let ducked = false, lastScene = null, goCheck = 0, stinger = false;
 function syncMusic() {
   const sc = S.scene;
   if (sc === "gate") return;
+  if (sc !== lastScene) {
+    if ((lastScene === "game" || lastScene === "duel") && sc !== "intro") { music.outro(); stinger = true; }
+    if (sc === "game" || sc === "duel") goCheck = performance.now() + 400;
+    lastScene = sc;
+  }
+  if (goCheck && performance.now() > goCheck) { goCheck = 0; music.go(); } // no countdown came: drop now
+  if (stinger && S.t < 2.2 && (sc === "results" || sc === "board" || sc === "final")) return; // let it ring
+  stinger = false;
   if (sc === "intro" || sc === "game") music.play("game", S.def?.id || "game", S.def?.kind); // the mood from the kind of game
   else if (sc === "duel") music.play("game", "duel");
   else if (sc === "board" || (S.mode === "board" && sc === "results")) music.play("board", S.round); // a new tune each round
   else if (sc === "final") music.play("final");
   else music.play("lobby");
-  if (!!S.paused !== ducked) { ducked = !!S.paused; music.duck(ducked); }
+  if (!!S.paused !== ducked) { ducked = !!S.paused; music.pause(ducked); }
 }
 
 // The hub's bottom bar shows on the title, lobby and final screens and tucks

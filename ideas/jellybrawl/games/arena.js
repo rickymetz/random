@@ -170,13 +170,18 @@ export function arena(ctx, o) {
   return A;
 }
 
-/** Common countdown / clock / GO! wrapper for arena games. */
+/** Common countdown / clock / GO! wrapper for arena games. It also drives the
+ *  music: a build over the countdown that drops on GO, the breakdown at half
+ *  time, and the hotter layer for the last 10 seconds. */
 export function clock(ctx, total) {
-  const c = { t: -3, lastTick: 3, total };
+  const c = { t: -3, lastTick: 3, total, cue: 0 };
   c.tick = (dt) => {
+    if (c.cue === 0) { c.cue = 1; ctx.music?.countdown(-c.t); }
     c.t += dt;
     if (c.t < 0) { if (Math.ceil(-c.t) < c.lastTick) { c.lastTick = Math.ceil(-c.t); ctx.sfx.tick(); } return false; }
     if (c.lastTick > 0) { c.lastTick = 0; ctx.sfx.go(); }
+    if (c.cue === 1 && total >= 30 && c.t >= total / 2) { c.cue = 2; ctx.music?.half(); }
+    if (c.cue < 3 && total - c.t <= 10) { c.cue = 3; ctx.music?.hot(); }
     return true;
   };
   c.left = () => Math.max(0, Math.ceil(total - Math.max(0, c.t)));

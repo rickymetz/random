@@ -39,6 +39,15 @@ export const music = {
   play(name, seed = "", kind = "") { want = [name, seed, kind]; tune?.play(name, seed, kind); },
   stop() { want = null; tune?.stop(); },
   duck(on) { tune?.duck(on); },
+  // the game drives its song: see music.js
+  pause(on) { tune?.pause(on); },
+  countdown(secs) { tune?.countdown(secs); },
+  go() { tune?.go(); },
+  half() { tune?.half(); },
+  hot(on) { tune?.hot(on); },
+  speed(level) { tune?.speed(level); },
+  outro() { tune?.outro(); },
+  get state() { return tune?.state; },
 };
 
 // the master mix as a MediaStream (for recording), or null before unlock
