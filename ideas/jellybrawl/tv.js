@@ -901,7 +901,7 @@ function syncMusic() {
   if (sc === "gate") return;
   if (sc === "intro" || sc === "game") music.play("game", S.def?.id || "game", S.def?.kind); // the mood from the kind of game
   else if (sc === "duel") music.play("game", "duel");
-  else if (sc === "board" || (S.mode === "board" && sc === "results")) music.play("board");
+  else if (sc === "board" || (S.mode === "board" && sc === "results")) music.play("board", S.round); // a new tune each round
   else if (sc === "final") music.play("final");
   else music.play("lobby");
   if (!!S.paused !== ducked) { ducked = !!S.paused; music.duck(ducked); }

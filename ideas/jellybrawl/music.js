@@ -11,8 +11,8 @@
 // breakdown, a snare-roll build...) that loops. Every 4th bar of a groove
 // gets a fill and every new section a crash. The lead plays a 4-bar tune
 // made from one seeded motif: stated, sequenced up, varied, then answered
-// back home. Each game gets its own song from its id and a mood from its
-// kind (tense 1-vs-rest, silly free-for-all, heroic teams).
+// back home. Each game gets its own song from its id, and a mood (tense,
+// silly, heroic or think) from a table, else from its kind.
 //
 //   const m = createMusic(audioContext, outputNode);
 //   m.play("game", "sumo", "Free-for-all");  m.duck(true);  m.stop();
@@ -52,7 +52,7 @@ const FILLS = [
 const BASSES = {
   steady: "x..x..x...x..o..",
   rolling: "xo..xo..x.o.x...",
-  synco: "..x..x.s.xo..x..",
+  synco: "x.x..x.s.xo..x..",
   stab: "...x.o..s.x..fo.",
   walk: "..xo.x.b..x.s.o.",
   bounce: "x..x..f.x..x..o.",
@@ -66,32 +66,45 @@ const ANSWER = "x..x..x.x.......";
 // Sections: bars, drums ("main" | "half" | "sparse" | "none" | "build"),
 // lead (true | false | "call": the first half of each bar only), arp
 // (true | false | "gaps": only where the lead rests), prog ("A" | "B"),
-// up (the lead an octave higher). Forms loop.
+// lift (a fuller pad), low (a breakdown: the bass eased, no pad). A form
+// plays through once, then loops from section `loop` (default 0).
 const FORMS = {
-  game: [
+  game: { loop: 0, secs: [
     { bars: 8, drums: "main", lead: true, arp: true, prog: "A" },
-    { bars: 8, drums: "main", lead: true, arp: "gaps", prog: "B", up: 12 },
-    { bars: 4, drums: "half", lead: "call", arp: false, prog: "A" },
+    { bars: 8, drums: "main", lead: true, arp: "gaps", prog: "B", lift: true },
+    { bars: 4, drums: "half", lead: "call", arp: false, prog: "A", low: true },
     { bars: 4, drums: "build", lead: false, arp: true, prog: "B" },
-  ],
-  tense: [
+  ] },
+  // opens stalking at half-time, then the loop lands the build on full drums
+  tense: { loop: 1, secs: [
     { bars: 8, drums: "half", lead: "call", arp: true, prog: "A" },
-    { bars: 8, drums: "main", lead: true, arp: "gaps", prog: "B" },
-    { bars: 4, drums: "sparse", lead: false, arp: true, prog: "A" },
+    { bars: 8, drums: "main", lead: true, arp: "gaps", prog: "B", lift: true },
+    { bars: 4, drums: "sparse", lead: false, arp: true, prog: "A", low: true },
     { bars: 4, drums: "build", lead: false, arp: true, prog: "B" },
-  ],
-  lobby: [
+    { bars: 8, drums: "main", lead: "call", arp: true, prog: "A" },
+  ] },
+  // people talking and concentrating: no lead, barely any drums
+  think: { loop: 0, secs: [
+    { bars: 8, drums: "sparse", lead: false, arp: true, prog: "A" },
+    { bars: 8, drums: "none", lead: false, arp: true, prog: "B" },
+  ] },
+  lobby: { loop: 0, secs: [
     { bars: 8, drums: "half", lead: false, arp: true, prog: "A" },
     { bars: 8, drums: "sparse", lead: false, arp: true, prog: "B" },
-  ],
-  board: [
+    { bars: 8, drums: "sparse", lead: false, arp: false, prog: "A", low: true },
+  ] },
+  board: { loop: 0, secs: [
     { bars: 8, drums: "half", lead: false, arp: true, prog: "A" },
     { bars: 8, drums: "half", lead: "call", arp: "gaps", prog: "B" },
-  ],
-  final: [
+    { bars: 8, drums: "sparse", lead: false, arp: true, prog: "A" },
+  ] },
+  // the victory lap once, then something calmer while people decide on a rematch
+  final: { loop: 2, secs: [
     { bars: 8, drums: "main", lead: true, arp: true, prog: "A" },
-    { bars: 8, drums: "main", lead: true, arp: "gaps", prog: "B", up: 12 },
-  ],
+    { bars: 8, drums: "main", lead: true, arp: "gaps", prog: "B", lift: true },
+    { bars: 8, drums: "half", lead: false, arp: true, prog: "A" },
+    { bars: 8, drums: "sparse", lead: "call", arp: "gaps", prog: "B" },
+  ] },
 };
 
 // Chord progressions are scale degrees, or {st, q} for a borrowed chord
@@ -103,54 +116,69 @@ const MOODS = {
   // free-for-all: bright and bouncy, Mixolydian, a skipping beat
   silly: { mode: "mixolydian", bpm: [174, 176], beats: ["skip", "rolling"], basses: ["bounce", "walk"], progs: [[[0, 6, 3, 0], [3, 4, 6, 0]], [[0, 3, 6, 0], [4, 3, 0, 6]]], arp: "x.x.x.x.x.x.x.x.", arpDuty: 0.125, leadDuty: 0.25, form: "game" },
   // teams: heroic, Dorian, the Amen break
-  heroic: { mode: "dorian", bpm: [172, 174], beats: ["amen", "twostep"], basses: ["rolling", "synco", "steady"], progs: [[[0, 6, 5, 6], [3, 4, 0, 0]], [[0, 3, 6, 0], [5, 6, 0, 0]], [[0, 5, 6, 0], [3, 6, 4, 4]]], arp: "xxxxxxxxxxxxxxxx", arpDuty: 0.5, leadDuty: 0.25, form: "game" },
+  heroic: { mode: "dorian", bpm: [172, 174], beats: ["amen", "twostep"], basses: ["rolling", "synco", "steady"], progs: [[[0, 6, 3, 0], [2, 6, 3, 3]], [[0, 3, 6, 0], [2, 3, 6, 6]], [[0, 2, 6, 3], [3, 6, 0, 0]]], arp: "xxxxxxxxxxxxxxxx", arpDuty: 0.5, leadDuty: 0.25, form: "game" },
+  // talking and concentrating (drawing, a talked-through maze, picking doors): pads and arp, no lead
+  think: { mode: "dorian", bpm: [170, 170], beats: ["twostep"], basses: ["liquid"], progs: [[[0, 3, 0, 4], [2, 3, 0, 0]]], arp: "x...x...x...x.x.", arpDuty: 0.25, leadDuty: 0.25, form: "think", noLead: true },
 };
-const moodOf = (kind = "") => (/vs rest/i.test(kind) ? "tense" : /free/i.test(kind) ? "silly" : "heroic");
+// games whose feel doesn't match their kind's label
+const MOOD_OF = {
+  haunted: "tense", maze: "tense", potato: "tense", bombsquad: "tense", snipe: "tense", blackout: "tense", chomp: "tense", duel: "tense",
+  whack: "silly", tug: "silly", paint: "silly", stack: "silly", flap: "silly", snake: "silly", bumper: "silly", coinrush: "silly",
+  kaiju: "heroic", kraken: "heroic", crown: "heroic", dodgeball: "heroic", soccer: "heroic", relay: "heroic", sling: "heroic", tank: "heroic", hill: "heroic", sumo: "heroic",
+  pilot: "think", draw: "think", greed: "think",
+};
+const moodOf = (id, kind = "") => MOOD_OF[id] || (/vs rest/i.test(kind) ? "tense" : /free/i.test(kind) ? "silly" : "heroic");
 
 const SONGS = {
   // a liquid groove to talk over: half-time drums, no lead, a soft arp, add9 pads
   lobby: () => ({
-    bpm: 170, root: 45, mode: "dorian", A: [0, 5, 3, 4], B: [0, 3, 5, 6], vol: 0.9, form: FORMS.lobby,
+    bpm: 170, root: 45, mode: "dorian", A: [0, 6, 3, 4], B: [0, 3, 2, 6], vol: 0.8, form: FORMS.lobby,
     ...HALF, bass: BASSES.liquid, lead: null, arp: "x.......x...x...", arpDuty: 0.25, arpVol: 0.03, pad: 1, add9: true,
   }),
   game: (seed, kind) => {
-    const h = hash(seed), m = MOODS[moodOf(kind)], progs = pick(m.progs, h, 5);
+    const h = hash(seed), m = MOODS[moodOf(seed, kind)], progs = pick(m.progs, h, 5);
     return {
-      bpm: pick(m.bpm, h, 2), root: pick([45, 47, 48, 50, 52], h, 3), mode: m.mode, A: progs[0], B: progs[1], vol: 1,
+      bpm: pick(m.bpm, h, 2), root: pick([45, 47, 48, 50, 52], hash(seed + "key"), 0), mode: m.mode, A: progs[0], B: progs[1], vol: 1,
       form: FORMS[m.form], ...BEATS[pick(m.beats, h, 8)], bass: BASSES[pick(m.basses, h, 11)],
-      lead: pick(LEADS, h, 14), leadSeed: h, leadDuty: m.leadDuty, echo: (h >>> 17) % 2 === 0,
+      lead: m.noLead ? null : pick(LEADS, h, 14), leadSeed: h, leadDuty: m.leadDuty, echo: (h >>> 17) % 2 === 0,
       arp: m.arp, arpDuty: m.arpDuty, pad: 0.5,
     };
   },
-  board: () => ({
+  board: (seed) => ({
     bpm: 170, root: 48, mode: "major", A: [0, 4, 5, 3], B: [3, 4, 0, 0], vol: 1, form: FORMS.board,
-    ...HALF, bass: BASSES.bounce, lead: "x.x...x.x...x...", leadSeed: 7, leadDuty: 0.25, echo: true,
+    ...HALF, bass: BASSES.bounce, lead: pick(LEADS, hash(`board${seed}`), 3), leadSeed: hash(`board${seed}`), leadDuty: 0.25, echo: true,
     arp: "x.x.x.x.x.x.x.x.", arpDuty: 0.25, pad: 0.7, add9: true,
   }),
   final: () => ({
-    bpm: 174, root: 48, mode: "major", A: [BVI, BVII, 0, 0], B: [3, 4, BVI, BVII], vol: 1.12, form: FORMS.final,
+    bpm: 174, root: 48, mode: "major", A: [BVI, BVII, 0, 0], B: [5, 3, 4, 4], vol: 1.12, form: FORMS.final,
     ...BEATS.twostep, bass: BASSES.steady, lead: "x..x..x.x.x.x...", leadSeed: 3, leadDuty: 0.25, echo: true,
     arp: "xxxxxxxxxxxxxxxx", arpDuty: 0.5, pad: 1,
   }),
   // the sizzle: one bar = 1.4 s, so every cut lands on a downbeat
   trailer: () => ({
     bpm: 1200 / 7, root: 45, mode: "minor", A: [0, 5, 2, 6], B: [3, 4, 0, 0], vol: 1, intro: 2,
-    form: [{ bars: 8, drums: "main", lead: true, arp: true, prog: "A" }, { bars: 8, drums: "main", lead: true, arp: "gaps", prog: "B", up: 12 }],
+    form: { loop: 0, secs: [{ bars: 8, drums: "main", lead: true, arp: true, prog: "A" }, { bars: 8, drums: "main", lead: true, arp: "gaps", prog: "B", lift: true }] },
     ...BEATS.amen, bass: BASSES.rolling, lead: "x..x..x.x.x.x...", leadSeed: 11, leadDuty: 0.25, echo: true,
     arp: "xxxxxxxxxxxxxxxx", arpDuty: 0.5, pad: 0.6,
   }),
 };
 
-// The lead's tune: 4 bars made from one motif, in scale steps from the
-// chord's root: stated, sequenced up a third, varied at the end, then an
-// answer that walks home. Returns per bar a list of [step, degree offset].
+// The lead's tune: 4 bars made from one motif, in scale steps from the key's
+// tonic (strong beats then snap to the chord): stated, sequenced up a third,
+// varied at the end, then an answer that steps back down home. The walk
+// stays within a 5th either side. Returns per bar a list of [step, degree].
 function melody(seed, rhythm) {
   const r = rng(seed * 2654435761), hits = [...rhythm].map((c, i) => (c === "x" ? i : -1)).filter((i) => i >= 0);
   const motif = [pick([0, 2, 4], seed, 1)];
-  for (let k = 1; k < hits.length; k++) motif.push(motif[k - 1] + [-2, -1, -1, 1, 1, 2, 0][Math.floor(r() * 7)]);
+  for (let k = 1; k < hits.length; k++) {
+    let d = motif[k - 1] + [-2, -1, -1, 1, 1, 2, 0][Math.floor(r() * 7)];
+    if (Math.abs(d) > 4) d -= 2 * Math.sign(d);
+    motif.push(d);
+  }
   const vary = motif.map((d, k) => (k >= motif.length - 2 ? d + (r() < 0.5 ? 1 : -1) : d));
   const answerHits = [...ANSWER].map((c, i) => (c === "x" ? i : -1)).filter((i) => i >= 0);
-  const top = Math.max(2, motif[0]), home = answerHits.map((_, k) => Math.round(top * (1 - k / (answerHits.length - 1))));
+  let at = Math.max(2, Math.min(4, motif[motif.length - 1] + 1));
+  const home = answerHits.map((_, k) => { if (k === answerHits.length - 1) return 0; const d = at; at = Math.max(k === answerHits.length - 2 ? 1 : 0, at - (r() < 0.6 ? 1 : 2)); return d; });
   return [
     hits.map((i, k) => [i, motif[k]]),
     hits.map((i, k) => [i, motif[k] + 2]),
@@ -197,7 +225,7 @@ export function createMusic(ac, out) {
   bus.connect(dipper).connect(out);
 
   let song = null, songGain = null, name = null, seedKey = null, step = 0, bar = 0, next = 0, section = "main";
-  let timer = null;
+  let timer = null, lobbyAt = null;
 
   // ------------------------------------------------------------ instruments
   function env(g, t, peak, a, d) {
@@ -213,8 +241,10 @@ export function createMusic(ac, out) {
   function noiseHit(t, dst, { freq, type, q = 1, vol, dur, sweep = 0 }) {
     const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
     s.buffer = noiseBuffer(); s.loop = dur > 0.5; f.type = type; f.frequency.value = freq; f.Q.value = q;
-    if (sweep) f.frequency.exponentialRampToValueAtTime(sweep, t + dur); // a riser
-    env(g, t, vol, sweep ? dur * 0.9 : 0.001, sweep ? dur * 0.1 : dur);
+    if (sweep) { // a riser: the filter opens and the level climbs (linearly, so it's heard all the way)
+      f.frequency.exponentialRampToValueAtTime(sweep, t + dur);
+      g.gain.setValueAtTime(0.006, t); g.gain.linearRampToValueAtTime(vol, t + dur * 0.95); g.gain.linearRampToValueAtTime(0, t + dur);
+    } else env(g, t, vol, 0.001, dur);
     s.connect(f).connect(g).connect(dst);
     s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.05);
   }
@@ -236,7 +266,7 @@ export function createMusic(ac, out) {
   function hat(t, dst, v, kind) {
     noiseHit(t, dst, { freq: 9000, type: "highpass", vol: (kind === "o" ? 0.1 : kind === "g" ? 0.03 : 0.06) * v, dur: kind === "o" ? 0.12 : 0.025 });
   }
-  function crash(t, dst, v) { noiseHit(t, dst, { freq: 6000, type: "highpass", vol: 0.16 * v, dur: 1.4 }); }
+  function crash(t, dst, v) { noiseHit(t, dst, { freq: 7000, type: "highpass", vol: 0.12 * v, dur: 1.4 }); }
   function note(t, dst, midi, { type, vol, dur, cutoff = 0, attack = 0.003, vibrato = 0, from = null }) {
     const o = osc(type), g = ac.createGain();
     if (from != null) { o.frequency.setValueAtTime(hz(from), t); o.frequency.exponentialRampToValueAtTime(hz(midi), t + 0.05); } // a slide into the note
@@ -274,18 +304,39 @@ export function createMusic(ac, out) {
     const k = deg + d;
     return s.root + sc[((k % 7) + 7) % 7] + 12 * Math.floor(k / 7);
   }
+  // the lead's note: d scale steps from the key's tonic (borrowed chords: the
+  // parallel minor), strong beats snapped to the chord
+  function leadNote(s, deg, d, i) {
+    const sc = typeof deg === "object" ? MODES.minor : scaleOf(s);
+    let m = s.root + sc[((d % 7) + 7) % 7] + 12 * Math.floor(d / 7);
+    if (i % 4 === 0) {
+      const pcs = chordNotes(s, deg).map((n) => n % 12);
+      for (const o of [0, -1, 1, -2, 2]) if (pcs.includes((m + o + 120) % 12)) { m += o; break; }
+    }
+    // the octave nearest the last note (a smooth line), kept within E4-A6
+    const prev = s.lastLead ?? 76;
+    let best = m + 24;
+    for (const c of [m, m + 12, m + 24, m + 36]) if (c >= 64 && c <= 93 && Math.abs(c - prev) < Math.abs(best - prev)) best = c;
+    return (s.lastLead = best);
+  }
   // where we are in the song's form
   function place(s) {
-    const form = s.form || FORMS.final, total = form.reduce((n, f) => n + f.bars, 0);
-    let k = (((bar - (s.intro || 0)) % total) + total) % total;
-    for (const f of form) { if (k < f.bars) return { sec: f, inSec: k }; k -= f.bars; }
-    return { sec: form[0], inSec: 0 };
+    const { secs, loop = 0 } = s.form || FORMS.final, total = secs.reduce((n, f) => n + f.bars, 0);
+    const head = secs.slice(0, loop).reduce((n, f) => n + f.bars, 0), cycle = total - head;
+    let k = Math.max(0, bar - (s.intro || 0));
+    if (k >= total) k = head + ((k - head) % cycle);
+    for (let x = 0; x < secs.length; x++) {
+      if (k < secs[x].bars) return { sec: secs[x], inSec: k, next: secs[x + 1] || secs[loop], first: bar - (s.intro || 0) === 0 };
+      k -= secs[x].bars;
+    }
+    return { sec: secs[0], inSec: 0, next: secs[1], first: false };
   }
   function playStep(t) {
     const s = song, dst = songGain, i = step % 16, v = s.vol, sixteenth = 60 / s.bpm / 4;
     const intro = s.intro && bar < s.intro;
-    const { sec, inSec } = place(s);
-    const prog = sec.prog === "B" && s.B ? s.B : s.A, deg = prog[bar % prog.length], chord = chordNotes(s, deg);
+    const { sec, inSec, next, first } = place(s), pb = Math.max(0, bar - (s.intro || 0)); // bars since the intro
+    const prog = sec.prog === "B" && s.B ? s.B : s.A, deg = prog[pb % prog.length], chord = chordNotes(s, deg);
+    const drop = sec.drums === "build" && inSec === sec.bars - 1 && i >= 12; // the last beat of a build: silence
     if (section === "outro") {
       if (!s.outroDone) { // one last big chord and a crash, on the next step
         s.outroDone = true;
@@ -305,16 +356,20 @@ export function createMusic(ac, out) {
       }
     } else {
       // drums: the section's beat, a fill in the last bar of every 4, a crash on each new section
-      const lastOf4 = inSec % 4 === 3 && sec.drums !== "build" && sec.drums !== "none";
-      const kit = lastOf4 ? s.fill : sec.drums === "half" ? HALF : sec.drums === "sparse" ? SPARSE : sec.drums === "none" ? null : s;
-      const n = kit === s ? step : i; // 32-step breaks run over two bars
-      if (inSec === 0 && i === 0 && sec.drums !== "build") crash(t, dst, v);
-      if (sec.drums === "build") { // a roll: 8ths, then 16ths, rising, over a riser; the very last step is silent
-        const q = (inSec + i / 16) / sec.bars, lastStep = inSec === sec.bars - 1 && i === 15;
-        if (!lastStep && (q >= 0.5 || i % 2 === 0)) snare(t, dst, v * (0.3 + 0.6 * q), "x", Math.round(q * 9));
-        if (i === 0 && inSec === 0) noiseHit(t, dst, { freq: 400, type: "highpass", vol: 0.08 * v, dur: sixteenth * 16 * sec.bars, sweep: 9000 });
-        if (i % 4 === 0 && !lastStep) kick(t, dst, v * 0.7);
+      // (a full fill only in full-drum sections; half-time gets a light one before
+      // the next section unless that's a build; a new song opens without a crash)
+      const fill = sec.drums === "main" && inSec % 4 === 3;
+      const lightFill = sec.drums === "half" && inSec === sec.bars - 1 && next?.drums !== "build" && i >= 12;
+      const kit = fill ? s.fill : sec.drums === "half" ? HALF : sec.drums === "sparse" ? SPARSE : sec.drums === "none" ? null : s;
+      const n = kit === s ? inSec * 16 + i : i; // 32-step breaks run over bar pairs within a section
+      if (inSec === 0 && i === 0 && sec.drums !== "build" && sec.drums !== "none" && !first) crash(t, dst, v);
+      if (sec.drums === "build") { // a roll: 8ths, then 16ths, rising, over a riser; then a silent beat before the drop
+        const q = (inSec + i / 16) / sec.bars;
+        if (!drop && (q >= 0.5 || i % 2 === 0)) snare(t, dst, v * 0.65 * (0.3 + 0.6 * q), "x", Math.round(q * 9));
+        if (i === 0 && inSec === 0) noiseHit(t, dst, { freq: 400, type: "highpass", vol: 0.14 * v, dur: sixteenth * (16 * sec.bars - 4), sweep: 5000 });
+        if (i % 4 === 0 && !drop) kick(t, dst, v * 0.7);
       } else if (kit) {
+        if (lightFill) snare(t, dst, v * 0.6, "x", i - 12);
         const k = at(kit.kick, n), sn = at(kit.snare, n), hh = at(kit.hat, n);
         if (k !== ".") { // the kick, and the sub ducks a little under it
           kick(t, dst, v);
@@ -325,33 +380,36 @@ export function createMusic(ac, out) {
       }
       // bass
       const b = at(s.bass, i);
-      if (b !== "." && sec.drums !== "none") {
-        const r = fold(chord[0]), up = b === "o" ? 12 : b === "f" ? 7 : b === "b" ? 10 : 0;
-        note(t, dst, r + 12 + up, { type: 0.25, vol: 0.12 * v, dur: sixteenth * 1.8, cutoff: 1400, from: b === "s" ? r + 10 : null }); // the grit
-        note(t, s.bassGain, r + (b === "f" ? 7 : 0), { type: "triangle", vol: 0.24 * v, dur: sixteenth * 1.8, from: b === "s" ? r - 2 : null }); // the sub
+      if (b !== "." && sec.drums !== "none" && !drop) {
+        const seventh = typeof deg === "object" ? 10 : ((scaleOf(s)[(deg + 6) % 7] - scaleOf(s)[deg] + 12) % 12);
+        const r = fold(chord[0]), up = b === "o" ? 12 : b === "f" ? 7 : b === "b" ? seventh : 0, bv = sec.low ? 0.6 : 1;
+        note(t, dst, r + 12 + up, { type: 0.25, vol: 0.12 * v * bv, dur: sixteenth * 1.8, cutoff: 1400, from: b === "s" ? r + seventh : null }); // the grit
+        note(t, s.bassGain, r + (b === "f" ? 7 : 0), { type: "triangle", vol: 0.24 * v * bv, dur: sixteenth * 1.8, from: b === "s" ? r - 2 : null }); // the sub
       }
       // lead: the song's tune, bar by bar ("call" plays only the first half of each bar)
       if (s.tune && sec.lead) {
-        const line = s.tune[bar % 4], hit = line.find(([st]) => st === i);
-        if (hit && !(sec.lead === "call" && i >= 8)) {
+        const line = s.tune[pb % 4], hit = line.find(([st]) => st === i);
+        if (hit && !(sec.lead === "call" && i >= 8 && pb % 4 !== 3)) { // a call still lands the answer's last note
           const later = line.find(([st]) => st > i), len = Math.min(sixteenth * 3, ((later ? later[0] : 16) - i) * sixteenth * 0.9);
-          const m = degreeNote(s, deg, hit[1]) + 24 + (sec.up || 0);
+          const m = leadNote(s, deg, hit[1], i);
           note(t, dst, m, { type: s.leadDuty || 0.25, vol: 0.085 * v, dur: len, vibrato: len > 0.2 ? 20 : 0, cutoff: 5000 });
-          if (s.echo) note(t + sixteenth * 3, dst, m, { type: s.leadDuty || 0.25, vol: 0.03 * v, dur: len * 0.8, cutoff: 3000 }); // the chip echo
+          const clash = line.some(([st]) => st > i && st <= i + 4); // the echo only in the tune's gaps, an octave down
+          if (s.echo && !clash) note(t + sixteenth * 3, dst, m - 12, { type: s.leadDuty || 0.25, vol: 0.035 * v, dur: len * 0.8, cutoff: 3000 });
           s.leadAt = step;
         }
       }
     }
     // arp: the section says on, off, or "gaps" (only where the lead rests: call and response)
     const leadNow = s.leadAt != null && step - s.leadAt <= 1;
-    if (at(s.arp, i) !== "." && (intro || sec.arp === true || (sec.arp === "gaps" && !leadNow))) {
+    if (!drop && at(s.arp, i) !== "." && (intro || sec.arp === true || (sec.arp === "gaps" && !leadNow))) {
       const up = chord.map((n) => n + 24), order = i % 2 ? [up[2], up[1], up[0]] : up;
       const base = (s.arpVol ?? 0.05) * (s.arpDuty === 0.5 ? 0.7 : 1) * (leadNow ? 0.6 : 1);
       arp(t, dst, order, sixteenth, { duty: s.arpDuty, vol: (intro ? 0.03 + 0.02 * (bar + i / 16) : base) * v });
     }
-    if (s.pad && i === 0) { // soft held chord (a narrow pulse, filtered); add9 on the calm songs
+    if (s.pad && i === 0 && !sec.low) { // soft held chord (a narrow pulse, filtered); add9 on the calm songs; fuller in a lift
       const tones = s.add9 ? [...chord, degreeNote(s, deg, 1) + 12] : chord;
-      for (const n of tones) note(t, dst, n + 12, { type: 0.25, vol: 0.018 * s.pad * v * (intro ? 2 : 1), dur: sixteenth * 14, attack: sixteenth * 3, cutoff: 1800 });
+      const len = sec.drums === "build" && inSec === sec.bars - 1 ? 11 : 14;
+      for (const n of tones) note(t, dst, n + 12, { type: 0.25, vol: 0.018 * s.pad * v * (intro ? 2 : 1) * (sec.lift ? 1.5 : 1), dur: sixteenth * len, attack: sixteenth * 3, cutoff: 1800 });
     }
   }
   function schedule() {
@@ -377,7 +435,9 @@ export function createMusic(ac, out) {
         old.gain.setValueAtTime(old.gain.value, t); old.gain.linearRampToValueAtTime(0.0001, t + 0.6);
         setTimeout(() => old.disconnect(), 900);
       }
-      song = make(seed, kind); name = which; seedKey = key; step = 0; bar = 0; section = "main";
+      if (name === "lobby" && song) lobbyAt = { step, bar }; // the lobby picks up where it left off next time
+      song = make(seed, kind); name = which; seedKey = key; section = "main";
+      ({ step, bar } = which === "lobby" && lobbyAt ? lobbyAt : { step: 0, bar: 0 });
       song.fill = FILLS[hash(`${which}${seed}`) % FILLS.length];
       if (song.lead) song.tune = melody(song.leadSeed || hash(seed) || 1, song.lead);
       songGain = ac.createGain(); songGain.connect(bus);
@@ -393,6 +453,7 @@ export function createMusic(ac, out) {
       section = "outro"; song.outroDone = false;
     },
     stop() {
+      if (name === "lobby" && song) lobbyAt = { step, bar };
       if (songGain) { const old = songGain; old.gain.setTargetAtTime(0.0001, ac.currentTime, 0.15); setTimeout(() => old.disconnect(), 800); }
       song = null; songGain = null; name = null; seedKey = null;
     },
