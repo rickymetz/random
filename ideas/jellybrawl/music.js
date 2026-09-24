@@ -36,7 +36,7 @@ const LEADS = ["x..x..x.x.x.x...", "x.x...x.x...x.xx", "x...x.x...x.x.x.", "xx..
 const SONGS = {
   // a liquid groove: half the drums, no lead, soft arps
   lobby: () => ({
-    bpm: 170, root: 45, scale: MINOR, prog: [0, 5, 2, 6], vol: 0.75, lead: null, pad: 1, arp: "x.x.x.x.x.x.x.x.", arpDuty: 0.25,
+    bpm: 170, root: 45, scale: MINOR, prog: [0, 5, 2, 6], vol: 1.25, lead: null, pad: 1, arp: "x.x.x.x.x.x.x.x.", arpDuty: 0.25,
     kick: "x.........x.....", snare: "....x.......x...", hat: "..x...x...x...x.", bass: "x.......x.......",
   }),
   game: (seed) => {
@@ -53,7 +53,7 @@ const SONGS = {
     bass: "x..x..f.x..x..o.", lead: "x.x...x.x...x.xx", leadSeed: 7, pad: 0.6, arp: "x.x.x.x.x.x.x.x.", arpDuty: 0.25,
   }),
   final: () => ({
-    bpm: 174, root: 48, scale: MAJOR, prog: [0, 3, 4, 5], vol: 1, ...BEATS[0],
+    bpm: 174, root: 48, scale: MAJOR, prog: [0, 3, 4, 5], vol: 1.12, ...BEATS[0],
     bass: "x..x..x...x..o..", lead: "x..x..x.x.x.x...", leadSeed: 3, pad: 1, arp: "xxxxxxxxxxxxxxxx", arpDuty: 0.5,
   }),
   // the sizzle: one bar = 1.4 s, so every cut lands on a downbeat
@@ -62,6 +62,18 @@ const SONGS = {
     bass: "xo..xo..x.o.x...", lead: "x..x..x.x.x.x...", leadSeed: 11, pad: 0.6, arp: "xxxxxxxxxxxxxxxx", arpDuty: 0.5,
   }),
 };
+
+// The master chain every mix goes through (the game's and the sizzle
+// recorder's): gentle glue compression, then a limiter so a pile-up of
+// sounds can't clip. Returns the node to connect into.
+export function masterChain(ac, dest) {
+  const glue = ac.createDynamicsCompressor(), limit = ac.createDynamicsCompressor();
+  glue.threshold.value = -14; glue.knee.value = 6; glue.ratio.value = 3; glue.attack.value = 0.005; glue.release.value = 0.15;
+  limit.threshold.value = -3; limit.knee.value = 0; limit.ratio.value = 20; limit.attack.value = 0.001; limit.release.value = 0.08;
+  const makeup = ac.createGain(); makeup.gain.value = 1.4; // +3 dB into the limiter
+  glue.connect(makeup).connect(limit).connect(dest);
+  return glue;
+}
 
 export function createMusic(ac, out) {
   // pulse waves at a few duty cycles, the chip sound
@@ -76,14 +88,14 @@ export function createMusic(ac, out) {
   let noiseBuf = null;
   function noiseBuffer() {
     if (noiseBuf) return noiseBuf;
-    noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+    noiseBuf = ac.createBuffer(1, ac.sampleRate * 2.5, ac.sampleRate);
     const d = noiseBuf.getChannelData(0);
     let v = 0;
     for (let i = 0; i < d.length; i++) { if (i % 3 === 0) v = Math.random() * 2 - 1; d[i] = v; }
     return noiseBuf;
   }
-  const bus = ac.createGain(); // ducking for pause
-  bus.connect(out);
+  const bus = ac.createGain(), dipper = ac.createGain(); // ducking: for pause, and under key sound effects
+  bus.connect(dipper).connect(out);
 
   let song = null, songGain = null, name = null, seedKey = null, step = 0, bar = 0, next = 0, section = "main";
   let timer = null;
@@ -101,7 +113,7 @@ export function createMusic(ac, out) {
   }
   function noiseHit(t, dst, { freq, type, q = 1, vol, dur }) {
     const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
-    s.buffer = noiseBuffer(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    s.buffer = noiseBuffer(); s.loop = dur > 0.5; f.type = type; f.frequency.value = freq; f.Q.value = q;
     env(g, t, vol, 0.001, dur);
     s.connect(f).connect(g).connect(dst);
     s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.05);
@@ -109,7 +121,7 @@ export function createMusic(ac, out) {
   function kick(t, dst, v) {
     const o = osc("triangle"), g = ac.createGain();
     o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.09);
-    env(g, t, 1.1 * v, 0.002, 0.22);
+    env(g, t, 0.75 * v, 0.002, 0.16);
     o.connect(g).connect(dst); o.start(t); o.stop(t + 0.3);
     noiseHit(t, dst, { freq: 2500, type: "lowpass", vol: 0.25 * v, dur: 0.015 }); // the click
   }
@@ -164,37 +176,40 @@ export function createMusic(ac, out) {
       if (!s.outroDone) { // one last big chord and a crash, on the next step
         s.outroDone = true;
         const home = chordNotes(s, s.prog[0]);
-        kick(t, dst, v * 1.2); snare(t, dst, v, "o"); noiseHit(t, dst, { freq: 6000, type: "highpass", vol: 0.28 * v, dur: 2 });
+        kick(t, dst, v); snare(t, dst, v, "o"); noiseHit(t, dst, { freq: 6000, type: "highpass", vol: 0.28 * v, dur: 2 });
         for (const n of home) note(t, dst, n + 12, { type: 0.5, vol: 0.06 * v, dur: 6, attack: 0.01 });
         note(t, dst, home[0] + 24, { type: 0.125, vol: 0.07 * v, dur: 5, vibrato: 25 });
-        note(t, dst, home[0] - 12, { type: "triangle", vol: 0.35 * v, dur: 6 });
+        note(t, dst, home[0] - 12, { type: "triangle", vol: 0.3 * v, dur: 6 });
       }
       return;
     }
     if (intro) {
-      if (i === 0) note(t, dst, chord[0] - 12, { type: "triangle", vol: 0.3 * v, dur: sixteenth * 14 });
+      if (i === 0) note(t, dst, chord[0] - 12, { type: "triangle", vol: 0.26 * v, dur: sixteenth * 14 });
       if (bar === s.intro - 1) { // the bar before the drop: a snare roll that builds
         hat(t, dst, v * (0.5 + i / 16), "x");
         if (i >= 8) snare(t, dst, v * (0.3 + (i - 8) / 9), "x");
       }
     } else {
       const k = at(s.kick, i), sn = at(s.snare, i), hh = at(s.hat, i), b = at(s.bass, i);
-      if (k !== ".") kick(t, dst, v);
+      if (k !== ".") { // the kick, and the bass ducks under it
+        kick(t, dst, v);
+        const sc = s.bassGain.gain; sc.setValueAtTime(0.35, t); sc.setTargetAtTime(1, t + 0.03, 0.04);
+      }
       if (sn !== ".") snare(t, dst, v, sn);
       if (hh !== ".") hat(t, dst, v, hh);
       if (b !== ".") {
-        const n = chord[0] - 12 + (b === "o" ? 12 : b === "f" ? 7 : 0);
-        note(t, dst, n, { type: 0.25, vol: 0.12 * v, dur: sixteenth * 1.8, cutoff: 1400 }); // the grit
-        note(t, dst, n - 12, { type: "triangle", vol: 0.3 * v, dur: sixteenth * 1.8 }); // the sub
+        const n = chord[0] + (b === "o" ? 12 : b === "f" ? 7 : 0);
+        note(t, s.bassGain, n, { type: 0.25, vol: 0.12 * v, dur: sixteenth * 1.8, cutoff: 1400 }); // the grit
+        note(t, s.bassGain, n - 12, { type: "triangle", vol: 0.24 * v, dur: sixteenth * 1.8 }); // the sub, 41-65 Hz: a TV can play it
       }
       if (at(s.lead, i) === "x") {
         const len = at(s.lead, i + 1) === "." ? sixteenth * 2.6 : sixteenth * 0.9;
-        note(t, dst, leadNote(s, chord, i), { type: 0.125, vol: 0.07 * v, dur: len, vibrato: len > 0.2 ? 20 : 0 });
+        note(t, dst, leadNote(s, chord, i), { type: 0.125, vol: 0.09 * v, dur: len, vibrato: len > 0.2 ? 20 : 0 });
       }
     }
     if (at(s.arp, i) !== ".") {
       const up = chord.map((n) => n + 24), order = i % 2 ? [up[2], up[1], up[0]] : up;
-      arp(t, dst, order, sixteenth, { duty: s.arpDuty, vol: (intro ? 0.03 + 0.02 * (bar + i / 16) : 0.035) * v });
+      arp(t, dst, order, sixteenth, { duty: s.arpDuty, vol: (intro ? 0.03 + 0.02 * (bar + i / 16) : 0.05) * v });
     }
     if (s.pad && i === 0) { // soft held chord (a narrow pulse, filtered)
       for (const n of chord) note(t, dst, n + 12, { type: 0.25, vol: 0.018 * s.pad * v * (intro ? 2 : 1), dur: sixteenth * 14, attack: sixteenth * 3, cutoff: 1800 });
@@ -225,6 +240,7 @@ export function createMusic(ac, out) {
       }
       song = make(seed); name = which; seedKey = key; step = 0; bar = 0; section = "main";
       songGain = ac.createGain(); songGain.connect(bus);
+      song.bassGain = ac.createGain(); song.bassGain.connect(songGain);
       songGain.gain.setValueAtTime(0.0001, ac.currentTime); songGain.gain.linearRampToValueAtTime(1, ac.currentTime + 0.4);
       next = ac.currentTime + 0.05;
       timer ??= setInterval(schedule, 25);
@@ -240,6 +256,11 @@ export function createMusic(ac, out) {
       song = null; songGain = null; name = null; seedKey = null;
     },
     duck(down) { bus.gain.setTargetAtTime(down ? 0.25 : 1, ac.currentTime, 0.1); },
+    // a quick dip (about -6 dB) under an important sound effect
+    dip(ms = 250) {
+      const t = ac.currentTime, g = dipper.gain;
+      g.cancelScheduledValues(t); g.setTargetAtTime(0.5, t, 0.015); g.setTargetAtTime(1, t + ms / 1000, 0.08);
+    },
     get playing() { return name; },
   };
 }

@@ -122,13 +122,13 @@ const REC = async () => {
   c.width = 1920; c.height = 1080;
   const g = c.getContext("2d");
   const game = await import(new URL("sfx.js", location.href).href);
-  const { createMusic } = await import(new URL("music.js", location.href).href);
+  const { createMusic, masterChain } = await import(new URL("music.js", location.href).href);
   game.setMix({ music: 0 }); game.unlock();
-  const ax = new AudioContext(), mixOut = ax.createMediaStreamDestination();
-  const tuneGain = ax.createGain(); tuneGain.gain.value = 0.9; tuneGain.connect(mixOut);
+  const ax = new AudioContext(), mixOut = ax.createMediaStreamDestination(), bus = masterChain(ax, mixOut); // the game's limiter too
+  const tuneGain = ax.createGain(); tuneGain.gain.value = 0.6; tuneGain.connect(bus);
   const tune = createMusic(ax, tuneGain);
   const fx = game.tap();
-  if (fx) { const fxGain = ax.createGain(); fxGain.gain.value = 0.5; ax.createMediaStreamSource(fx).connect(fxGain).connect(mixOut); }
+  if (fx) { const fxGain = ax.createGain(); fxGain.gain.value = 0.7; ax.createMediaStreamSource(fx).connect(fxGain).connect(bus); }
   await ax.suspend();
   tune.play("trailer");
   const type = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find((t) => MediaRecorder.isTypeSupported(t));

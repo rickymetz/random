@@ -2,20 +2,24 @@
 // unlocks audio on its first click or key press.
 //
 // Everything goes through two buses, sound effects and music, into a master
-// gain: the settings switch each on or off, and tap() hands the master mix
-// to a recorder (the preview's sizzle reel).
+// gain and then a compressor + limiter (so eight players all flapping can't
+// clip): the settings switch each bus on or off, and tap() hands the master
+// mix to a recorder (the preview's sizzle reel). Each effect has a voice cap,
+// and repeats get a hair of random timing and pitch so a crowd of identical
+// sounds doesn't stack into one loud phasey one. Key cues dip the music.
 
-import { createMusic } from "./music.js";
+import { createMusic, masterChain } from "./music.js";
 
+const MUSIC_LEVEL = 0.45;
 let ac = null, master = null, fxBus = null, musicBus = null, tune = null;
 let mix = { sfx: 1, music: 1 }, want = null; // the song asked for before audio was unlocked
 export function unlock() {
   try {
     if (!ac) {
       ac = new (window.AudioContext || window.webkitAudioContext)();
-      master = ac.createGain(); master.connect(ac.destination);
+      master = ac.createGain(); master.connect(masterChain(ac, ac.destination));
       fxBus = ac.createGain(); fxBus.connect(master);
-      musicBus = ac.createGain(); musicBus.gain.value = 0.55; musicBus.connect(master);
+      musicBus = ac.createGain(); musicBus.gain.value = MUSIC_LEVEL; musicBus.connect(master);
       tune = createMusic(ac, musicBus);
       setMix(mix);
       if (want) music.play(...want);
@@ -29,7 +33,7 @@ export function setMix(m) {
   mix = { ...mix, ...m };
   if (!ac) return;
   fxBus.gain.setTargetAtTime(mix.sfx, ac.currentTime, 0.05);
-  musicBus.gain.setTargetAtTime(0.55 * mix.music, ac.currentTime, 0.1);
+  musicBus.gain.setTargetAtTime(MUSIC_LEVEL * mix.music, ac.currentTime, 0.1);
 }
 
 export const music = {
@@ -49,42 +53,75 @@ export function tap() {
 
 function tone(freq, dur, { type = "square", vol = 0.08, slide = 0, delay = 0 } = {}) {
   if (!ac) return;
-  const t = ac.currentTime + delay;
+  const t = ac.currentTime + delay + jitter.t;
   const o = ac.createOscillator(), g = ac.createGain();
   o.type = type;
+  o.detune.value = jitter.cents;
   o.frequency.setValueAtTime(freq, t);
   if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
-  g.gain.setValueAtTime(vol, t);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.003); // a 3 ms attack: no click
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g).connect(fxBus);
   o.start(t);
   o.stop(t + dur + 0.02);
 }
 
+let noiseBuf = null;
 function noise(dur, vol = 0.15) {
   if (!ac) return;
-  const buf = ac.createBuffer(1, Math.floor(ac.sampleRate * dur), ac.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  if (!noiseBuf) { // made once, played from a random point
+    noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const t = ac.currentTime + jitter.t;
   const s = ac.createBufferSource(), g = ac.createGain();
-  s.buffer = buf; g.gain.value = vol;
+  s.buffer = noiseBuf;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   s.connect(g).connect(fxBus);
-  s.start();
+  s.start(t, Math.random() * (2 - dur));
+  s.stop(t + dur + 0.02);
 }
 
-export const sfx = {
+// Voice caps: at most `max` of one effect per 120 ms; the 2nd and later in a
+// burst get a little random delay and detune, so they don't phase-stack.
+const jitter = { t: 0, cents: 0 };
+const recent = {};
+function voiced(name, fn, { max = 3, dip = false } = {}) {
+  return (...a) => {
+    if (!ac) return;
+    const now = ac.currentTime, list = (recent[name] = (recent[name] || []).filter((t) => now - t < 0.12));
+    if (list.length >= max) return;
+    list.push(now);
+    const extra = list.length > 1;
+    jitter.t = extra ? Math.random() * 0.012 : 0;
+    jitter.cents = extra ? (Math.random() * 2 - 1) * 15 : 0;
+    fn(...a);
+    jitter.t = 0; jitter.cents = 0;
+    if (dip) tune?.dip();
+  };
+}
+
+const RAW = {
   whoosh: () => { noise(0.25, 0.08); tone(300, 0.25, { type: "sawtooth", slide: 900, vol: 0.03 }); },
   slam: () => { tone(90, 0.3, { type: "square", slide: -50, vol: 0.12 }); noise(0.15, 0.2); },
   join: () => { tone(523, 0.1, { type: "triangle" }); tone(784, 0.14, { type: "triangle", delay: 0.08 }); },
-  flap: () => tone(380, 0.08, { type: "triangle", slide: 260, vol: 0.05 }),
+  flap: () => tone(380, 0.08, { type: "triangle", slide: 260, vol: 0.09 }),
   hit: () => { noise(0.18, 0.2); tone(180, 0.25, { type: "sawtooth", slide: -120, vol: 0.06 }); },
   pop: () => { tone(900, 0.07, { slide: 600, vol: 0.06 }); noise(0.08, 0.1); },
   crunch: () => noise(0.12, 0.14),
   launch: () => tone(200, 0.3, { type: "sawtooth", slide: 500, vol: 0.05 }),
-  dot: () => tone(660, 0.04, { vol: 0.025 }),
+  dot: () => tone(660, 0.05, { vol: 0.05 }),
   power: () => [0, 0.07, 0.14].forEach((d, i) => tone(440 * (1 + i * 0.5), 0.1, { type: "triangle", delay: d })),
-  tick: () => tone(1000, 0.04, { type: "sine", vol: 0.05 }),
+  tick: () => tone(1000, 0.05, { type: "sine", vol: 0.09 }),
   go: () => tone(880, 0.3, { type: "square", vol: 0.06 }),
   win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.18, { type: "triangle", delay: i * 0.1, vol: 0.08 })),
   lose: () => [392, 330, 262].forEach((f, i) => tone(f, 0.2, { type: "triangle", delay: i * 0.12, vol: 0.06 })),
 };
+
+// the key cues dip the music so they cut through; busy ones are capped harder
+const CUES = { slam: { dip: true, max: 1 }, hit: { dip: true }, win: { dip: true, max: 1 }, lose: { dip: true, max: 1 }, go: { dip: true, max: 1 }, power: { max: 2 }, dot: { max: 2 }, crunch: { max: 2 }, flap: { max: 3 } };
+export const sfx = Object.fromEntries(Object.entries(RAW).map(([k, fn]) => [k, voiced(k, fn, CUES[k])]));
