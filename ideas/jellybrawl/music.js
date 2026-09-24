@@ -154,10 +154,21 @@ const SONGS = {
     ...BEATS.twostep, bass: BASSES.steady, lead: "x..x..x.x.x.x...", leadSeed: 3, leadDuty: 0.25, echo: true,
     arp: "xxxxxxxxxxxxxxxx", arpDuty: 0.5, pad: 1,
   }),
-  // the sizzle: one bar = 1.4 s, so every cut lands on a downbeat
+  // The sizzle: one bar = 1.4 s = one cut, so every cut lands on a downbeat.
+  // Its arc, bar by bar after the 2-bar title card (a drone, then a roll that
+  // speeds up and rises into a silent beat): 8 cuts on the Amen, a 2-bar
+  // half-time breath at the midpoint, a 2-bar build, a lifted second drop,
+  // a 2-bar build into silence, and the end card's big major chord (outro).
   trailer: () => ({
     bpm: 1200 / 7, root: 45, mode: "minor", A: [0, 5, 2, 6], B: [3, 4, 0, 0], vol: 1, intro: 2,
-    form: { loop: 0, secs: [{ bars: 8, drums: "main", lead: true, arp: true, prog: "A" }, { bars: 8, drums: "main", lead: true, arp: "gaps", prog: "B", lift: true }] },
+    form: { loop: 0, secs: [
+      { name: "A", bars: 8, drums: "main", lead: true, arp: true, prog: "A" },
+      { name: "breath", bars: 2, drums: "half", lead: "call", arp: false, prog: "A", low: true },
+      { name: "build", bars: 2, drums: "build", lead: false, arp: true, prog: "B" },
+      { name: "B", bars: 5, drums: "main", lead: true, arp: "gaps", prog: "B", lift: true },
+      { name: "build", bars: 2, drums: "build", lead: false, arp: true, prog: "A" },
+      { name: "A", bars: 8, drums: "main", lead: true, arp: true, prog: "A" },
+    ] },
     ...BEATS.amen, bass: BASSES.rolling, lead: "x..x..x.x.x.x...", leadSeed: 11, leadDuty: 0.25, echo: true,
     arp: "xxxxxxxxxxxxxxxx", arpDuty: 0.5, pad: 0.6,
   }),
@@ -407,9 +418,10 @@ export function createMusic(ac, out) {
     }
     if (intro) {
       if (i === 0) note(t, dst, fold(chord[0]) + 12, { type: "triangle", vol: 0.26 * v, dur: sixteenth * 14 });
-      if (P.bar === s.intro - 1) { // the bar before the drop: a snare roll that builds
+      if (P.bar === s.intro - 1 && i < 15) { // the bar before the drop: a roll that speeds up (8ths, 16ths, 32nds) and rises; then a silent step
         hat(t, dst, v * (0.5 + i / 16), "x");
-        if (i >= 8) snare(t, dst, v * (0.3 + (i - 8) / 9), "x", i - 8);
+        if (i % 2 === 0 || i >= 8) snare(t, dst, v * (0.3 + i / 24), "x", i);
+        if (i >= 12) snare(t + sixteenth / 2, dst, v * (0.4 + i / 24), "x", i + 1);
       }
     } else {
       // drums: the section's beat, a fill in the last bar of every 4 (every 2 when hot),
@@ -425,6 +437,7 @@ export function createMusic(ac, out) {
       if (building) { // a roll: 8ths, then 16ths, rising, over a riser; then a silent beat before the drop
         // 8ths, then 16ths in the last bar, then a beat of rest
         if (!drop && (left <= 16 || i % 2 === 0)) snare(t, dst, v * 0.55 * (0.3 + 0.6 * q), "x", Math.round(q * 9));
+        if (!drop && left <= 8) snare(t + sixteenth / 2, dst, v * 0.5 * (0.3 + 0.6 * q), "x", Math.round(q * 9) + 1); // 32nds at the very end
         if (t === P.buildT) {
           const len = (left - 4) * sixteenth;
           if (len > 0.3) P.riser = noiseHit(t, dst, { freq: 400, type: "highpass", vol: 0.09 * v, dur: len, sweep: 5000 });
